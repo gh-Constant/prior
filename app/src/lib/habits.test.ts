@@ -23,6 +23,11 @@ describe("habit recurrence", () => {
     expect(habitCompletionDate(habit, reference)).toBe("2026-09-12");
   });
 
+  it("keeps a daily habit overdue when today is complete but an earlier occurrence was missed", () => {
+    const habit = makeHabit({ completedDates: ["2026-09-10", "2026-09-12"] });
+    expect(habitStatus(habit, new Date("2026-09-12T12:00:00"))).toBe("overdue");
+  });
+
   it("handles month end anchors without creating invalid dates", () => {
     const habit = makeHabit({ startDate: "2026-01-31", unit: "month" });
     expect(habitOccurrenceDates(habit, new Date("2026-01-01"), new Date("2026-05-31"))).toEqual(["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30", "2026-05-31"]);

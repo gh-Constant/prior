@@ -99,11 +99,12 @@ export function habitStatus(habit: Habit, reference = new Date()): HabitStatus {
   const key = dateKey(today);
   const completed = new Set(habit.completedDates ?? []);
   const todayIsDue = habitOccurrenceDates(habit, today, today).includes(key);
-  if (todayIsDue && completed.has(key)) return "complete";
   const start = validDate(habit.startDate);
   if (today < start) return "upcoming";
   const pending = habitOccurrenceDates(habit, start, today).filter((date) => !completed.has(date));
-  if (pending.length > 0) return todayIsDue ? "due" : "overdue";
+  const hasPastPending = pending.some((date) => date < key);
+  if (todayIsDue && completed.has(key)) return hasPastPending ? "overdue" : "complete";
+  if (pending.length > 0) return hasPastPending ? "overdue" : "due";
   return "upcoming";
 }
 
