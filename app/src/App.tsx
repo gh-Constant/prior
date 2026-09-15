@@ -4,46 +4,27 @@ import { clearSession, getToken, getUser, listenForAuth, startGoogleLogin, type 
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
-import type { QuadrantKey, Task } from "./types";
+import type { Task } from "./types";
 import { BrandMark } from "./components/BrandMark";
-import { Icon, type IconName } from "./components/Icon";
+import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
 import { TaskRow } from "./components/TaskRow";
 import { AuthModal } from "./components/AuthModal";
 import { updateAndroidWidget } from "./lib/widget";
+import { defaultTaskFilters, filterTasks, type TaskFilterState } from "./lib/taskFilters";
 
-type FilterKey = "all" | QuadrantKey | "important" | "urgent" | "completed";
+type WorkspaceView = "eisenhower" | "all";
 type Layout = "list" | "board";
-
-const filters: Array<{ key: FilterKey; label: string; icon: IconName }> = [
-  { key: "all", label: "All tasks", icon: "inbox" },
-  { key: "focus", label: "Focus", icon: "focus" },
-  { key: "plan", label: "Plan", icon: "plan" },
-  { key: "quick", label: "Quick", icon: "quick" },
-  { key: "later", label: "Later", icon: "later" },
-  { key: "important", label: "Important", icon: "important" },
-  { key: "urgent", label: "Urgent", icon: "bolt" },
-  { key: "completed", label: "Completed", icon: "check-circle" },
-];
-
-const filterTitles: Record<FilterKey, string> = {
-  all: "All tasks",
-  focus: "Focus",
-  plan: "Plan",
-  quick: "Quick",
-  later: "Later",
-  important: "Important",
-  urgent: "Urgent",
-  completed: "Completed",
-};
+import { TaskFilters } from "./components/TaskFilters";
 
 export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [activeView, setActiveView] = useState<WorkspaceView>("eisenhower");
+  const [taskFilters, setTaskFilters] = useState<TaskFilterState>(defaultTaskFilters);
   const [layout, setLayout] = useState<Layout>("list");
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
@@ -139,14 +120,7 @@ export function App() {
     setAuthOpen(false);
   }
 
-  const visibleTasks = useMemo(() => tasks.filter((task) => {
-    if (filter === "completed") return task.completed;
-    if (task.completed) return false;
-    if (filter === "all") return true;
-    if (filter === "important") return task.important;
-    if (filter === "urgent") return task.urgent;
-    return quadrantFor(task) === filter;
-  }), [tasks, filter]);
+  const visibleTasks = useMemo(() => filterTasks(tasks, taskFilters), [tasks, taskFilters]);
 
   const grouped = useMemo(() => Object.fromEntries(QUADRANTS.map((quadrant) => [quadrant.key, visibleTasks.filter((task) => quadrantFor(task) === quadrant.key)])), [visibleTasks]);
 
@@ -162,7 +136,10 @@ export function App() {
         <div className="sidebar-brand" title="Prior"><BrandMark withTitle /></div>
         <button className="sidebar-new" type="button" aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
         <nav className="sidebar-nav" aria-label="Task views">
-          <button type="button" className="nav-item active" aria-current="page" onClick={() => setFilter("all")}>
+          <button type="button" className={`nav-item ${activeView === "eisenhower" ? "active" : ""}`} aria-current={activeView === "eisenhower" ? "page" : undefined} onClick={() => setActiveView("eisenhower")}>
+            <Icon name="grid" /><span>Eisenhower</span>
+          </button>
+          <button type="button" className={`nav-item ${activeView === "all" ? "active" : ""}`} aria-current={activeView === "all" ? "page" : undefined} onClick={() => setActiveView("all")}>
             <Icon name="inbox" /><span>All tasks</span>
           </button>
         </nav>
@@ -176,30 +153,24 @@ export function App() {
 
       <main className="workspace">
         <header className="workspace-header">
-          <h1>{filterTitles[filter]}</h1>
+          <h1>{activeView === "eisenhower" ? "Eisenhower" : "All tasks"}</h1>
           <div className="workspace-actions">
-            <div className="layout-switch" role="group" aria-label="Task layout">
+            {activeView === "all" && <div className="layout-switch" role="group" aria-label="Task layout">
               <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => setLayout("list")}><Icon name="list" /></button>
               <button type="button" className={layout === "board" ? "active" : ""} aria-label="Board view" aria-pressed={layout === "board"} onClick={() => setLayout("board")}><Icon name="grid" /></button>
-            </div>
+            </div>}
             <button className="primary-button new-task-button" type="button" aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
           </div>
         </header>
 
-        <div className="filter-bar" role="tablist" aria-label="Task filters">
-          {filters.map((item) => (
-            <button key={item.key} type="button" role="tab" aria-selected={filter === item.key} className={`filter-chip ${filter === item.key ? "active" : ""}`} onClick={() => setFilter(item.key)}>
-              <Icon name={item.icon} /><span>{item.label}</span>
-            </button>
-          ))}
-        </div>
+        <TaskFilters value={taskFilters} onChange={setTaskFilters} />
 
-        {layout === "board" ? (
+        {activeView === "eisenhower" || layout === "board" ? (
           <div className="quadrant-grid">
             {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={changeTask} onDelete={deleteTask} />)}
           </div>
         ) : (
-          <section className="list-view" aria-label={filterTitles[filter]}>
+          <section className="list-view" aria-label="All tasks">
             {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={changeTask} onDelete={deleteTask} />)}
           </section>
         )}
