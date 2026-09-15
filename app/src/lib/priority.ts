@@ -7,10 +7,10 @@ export const QUADRANTS: ReadonlyArray<{
   important: boolean;
   urgent: boolean;
 }> = [
-  { key: "focus", label: "Focus", helper: "Important and urgent", important: true, urgent: true },
-  { key: "plan", label: "Plan", helper: "Important, not urgent", important: true, urgent: false },
-  { key: "quick", label: "Quick", helper: "Urgent, not important", important: false, urgent: true },
-  { key: "later", label: "Later", helper: "Neither urgent nor important", important: false, urgent: false },
+  { key: "focus", label: "Important + urgent", helper: "Important and urgent", important: true, urgent: true },
+  { key: "plan", label: "Important", helper: "Important, not urgent", important: true, urgent: false },
+  { key: "quick", label: "Urgent", helper: "Urgent, not important", important: false, urgent: true },
+  { key: "later", label: "No priority", helper: "Neither urgent nor important", important: false, urgent: false },
 ];
 
 export function quadrantFor(task: Pick<Task, "important" | "urgent">): QuadrantKey {

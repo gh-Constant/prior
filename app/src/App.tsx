@@ -14,17 +14,17 @@ import { TaskColumns } from "./components/TaskColumns";
 import { AuthModal } from "./components/AuthModal";
 import { updateAndroidWidget } from "./lib/widget";
 import { defaultTaskFilters, filterTasks, type TaskFilterState } from "./lib/taskFilters";
+import { TaskFilters } from "./components/TaskFilters";
 
 type WorkspaceView = "eisenhower" | "all";
 type Layout = "list" | "board";
-import { TaskFilters } from "./components/TaskFilters";
 
 export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
-  const [activeView, setActiveView] = useState<WorkspaceView>("eisenhower");
+  const [activeView, setActiveView] = useState<WorkspaceView>("all");
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>(defaultTaskFilters);
   const [layout, setLayout] = useState<Layout>("list");
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
@@ -133,34 +133,33 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className="sidebar" inert={composerOpen || authOpen}>
         <div className="sidebar-brand" title="Prior"><BrandMark withTitle /></div>
-        <button className="sidebar-new" type="button" aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
         <nav className="sidebar-nav" aria-label="Task views">
-          <button type="button" className={`nav-item ${activeView === "eisenhower" ? "active" : ""}`} aria-current={activeView === "eisenhower" ? "page" : undefined} onClick={() => setActiveView("eisenhower")}>
-            <Icon name="grid" /><span>Eisenhower</span>
-          </button>
           <button type="button" className={`nav-item ${activeView === "all" ? "active" : ""}`} aria-current={activeView === "all" ? "page" : undefined} onClick={() => setActiveView("all")}>
             <Icon name="inbox" /><span>All tasks</span>
           </button>
+          <button type="button" className={`nav-item ${activeView === "eisenhower" ? "active" : ""}`} aria-current={activeView === "eisenhower" ? "page" : undefined} onClick={() => setActiveView("eisenhower")}>
+            <Icon name="grid" /><span>Eisenhower</span>
+          </button>
         </nav>
         <div className="sidebar-bottom">
-          <button className="account-trigger" type="button" onClick={() => setAuthOpen(true)}>
+          <button className="account-trigger" type="button" aria-label="Account" onClick={() => setAuthOpen(true)}>
             <span className="account-trigger-avatar">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}</span>
             <span className="account-trigger-label">{user?.displayName || "Account"}</span>
           </button>
         </div>
       </aside>
 
-      <main className="workspace">
+      <main className="workspace" inert={composerOpen || authOpen}>
         <header className="workspace-header">
           <h1>{activeView === "eisenhower" ? "Eisenhower" : "All tasks"}</h1>
           <div className="workspace-actions">
             {activeView === "all" && <div className="layout-switch" role="group" aria-label="Task layout">
               <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => setLayout("list")}><Icon name="list" /></button>
-              <button type="button" className={layout === "board" ? "active" : ""} aria-label="Column view" aria-pressed={layout === "board"} onClick={() => setLayout("board")}><Icon name="grid" /></button>
+              <button type="button" className={layout === "board" ? "active" : ""} aria-label="Column view" title="Column view" aria-pressed={layout === "board"} onClick={() => setLayout("board")}><Icon name="columns" /></button>
             </div>}
-            <button className="primary-button new-task-button" type="button" aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
+            <button className="primary-button new-task-button" type="button" aria-label="New task" title={`New task (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
           </div>
         </header>
 
@@ -177,6 +176,7 @@ export function App() {
             {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={changeTask} onDelete={deleteTask} />)}
           </section>
         )}
+        {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => setComposerOpen(true)}><Icon name="plus" /> New task</button>}
       </main>
 
       {composerOpen && <TaskComposer onSave={saveTask} onCancel={() => setComposerOpen(false)} />}

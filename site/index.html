@@ -3,134 +3,62 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Prior is a calm task app for deciding what matters next." />
-    <link rel="icon" type="image/svg+xml" href="/prior-mark.svg" />
-    <link rel="stylesheet" href="/styles.css" />
-    <title>Prior — put the next thing first</title>
+    <meta name="theme-color" content="#20201f" />
+    <meta name="description" content="Prior. A clearer space for your tasks. For macOS, Windows, Android, and the web." />
+    <link rel="icon" type="image/png" href="./prior-logo.png" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./downloads.js" defer></script>
+    <title>Prior — Less noise. More done.</title>
   </head>
   <body>
     <a class="skip-link" href="#content">Skip to content</a>
-
-    <div class="page-shell">
-      <header class="site-header">
-        <a class="brand" href="/" aria-label="Prior home">
-          <img class="mark" src="/prior-mark.svg" alt="" />
-          <span>Prior</span>
-        </a>
-
-        <nav aria-label="Main navigation">
-          <a href="#download">Download</a>
-          <a class="header-action" href="https://app.prior.constantsuchet.fr">Open app <span aria-hidden="true">↗</span></a>
-        </nav>
-      </header>
-
-      <main id="content">
-        <section class="hero" aria-labelledby="hero-title">
-          <div class="hero-copy">
-            <p class="kicker">A small task app</p>
-            <h1 id="hero-title">Put the next thing first.</h1>
-            <p class="hero-lede">Prior gives the whole list a little less weight, so the right task can come forward.</p>
-
-            <div class="hero-actions">
-              <a class="button" href="https://app.prior.constantsuchet.fr">Open Prior <span aria-hidden="true">↗</span></a>
-              <a class="quiet-link" href="#download">Get the app <span aria-hidden="true">↓</span></a>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="Prior home"><img src="./prior-logo.png" alt="" /><span>Prior</span></a>
+      <nav aria-label="Main navigation"><a href="#download">Download</a><a class="open-app" href="https://app.prior.constantsuchet.fr">Open app <span aria-hidden="true">↗</span></a></nav>
+    </header>
+    <main id="content">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="coral-field" aria-hidden="true"><div class="coral-ribbon"></div><div class="coral-ribbon-edge"></div></div>
+        <div class="hero-content">
+          <h1 id="hero-title">Less noise.<br />More done.</h1>
+          <p>A clearer space for your tasks.</p>
+          <div id="download" class="download-area">
+            <div class="platform-downloads" aria-label="Download Prior">
+              <a data-platform="macos" href="https://github.com/gh-Constant/prior/releases/download/v0.1.2/Prior_0.1.2_universal.dmg"><img src="./platforms/apple.svg" alt="" /><span>macOS</span><span class="download-arrow" aria-hidden="true">↓</span></a>
+              <a data-platform="windows" href="https://github.com/gh-Constant/prior/releases/download/v0.1.2/Prior_0.1.2_x64-setup.exe"><img src="./platforms/windows.svg" alt="" /><span>Windows</span><span class="download-arrow" aria-hidden="true">↓</span></a>
+              <a data-platform="android" href="https://github.com/gh-Constant/prior/releases/download/v0.1.2/app-universal-release.apk"><img src="./platforms/android.svg" alt="" /><span>Android</span><span class="download-arrow" aria-hidden="true">↓</span></a>
+              <a data-platform="linux" href="https://github.com/gh-Constant/prior/releases/download/v0.1.2/Prior_0.1.2_amd64.AppImage"><img src="./platforms/linux.svg" alt="" /><span>Linux</span><span class="download-arrow" aria-hidden="true">↓</span></a>
             </div>
-
-            <p class="hero-note">Free to try in the browser. Desktop and Android builds available.</p>
+            <a class="web-link" href="https://app.prior.constantsuchet.fr">Or open in your browser <span aria-hidden="true">↗</span></a>
           </div>
-
-          <figure class="priority-stage" aria-labelledby="priority-caption">
-            <div class="stage-grid" aria-hidden="true"></div>
-            <div class="stage-orbit stage-orbit-one" aria-hidden="true"></div>
-            <div class="stage-orbit stage-orbit-two" aria-hidden="true"></div>
-
-            <div class="priority-card priority-card-back" aria-hidden="true">
-              <span class="task-rule rule-green"></span>
-              <span class="task-copy"><small>Later</small><strong>Review the first release</strong></span>
+        </div>
+      </section>
+      <section class="product-section" aria-label="Prior app preview">
+        <div class="product-window">
+          <div class="window-bar" aria-hidden="true"><div class="window-dots"><i></i><i></i><i></i></div><span>Prior</span><span></span></div>
+          <div class="preview-app">
+            <aside class="preview-sidebar">
+              <div class="brand"><img src="./prior-logo.png" alt="" /><span>Prior</span></div>
+              <div class="preview-nav active"><span aria-hidden="true">☷</span>All tasks</div>
+              <div class="preview-nav"><span aria-hidden="true">⊞</span>Eisenhower</div>
+              <div class="preview-account"><span class="avatar" aria-hidden="true">J</span>Jamie</div>
+            </aside>
+            <div class="preview-workspace">
+              <div class="preview-header"><h2>All tasks</h2><span class="preview-new" aria-hidden="true">+ &nbsp;New task</span></div>
+              <div class="preview-filters" aria-hidden="true"><span class="preview-search">⌕ &nbsp;Search tasks</span><span>Any date⌄</span><span>Any priority⌄</span><span>Open⌄</span></div>
+              <div class="preview-list">
+                <div class="preview-task"><i></i><span>Finish the things that matter</span><b class="priority-star" aria-label="Important">☆</b><b class="priority-bolt" aria-label="Urgent">ϟ</b></div>
+                <div class="preview-task"><i></i><span>Send the first draft</span><b class="priority-star" aria-label="Important">☆</b></div>
+                <div class="preview-task"><i></i><span>Make room for a new idea</span></div>
+                <div class="preview-task"><i></i><span>Book a weekend away</span><b class="priority-star" aria-label="Important">☆</b></div>
+                <div class="preview-task"><i></i><span>Go for a walk</span></div>
+              </div>
             </div>
-            <div class="priority-card priority-card-middle" aria-hidden="true">
-              <span class="task-rule rule-yellow"></span>
-              <span class="task-copy"><small>Plan</small><strong>Sketch the launch page</strong></span>
-            </div>
-            <div class="priority-card priority-card-front">
-              <span class="task-rule rule-blue"></span>
-              <span class="task-copy"><small>Focus now</small><strong>Write the opening line</strong></span>
-              <span class="task-check" aria-hidden="true">✓</span>
-            </div>
-            <figcaption id="priority-caption">One clear next move.</figcaption>
-          </figure>
-        </section>
-
-        <section class="workspace-section" aria-labelledby="workspace-title">
-          <div class="section-intro">
-            <p class="kicker">The point of the list</p>
-            <h2 id="workspace-title">Everything in view.<br /><em>Not everything at once.</em></h2>
-            <p>Capture what is on your mind, sort by importance and urgency, then return to the task that deserves your attention.</p>
           </div>
-
-          <figure class="preview-frame">
-            <div class="preview-window">
-              <img src="/app-preview.svg" alt="Prior showing a task list with focus, plan, and urgent filters" />
-            </div>
-            <figcaption>Prior keeps the working surface uncomplicated.</figcaption>
-          </figure>
-        </section>
-
-        <section id="download" class="download-section" aria-labelledby="download-title">
-          <div>
-            <p class="kicker">Take it with you</p>
-            <h2 id="download-title">Start where you are.</h2>
-            <p class="download-copy">Use Prior in the browser, or get the latest build for your device.</p>
-          </div>
-
-          <div class="platform-downloads" aria-label="Direct downloads">
-            <a class="platform-download" data-platform="macos" href="https://github.com/gh-Constant/prior/releases/latest/download/Prior_0.1.2_universal.dmg">
-              <strong>macOS</strong><small>Universal DMG</small><span aria-hidden="true">↓</span>
-            </a>
-            <a class="platform-download" data-platform="windows" href="https://github.com/gh-Constant/prior/releases/latest/download/Prior_0.1.2_x64-setup.exe">
-              <strong>Windows</strong><small>Installer</small><span aria-hidden="true">↓</span>
-            </a>
-            <a class="platform-download" data-platform="linux" href="https://github.com/gh-Constant/prior/releases/latest/download/Prior_0.1.2_amd64.AppImage">
-              <strong>Linux</strong><small>AppImage</small><span aria-hidden="true">↓</span>
-            </a>
-            <a class="platform-download" data-platform="android" href="https://github.com/gh-Constant/prior/releases/latest/download/app-universal-release.apk">
-              <strong>Android</strong><small>APK</small><span aria-hidden="true">↓</span>
-            </a>
-          </div>
-          <div class="download-actions">
-            <a class="quiet-link" href="https://app.prior.constantsuchet.fr">Open the web app <span aria-hidden="true">↗</span></a>
-            <a class="quiet-link" href="https://github.com/gh-Constant/prior/releases/latest">All releases <span aria-hidden="true">↗</span></a>
-          </div>
-          <p class="availability">Each button downloads the latest matching build.</p>
-        </section>
-      </main>
-
-      <footer>
-        <span>Prior</span>
-        <nav aria-label="Legal">
-          <a href="/privacy.html">Privacy</a>
-          <a href="/terms.html">Terms</a>
-        </nav>
-      </footer>
-    </div>
-    <script>
-      fetch("https://api.github.com/repos/gh-Constant/prior/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
-        .then((response) => response.ok ? response.json() : Promise.reject(new Error("Release lookup failed")))
-        .then((release) => {
-          const assets = release.assets || [];
-          const matchers = {
-            macos: (name) => name.endsWith("_universal.dmg"),
-            windows: (name) => name.endsWith("x64-setup.exe"),
-            linux: (name) => name.endsWith("_amd64.AppImage"),
-            android: (name) => name.endsWith(".apk")
-          };
-          Object.entries(matchers).forEach(([platform, matches]) => {
-            const asset = assets.find((candidate) => matches(candidate.name));
-            const link = document.querySelector(`[data-platform="${platform}"]`);
-            if (asset && link) link.href = asset.browser_download_url;
-          });
-        })
-        .catch(() => undefined);
-    </script>
+        </div>
+        <div class="product-caption"><span>Everything in its place.</span><a href="https://app.prior.constantsuchet.fr">Try Prior <span aria-hidden="true">↗</span></a></div>
+      </section>
+    </main>
+    <footer><a class="brand" href="./"><img src="./prior-logo.png" alt="" /><span>Prior</span></a><nav aria-label="Footer"><a href="https://github.com/gh-Constant/prior/releases/latest">Releases</a><a href="./privacy.html">Privacy</a><a href="./terms.html">Terms</a></nav></footer>
   </body>
 </html>

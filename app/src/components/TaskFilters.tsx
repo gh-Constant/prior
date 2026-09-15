@@ -52,9 +52,7 @@ export function TaskFilters({ value, onChange }: Props) {
           <option value="oldest">Oldest first</option>
         </select>
       </label>
-      <button className="filter-reset" type="button" disabled={!hasActiveFilters} onClick={() => onChange(defaultTaskFilters)}>
-        Reset
-      </button>
+      {hasActiveFilters && <button className="filter-reset" type="button" title="Reset filters" aria-label="Reset filters" onClick={() => onChange(defaultTaskFilters)}><Icon name="close" /></button>}
     </div>
   );
 }

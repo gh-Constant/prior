@@ -5,6 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 export const RELEASES_URL = "https://github.com/gh-Constant/prior/releases/latest";
 const RELEASE_API_URL = "https://api.github.com/repos/gh-Constant/prior/releases/latest";
+const FALLBACK_RELEASE = "https://github.com/gh-Constant/prior/releases/download/v0.1.2";
 
 const platforms = [
   { key: "macos", name: "macOS", detail: "Universal", icon: faApple, matches: (name: string) => name.endsWith("_universal.dmg"), fallback: "Prior_0.1.2_universal.dmg" },
@@ -22,7 +23,7 @@ function PlatformLogo({ icon }: { icon: IconDefinition }) {
 }
 
 export function DownloadPanel() {
-  const [downloadUrls, setDownloadUrls] = useState<Record<string, string>>(() => Object.fromEntries(platforms.map((platform) => [platform.key, `${RELEASES_URL}/download/${platform.fallback}`])));
+  const [downloadUrls, setDownloadUrls] = useState<Record<string, string>>(() => Object.fromEntries(platforms.map((platform) => [platform.key, `${FALLBACK_RELEASE}/${platform.fallback}`])));
 
   useEffect(() => {
     let active = true;
@@ -32,7 +33,7 @@ export function DownloadPanel() {
         const assets = release.assets ?? [];
         const next = Object.fromEntries(platforms.map((platform) => {
           const asset = assets.find((candidate) => platform.matches(candidate.name));
-          return [platform.key, asset?.browser_download_url ?? `${RELEASES_URL}/download/${platform.fallback}`];
+          return [platform.key, asset?.browser_download_url ?? `${FALLBACK_RELEASE}/${platform.fallback}`];
         }));
         if (active) setDownloadUrls(next);
       })
@@ -50,8 +51,7 @@ export function DownloadPanel() {
   return (
     <section className="download-panel" aria-labelledby="download-title">
       <div className="download-brand"><img src="/prior-logo.png" alt="Prior" /></div>
-      <h3 id="download-title">Prior everywhere</h3>
-      <p className="download-copy">Choose your platform.</p>
+      <h3 id="download-title">Prior</h3>
       <div className="download-grid">
         {platforms.map((platform) => (
           <a key={platform.name} className="download-card" href={downloadUrls[platform.key]} target="_blank" rel="noreferrer" onClick={(event) => openDownload(event, downloadUrls[platform.key])}>
