@@ -61,8 +61,8 @@ cd server && gofmt -w . && go vet ./... && go test ./... && go build ./cmd/prior
 Production client releases are tag-driven:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 Create a `vMAJOR.MINOR.PATCH` tag to build the desktop and Android installers into a GitHub Release. Downloads are available from [the latest release](https://github.com/gh-Constant/prior/releases/latest), and signed desktop builds use the Tauri updater manifest. See `.github/workflows/release.yml` and [specs/RELEASES.md](specs/RELEASES.md) for required secrets.
