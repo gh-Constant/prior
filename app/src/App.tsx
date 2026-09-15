@@ -15,6 +15,7 @@ import { AuthModal } from "./components/AuthModal";
 import { updateAndroidWidget } from "./lib/widget";
 import { defaultTaskFilters, filterTasks, type TaskFilterState } from "./lib/taskFilters";
 import { TaskFilters } from "./components/TaskFilters";
+import { AgentSidebar } from "./components/AgentSidebar";
 
 type WorkspaceView = "eisenhower" | "all";
 type Layout = "list" | "board";
@@ -27,8 +28,24 @@ export function App() {
   const [activeView, setActiveView] = useState<WorkspaceView>("all");
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>(defaultTaskFilters);
   const [layout, setLayout] = useState<Layout>("list");
+  const [agentOpen, setAgentOpen] = useState(() => {
+    try {
+      return localStorage.getItem("prior.ai.open") === "true";
+    } catch {
+      return false;
+    }
+  });
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
+  const aiShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ J" : "Ctrl J";
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("prior.ai.open", String(agentOpen));
+    } catch {
+      // ignore
+    }
+  }, [agentOpen]);
 
   const refresh = useCallback(async () => {
     const nextTasks = await localStore.listTasks();
@@ -84,9 +101,14 @@ export function App() {
         event.preventDefault();
         setComposerOpen(true);
       }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        setAgentOpen((prev) => !prev);
+      }
       if (event.key === "Escape") {
         setComposerOpen(false);
         setAuthOpen(false);
+        setAgentOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -97,6 +119,14 @@ export function App() {
   async function saveTask(input: Pick<Task, "title" | "important" | "urgent">) {
     await localStore.saveTask(input);
     setComposerOpen(false);
+    await refresh();
+    void syncNow();
+  }
+
+  async function addAgentTasks(batch: Array<Pick<Task, "title" | "important" | "urgent">>) {
+    for (const item of batch) {
+      await localStore.saveTask(item);
+    }
     await refresh();
     void syncNow();
   }
@@ -132,7 +162,7 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${agentOpen ? "agent-open" : ""}`}>
       <aside className="sidebar" inert={composerOpen || authOpen}>
         <div className="sidebar-brand" title="Prior"><BrandMark withTitle /></div>
         <nav className="sidebar-nav" aria-label="Task views">
@@ -159,6 +189,18 @@ export function App() {
               <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => setLayout("list")}><Icon name="list" /></button>
               <button type="button" className={layout === "board" ? "active" : ""} aria-label="Column view" title="Column view" aria-pressed={layout === "board"} onClick={() => setLayout("board")}><Icon name="columns" /></button>
             </div>}
+            <button
+              className={`ai-toggle-button ${agentOpen ? "active" : ""}`}
+              type="button"
+              aria-label="AI Assistant"
+              title={`AI Assistant (${aiShortcut})`}
+              aria-pressed={agentOpen}
+              onClick={() => setAgentOpen((v) => !v)}
+            >
+              <Icon name="sparkles" />
+              <span>AI Agent</span>
+              <kbd>{aiShortcut}</kbd>
+            </button>
             <button className="primary-button new-task-button" type="button" aria-label="New task" title={`New task (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
           </div>
         </header>
@@ -178,6 +220,13 @@ export function App() {
         )}
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => setComposerOpen(true)}><Icon name="plus" /> New task</button>}
       </main>
+
+      <AgentSidebar
+        open={agentOpen}
+        onClose={() => setAgentOpen(false)}
+        tasks={tasks}
+        onAddTasks={addAgentTasks}
+      />
 
       {composerOpen && <TaskComposer onSave={saveTask} onCancel={() => setComposerOpen(false)} />}
       {authOpen && <AuthModal user={user} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} onGoogle={() => { setAuthOpen(false); void startGoogleLogin(); }} onLogout={logout} />}
