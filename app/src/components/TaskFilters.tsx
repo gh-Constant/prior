@@ -23,7 +23,6 @@ export function TaskFilters({ value, onChange }: Props) {
         />
       </label>
       <label className="filter-control">
-        <span>Date added</span>
         <select aria-label="Date added" value={value.date} onChange={(event) => onChange({ ...value, date: event.target.value as TaskFilterState["date"] })}>
           <option value="any">Any date</option>
           <option value="today">Added today</option>
@@ -32,7 +31,6 @@ export function TaskFilters({ value, onChange }: Props) {
         </select>
       </label>
       <label className="filter-control">
-        <span>Priority</span>
         <select aria-label="Priority" value={value.priority} onChange={(event) => onChange({ ...value, priority: event.target.value as TaskFilterState["priority"] })}>
           <option value="any">Any priority</option>
           <option value="important">Important</option>
@@ -42,7 +40,6 @@ export function TaskFilters({ value, onChange }: Props) {
         </select>
       </label>
       <label className="filter-control">
-        <span>Status</span>
         <select aria-label="Status" value={value.status} onChange={(event) => onChange({ ...value, status: event.target.value as TaskFilterState["status"] })}>
           <option value="open">Open</option>
           <option value="completed">Completed</option>
@@ -50,7 +47,6 @@ export function TaskFilters({ value, onChange }: Props) {
         </select>
       </label>
       <label className="filter-control filter-sort">
-        <span>Sort</span>
         <select aria-label="Sort tasks" value={value.sort} onChange={(event) => onChange({ ...value, sort: event.target.value as TaskFilterState["sort"] })}>
           <option value="recent">Recently updated</option>
           <option value="oldest">Oldest first</option>

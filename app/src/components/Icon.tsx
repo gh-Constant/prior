@@ -22,10 +22,6 @@ export type IconName =
   | "mail"
   | "lock"
   | "google"
-  | "apple"
-  | "windows"
-  | "android"
-  | "linux"
   | "download"
   | "refresh"
   | "search";
@@ -53,10 +49,6 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconN
     close: <><path d="m6 6 12 12M18 6 6 18" /></>,
     mail: <><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4.5 7 7.5 5.5L19.5 7" /></>,
     lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
-    apple: <><path d="M15.5 7.4c-.8.8-1.8 1.2-2.8 1.1-.1-1 .3-2 1-2.7.7-.7 1.8-1.2 2.8-1.2.1 1-.3 2-1 2.8Z" fill="currentColor" stroke="none" /><path d="M17.5 12.7c0-2 1.6-3 1.7-3.1-.9-1.3-2.3-1.5-2.8-1.5-1.2-.1-2.3.7-2.9.7-.6 0-1.5-.7-2.5-.7-1.3 0-2.5.8-3.1 1.9-1.4 2.4-.4 6 1 8 .7 1 1.5 2 2.6 2 .9 0 1.4-.6 2.6-.6 1.2 0 1.6.6 2.6.6 1.1 0 1.8-1 2.5-2 .8-1.1 1.1-2.2 1.2-2.3-.1 0-2.9-1.1-2.9-3.1Z" /></>,
-    windows: <><path d="M3.5 5.5 11 4.5v7H3.5v-6Z" fill="currentColor" stroke="none" /><path d="m13 4.2 7.5-1.1v8.4H13V4.2Z" fill="currentColor" stroke="none" opacity=".8" /><path d="M3.5 13H11v7l-7.5-1.1V13Z" fill="currentColor" stroke="none" opacity=".8" /><path d="M13 13h7.5v8.4L13 20.3V13Z" fill="currentColor" stroke="none" /></>,
-    android: <><path d="M7.5 9.5h9a2 2 0 0 1 2 2v5.8a2 2 0 0 1-2 2H7.5a2 2 0 0 1-2-2v-5.8a2 2 0 0 1 2-2Z" fill="currentColor" stroke="none" /><path d="M5.5 11.5v5.8M18.5 11.5v5.8M8.2 9.2 6.7 6.8M15.8 9.2l1.5-2.4M8.3 6.8c1.1-1.1 2.3-1.6 3.7-1.6s2.6.5 3.7 1.6M8.3 19.3v2M15.7 19.3v2" /></>,
-    linux: <><path d="M12 4c-2.4 0-3.5 2.1-3.5 4.2 0 1.4-.8 2.3-1.4 3.5-.8 1.5-1.3 3.1-.7 5.2.4 1.4 1.6 2.3 2.9 2.4h5.4c1.3-.1 2.5-1 2.9-2.4.6-2.1.1-3.7-.7-5.2-.6-1.2-1.4-2.1-1.4-3.5C15.5 6.1 14.4 4 12 4Z" fill="currentColor" stroke="none" /><path d="M8.7 16.1c1 .7 2.1 1 3.3 1s2.3-.3 3.3-1M9.7 10.2h.01M14.3 10.2h.01" stroke="#fffefa" /></>,
     download: <><path d="M12 3v11" /><path d="m7.5 10 4.5 4.5 4.5-4.5" /><path d="M5 20h14" /></>,
     refresh: <><path d="M20 11a8 8 0 0 0-14.7-3L4 10" /><path d="M4 5v5h5" /><path d="M4 13a8 8 0 0 0 14.7 3L20 14" /><path d="M20 19v-5h-5" /></>,
     search: <><circle cx="10.8" cy="10.8" r="6.3" /><path d="m16 16 4.2 4.2" /></>,

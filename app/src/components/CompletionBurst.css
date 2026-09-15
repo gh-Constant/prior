@@ -1,0 +1,26 @@
+.complete-control { position: relative; width: 21px; height: 21px; flex: 0 0 auto; display: grid; place-items: center; }
+
+.completion-burst { position: absolute; z-index: 1; inset: -13px; display: grid; place-items: center; color: var(--accent, #d57961); pointer-events: none; }
+.completion-burst-ring { width: 27px; height: 27px; border: 1px solid currentColor; border-radius: 50%; opacity: 0; transform: scale(.55); animation: completion-burst-ring .52s cubic-bezier(.2, .8, .3, 1) both; }
+.completion-burst-particle { --burst-angle: 0deg; --burst-distance: 10px; position: absolute; top: 50%; left: 50%; width: 2px; height: 5px; margin: -2.5px 0 0 -1px; border-radius: 999px; background: currentColor; opacity: 0; transform: rotate(var(--burst-angle)) translateY(0) scale(.6); animation: completion-burst-particle .46s cubic-bezier(.2, .8, .3, 1) both; }
+.completion-burst-particle:nth-child(3) { --burst-angle: 60deg; --burst-distance: 11px; animation-delay: .015s; }
+.completion-burst-particle:nth-child(4) { --burst-angle: 120deg; --burst-distance: 10px; animation-delay: .03s; }
+.completion-burst-particle:nth-child(5) { --burst-angle: 180deg; --burst-distance: 11px; animation-delay: .045s; }
+.completion-burst-particle:nth-child(6) { --burst-angle: 240deg; --burst-distance: 10px; animation-delay: .03s; }
+.completion-burst-particle:nth-child(7) { --burst-angle: 300deg; --burst-distance: 11px; animation-delay: .015s; }
+
+@keyframes completion-burst-ring {
+  0% { opacity: 0; transform: scale(.55); }
+  22% { opacity: .42; }
+  100% { opacity: 0; transform: scale(1.1); }
+}
+
+@keyframes completion-burst-particle {
+  0% { opacity: 0; transform: rotate(var(--burst-angle)) translateY(0) scale(.6); }
+  24% { opacity: .78; }
+  100% { opacity: 0; transform: rotate(var(--burst-angle)) translateY(calc(var(--burst-distance) * -1)) scale(.9); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .completion-burst { display: none; }
+}

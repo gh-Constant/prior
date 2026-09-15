@@ -10,6 +10,7 @@ import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
 import { TaskRow } from "./components/TaskRow";
+import { TaskColumns } from "./components/TaskColumns";
 import { AuthModal } from "./components/AuthModal";
 import { updateAndroidWidget } from "./lib/widget";
 import { defaultTaskFilters, filterTasks, type TaskFilterState } from "./lib/taskFilters";
@@ -157,7 +158,7 @@ export function App() {
           <div className="workspace-actions">
             {activeView === "all" && <div className="layout-switch" role="group" aria-label="Task layout">
               <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => setLayout("list")}><Icon name="list" /></button>
-              <button type="button" className={layout === "board" ? "active" : ""} aria-label="Board view" aria-pressed={layout === "board"} onClick={() => setLayout("board")}><Icon name="grid" /></button>
+              <button type="button" className={layout === "board" ? "active" : ""} aria-label="Column view" aria-pressed={layout === "board"} onClick={() => setLayout("board")}><Icon name="grid" /></button>
             </div>}
             <button className="primary-button new-task-button" type="button" aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
           </div>
@@ -165,10 +166,12 @@ export function App() {
 
         <TaskFilters value={taskFilters} onChange={setTaskFilters} />
 
-        {activeView === "eisenhower" || layout === "board" ? (
+        {activeView === "eisenhower" ? (
           <div className="quadrant-grid">
             {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={changeTask} onDelete={deleteTask} />)}
           </div>
+        ) : layout === "board" ? (
+          <TaskColumns tasks={visibleTasks} onChange={changeTask} onDelete={deleteTask} />
         ) : (
           <section className="list-view" aria-label="All tasks">
             {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={changeTask} onDelete={deleteTask} />)}
