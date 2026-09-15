@@ -385,6 +385,25 @@ svg { display: block; flex-shrink: 0; }
   font-weight: 500;
   color: #615c54;
 }
+.model-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.custom-model-toggle-btn {
+  border: 0;
+  background: transparent;
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+.custom-model-toggle-btn:hover {
+  color: var(--accent);
+}
 .settings-field .field {
   min-height: 38px;
   background: #fff;
@@ -547,6 +566,28 @@ svg { display: block; flex-shrink: 0; }
 .agent-message-text {
   margin: 0;
   overflow-wrap: anywhere;
+}
+.agent-model-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: #f0eee9;
+  color: #68655e;
+  font-size: 10px;
+}
+.agent-model-info strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.routed-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
 }
 .proposed-tasks-box {
   margin-top: 12px;

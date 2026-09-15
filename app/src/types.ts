@@ -39,6 +39,7 @@ export type AgentMessage = {
   role: "user" | "assistant";
   content: string;
   proposedTasks?: ProposedTask[];
+  actualModel?: string;
   createdAt: string;
 };
 

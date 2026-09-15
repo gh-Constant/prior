@@ -132,12 +132,37 @@ export function parseAiResponse(raw: string): { reply: string; tasks: ProposedTa
   }
 }
 
+export async function fetchAvailableFreeModels(): Promise<Array<{ id: string; label: string; desc: string }>> {
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/models");
+    if (!res.ok) return POPULAR_FREE_MODELS;
+    const json = await res.json();
+    if (!Array.isArray(json.data)) return POPULAR_FREE_MODELS;
+
+    type RawModel = { id: string; name?: string; description?: string; pricing?: { prompt?: string; completion?: string } };
+    const free = (json.data as RawModel[])
+      .filter((m) => m.id.endsWith(":free") || (m.pricing?.prompt === "0" && m.pricing?.completion === "0"))
+      .map((m) => ({
+        id: m.id,
+        label: m.name || m.id,
+        desc: m.description ? m.description.slice(0, 70) + (m.description.length > 70 ? "…" : "") : "Free model on OpenRouter",
+      }));
+
+    return [
+      POPULAR_FREE_MODELS[0],
+      ...free.filter((m) => m.id !== DEFAULT_MODEL),
+    ];
+  } catch {
+    return POPULAR_FREE_MODELS;
+  }
+}
+
 export async function askAgent(
   prompt: string,
   history: AgentMessage[],
   existingTasks: Task[],
   settings: AgentSettings,
-): Promise<{ reply: string; tasks: ProposedTask[] }> {
+): Promise<{ reply: string; tasks: ProposedTask[]; actualModel?: string }> {
   if (!settings.apiKey) {
     throw new Error("Missing OpenRouter API Key. Please add your key in the settings tab.");
   }
@@ -189,7 +214,11 @@ export async function askAgent(
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content ?? "";
-    return parseAiResponse(content);
+    const parsed = parseAiResponse(content);
+    return {
+      ...parsed,
+      actualModel: (data.model as string | undefined) || String(payload.model),
+    };
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("OpenRouter error")) {
       throw err;
@@ -202,7 +231,7 @@ export async function askAgent(
 async function sendPlainRequest(
   payload: Record<string, unknown>,
   headers: Record<string, string>,
-): Promise<{ reply: string; tasks: ProposedTask[] }> {
+): Promise<{ reply: string; tasks: ProposedTask[]; actualModel?: string }> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers,
@@ -216,5 +245,9 @@ async function sendPlainRequest(
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content ?? "";
-  return parseAiResponse(content);
+  const parsed = parseAiResponse(content);
+  return {
+    ...parsed,
+    actualModel: (data.model as string | undefined) || String(payload.model),
+  };
 }

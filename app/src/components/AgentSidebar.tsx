@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentMessage, AgentSettings, ProposedTask, QuadrantKey, Task } from "../types";
-import { askAgent, DEFAULT_MODEL, getAgentSettings, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
+import { askAgent, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
 import { quadrantFor } from "../lib/priority";
 import { Icon } from "./Icon";
 
@@ -25,6 +25,11 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
   const [modelInput, setModelInput] = useState(settings.model);
   const [showApiKey, setShowApiKey] = useState(false);
 
+  const [modelList, setModelList] = useState(POPULAR_FREE_MODELS);
+  const [customModelMode, setCustomModelMode] = useState(() => {
+    return !POPULAR_FREE_MODELS.some((m) => m.id === settings.model);
+  });
+
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,6 +38,19 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    void fetchAvailableFreeModels().then((list) => {
+      if (list && list.length) setModelList(list);
+    });
+  }, []);
+
+  const lastActualModel = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].actualModel) return messages[i].actualModel;
+    }
+    return undefined;
+  }, [messages]);
 
   useEffect(() => {
     if (open) {
@@ -86,6 +104,7 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
         role: "assistant",
         content: response.reply,
         proposedTasks: response.tasks,
+        actualModel: response.actualModel,
         createdAt: new Date().toISOString(),
       };
       setMessages([...nextMessages, assistantMsg]);
@@ -198,8 +217,15 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
           </div>
           <div className="agent-title-text">
             <h3>AI Assistant</h3>
-            <span className="agent-model-tag" title={settings.model}>
-              {settings.model.split("/").pop()?.replace(":free", "") || "free"}
+            <span
+              className="agent-model-tag"
+              title={`Configured: ${settings.model}${lastActualModel ? `\nResolved model: ${lastActualModel}` : ""}`}
+            >
+              {settings.model === DEFAULT_MODEL
+                ? lastActualModel
+                  ? `free → ${lastActualModel.split("/").pop()?.replace(":free", "")}`
+                  : "openrouter/free"
+                : settings.model.split("/").pop()?.replace(":free", "") || settings.model}
             </span>
           </div>
         </div>
@@ -224,7 +250,7 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
         <div className="agent-settings-panel">
           <h4>OpenRouter Settings</h4>
           <p className="settings-desc">
-            Prior uses OpenRouter to access free, professional-grade models (like Llama 3.3, Gemini 2.0, DeepSeek R1).
+            Provide your own OpenRouter key and pick a model. By default, <code>openrouter/free</code> routes to free models and reveals the active model used.
           </p>
 
           <label className="settings-field">
@@ -255,16 +281,50 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
           </label>
 
           <label className="settings-field">
-            <span>Model Selection</span>
-            <div className="filter-control">
-              <select value={modelInput} onChange={(e) => setModelInput(e.target.value)}>
-                {POPULAR_FREE_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
+            <div className="model-label-row">
+              <span>Model Selection (Default: openrouter/free)</span>
+              <button
+                type="button"
+                className="custom-model-toggle-btn"
+                onClick={() => setCustomModelMode(!customModelMode)}
+              >
+                {customModelMode ? "Select from list" : "Custom model ID"}
+              </button>
             </div>
+
+            {customModelMode ? (
+              <div className="field">
+                <input
+                  type="text"
+                  placeholder="e.g. openrouter/free, openai/gpt-4o-mini"
+                  value={modelInput}
+                  onChange={(e) => setModelInput(e.target.value)}
+                />
+              </div>
+            ) : (
+              <div className="filter-control">
+                <select
+                  value={modelList.some((m) => m.id === modelInput) ? modelInput : "custom"}
+                  onChange={(e) => {
+                    if (e.target.value === "custom") {
+                      setCustomModelMode(true);
+                    } else {
+                      setModelInput(e.target.value);
+                    }
+                  }}
+                >
+                  {modelList.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                  <option value="custom">✏️ Enter custom model ID...</option>
+                </select>
+              </div>
+            )}
+            <small className="settings-help">
+              By default, <code>openrouter/free</code> auto-routes to available free models and displays the active model for every response.
+            </small>
           </label>
 
           <div className="settings-footer">
@@ -321,6 +381,13 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
                 )}
                 <div className="agent-message-bubble">
                   <p className="agent-message-text">{msg.content}</p>
+
+                  {msg.actualModel && (
+                    <div className="agent-model-info" title={`Resolved via OpenRouter: ${msg.actualModel}`}>
+                      <span className="routed-dot" />
+                      <span>Model: <strong>{msg.actualModel}</strong></span>
+                    </div>
+                  )}
 
                   {msg.proposedTasks && msg.proposedTasks.length > 0 && (
                     <div className="proposed-tasks-box">
