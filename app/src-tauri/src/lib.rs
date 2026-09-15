@@ -145,17 +145,20 @@ async fn widget_set_items<R: Runtime>(app: AppHandle<R>, items: Vec<String>) -> 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let migrations = vec![tauri_plugin_sql::Migration {
-        version: 1,
-        description: "initial local task store",
-        sql: include_str!("../migrations/001_init.sql"),
-        kind: tauri_plugin_sql::MigrationKind::Up,
-    }, tauri_plugin_sql::Migration {
-        version: 2,
-        description: "recurring habits",
-        sql: include_str!("../migrations/002_habits.sql"),
-        kind: tauri_plugin_sql::MigrationKind::Up,
-    }];
+    let migrations = vec![
+        tauri_plugin_sql::Migration {
+            version: 1,
+            description: "initial local task store",
+            sql: include_str!("../migrations/001_init.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 2,
+            description: "recurring habits",
+            sql: include_str!("../migrations/002_habits.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+    ];
 
     let builder = tauri::Builder::default();
 
