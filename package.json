@@ -1,0 +1,11 @@
+{
+  "name": "prior",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --dir app dev",
+    "build": "pnpm --dir app build",
+    "test": "pnpm --dir app test",
+    "typecheck": "pnpm --dir app typecheck"
+  },
+  "packageManager": "pnpm@9.15.5"
+}

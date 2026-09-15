@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Prior",
+  "version": "0.1.0",
+  "identifier": "fr.constantsuchet.prior",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Prior",
+        "width": 980,
+        "height": 760,
+        "minWidth": 420,
+        "minHeight": 560,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:8080 https://api.prior.constantsuchet.fr wss://api.prior.constantsuchet.fr; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/prior-mark.png"],
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": { "schemes": ["prior"] },
+      "mobile": [
+        {
+          "host": "app.prior.constantsuchet.fr",
+          "pathPrefix": ["/auth/callback"],
+          "appLink": true
+        }
+      ]
+    },
+    "sql": { "preload": ["sqlite:prior.db"] },
+    "opener": { "open": "^https://(api\\.)?prior\\.constantsuchet\\.fr/|^http://localhost:8080/" }
+  }
+}

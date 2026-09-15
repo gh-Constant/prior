@@ -1,0 +1,26 @@
+[package]
+name = "prior"
+version = "0.1.0"
+description = "Prior — a small, local-first task app"
+authors = ["Constant Suchet"]
+edition = "2021"
+
+[lib]
+name = "prior_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+tauri-plugin-deep-link = "2.0"
+tauri-plugin-opener = "2.0"
+tauri-plugin-sql = { version = "2.0", features = ["sqlite"] }
+tauri-plugin-websocket = "2.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2.0", features = ["deep-link"] }
+keyring = "3.6"
