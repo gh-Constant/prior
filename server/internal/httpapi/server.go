@@ -57,6 +57,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ready", s.ready)
 	mux.HandleFunc("GET /auth/google/start", s.googleStart)
 	mux.HandleFunc("GET /auth/google/callback", s.googleCallback)
+	mux.HandleFunc("POST /v1/auth/register", s.register)
+	mux.HandleFunc("POST /v1/auth/login", s.login)
 	mux.HandleFunc("POST /v1/auth/exchange", s.exchange)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/me", s.me)
@@ -106,6 +108,61 @@ func (s *Server) googleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, returnTo, http.StatusFound)
+}
+
+func (s *Server) register(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(clientKey(r)) {
+		writeError(w, http.StatusTooManyRequests, errors.New("too many authentication attempts"))
+		return
+	}
+	var body struct {
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+		DisplayName string `json:"displayName"`
+		Device      string `json:"device"`
+		Platform    string `json:"platform"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid registration request"))
+		return
+	}
+	token, user, err := s.auth.Register(r.Context(), body.Email, body.Password, body.DisplayName, body.Device, body.Platform)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, store.ErrEmailTaken) {
+			status = http.StatusConflict
+		}
+		writeError(w, status, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"token": token, "user": user})
+}
+
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(clientKey(r)) {
+		writeError(w, http.StatusTooManyRequests, errors.New("too many authentication attempts"))
+		return
+	}
+	var body struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Device   string `json:"device"`
+		Platform string `json:"platform"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid login request"))
+		return
+	}
+	token, user, err := s.auth.Login(r.Context(), body.Email, body.Password, body.Device, body.Platform)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if !errors.Is(err, auth.ErrInvalidCredentials) {
+			status = http.StatusInternalServerError
+		}
+		writeError(w, status, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
 }
 
 func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {

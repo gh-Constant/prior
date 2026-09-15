@@ -22,6 +22,20 @@ export async function clearSession(): Promise<void> {
   localStorage.removeItem(USER_KEY);
 }
 
+async function saveSession(result: { token: string; user: SessionUser }): Promise<SessionUser> {
+  await setSecret("session_token", result.token);
+  localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+  return result.user;
+}
+
+export async function signInWithPassword(email: string, password: string): Promise<SessionUser> {
+  return saveSession(await api.login(email.trim(), password));
+}
+
+export async function signUpWithPassword(email: string, password: string, displayName: string): Promise<SessionUser> {
+  return saveSession(await api.register(email.trim(), password, displayName.trim()));
+}
+
 export async function startGoogleLogin(): Promise<void> {
   const returnTarget = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? "prior://auth/callback" : `${window.location.origin}/auth/callback`;
   const returnTo = encodeURIComponent(returnTarget);
@@ -35,10 +49,7 @@ async function finish(url: string): Promise<SessionUser | null> {
   if (parsed.pathname !== "/auth/callback" || !parsed.searchParams.has("code")) return null;
   const code = parsed.searchParams.get("code");
   if (!code) return null;
-  const result = await api.exchange(code);
-  await setSecret("session_token", result.token);
-  localStorage.setItem(USER_KEY, JSON.stringify(result.user));
-  return result.user;
+  return saveSession(await api.exchange(code));
 }
 
 export async function listenForAuth(onAuthenticated: (user: SessionUser) => void): Promise<() => void> {

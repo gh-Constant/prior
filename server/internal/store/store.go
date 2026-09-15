@@ -11,10 +11,12 @@ import (
 	"github.com/gh-Constant/prior/server/internal/tasks"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var ErrNotFound = errors.New("not found")
+var ErrEmailTaken = errors.New("email already registered")
 
 type User struct {
 	ID            uuid.UUID `json:"id"`
@@ -35,15 +37,80 @@ type Store struct{ pool *pgxpool.Pool }
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
 func (s *Store) UpsertUser(ctx context.Context, googleSub, email string, verified bool, displayName, avatarURL string) (User, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var user User
+	var id uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE google_sub = $1`, googleSub).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, email).Scan(&id)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = tx.QueryRow(ctx, `
+			INSERT INTO users (google_sub, email, email_verified, display_name, avatar_url, last_login_at)
+			VALUES ($1, $2, $3, $4, $5, now())
+			RETURNING id, email, email_verified, display_name, avatar_url`, googleSub, email, verified, displayName, avatarURL).
+			Scan(&user.ID, &user.Email, &user.EmailVerified, &user.DisplayName, &user.AvatarURL)
+	} else if err == nil {
+		err = tx.QueryRow(ctx, `
+			UPDATE users SET google_sub = $1, email = $2, email_verified = $3, display_name = $4, avatar_url = $5,
+			updated_at = now(), last_login_at = now()
+			WHERE id = $6
+			RETURNING id, email, email_verified, display_name, avatar_url`, googleSub, email, verified, displayName, avatarURL, id).
+			Scan(&user.ID, &user.Email, &user.EmailVerified, &user.DisplayName, &user.AvatarURL)
+	}
+	if err != nil {
+		return User{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (s *Store) CreatePasswordUser(ctx context.Context, email, passwordHash, displayName string) (User, error) {
 	var user User
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO users (google_sub, email, email_verified, display_name, avatar_url, last_login_at)
-		VALUES ($1, $2, $3, $4, $5, now())
-		ON CONFLICT (google_sub) DO UPDATE SET email = EXCLUDED.email, email_verified = EXCLUDED.email_verified,
-		 display_name = EXCLUDED.display_name, avatar_url = EXCLUDED.avatar_url, updated_at = now(), last_login_at = now()
-		RETURNING id, email, email_verified, display_name, avatar_url`, googleSub, email, verified, displayName, avatarURL).
+		INSERT INTO users (email, password_hash, email_verified, display_name, last_login_at)
+		VALUES ($1, $2, FALSE, $3, now())
+		RETURNING id, email, email_verified, display_name, avatar_url`, email, passwordHash, displayName).
 		Scan(&user.ID, &user.Email, &user.EmailVerified, &user.DisplayName, &user.AvatarURL)
-	return user, err
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return User{}, ErrEmailTaken
+		}
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (s *Store) UserWithPasswordHash(ctx context.Context, email string) (User, string, error) {
+	var user User
+	var passwordHash *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, email, email_verified, display_name, avatar_url, password_hash
+		FROM users WHERE email = $1`, email).
+		Scan(&user.ID, &user.Email, &user.EmailVerified, &user.DisplayName, &user.AvatarURL, &passwordHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, "", ErrNotFound
+	}
+	if err != nil {
+		return User{}, "", err
+	}
+	if passwordHash == nil {
+		return user, "", nil
+	}
+	return user, *passwordHash, nil
+}
+
+func (s *Store) TouchLogin(ctx context.Context, userID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `UPDATE users SET last_login_at = now() WHERE id = $1`, userID)
+	return err
 }
 
 func (s *Store) CreateSession(ctx context.Context, userID uuid.UUID, token, device, platform string, ttl time.Duration) error {

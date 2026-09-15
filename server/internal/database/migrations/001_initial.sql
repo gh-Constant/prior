@@ -2,8 +2,9 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    google_sub TEXT NOT NULL UNIQUE,
-    email TEXT NOT NULL,
+    google_sub TEXT UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     display_name TEXT NOT NULL DEFAULT '',
     avatar_url TEXT NOT NULL DEFAULT '',
@@ -11,6 +12,10 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_login_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE users ALTER COLUMN google_sub DROP NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users (email);
 
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -3,6 +3,7 @@ import type { Mutation, Task } from "../types";
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "http://localhost:8080";
 
 type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
+export type PasswordAuthResponse = ExchangeResponse;
 type PushResponse = { applied: Array<{ mutationId: string; task: Task; revision: number }> };
 type PullResponse = { tasks: Task[]; revision: number };
 
@@ -11,11 +12,21 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
     ...init,
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
   });
-  if (!response.ok) throw new Error(`Prior API returned ${response.status}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `Prior API returned ${response.status}`);
+  }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
 export const api = {
+  register(email: string, password: string, displayName: string): Promise<PasswordAuthResponse> {
+    return request<PasswordAuthResponse>("/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName, device: "Prior", platform: "web" }) });
+  },
+  login(email: string, password: string): Promise<PasswordAuthResponse> {
+    return request<PasswordAuthResponse>("/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password, device: "Prior", platform: "web" }) });
+  },
   exchange(code: string): Promise<ExchangeResponse> {
     return request<ExchangeResponse>("/v1/auth/exchange", { method: "POST", body: JSON.stringify({ code }) });
   },

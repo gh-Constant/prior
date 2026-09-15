@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"strings"
 	"sync"
@@ -15,8 +16,11 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gh-Constant/prior/server/internal/config"
 	"github.com/gh-Constant/prior/server/internal/store"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 )
+
+var ErrInvalidCredentials = errors.New("invalid email or password")
 
 type stateValue struct {
 	returnTo  string
@@ -45,6 +49,79 @@ func NewManager(cfg config.Config, database *store.Store) *Manager {
 		cfg: cfg, store: database, states: make(map[string]stateValue), exchanges: make(map[[32]byte]exchangeValue),
 		oauth: &oauth2.Config{ClientID: cfg.GoogleClientID, ClientSecret: cfg.GoogleClientSecret, RedirectURL: cfg.GoogleRedirectURL, Endpoint: oauth2.Endpoint{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token"}, Scopes: []string{oidc.ScopeOpenID, "email", "profile"}},
 	}
+}
+
+func (m *Manager) Register(ctx context.Context, email, password, displayName, device, platform string) (string, store.User, error) {
+	normalized, err := normalizeEmail(email)
+	if err != nil {
+		return "", store.User{}, err
+	}
+	if err := validatePassword(password); err != nil {
+		return "", store.User{}, err
+	}
+	displayName = strings.TrimSpace(displayName)
+	if len(displayName) > 80 {
+		return "", store.User{}, errors.New("name is too long")
+	}
+	if displayName == "" {
+		displayName = strings.Split(normalized, "@")[0]
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", store.User{}, fmt.Errorf("hash password: %w", err)
+	}
+	user, err := m.store.CreatePasswordUser(ctx, normalized, string(hash), displayName)
+	if err != nil {
+		return "", store.User{}, err
+	}
+	token, err := m.createSession(ctx, user, device, platform)
+	return token, user, err
+}
+
+func (m *Manager) Login(ctx context.Context, email, password, device, platform string) (string, store.User, error) {
+	normalized, err := normalizeEmail(email)
+	if err != nil || password == "" {
+		return "", store.User{}, ErrInvalidCredentials
+	}
+	user, hash, err := m.store.UserWithPasswordHash(ctx, normalized)
+	if err != nil || hash == "" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+		return "", store.User{}, ErrInvalidCredentials
+	}
+	if err := m.store.TouchLogin(ctx, user.ID); err != nil {
+		return "", store.User{}, err
+	}
+	token, err := m.createSession(ctx, user, device, platform)
+	return token, user, err
+}
+
+func (m *Manager) createSession(ctx context.Context, user store.User, device, platform string) (string, error) {
+	token, err := randomString(32)
+	if err != nil {
+		return "", err
+	}
+	if err := m.store.CreateSession(ctx, user.ID, token, device, platform, m.cfg.SessionTTL); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func normalizeEmail(value string) (string, error) {
+	email := strings.ToLower(strings.TrimSpace(value))
+	parsed, err := mail.ParseAddress(email)
+	if err != nil || parsed.Address != email || !strings.Contains(email, "@") || len(email) > 320 {
+		return "", errors.New("enter a valid email address")
+	}
+	return email, nil
+}
+
+func validatePassword(password string) error {
+	if len(password) < 8 {
+		return errors.New("password must be at least 8 characters")
+	}
+	if len(password) > 128 {
+		return errors.New("password is too long")
+	}
+	return nil
 }
 
 func (m *Manager) Start(ctx context.Context, returnTo string) (string, error) {

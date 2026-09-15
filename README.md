@@ -7,7 +7,7 @@ Prior is a deliberately small personal task app. Create tasks quickly, then sort
 - `app/` — React + TypeScript + Vite client, with a Tauri 2 shell and SQLite migration.
 - `app/Dockerfile` — static browser build for `app.prior.constantsuchet.fr`.
 - `app/src-tauri/gen/android/` — generated Tauri Android project with the native App Link, Keystore-backed session storage, and Glance widget.
-- `server/` — Go API, PostgreSQL migrations, Google OAuth, sessions, and revision-based sync.
+- `server/` — Go API, PostgreSQL migrations, password/Google authentication, sessions, and revision-based sync.
 - `site/` — minimal public pages for `prior.constantsuchet.fr`, including privacy and terms pages.
 - `specs/` — architecture and product decisions that describe the implementation.
 
@@ -33,9 +33,9 @@ The browser client works without the API using a local fallback store. Tauri dev
 
 Android requires JDK 17, Android SDK Platform 36, Build Tools 35, NDK 27.1.12297006, and Rust's `aarch64-linux-android` target. Initialize once with `pnpm --dir app tauri android init`, then build with `pnpm --dir app tauri android build --debug --target aarch64 --apk`.
 
-## Google OAuth
+## Authentication
 
-Create a Google Cloud OAuth client for a web application. Add the exact redirect URI from `GOOGLE_REDIRECT_URL`, configure the consent screen with the verified `prior.constantsuchet.fr` domain, and keep the client secret only in the API environment. Prior requests only `openid email profile`. See [specs/AUTH.md](specs/AUTH.md).
+Email/password accounts are available directly in the app. Passwords are stored as bcrypt hashes and sessions are returned as bearer tokens. Google OAuth remains optional: create a Google Cloud OAuth client for a web application, add the exact redirect URI from `GOOGLE_REDIRECT_URL`, configure the consent screen with the verified `prior.constantsuchet.fr` domain, and keep the client secret only in the API environment. Prior requests only `openid email profile`. See [specs/AUTH.md](specs/AUTH.md).
 
 ## Coolify
 

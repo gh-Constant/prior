@@ -18,3 +18,24 @@ func TestValidateReturnTo(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeEmail(t *testing.T) {
+	got, err := normalizeEmail("  Person@Example.COM ")
+	if err != nil || got != "person@example.com" {
+		t.Fatalf("normalizeEmail() = %q, %v", got, err)
+	}
+	for _, value := range []string{"not-an-email", "Name <person@example.com>", ""} {
+		if _, err := normalizeEmail(value); err == nil {
+			t.Fatalf("normalizeEmail(%q) accepted invalid email", value)
+		}
+	}
+}
+
+func TestValidatePassword(t *testing.T) {
+	if err := validatePassword("1234567"); err == nil {
+		t.Fatal("short password accepted")
+	}
+	if err := validatePassword("12345678"); err != nil {
+		t.Fatalf("valid password rejected: %v", err)
+	}
+}

@@ -2,20 +2,18 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% -10%, white, #f6f7f2 45%); }
 a { color: inherit; }
-.site { width: min(960px, calc(100% - 40px)); margin: 0 auto; }
-header { padding: 24px 0; display: flex; align-items: center; justify-content: space-between; }
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: -.04em; }
+.site { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.site > header { width: min(960px, 100%); position: absolute; top: 0; display: flex; align-items: center; justify-content: space-between; padding: 24px 0; }
+.brand { display: flex; align-items: center; gap: 9px; color: #17313e; font-weight: 700; letter-spacing: -.04em; text-decoration: none; }
 .mark { width: 30px; height: 30px; border-radius: 9px; }
-nav { display: flex; gap: 18px; color: #72827f; font-size: 13px; }
-main { padding: 110px 0 150px; }
-.eyebrow { margin: 0 0 14px; color: #88a34b; text-transform: uppercase; letter-spacing: .16em; font-size: 11px; font-weight: 700; }
-h1 { max-width: 700px; margin: 0; font: 400 clamp(54px, 10vw, 104px)/.91 Newsreader, Georgia, serif; letter-spacing: -.06em; }
-.lede { max-width: 450px; margin: 28px 0 30px; color: #6f7f7d; font-size: 17px; line-height: 1.55; }
+.site > header nav { display: flex; gap: 18px; color: #72827f; font-size: 13px; }
+.gateway { display: grid; justify-items: center; gap: 24px; }
+.gateway-mark { width: 104px; height: 104px; border-radius: 28px; box-shadow: 0 18px 50px rgba(23, 49, 62, .14); }
+.gateway nav { display: flex; gap: 18px; color: #72827f; font-size: 13px; }
 .button { display: inline-flex; align-items: center; gap: 10px; padding: 13px 16px; border-radius: 10px; background: #183d4e; color: #f6f7f2; font-size: 13px; font-weight: 600; text-decoration: none; }
 .button span { color: #c5e86c; }
-.quiet { margin-top: 80px; color: #99a7a4; font-size: 12px; }
 article { max-width: 680px; padding: 90px 0; }
 article h1 { font-size: clamp(48px, 8vw, 80px); }
 article h2 { margin-top: 42px; font-size: 20px; }
 article p, article li { color: #667875; font-size: 15px; line-height: 1.7; }
-@media (max-width: 600px) { main { padding-top: 80px; } nav { gap: 11px; font-size: 12px; } }
+@media (max-width: 600px) { .site > header { padding: 18px 0; } .site > header nav { gap: 11px; font-size: 12px; } .gateway-mark { width: 88px; height: 88px; border-radius: 24px; } }
