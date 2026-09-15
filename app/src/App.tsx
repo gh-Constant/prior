@@ -4,7 +4,7 @@ import { clearSession, getToken, getUser, listenForAuth, startGoogleLogin, type 
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
-import type { Task } from "./types";
+import type { Habit, Task } from "./types";
 import { BrandMark } from "./components/BrandMark";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
@@ -16,18 +16,24 @@ import { updateAndroidWidget } from "./lib/widget";
 import { defaultTaskFilters, filterTasks, type TaskFilterState } from "./lib/taskFilters";
 import { TaskFilters } from "./components/TaskFilters";
 import { AgentSidebar } from "./components/AgentSidebar";
+import { HabitComposer } from "./components/HabitComposer";
+import { HabitView } from "./components/HabitView";
+import { CompletionBurst } from "./components/CompletionBurst";
 
-type WorkspaceView = "eisenhower" | "all";
+type WorkspaceView = "eisenhower" | "all" | "habits";
 type Layout = "list" | "board";
 
 export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [habits, setHabits] = useState<Habit[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [habitComposerOpen, setHabitComposerOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
   const [activeView, setActiveView] = useState<WorkspaceView>("all");
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>(defaultTaskFilters);
   const [layout, setLayout] = useState<Layout>("list");
+  const [completionCelebration, setCompletionCelebration] = useState<{ title: string; key: number } | null>(null);
   const [agentOpen, setAgentOpen] = useState(() => {
     try {
       return localStorage.getItem("prior.ai.open") === "true";
@@ -48,9 +54,10 @@ export function App() {
   }, [agentOpen]);
 
   const refresh = useCallback(async () => {
-    const nextTasks = await localStore.listTasks();
+    const [nextTasks, nextHabits] = await Promise.all([localStore.listTasks(), localStore.listHabits()]);
     setTasks(nextTasks);
-    void updateAndroidWidget(nextTasks).catch(() => undefined);
+    setHabits(nextHabits);
+    void updateAndroidWidget(nextTasks, nextHabits).catch(() => undefined);
   }, []);
 
   const syncNow = useCallback(async () => {
@@ -68,6 +75,7 @@ export function App() {
       const state = await localStore.getSyncState();
       const pulled = await api.pull(state.lastServerRevision, token);
       await localStore.applyRemoteTasks(pulled.tasks);
+      await localStore.applyRemoteHabits(pulled.habits ?? []);
       await localStore.setSyncRevision(pulled.revision);
       await refresh();
     } catch {
@@ -99,7 +107,7 @@ export function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        setComposerOpen(true);
+        if (activeView === "habits") setHabitComposerOpen(true); else setComposerOpen(true);
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
         event.preventDefault();
@@ -107,6 +115,7 @@ export function App() {
       }
       if (event.key === "Escape") {
         setComposerOpen(false);
+        setHabitComposerOpen(false);
         setAuthOpen(false);
         setAgentOpen(false);
       }
@@ -114,7 +123,7 @@ export function App() {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("online", syncNow);
     return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("online", syncNow); };
-  }, [syncNow]);
+  }, [activeView, syncNow]);
 
   async function saveTask(input: Pick<Task, "title" | "important" | "urgent">) {
     await localStore.saveTask(input);
@@ -132,7 +141,13 @@ export function App() {
   }
 
   async function changeTask(task: Task) {
+    const previous = tasks.find((item) => item.id === task.id);
     await localStore.updateTask(task);
+    if (previous && !previous.completed && task.completed) {
+      const key = Date.now();
+      setCompletionCelebration({ title: task.title, key });
+      window.setTimeout(() => setCompletionCelebration((current) => current?.key === key ? null : current), 900);
+    }
     await refresh();
     void syncNow();
   }
@@ -142,6 +157,30 @@ export function App() {
     await refresh();
     void syncNow();
   }
+
+  async function saveHabit(input: Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">) {
+    await localStore.saveHabit(input);
+    setHabitComposerOpen(false);
+    await refresh();
+    void syncNow();
+  }
+
+  async function completeHabit(habit: Habit, date: string) {
+    const completedDates = habit.completedDates.includes(date)
+      ? habit.completedDates.filter((value) => value !== date)
+      : [...habit.completedDates, date];
+    await localStore.updateHabit({ ...habit, completedDates });
+    if (!habit.completedDates.includes(date)) {
+      const key = Date.now();
+      setCompletionCelebration({ title: habit.title, key });
+      window.setTimeout(() => setCompletionCelebration((current) => current?.key === key ? null : current), 900);
+    }
+    await refresh();
+    void syncNow();
+  }
+
+  async function changeHabit(habit: Habit) { await localStore.updateHabit(habit); await refresh(); void syncNow(); }
+  async function deleteHabit(habit: Habit) { await localStore.removeHabit(habit); await refresh(); void syncNow(); }
 
   async function logout() {
     const token = await getToken();
@@ -163,7 +202,7 @@ export function App() {
 
   return (
     <div className={`app-shell ${agentOpen ? "agent-open" : ""}`}>
-      <aside className="sidebar" inert={composerOpen || authOpen}>
+      <aside className="sidebar" inert={composerOpen || habitComposerOpen || authOpen}>
         <div className="sidebar-brand" title="Prior"><BrandMark withTitle /></div>
         <nav className="sidebar-nav" aria-label="Task views">
           <button type="button" className={`nav-item ${activeView === "all" ? "active" : ""}`} aria-current={activeView === "all" ? "page" : undefined} onClick={() => setActiveView("all")}>
@@ -171,6 +210,9 @@ export function App() {
           </button>
           <button type="button" className={`nav-item ${activeView === "eisenhower" ? "active" : ""}`} aria-current={activeView === "eisenhower" ? "page" : undefined} onClick={() => setActiveView("eisenhower")}>
             <Icon name="grid" /><span>Eisenhower</span>
+          </button>
+          <button type="button" className={`nav-item ${activeView === "habits" ? "active" : ""}`} aria-current={activeView === "habits" ? "page" : undefined} onClick={() => setActiveView("habits")}>
+            <Icon name="refresh" /><span>Habits</span>
           </button>
         </nav>
         <div className="sidebar-bottom">
@@ -181,9 +223,9 @@ export function App() {
         </div>
       </aside>
 
-      <main className="workspace" inert={composerOpen || authOpen}>
+      <main className="workspace" inert={composerOpen || habitComposerOpen || authOpen}>
         <header className="workspace-header">
-          <h1>{activeView === "eisenhower" ? "Eisenhower" : "All tasks"}</h1>
+          <h1>{activeView === "eisenhower" ? "Eisenhower" : activeView === "habits" ? "Habits" : "All tasks"}</h1>
           <div className="workspace-actions">
             {activeView === "all" && <div className="layout-switch" role="group" aria-label="Task layout">
               <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => setLayout("list")}><Icon name="list" /></button>
@@ -201,13 +243,13 @@ export function App() {
               <span>AI Agent</span>
               <kbd>{aiShortcut}</kbd>
             </button>
-            <button className="primary-button new-task-button" type="button" aria-label="New task" title={`New task (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
+            {activeView !== "habits" && <button className="primary-button new-task-button" type="button" aria-label="New task" title={`New task (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>}
           </div>
         </header>
 
-        <TaskFilters value={taskFilters} onChange={setTaskFilters} />
+        {activeView !== "habits" && <TaskFilters value={taskFilters} onChange={setTaskFilters} />}
 
-        {activeView === "eisenhower" ? (
+        {activeView === "habits" ? <HabitView habits={habits} onAdd={() => setHabitComposerOpen(true)} onComplete={completeHabit} onChange={changeHabit} onDelete={deleteHabit} /> : activeView === "eisenhower" ? (
           <div className="quadrant-grid">
             {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={changeTask} onDelete={deleteTask} />)}
           </div>
@@ -229,7 +271,9 @@ export function App() {
       />
 
       {composerOpen && <TaskComposer onSave={saveTask} onCancel={() => setComposerOpen(false)} />}
+      {habitComposerOpen && <HabitComposer onSave={saveHabit} onCancel={() => setHabitComposerOpen(false)} />}
       {authOpen && <AuthModal user={user} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} onGoogle={() => { setAuthOpen(false); void startGoogleLogin(); }} onLogout={logout} />}
+      {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}
     </div>
   );
 }

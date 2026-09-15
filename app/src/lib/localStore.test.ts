@@ -11,7 +11,7 @@ describe("localStore browser fallback", () => {
   it("creates a task immediately and records an outbox mutation", async () => {
     const task = await localStore.saveTask({ title: "Write the release notes", important: true, urgent: false });
     expect((await localStore.listTasks()).map((item) => item.title)).toEqual(["Write the release notes"]);
-    expect((await localStore.pendingMutations()).map((item) => item.task.id)).toEqual([task.id]);
+    expect((await localStore.pendingMutations()).filter((item) => item.entity !== "habit").map((item) => item.task.id)).toEqual([task.id]);
   });
 
   it("preserves task fields while updating and uses a tombstone for deletes", async () => {
@@ -28,5 +28,13 @@ describe("localStore browser fallback", () => {
     const local = await localStore.saveTask({ title: "Local wording", important: true, urgent: false });
     await localStore.applyRemoteTasks([{ ...local, title: "Remote wording", serverRevision: 42 }]);
     expect((await localStore.listTasks())[0]?.title).toBe("Local wording");
+  });
+
+  it("persists a recurring habit and keeps its completion history in the habit mutation", async () => {
+    const habit = await localStore.saveHabit({ title: "Stretch", important: false, urgent: true, interval: 2, unit: "week" });
+    expect((await localStore.listHabits())[0]).toMatchObject({ id: habit.id, interval: 2, unit: "week", completedDates: [] });
+    const updated = await localStore.updateHabit({ ...habit, completedDates: ["2026-09-15"] });
+    expect(updated.completedDates).toEqual(["2026-09-15"]);
+    expect((await localStore.pendingMutations()).at(-1)).toMatchObject({ entity: "habit", habit: { id: habit.id, completedDates: ["2026-09-15"] } });
   });
 });

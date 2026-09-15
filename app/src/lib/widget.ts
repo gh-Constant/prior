@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Task } from "../types";
+import type { Habit, Task } from "../types";
+import { habitStatus } from "./habits";
 
 function isAndroidTauri(): boolean {
   return typeof window !== "undefined" &&
@@ -14,12 +15,16 @@ function priority(task: Task): number {
   return 3;
 }
 
-export async function updateAndroidWidget(tasks: Task[]): Promise<void> {
+export async function updateAndroidWidget(tasks: Task[], habits: Habit[] = []): Promise<void> {
   if (!isAndroidTauri()) return;
-  const items = tasks
+  const taskItems = tasks
     .filter((task) => !task.completed && !task.deletedAt)
     .sort((left, right) => priority(left) - priority(right) || right.updatedAt.localeCompare(left.updatedAt))
     .slice(0, 3)
     .map((task) => task.title);
-  await invoke("widget_set_items", { items });
+  const habitItems = habits
+    .filter((habit) => !habit.deletedAt && ["due", "overdue"].includes(habitStatus(habit)))
+    .sort((left, right) => Number(right.urgent) - Number(left.urgent) || Number(right.important) - Number(left.important))
+    .map((habit) => `↻ ${habit.title}`);
+  await invoke("widget_set_items", { items: [...taskItems, ...habitItems].slice(0, 3) });
 }

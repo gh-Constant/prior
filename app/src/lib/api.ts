@@ -1,11 +1,11 @@
-import type { Mutation, Task } from "../types";
+import type { Habit, Mutation, Task } from "../types";
 
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "http://localhost:8080";
 
 type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
 export type PasswordAuthResponse = ExchangeResponse;
-type PushResponse = { applied: Array<{ mutationId: string; task: Task; revision: number }> };
-type PullResponse = { tasks: Task[]; revision: number };
+type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }> };
+type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number };
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {

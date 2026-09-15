@@ -1,6 +1,7 @@
-import type { Mutation, SyncState, Task } from "../types";
+import type { Habit, HabitUnit, Mutation, SyncState, Task } from "../types";
 
 const TASKS_KEY = "prior.tasks.v1";
+const HABITS_KEY = "prior.habits.v1";
 const OUTBOX_KEY = "prior.outbox.v1";
 const SYNC_KEY = "prior.sync.v1";
 
@@ -80,7 +81,7 @@ export const localStore = {
       const tasks = read<Task[]>(TASKS_KEY, []).filter((item) => item.id !== task.id);
       write(TASKS_KEY, [...tasks, task]);
     }
-    await this.enqueue({ id: uuid(), task, kind: "upsert", createdAt: timestamp });
+    await this.enqueue({ id: uuid(), task, kind: "upsert", entity: "task", createdAt: timestamp });
     return task;
   },
 
@@ -98,15 +99,73 @@ export const localStore = {
       const tasks = read<Task[]>(TASKS_KEY, []).map((item) => (item.id === task.id ? tombstone : item));
       write(TASKS_KEY, tasks);
     }
-    await this.enqueue({ id: uuid(), task: tombstone, kind: "delete", createdAt: deletedAt });
+    await this.enqueue({ id: uuid(), task: tombstone, kind: "delete", entity: "task", createdAt: deletedAt });
+  },
+
+  async listHabits(): Promise<Habit[]> {
+    const db = await getSqlDatabase();
+    if (db) {
+      const rows = await db.select<Omit<Habit, "startDate" | "completedDates"> & { start_date: string; completed_dates: string }>(
+        "SELECT id, title, important, urgent, interval, unit, start_date, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE deleted_at IS NULL ORDER BY updated_at DESC",
+      );
+      return rows.map((row) => ({ ...row, startDate: row.start_date, completedDates: JSON.parse(row.completed_dates || "[]") as string[] }));
+    }
+    return read<Habit[]>(HABITS_KEY, []).filter((habit) => !habit.deletedAt);
+  },
+
+  async saveHabit(input: Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> & Partial<Pick<Habit, "id" | "startDate" | "completedDates" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>): Promise<Habit> {
+    const timestamp = now();
+    const existing = input.id ? read<Habit[]>(HABITS_KEY, []).find((habit) => habit.id === input.id) : undefined;
+    const interval = Number.isFinite(input.interval) && input.interval > 0 ? Math.floor(input.interval) : 1;
+    const habit: Habit = {
+      id: input.id ?? uuid(),
+      title: input.title.trim(),
+      important: input.important,
+      urgent: input.urgent,
+      interval,
+      unit: input.unit as HabitUnit,
+      startDate: input.startDate ?? existing?.startDate ?? timestamp.slice(0, 10),
+      completedDates: [...new Set(input.completedDates ?? existing?.completedDates ?? [])].sort(),
+      createdAt: input.createdAt ?? existing?.createdAt ?? timestamp,
+      updatedAt: input.updatedAt ?? timestamp,
+      deletedAt: input.deletedAt ?? null,
+      serverRevision: input.serverRevision ?? existing?.serverRevision,
+    };
+    const db = await getSqlDatabase();
+    if (db) {
+      await db.execute(
+        "INSERT INTO habits (id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision",
+        [habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, JSON.stringify(habit.completedDates), habit.createdAt, habit.updatedAt, null, habit.serverRevision ?? null],
+      );
+    } else {
+      write(HABITS_KEY, [...read<Habit[]>(HABITS_KEY, []).filter((item) => item.id !== habit.id), habit]);
+    }
+    await this.enqueue({ id: uuid(), habit, kind: "upsert", entity: "habit", createdAt: timestamp });
+    return habit;
+  },
+
+  async updateHabit(habit: Habit): Promise<Habit> {
+    return this.saveHabit({ ...habit, updatedAt: undefined });
+  },
+
+  async removeHabit(habit: Habit): Promise<void> {
+    const deletedAt = now();
+    const tombstone = { ...habit, deletedAt, updatedAt: deletedAt };
+    const db = await getSqlDatabase();
+    if (db) {
+      await db.execute("UPDATE habits SET deleted_at = ?, updated_at = ? WHERE id = ?", [deletedAt, deletedAt, habit.id]);
+    } else {
+      write(HABITS_KEY, read<Habit[]>(HABITS_KEY, []).map((item) => item.id === habit.id ? tombstone : item));
+    }
+    await this.enqueue({ id: uuid(), habit: tombstone, kind: "delete", entity: "habit", createdAt: deletedAt });
   },
 
   async enqueue(mutation: Mutation): Promise<void> {
     const db = await getSqlDatabase();
     if (db) {
       await db.execute(
-        "INSERT INTO outbox (id, kind, payload, created_at) VALUES (?, ?, ?, ?)",
-        [mutation.id, mutation.kind, JSON.stringify(mutation.task), mutation.createdAt],
+        "INSERT INTO outbox (id, entity, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)",
+        [mutation.id, mutation.entity ?? "task", mutation.kind, JSON.stringify("habit" in mutation ? mutation.habit : mutation.task), mutation.createdAt],
       );
       return;
     }
@@ -116,10 +175,12 @@ export const localStore = {
   async pendingMutations(): Promise<Mutation[]> {
     const db = await getSqlDatabase();
     if (db) {
-      const rows = await db.select<{ id: string; kind: Mutation["kind"]; payload: string; created_at: string }>(
-        "SELECT id, kind, payload, created_at FROM outbox ORDER BY created_at ASC",
+      const rows = await db.select<{ id: string; entity: "task" | "habit"; kind: Mutation["kind"]; payload: string; created_at: string }>(
+        "SELECT id, entity, kind, payload, created_at FROM outbox ORDER BY created_at ASC",
       );
-      return rows.map((row) => ({ id: row.id, kind: row.kind, task: JSON.parse(row.payload) as Task, createdAt: row.created_at }));
+      return rows.map((row) => row.entity === "habit"
+        ? { id: row.id, entity: "habit", kind: row.kind, habit: JSON.parse(row.payload) as Habit, createdAt: row.created_at }
+        : { id: row.id, entity: "task", kind: row.kind, task: JSON.parse(row.payload) as Task, createdAt: row.created_at });
     }
     return read<Mutation[]>(OUTBOX_KEY, []);
   },
@@ -154,7 +215,7 @@ export const localStore = {
   },
 
   async applyRemoteTasks(tasks: Task[]): Promise<void> {
-    const pendingTaskIds = new Set((await this.pendingMutations()).map((mutation) => mutation.task.id));
+    const pendingTaskIds = new Set((await this.pendingMutations()).filter((mutation) => mutation.entity !== "habit").map((mutation) => mutation.task.id));
     const db = await getSqlDatabase();
     if (db) {
       for (const task of tasks) {
@@ -177,5 +238,30 @@ export const localStore = {
       if (!local || (task.serverRevision ?? 0) >= (local.serverRevision ?? 0)) merged.set(task.id, task);
     }
     write(TASKS_KEY, [...merged.values()]);
+  },
+
+  async applyRemoteHabits(habits: Habit[]): Promise<void> {
+    const pendingHabitIds = new Set((await this.pendingMutations()).filter((mutation) => mutation.entity === "habit").map((mutation) => mutation.habit.id));
+    const db = await getSqlDatabase();
+    if (db) {
+      for (const habit of habits) {
+        if (pendingHabitIds.has(habit.id)) continue;
+        const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM habits WHERE id = ?", [habit.id]);
+        if ((habit.serverRevision ?? 0) < (current[0]?.server_revision ?? 0)) continue;
+        await db.execute(
+          "INSERT INTO habits (id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
+          [habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, JSON.stringify(habit.completedDates), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
+        );
+      }
+      return;
+    }
+    const current = read<Habit[]>(HABITS_KEY, []);
+    const merged = new Map(current.map((habit) => [habit.id, habit]));
+    for (const habit of habits) {
+      if (pendingHabitIds.has(habit.id)) continue;
+      const local = merged.get(habit.id);
+      if (!local || (habit.serverRevision ?? 0) >= (local.serverRevision ?? 0)) merged.set(habit.id, habit);
+    }
+    write(HABITS_KEY, [...merged.values()]);
   },
 };

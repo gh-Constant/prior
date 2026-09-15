@@ -10,12 +10,40 @@ export type Task = {
   serverRevision?: number;
 };
 
-export type Mutation = {
+export type HabitUnit = "day" | "week" | "month" | "year";
+
+export type Habit = {
+  id: string;
+  title: string;
+  important: boolean;
+  urgent: boolean;
+  interval: number;
+  unit: HabitUnit;
+  startDate: string;
+  completedDates: string[];
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  serverRevision?: number;
+};
+
+export type TaskMutation = {
   id: string;
   task: Task;
   kind: "upsert" | "delete";
   createdAt: string;
+  entity?: "task";
 };
+
+export type HabitMutation = {
+  id: string;
+  habit: Habit;
+  kind: "upsert" | "delete";
+  createdAt: string;
+  entity: "habit";
+};
+
+export type Mutation = TaskMutation | HabitMutation;
 
 export type SyncState = {
   lastServerRevision: number;

@@ -221,12 +221,14 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	s.highestBroadcast(user.ID, results)
 	type responseItem struct {
 		MutationID string     `json:"mutationId"`
-		Task       tasks.Task `json:"task"`
+		Entity     string     `json:"entity"`
+		Task       tasks.Task `json:"task,omitempty"`
+		Habit      tasks.Habit `json:"habit,omitempty"`
 		Revision   int64      `json:"revision"`
 	}
 	response := make([]responseItem, 0, len(results))
 	for _, item := range results {
-		response = append(response, responseItem{MutationID: item.MutationID, Task: item.Task, Revision: item.Revision})
+		response = append(response, responseItem{MutationID: item.MutationID, Entity: item.Entity, Task: item.Task, Habit: item.Habit, Revision: item.Revision})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"applied": response})
 }
@@ -241,12 +243,12 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
 	if err != nil || since < 0 {
 		since = 0
 	}
-	tasksFound, revision, err := s.store.Pull(r.Context(), user.ID, since)
+	tasksFound, habitsFound, revision, err := s.store.Pull(r.Context(), user.ID, since)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tasks": tasksFound, "revision": revision})
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": tasksFound, "habits": habitsFound, "revision": revision})
 }
 
 func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
