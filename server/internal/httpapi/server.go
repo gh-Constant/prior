@@ -220,11 +220,11 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	}
 	s.highestBroadcast(user.ID, results)
 	type responseItem struct {
-		MutationID string     `json:"mutationId"`
-		Entity     string     `json:"entity"`
-		Task       tasks.Task `json:"task,omitempty"`
+		MutationID string      `json:"mutationId"`
+		Entity     string      `json:"entity"`
+		Task       tasks.Task  `json:"task,omitempty"`
 		Habit      tasks.Habit `json:"habit,omitempty"`
-		Revision   int64      `json:"revision"`
+		Revision   int64       `json:"revision"`
 	}
 	response := make([]responseItem, 0, len(results))
 	for _, item := range results {

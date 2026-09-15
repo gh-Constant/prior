@@ -166,11 +166,15 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 		if err == nil {
 			if priorEntity == "habit" {
 				var prior tasks.Habit
-				if err := json.Unmarshal(priorJSON, &prior); err != nil { return nil, err }
+				if err := json.Unmarshal(priorJSON, &prior); err != nil {
+					return nil, err
+				}
 				results = append(results, AppliedMutation{MutationID: mutation.ID, Entity: "habit", Habit: prior, Revision: priorRevision})
 			} else {
 				var prior tasks.Task
-				if err := json.Unmarshal(priorJSON, &prior); err != nil { return nil, err }
+				if err := json.Unmarshal(priorJSON, &prior); err != nil {
+					return nil, err
+				}
 				results = append(results, AppliedMutation{MutationID: mutation.ID, Entity: "task", Task: prior, Revision: priorRevision})
 			}
 			continue
@@ -179,33 +183,75 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 			return nil, err
 		}
 		entity := mutation.Entity
-		if entity == "" { entity = "task" }
-		if entity != "task" && entity != "habit" { return nil, errors.New("unknown mutation entity") }
+		if entity == "" {
+			entity = "task"
+		}
+		if entity != "task" && entity != "habit" {
+			return nil, errors.New("unknown mutation entity")
+		}
 		if entity == "habit" {
 			habitID, parseErr := uuid.Parse(mutation.Habit.ID)
-			if parseErr != nil { return nil, fmt.Errorf("habit id: %w", parseErr) }
+			if parseErr != nil {
+				return nil, fmt.Errorf("habit id: %w", parseErr)
+			}
 			var owner uuid.UUID
 			ownerErr := tx.QueryRow(ctx, `SELECT user_id FROM habits WHERE id = $1`, habitID).Scan(&owner)
-			if ownerErr == nil && owner != userID { return nil, errors.New("habit belongs to another user") }
-			if ownerErr != nil && !errors.Is(ownerErr, pgx.ErrNoRows) { return nil, ownerErr }
-			if len(mutation.Habit.Title) == 0 || len(mutation.Habit.Title) > 400 { return nil, fmt.Errorf("habit title must be between 1 and 400 characters") }
-			if mutation.Habit.Interval < 1 || mutation.Habit.Interval > 365 || (mutation.Habit.Unit != "day" && mutation.Habit.Unit != "week" && mutation.Habit.Unit != "month" && mutation.Habit.Unit != "year") { return nil, errors.New("invalid habit schedule") }
-			if _, err := time.Parse("2006-01-02", mutation.Habit.StartDate); err != nil { return nil, errors.New("invalid habit start date") }
-			if len(mutation.Habit.CompletedDates) > 10000 { return nil, errors.New("habit completion history is too large") }
-			for _, completedDate := range mutation.Habit.CompletedDates { if _, err := time.Parse("2006-01-02", completedDate); err != nil { return nil, errors.New("invalid habit completion date") } }
+			if ownerErr == nil && owner != userID {
+				return nil, errors.New("habit belongs to another user")
+			}
+			if ownerErr != nil && !errors.Is(ownerErr, pgx.ErrNoRows) {
+				return nil, ownerErr
+			}
+			if len(mutation.Habit.Title) == 0 || len(mutation.Habit.Title) > 400 {
+				return nil, fmt.Errorf("habit title must be between 1 and 400 characters")
+			}
+			if mutation.Habit.Interval < 1 || mutation.Habit.Interval > 365 || (mutation.Habit.Unit != "day" && mutation.Habit.Unit != "week" && mutation.Habit.Unit != "month" && mutation.Habit.Unit != "year") {
+				return nil, errors.New("invalid habit schedule")
+			}
+			if _, err := time.Parse("2006-01-02", mutation.Habit.StartDate); err != nil {
+				return nil, errors.New("invalid habit start date")
+			}
+			if len(mutation.Habit.CompletedDates) > 10000 {
+				return nil, errors.New("habit completion history is too large")
+			}
+			for _, completedDate := range mutation.Habit.CompletedDates {
+				if _, err := time.Parse("2006-01-02", completedDate); err != nil {
+					return nil, errors.New("invalid habit completion date")
+				}
+			}
 			var revision int64
-			if err := tx.QueryRow(ctx, `SELECT nextval('server_revision_seq')`).Scan(&revision); err != nil { return nil, err }
-			createdAt := mutation.Habit.CreatedAt.UTC(); updatedAt := mutation.Habit.UpdatedAt.UTC()
-			if createdAt.IsZero() { createdAt = time.Now().UTC() }; if updatedAt.IsZero() { updatedAt = time.Now().UTC() }
-			completedJSON, err := json.Marshal(mutation.Habit.CompletedDates); if err != nil { return nil, err }
+			if err := tx.QueryRow(ctx, `SELECT nextval('server_revision_seq')`).Scan(&revision); err != nil {
+				return nil, err
+			}
+			createdAt := mutation.Habit.CreatedAt.UTC()
+			updatedAt := mutation.Habit.UpdatedAt.UTC()
+			if createdAt.IsZero() {
+				createdAt = time.Now().UTC()
+			}
+			if updatedAt.IsZero() {
+				updatedAt = time.Now().UTC()
+			}
+			completedJSON, err := json.Marshal(mutation.Habit.CompletedDates)
+			if err != nil {
+				return nil, err
+			}
 			_, err = tx.Exec(ctx, `INSERT INTO habits (id, user_id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, important = EXCLUDED.important, urgent = EXCLUDED.urgent, interval = EXCLUDED.interval, unit = EXCLUDED.unit, start_date = EXCLUDED.start_date, completed_dates = EXCLUDED.completed_dates, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision WHERE habits.user_id = EXCLUDED.user_id`, habitID, userID, mutation.Habit.Title, mutation.Habit.Important, mutation.Habit.Urgent, mutation.Habit.Interval, mutation.Habit.Unit, mutation.Habit.StartDate, completedJSON, createdAt, updatedAt, mutation.Habit.DeletedAt, revision)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			mutation.Habit.ServerRevision = revision
-			payload, err := json.Marshal(mutation.Habit); if err != nil { return nil, err }
+			payload, err := json.Marshal(mutation.Habit)
+			if err != nil {
+				return nil, err
+			}
 			_, err = tx.Exec(ctx, `INSERT INTO habit_changes (revision, habit_id, user_id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, revision, habitID, userID, mutation.Habit.Title, mutation.Habit.Important, mutation.Habit.Urgent, mutation.Habit.Interval, mutation.Habit.Unit, mutation.Habit.StartDate, completedJSON, createdAt, updatedAt, mutation.Habit.DeletedAt)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			_, err = tx.Exec(ctx, `INSERT INTO applied_mutations (user_id, mutation_id, task_id, entity, revision, task_json) VALUES ($1, $2, $3, $4, $5, $6)`, userID, mutationID, habitID, "habit", revision, payload)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			results = append(results, AppliedMutation{MutationID: mutation.ID, Entity: "habit", Habit: mutation.Habit, Revision: revision})
 			continue
 		}
@@ -294,17 +340,30 @@ func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]task
 	habitRows, err := s.pool.Query(ctx, `
 		SELECT DISTINCT ON (habit_id) habit_id, title, important, urgent, interval, unit, start_date::text, completed_dates, created_at, updated_at, deleted_at, revision
 		FROM habit_changes WHERE user_id = $1 AND revision > $2 ORDER BY habit_id, revision DESC`, userID, since)
-	if err != nil { return nil, nil, since, err }
+	if err != nil {
+		return nil, nil, since, err
+	}
 	habits := make([]tasks.Habit, 0)
 	for habitRows.Next() {
 		var habit tasks.Habit
 		var completedJSON []byte
-		if err := habitRows.Scan(&habit.ID, &habit.Title, &habit.Important, &habit.Urgent, &habit.Interval, &habit.Unit, &habit.StartDate, &completedJSON, &habit.CreatedAt, &habit.UpdatedAt, &habit.DeletedAt, &habit.ServerRevision); err != nil { habitRows.Close(); return nil, nil, since, err }
-		if err := json.Unmarshal(completedJSON, &habit.CompletedDates); err != nil { habitRows.Close(); return nil, nil, since, err }
-		if habit.ServerRevision > latest { latest = habit.ServerRevision }
+		if err := habitRows.Scan(&habit.ID, &habit.Title, &habit.Important, &habit.Urgent, &habit.Interval, &habit.Unit, &habit.StartDate, &completedJSON, &habit.CreatedAt, &habit.UpdatedAt, &habit.DeletedAt, &habit.ServerRevision); err != nil {
+			habitRows.Close()
+			return nil, nil, since, err
+		}
+		if err := json.Unmarshal(completedJSON, &habit.CompletedDates); err != nil {
+			habitRows.Close()
+			return nil, nil, since, err
+		}
+		if habit.ServerRevision > latest {
+			latest = habit.ServerRevision
+		}
 		habits = append(habits, habit)
 	}
-	if err := habitRows.Err(); err != nil { habitRows.Close(); return nil, nil, since, err }
+	if err := habitRows.Err(); err != nil {
+		habitRows.Close()
+		return nil, nil, since, err
+	}
 	habitRows.Close()
 	return result, habits, latest, nil
 }
