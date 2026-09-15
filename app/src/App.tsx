@@ -13,10 +13,10 @@ import { TaskRow } from "./components/TaskRow";
 import { AuthModal } from "./components/AuthModal";
 import { updateAndroidWidget } from "./lib/widget";
 
-type ViewKey = "all" | QuadrantKey | "important" | "urgent" | "completed";
+type FilterKey = "all" | QuadrantKey | "important" | "urgent" | "completed";
 type Layout = "list" | "board";
 
-const navigation: Array<{ key: ViewKey; label: string; icon: IconName }> = [
+const filters: Array<{ key: FilterKey; label: string; icon: IconName }> = [
   { key: "all", label: "All tasks", icon: "inbox" },
   { key: "focus", label: "Focus", icon: "focus" },
   { key: "plan", label: "Plan", icon: "plan" },
@@ -27,7 +27,7 @@ const navigation: Array<{ key: ViewKey; label: string; icon: IconName }> = [
   { key: "completed", label: "Completed", icon: "check-circle" },
 ];
 
-const titles: Record<ViewKey, string> = {
+const filterTitles: Record<FilterKey, string> = {
   all: "All tasks",
   focus: "Focus",
   plan: "Plan",
@@ -43,8 +43,10 @@ export function App() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
-  const [view, setView] = useState<ViewKey>("all");
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [layout, setLayout] = useState<Layout>("list");
+  const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
+  const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
 
   const refresh = useCallback(async () => {
     const nextTasks = await localStore.listTasks();
@@ -138,13 +140,13 @@ export function App() {
   }
 
   const visibleTasks = useMemo(() => tasks.filter((task) => {
-    if (view === "completed") return task.completed;
+    if (filter === "completed") return task.completed;
     if (task.completed) return false;
-    if (view === "all") return true;
-    if (view === "important") return task.important;
-    if (view === "urgent") return task.urgent;
-    return quadrantFor(task) === view;
-  }), [tasks, view]);
+    if (filter === "all") return true;
+    if (filter === "important") return task.important;
+    if (filter === "urgent") return task.urgent;
+    return quadrantFor(task) === filter;
+  }), [tasks, filter]);
 
   const grouped = useMemo(() => Object.fromEntries(QUADRANTS.map((quadrant) => [quadrant.key, visibleTasks.filter((task) => quadrantFor(task) === quadrant.key)])), [visibleTasks]);
 
@@ -157,14 +159,12 @@ export function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-brand" title="Prior"><BrandMark /></div>
-        <button className="sidebar-new" type="button" onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span></button>
+        <div className="sidebar-brand" title="Prior"><BrandMark withTitle /></div>
+        <button className="sidebar-new" type="button" aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
         <nav className="sidebar-nav" aria-label="Task views">
-          {navigation.map((item) => (
-            <button key={item.key} type="button" className={`nav-item ${view === item.key ? "active" : ""}`} aria-current={view === item.key ? "page" : undefined} onClick={() => setView(item.key)}>
-              <Icon name={item.icon} /><span>{item.label}</span>
-            </button>
-          ))}
+          <button type="button" className="nav-item active" aria-current="page" onClick={() => setFilter("all")}>
+            <Icon name="inbox" /><span>All tasks</span>
+          </button>
         </nav>
         <div className="sidebar-bottom">
           <button className="account-trigger" type="button" onClick={() => setAuthOpen(true)}>
@@ -176,22 +176,30 @@ export function App() {
 
       <main className="workspace">
         <header className="workspace-header">
-          <h1>{titles[view]}</h1>
+          <h1>{filterTitles[filter]}</h1>
           <div className="workspace-actions">
             <div className="layout-switch" role="group" aria-label="Task layout">
               <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => setLayout("list")}><Icon name="list" /></button>
               <button type="button" className={layout === "board" ? "active" : ""} aria-label="Board view" aria-pressed={layout === "board"} onClick={() => setLayout("board")}><Icon name="grid" /></button>
             </div>
-            <button className="primary-button new-task-button" type="button" onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span></button>
+            <button className="primary-button new-task-button" type="button" aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>
           </div>
         </header>
+
+        <div className="filter-bar" role="tablist" aria-label="Task filters">
+          {filters.map((item) => (
+            <button key={item.key} type="button" role="tab" aria-selected={filter === item.key} className={`filter-chip ${filter === item.key ? "active" : ""}`} onClick={() => setFilter(item.key)}>
+              <Icon name={item.icon} /><span>{item.label}</span>
+            </button>
+          ))}
+        </div>
 
         {layout === "board" ? (
           <div className="quadrant-grid">
             {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={changeTask} onDelete={deleteTask} />)}
           </div>
         ) : (
-          <section className="list-view" aria-label={titles[view]}>
+          <section className="list-view" aria-label={filterTitles[filter]}>
             {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={changeTask} onDelete={deleteTask} />)}
           </section>
         )}

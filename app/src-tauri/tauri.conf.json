@@ -30,7 +30,7 @@
     "active": true,
     "targets": "all",
     "icon": ["icons/prior-mark.png"],
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "deep-link": {
@@ -44,6 +44,11 @@
       ]
     },
     "sql": { "preload": ["sqlite:prior.db"] },
-    "opener": { "open": "^https://(api\\.)?prior\\.constantsuchet\\.fr/|^http://localhost:8080/" }
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCOTYyRkNGQjZFOEMzNUUKUldSZXcraTJ6eStXaXdoaHA1K1VEdThqditBOE1lR2lWR1c1VHFzTFRPblJJUG91eWwxbkgvSXkK",
+      "endpoints": ["https://github.com/gh-Constant/prior/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    },
+    "opener": { "open": "^https://(api\\.)?prior\\.constantsuchet\\.fr/|^https://github\\.com/gh-Constant/prior/|^http://localhost:8080/" }
   }
 }

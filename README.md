@@ -65,4 +65,4 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow is intentionally prepared for signing secrets without committing credentials. See `.github/workflows/release.yml` and `specs/RELEASES.md`.
+Create a `vMAJOR.MINOR.PATCH` tag to build the desktop and Android installers into a GitHub Release. Downloads are available from [the latest release](https://github.com/gh-Constant/prior/releases/latest), and signed desktop builds use the Tauri updater manifest. See `.github/workflows/release.yml` and [specs/RELEASES.md](specs/RELEASES.md) for required secrets.
