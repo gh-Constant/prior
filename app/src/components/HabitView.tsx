@@ -289,7 +289,7 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete }: Pro
         </div>
       ) : (
         <div className="habits-empty">
-          <span className="habits-empty-mark"><Icon name="refresh" /></span>
+          <span className="habits-empty-mark"><Icon name="calendar-check" /></span>
           <h2>{emptyTitle}</h2>
           <p>Prior will bring routines back when they’re due.</p>
           <button className="secondary-button" type="button" onClick={onAdd}><Icon name="plus" /> Create a habit</button>

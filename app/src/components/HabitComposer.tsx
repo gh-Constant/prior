@@ -30,7 +30,7 @@ export function HabitComposer({ onSave, onCancel }: Props) {
           <button type="button" className="icon-button" aria-label="Close" onClick={onCancel}><Icon name="close" /></button>
         </div>
         <div className="composer-input-row">
-          <span className="composer-mark habit-mark" aria-hidden="true"><Icon name="refresh" /></span>
+          <span className="composer-mark habit-mark" aria-hidden="true"><Icon name="calendar-check" /></span>
           <input ref={inputRef} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Habit name" aria-label="Habit title" />
         </div>
         <div className="habit-schedule-fields">
@@ -47,4 +47,3 @@ export function HabitComposer({ onSave, onCancel }: Props) {
     </div>
   );
 }
-

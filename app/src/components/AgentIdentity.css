@@ -37,7 +37,7 @@
 
 .agent-symbol-shape { transform-box: fill-box; transform-origin: center; animation: agent-symbol-idle 8s ease-in-out infinite; }
 .agent-symbol-highlight { opacity: .72; mix-blend-mode: screen; animation: agent-symbol-highlight-idle 6s ease-in-out infinite; }
-.agent-symbol-outline { fill: none; stroke: #fff8e5a8; stroke-width: 1.2; stroke-linejoin: round; stroke-dasharray: 2 7; opacity: .82; transform-box: fill-box; transform-origin: center; animation: agent-symbol-outline-idle 10s linear infinite; }
+.agent-symbol-outline { fill: none; stroke: #fff8e5a8; stroke-width: 1.2; stroke-linejoin: round; stroke-dasharray: 2 7; opacity: .82; transform-box: fill-box; transform-origin: center; animation: agent-symbol-idle 8s ease-in-out infinite; }
 .agent-symbol-glint { fill: #fffdf5d4; opacity: .82; transform-box: fill-box; transform-origin: center; animation: agent-symbol-glint-idle 5s ease-in-out infinite; }
 
 .agent-symbol-stop-one { animation: agent-symbol-stop-one 7s ease-in-out infinite alternate; }
@@ -53,7 +53,7 @@
 .agent-identity.is-thinking .agent-symbol { filter: drop-shadow(0 7px 15px #d95e4a70); }
 .agent-identity.is-thinking .agent-symbol-shape { animation: agent-symbol-thinking 1.35s ease-in-out infinite; }
 .agent-identity.is-thinking .agent-symbol-highlight { animation: agent-symbol-highlight-thinking .7s ease-in-out infinite; }
-.agent-identity.is-thinking .agent-symbol-outline { stroke: #fff9e8d0; stroke-dasharray: 3 5; animation: agent-symbol-outline-thinking 1s linear infinite; }
+.agent-identity.is-thinking .agent-symbol-outline { stroke: #fff9e8d0; stroke-dasharray: 3 5; animation: agent-symbol-thinking 1.35s ease-in-out infinite; }
 .agent-identity.is-thinking .agent-symbol-glint { animation: agent-symbol-glint-thinking .8s ease-in-out infinite; }
 .agent-identity.is-thinking .agent-symbol-stop-one { animation-duration: 1.2s; }
 .agent-identity.is-thinking .agent-symbol-stop-two { animation-duration: 1.35s; }
@@ -70,11 +70,6 @@
 @keyframes agent-symbol-aura-idle {
   0%, 100% { transform: rotate(10deg) scale(.9); opacity: .3; }
   50% { transform: rotate(75deg) scale(1.14); opacity: .52; }
-}
-
-@keyframes agent-symbol-outline-idle {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 @keyframes agent-symbol-highlight-idle {
@@ -95,11 +90,6 @@
 @keyframes agent-symbol-aura-thinking {
   0%, 100% { transform: rotate(0deg) scale(.82); opacity: .46; }
   50% { transform: rotate(180deg) scale(1.2); opacity: .88; }
-}
-
-@keyframes agent-symbol-outline-thinking {
-  from { transform: rotate(0deg) scale(.96); stroke-dashoffset: 0; }
-  to { transform: rotate(-360deg) scale(1.12); stroke-dashoffset: -30; }
 }
 
 @keyframes agent-symbol-highlight-thinking {

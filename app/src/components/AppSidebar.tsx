@@ -15,10 +15,10 @@ type AppSidebarProps = {
   onToggle: () => void;
 };
 
-const NAV_ITEMS: Array<{ view: WorkspaceView; label: string; icon: "inbox" | "grid" | "refresh" }> = [
+const NAV_ITEMS: Array<{ view: WorkspaceView; label: string; icon: "inbox" | "grid" | "calendar-check" }> = [
   { view: "all", label: "All tasks", icon: "inbox" },
   { view: "eisenhower", label: "Eisenhower", icon: "grid" },
-  { view: "habits", label: "Habits", icon: "refresh" },
+  { view: "habits", label: "Habits", icon: "calendar-check" },
 ];
 
 export function AppSidebar({ activeView, user, collapsed, inert, onViewChange, onAccount, onToggle }: AppSidebarProps) {
