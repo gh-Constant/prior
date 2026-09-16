@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./lib/api";
 import { clearSession, getToken, getUser, listenForAuth, startGoogleLogin, type SessionUser } from "./lib/auth";
 import { localStore } from "./lib/localStore";
@@ -9,16 +9,17 @@ import { BrandMark } from "./components/BrandMark";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
-import { TaskRow } from "./components/TaskRow";
+import { CompletionExitProvider, TaskRow } from "./components/TaskRow";
 import { TaskColumns } from "./components/TaskColumns";
 import { AuthModal } from "./components/AuthModal";
 import { updateAndroidWidget } from "./lib/widget";
-import { defaultTaskFilters, filterTasks, type TaskFilterState } from "./lib/taskFilters";
+import { defaultTaskFilters, type TaskFilterState } from "./lib/taskFilters";
 import { TaskFilters } from "./components/TaskFilters";
 import { AgentSidebar } from "./components/AgentSidebar";
 import { HabitComposer } from "./components/HabitComposer";
 import { HabitView } from "./components/HabitView";
 import { CompletionBurst } from "./components/CompletionBurst";
+import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/completionExit";
 
 type WorkspaceView = "eisenhower" | "all" | "habits";
 type Layout = "list" | "board";
@@ -34,6 +35,8 @@ export function App() {
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>(defaultTaskFilters);
   const [layout, setLayout] = useState<Layout>("list");
   const [completionCelebration, setCompletionCelebration] = useState<{ title: string; key: number } | null>(null);
+  const celebrationKey = useRef(0);
+  const { deadlines: completionExitDeadlines, retain: retainCompletionExit, release: releaseCompletionExit } = useCompletionExits();
   const [agentOpen, setAgentOpen] = useState(() => {
     try {
       return localStorage.getItem("prior.ai.open") === "true";
@@ -52,6 +55,17 @@ export function App() {
       // ignore
     }
   }, [agentOpen]);
+
+  useEffect(() => {
+    if (!completionCelebration) return undefined;
+
+    const key = completionCelebration.key;
+    const timeout = window.setTimeout(() => {
+      setCompletionCelebration((current) => current?.key === key ? null : current);
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
+  }, [completionCelebration]);
 
   const refresh = useCallback(async () => {
     const [nextTasks, nextHabits] = await Promise.all([localStore.listTasks(), localStore.listHabits()]);
@@ -142,18 +156,21 @@ export function App() {
 
   async function changeTask(task: Task) {
     const previous = tasks.find((item) => item.id === task.id);
-    await localStore.updateTask(task);
+    const savedTask = await localStore.updateTask(task);
     if (previous && !previous.completed && task.completed) {
-      const key = Date.now();
-      setCompletionCelebration({ title: task.title, key });
-      window.setTimeout(() => setCompletionCelebration((current) => current?.key === key ? null : current), 900);
+      retainCompletionExit(task.id);
+      setCompletionCelebration({ title: task.title, key: ++celebrationKey.current });
+    } else if (!task.completed) {
+      releaseCompletionExit(task.id);
     }
-    await refresh();
+    setTasks((current) => current.map((item) => item.id === savedTask.id ? savedTask : item));
+    void refresh();
     void syncNow();
   }
 
   async function deleteTask(task: Task) {
     await localStore.removeTask(task);
+    releaseCompletionExit(task.id);
     await refresh();
     void syncNow();
   }
@@ -169,13 +186,12 @@ export function App() {
     const completedDates = habit.completedDates.includes(date)
       ? habit.completedDates.filter((value) => value !== date)
       : [...habit.completedDates, date];
-    await localStore.updateHabit({ ...habit, completedDates });
+    const savedHabit = await localStore.updateHabit({ ...habit, completedDates });
     if (!habit.completedDates.includes(date)) {
-      const key = Date.now();
-      setCompletionCelebration({ title: habit.title, key });
-      window.setTimeout(() => setCompletionCelebration((current) => current?.key === key ? null : current), 900);
+      setCompletionCelebration({ title: habit.title, key: ++celebrationKey.current });
     }
-    await refresh();
+    setHabits((current) => current.map((item) => item.id === savedHabit.id ? savedHabit : item));
+    void refresh();
     void syncNow();
   }
 
@@ -190,7 +206,10 @@ export function App() {
     setAuthOpen(false);
   }
 
-  const visibleTasks = useMemo(() => filterTasks(tasks, taskFilters), [tasks, taskFilters]);
+  const visibleTasks = useMemo(
+    () => filterTasksWithExitingCompletions(tasks, taskFilters, completionExitDeadlines),
+    [tasks, taskFilters, completionExitDeadlines],
+  );
 
   const grouped = useMemo(() => Object.fromEntries(QUADRANTS.map((quadrant) => [quadrant.key, visibleTasks.filter((task) => quadrantFor(task) === quadrant.key)])), [visibleTasks]);
 
@@ -249,17 +268,19 @@ export function App() {
 
         {activeView !== "habits" && <TaskFilters value={taskFilters} onChange={setTaskFilters} />}
 
-        {activeView === "habits" ? <HabitView habits={habits} onAdd={() => setHabitComposerOpen(true)} onComplete={completeHabit} onChange={changeHabit} onDelete={deleteHabit} /> : activeView === "eisenhower" ? (
-          <div className="quadrant-grid">
-            {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={changeTask} onDelete={deleteTask} />)}
-          </div>
-        ) : layout === "board" ? (
-          <TaskColumns tasks={visibleTasks} onChange={changeTask} onDelete={deleteTask} />
-        ) : (
-          <section className="list-view" aria-label="All tasks">
-            {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={changeTask} onDelete={deleteTask} />)}
-          </section>
-        )}
+        <CompletionExitProvider deadlines={completionExitDeadlines}>
+          {activeView === "habits" ? <HabitView habits={habits} onAdd={() => setHabitComposerOpen(true)} onComplete={completeHabit} onChange={changeHabit} onDelete={deleteHabit} /> : activeView === "eisenhower" ? (
+            <div className="quadrant-grid">
+              {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={changeTask} onDelete={deleteTask} />)}
+            </div>
+          ) : layout === "board" ? (
+            <TaskColumns tasks={visibleTasks} onChange={changeTask} onDelete={deleteTask} />
+          ) : (
+            <section className="list-view" aria-label="All tasks">
+              {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={changeTask} onDelete={deleteTask} />)}
+            </section>
+          )}
+        </CompletionExitProvider>
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => setComposerOpen(true)}><Icon name="plus" /> New task</button>}
       </main>
 

@@ -1,4 +1,5 @@
 import type { Habit, HabitUnit, Mutation, SyncState, Task } from "../types";
+import { dateKey } from "./habits";
 
 const TASKS_KEY = "prior.tasks.v1";
 const HABITS_KEY = "prior.habits.v1";
@@ -124,7 +125,7 @@ export const localStore = {
       urgent: input.urgent,
       interval,
       unit: input.unit as HabitUnit,
-      startDate: input.startDate ?? existing?.startDate ?? timestamp.slice(0, 10),
+      startDate: input.startDate ?? existing?.startDate ?? dateKey(new Date(timestamp)),
       completedDates: [...new Set(input.completedDates ?? existing?.completedDates ?? [])].sort(),
       createdAt: input.createdAt ?? existing?.createdAt ?? timestamp,
       updatedAt: input.updatedAt ?? timestamp,

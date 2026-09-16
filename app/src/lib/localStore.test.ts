@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { localStore } from "./localStore";
 
 describe("localStore browser fallback", () => {
@@ -36,5 +36,16 @@ describe("localStore browser fallback", () => {
     const updated = await localStore.updateHabit({ ...habit, completedDates: ["2026-09-15"] });
     expect(updated.completedDates).toEqual(["2026-09-15"]);
     expect((await localStore.pendingMutations()).at(-1)).toMatchObject({ entity: "habit", habit: { id: habit.id, completedDates: ["2026-09-15"] } });
+  });
+
+  it("starts a new habit on the local calendar day near midnight", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 16, 0, 15));
+    try {
+      const habit = await localStore.saveHabit({ title: "Read", important: false, urgent: false, interval: 1, unit: "day" });
+      expect(habit.startDate).toBe("2026-09-16");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

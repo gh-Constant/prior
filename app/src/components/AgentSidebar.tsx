@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentMessage, AgentSettings, ProposedTask, QuadrantKey, Task } from "../types";
 import { askAgent, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
 import { quadrantFor } from "../lib/priority";
+import "./AgentSidebar.css";
+import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
 
 type Props = {
@@ -212,11 +214,15 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
     <aside className="agent-sidebar" aria-label="AI Task Assistant">
       <header className="agent-header">
         <div className="agent-title-row">
-          <div className="agent-badge-icon" aria-hidden="true">
-            <Icon name="sparkles" />
-          </div>
+          <AgentIdentity size="small" thinking={loading} />
           <div className="agent-title-text">
-            <h3>AI Assistant</h3>
+            <div className="agent-title-line">
+              <h3>AI Assistant</h3>
+              <span className={`agent-status ${loading ? "is-thinking" : ""}`} aria-live="polite">
+                <span className="agent-status-dot" />
+                {loading ? "Thinking" : "Ready"}
+              </span>
+            </div>
             <span
               className="agent-model-tag"
               title={`Configured: ${settings.model}${lastActualModel ? `\nResolved model: ${lastActualModel}` : ""}`}
@@ -341,13 +347,11 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
       <div className="agent-body">
         {messages.length === 0 ? (
           <div className="agent-welcome">
-            <div className="welcome-mark">
-              <Icon name="sparkles" />
+            <div className="agent-welcome-visual" aria-hidden="true">
+              <span className="agent-welcome-halo" />
+              <AgentIdentity size="hero" />
             </div>
-            <h4>Prioritize effortlessly</h4>
-            <p>
-              Paste unstructured notes, plan a project, or dump your thoughts. The AI will automatically assign urgency and importance to organize your board.
-            </p>
+            <h4>What’s next?</h4>
 
             <div className="starter-prompts-grid">
               {STARTER_PROMPTS.map((item, idx) => (
@@ -375,8 +379,8 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
             {messages.map((msg) => (
               <div key={msg.id} className={`agent-message-row ${msg.role}`}>
                 {msg.role === "assistant" && (
-                  <div className="agent-message-avatar" aria-hidden="true">
-                    <Icon name="sparkles" />
+                  <div className="agent-message-avatar">
+                    <AgentIdentity size="tiny" />
                   </div>
                 )}
                 <div className="agent-message-bubble">
@@ -481,16 +485,12 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
 
             {loading && (
               <div className="agent-message-row assistant">
-                <div className="agent-message-avatar" aria-hidden="true">
-                  <Icon name="sparkles" />
+                <div className="agent-message-avatar">
+                  <AgentIdentity size="tiny" thinking />
                 </div>
-                <div className="agent-message-bubble loading-bubble">
-                  <div className="agent-dots">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <span className="loading-text">Triaging tasks & assessing Eisenhower matrix...</span>
+                <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
+                  <AgentIdentity size="tiny" thinking />
+                  <span className="loading-text">Thinking through your priorities…</span>
                 </div>
               </div>
             )}
@@ -526,7 +526,7 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
                 void handleSend();
               }
             }}
-            placeholder="Tell me what you need to do, paste notes, or ask for a plan..."
+            placeholder="Plan something…"
             rows={2}
           />
           <div className="agent-input-actions">

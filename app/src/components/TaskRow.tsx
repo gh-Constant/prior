@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import type { Task } from "../types";
+import type { CompletionExitDeadlines } from "../lib/completionExit";
 import { CompletionBurst } from "./CompletionBurst";
 import { Icon } from "./Icon";
 
 type Props = { task: Task; onChange: (task: Task) => Promise<void>; onDelete: (task: Task) => Promise<void> };
+const CompletionExitContext = createContext<CompletionExitDeadlines>({});
+
+export function CompletionExitProvider({ deadlines, children }: { deadlines: CompletionExitDeadlines; children: ReactNode }) {
+  return <CompletionExitContext.Provider value={deadlines}>{children}</CompletionExitContext.Provider>;
+}
 
 export function TaskRow({ task, onChange, onDelete }: Props) {
   const [editing, setEditing] = useState(false);
@@ -11,6 +17,10 @@ export function TaskRow({ task, onChange, onDelete }: Props) {
   const [completionBurstKey, setCompletionBurstKey] = useState(0);
   const previousCompleted = useRef(task.completed);
   const pendingCompletion = useRef(false);
+  const completionInFlight = useRef(false);
+  const [completionPending, setCompletionPending] = useState(false);
+  const completionExitDeadlines = useContext(CompletionExitContext);
+  const isExiting = task.completed && task.id in completionExitDeadlines;
 
   useEffect(() => {
     const transitionedToCompleted = !previousCompleted.current && task.completed;
@@ -30,7 +40,11 @@ export function TaskRow({ task, onChange, onDelete }: Props) {
   }
 
   async function toggleCompletion() {
+    if (completionInFlight.current) return;
+
     const nextCompleted = !task.completed;
+    completionInFlight.current = true;
+    setCompletionPending(true);
     if (nextCompleted) {
       pendingCompletion.current = true;
       setCompletionBurstKey((key) => key + 1);
@@ -39,15 +53,18 @@ export function TaskRow({ task, onChange, onDelete }: Props) {
     try {
       await onChange({ ...task, completed: nextCompleted });
     } catch (error) {
-      if (nextCompleted) pendingCompletion.current = false;
-      throw error;
+      pendingCompletion.current = false;
+      console.warn("Unable to update task completion", error);
+    } finally {
+      completionInFlight.current = false;
+      setCompletionPending(false);
     }
   }
 
   return (
-    <div className={`task-row ${task.completed ? "completed" : ""}`}>
+    <div className={`task-row ${task.completed ? "completed" : ""} ${isExiting ? "completion-exiting" : ""}`}>
       <span className="complete-control">
-        <button className={`complete-button ${task.completed ? "checked" : ""}`} aria-label={task.completed ? `Mark ${task.title} incomplete` : `Mark ${task.title} complete`} onClick={() => void toggleCompletion()}>
+        <button className={`complete-button ${task.completed ? "checked" : ""}`} type="button" aria-label={task.completed ? `Mark ${task.title} incomplete` : `Mark ${task.title} complete`} onClick={() => void toggleCompletion()} disabled={completionPending}>
           {task.completed && <Icon name="check" />}
         </button>
         <CompletionBurst trigger={completionBurstKey} />

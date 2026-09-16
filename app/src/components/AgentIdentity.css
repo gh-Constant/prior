@@ -1,0 +1,185 @@
+.agent-identity {
+  --identity-size: 36px;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--identity-size);
+  height: var(--identity-size);
+  flex: 0 0 auto;
+  isolation: isolate;
+}
+
+.agent-identity-tiny { --identity-size: 30px; }
+.agent-identity-small { --identity-size: 38px; }
+.agent-identity-hero { --identity-size: 126px; }
+
+.agent-orb-aura,
+.agent-orb,
+.agent-orb-ring {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.agent-orb-aura {
+  inset: 13%;
+  z-index: -1;
+  background: conic-gradient(from 120deg, #ff8067, #f8b878, #96d8d0, #9e91e9, #eb85b4, #ff8067);
+  filter: blur(11px);
+  opacity: .42;
+  animation: agent-orb-aura-idle 9s ease-in-out infinite;
+}
+
+.agent-orb {
+  inset: 7%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 27% 23%, #fffdf8 0 4%, #fff3d6 9%, transparent 25%),
+    radial-gradient(circle at 72% 78%, #ff8570 0, transparent 40%),
+    conic-gradient(from 215deg, #ff7961 0deg, #ffb66e 60deg, #f8d595 114deg, #98d8cf 178deg, #9e91e8 236deg, #e888b4 296deg, #ff7961 360deg);
+  box-shadow: inset -4px -5px 9px #923e4938, inset 4px 4px 8px #fff8dc99, 0 5px 16px #e36a5438;
+  animation: agent-orb-idle 8s ease-in-out infinite;
+}
+
+.agent-orb::before {
+  position: absolute;
+  inset: -28%;
+  content: "";
+  background: conic-gradient(from 40deg, transparent 0deg, #fff9e866 52deg, transparent 100deg, #8edbd080 172deg, transparent 220deg, #ff8b826b 300deg, transparent 350deg);
+  filter: blur(5px);
+  mix-blend-mode: screen;
+  animation: agent-orb-sweep-idle 7s linear infinite;
+}
+
+.agent-orb-shine {
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 30% 18%, #ffffffd9 0 3%, #fff9ed6b 13%, transparent 36%);
+  opacity: .9;
+  animation: agent-orb-shine-idle 6s ease-in-out infinite;
+}
+
+.agent-orb-core {
+  position: absolute;
+  inset: 28%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #fffdeccc 0 8%, #ffd7ae88 30%, #e8749580 69%, transparent 72%);
+  filter: blur(1px);
+  opacity: .72;
+}
+
+.agent-orb-ring {
+  inset: 0;
+  border: 1px solid #fa8d7b;
+  opacity: 0;
+  transform: scale(.78) rotate(-18deg) rotateX(55deg);
+  pointer-events: none;
+}
+
+.agent-orb-ring-two {
+  border-color: #8ccdc9;
+  transform: scale(.82) rotate(26deg) rotateX(55deg) rotateY(18deg);
+}
+
+.agent-identity.is-thinking .agent-orb-aura {
+  opacity: .72;
+  filter: blur(13px);
+  animation: agent-orb-aura-thinking 1.55s ease-in-out infinite;
+}
+
+.agent-identity.is-thinking .agent-orb {
+  box-shadow: inset -4px -5px 10px #923e4960, inset 4px 4px 9px #fff8d6bb, 0 0 0 4px #fa8d7b14, 0 7px 24px #df5f4a5c;
+  animation: agent-orb-thinking 1.45s ease-in-out infinite;
+}
+
+.agent-identity.is-thinking .agent-orb::before {
+  animation: agent-orb-sweep-thinking .8s linear infinite;
+  opacity: 1;
+}
+
+.agent-identity.is-thinking .agent-orb-shine {
+  animation: agent-orb-shine-thinking .7s ease-in-out infinite;
+}
+
+.agent-identity.is-thinking .agent-orb-ring {
+  opacity: .7;
+  animation: agent-orb-ring-one 1.5s ease-out infinite;
+}
+
+.agent-identity.is-thinking .agent-orb-ring-two {
+  opacity: .52;
+  animation-name: agent-orb-ring-two;
+  animation-duration: 1.9s;
+  animation-delay: -.55s;
+}
+
+.agent-identity-hero .agent-orb-aura { filter: blur(18px); }
+.agent-identity-hero .agent-orb { box-shadow: inset -8px -9px 18px #923e4938, inset 8px 7px 14px #fff8dc99, 0 10px 32px #e36a5440; }
+.agent-identity-hero .agent-orb-core { inset: 26%; }
+
+@keyframes agent-orb-idle {
+  0%, 100% { transform: translate3d(-1%, 1%, 0) scale(.97) rotate(-4deg); }
+  50% { transform: translate3d(1%, -3%, 0) scale(1) rotate(4deg); }
+}
+
+@keyframes agent-orb-aura-idle {
+  0%, 100% { transform: scale(.9); opacity: .34; }
+  50% { transform: scale(1.08); opacity: .5; }
+}
+
+@keyframes agent-orb-sweep-idle {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes agent-orb-shine-idle {
+  0%, 100% { transform: translate3d(-2%, 0, 0); opacity: .72; }
+  50% { transform: translate3d(4%, 2%, 0); opacity: 1; }
+}
+
+@keyframes agent-orb-thinking {
+  0%, 100% { transform: scale(.94) rotate(0deg); }
+  50% { transform: scale(1.07) rotate(180deg); }
+}
+
+@keyframes agent-orb-aura-thinking {
+  0%, 100% { transform: scale(.88); opacity: .48; }
+  50% { transform: scale(1.2); opacity: .86; }
+}
+
+@keyframes agent-orb-sweep-thinking {
+  from { transform: rotate(0deg) scale(1.06); }
+  to { transform: rotate(360deg) scale(1.06); }
+}
+
+@keyframes agent-orb-shine-thinking {
+  0%, 100% { transform: translate3d(-7%, -2%, 0) scale(.88); opacity: .55; }
+  50% { transform: translate3d(8%, 4%, 0) scale(1.12); opacity: 1; }
+}
+
+@keyframes agent-orb-ring-one {
+  0% { transform: scale(.76) rotate(-18deg) rotateX(55deg); opacity: 0; }
+  25% { opacity: .7; }
+  100% { transform: scale(1.24) rotate(52deg) rotateX(55deg); opacity: 0; }
+}
+
+@keyframes agent-orb-ring-two {
+  0% { transform: scale(.8) rotate(26deg) rotateX(55deg) rotateY(18deg); opacity: 0; }
+  22% { opacity: .56; }
+  100% { transform: scale(1.3) rotate(-52deg) rotateX(55deg) rotateY(18deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-identity,
+  .agent-identity::before,
+  .agent-identity::after,
+  .agent-identity *,
+  .agent-identity *::before,
+  .agent-identity *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .agent-identity.is-thinking .agent-orb-ring-one { opacity: .68; transform: scale(.92) rotate(-18deg) rotateX(55deg); }
+  .agent-identity.is-thinking .agent-orb-ring-two { opacity: .5; transform: scale(.96) rotate(26deg) rotateX(55deg) rotateY(18deg); }
+}
