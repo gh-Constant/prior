@@ -32,6 +32,20 @@ function formatDueDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
+function useOverlayMode(): boolean {
+  const [isOverlay, setIsOverlay] = useState(() =>
+    typeof window === "undefined" ? true : window.matchMedia("(max-width: 1100px)").matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1100px)");
+    const onChange = (event: MediaQueryListEvent) => setIsOverlay(event.matches);
+    setIsOverlay(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  return isOverlay;
+}
+
 export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, onAddHabits }: Props) {
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -63,6 +77,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   const panelRef = useRef<HTMLElement>(null);
   const loadingRef = useRef(false);
   const isComposingRef = useRef(false);
+  const isOverlay = useOverlayMode();
   const pendingDictationSelectionRef = useRef<{ start: number; end: number } | null>(null);
   const dictationSelectionRef = useRef<{ start: number; end: number } | null>(null);
 
@@ -123,23 +138,32 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   }, [open, user]);
 
   useEffect(() => {
-    if (open) {
+    if (open && isOverlay) {
       window.setTimeout(() => textareaRef.current?.focus(), 150);
     }
-  }, [open]);
+  }, [open, isOverlay]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || !isOverlay) return undefined;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusTimer = window.setTimeout(() => panelRef.current?.focus(), 0);
     return () => {
       window.clearTimeout(focusTimer);
       if (previousFocus && document.contains(previousFocus)) previousFocus.focus();
     };
-  }, [open]);
+  }, [open, isOverlay]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || !isOverlay) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, isOverlay]);
+
+  useEffect(() => {
+    if (!open || !isOverlay) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -170,7 +194,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [dictation, open, onClose, settingsOpen]);
+  }, [dictation, open, onClose, settingsOpen, isOverlay]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -450,8 +474,8 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   return (
     <>
-      <div className="agent-overlay-backdrop" aria-hidden="true" onMouseDown={handleClose} />
-      <aside ref={panelRef} id="prior-ai-assistant" className="agent-sidebar" role="dialog" aria-modal="true" aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
+      {isOverlay && <div className="agent-overlay-backdrop" aria-hidden="true" onMouseDown={handleClose} />}
+      <aside ref={panelRef} id="prior-ai-assistant" className={`agent-sidebar ${isOverlay ? "overlay" : "docked"}`} role={isOverlay ? "dialog" : "complementary"} aria-modal={isOverlay ? "true" : undefined} aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
       <header className="agent-header">
         <div className="agent-title-row">
           <AgentIdentity size="small" />

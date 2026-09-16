@@ -341,13 +341,13 @@ export function App() {
         activeView={activeView}
         user={user}
         collapsed={sidebarCollapsed}
-        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || agentOpen}
+        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}
         onViewChange={setActiveView}
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
 
-      <main className="workspace" inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || agentOpen}>
+      <main className="workspace" inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}>
         <header className="workspace-header">
           <h1>{activeView === "eisenhower" ? "Eisenhower" : activeView === "habits" ? "Habits" : "All tasks"}</h1>
           <div className="workspace-actions">
