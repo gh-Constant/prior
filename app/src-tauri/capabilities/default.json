@@ -9,6 +9,7 @@
     "deep-link:default",
     "process:default",
     "sql:default",
+    "sql:allow-execute",
     "updater:default",
     "websocket:default"
   ]
