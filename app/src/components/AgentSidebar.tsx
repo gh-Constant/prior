@@ -344,6 +344,22 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
         </div>
       )}
 
+      <div className="agent-thread-bar">
+        <div className="agent-thread-label">
+          <AgentIdentity size="tiny" />
+          <span>Prior</span>
+        </div>
+        <button
+          type="button"
+          className="agent-thread-new"
+          aria-label="New conversation"
+          title="New conversation"
+          onClick={() => { setMessages([]); setError(null); }}
+        >
+          <Icon name="plus" />
+        </button>
+      </div>
+
       <div className="agent-body">
         {messages.length === 0 ? (
           <div className="agent-welcome">

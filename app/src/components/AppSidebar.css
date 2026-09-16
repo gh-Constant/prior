@@ -1,0 +1,57 @@
+.sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 8px 42px 13px;
+}
+
+.sidebar-top .sidebar-brand { min-width: 0; margin: 0; }
+.sidebar-top .brand-lockup { min-width: 0; }
+.sidebar-top .brand-title { overflow: hidden; }
+
+.sidebar-collapse-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #8d8b86;
+}
+
+.sidebar-collapse-button:hover {
+  border-color: #ffffff12;
+  background: #ffffff0b;
+  color: #fff;
+}
+
+.sidebar-collapse-button svg { width: 15px; height: 15px; }
+.sidebar.is-collapsed { padding-right: 10px; padding-left: 10px; }
+.sidebar.is-collapsed .sidebar-top { justify-content: center; margin-right: 0; margin-left: 0; }
+.sidebar.is-collapsed .brand-title,
+.sidebar.is-collapsed .nav-item span,
+.sidebar.is-collapsed .account-trigger-label { display: none; }
+.sidebar.is-collapsed .sidebar-brand { display: block; }
+.sidebar.is-collapsed .sidebar-top .brand-lockup { gap: 0; }
+.sidebar.is-collapsed .sidebar-top { flex-direction: column; gap: 13px; }
+.sidebar.is-collapsed .nav-item { justify-content: center; padding: 0; }
+.sidebar.is-collapsed .nav-item.active::before { left: 0; }
+.sidebar.is-collapsed .account-trigger { justify-content: center; padding: 4px; }
+
+.app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
+.app-shell.sidebar-collapsed.agent-open { grid-template-columns: 76px minmax(0, 1fr) 410px; }
+
+.ai-toggle-button .agent-identity { --identity-size: 20px; }
+.ai-toggle-button .agent-symbol { filter: drop-shadow(0 3px 5px #d76a5230); }
+.ai-toggle-button .agent-symbol-aura { filter: blur(6px); }
+
+@media (max-width: 760px) {
+  .sidebar-top { display: none; }
+  .sidebar.is-collapsed { padding-right: max(14px, env(safe-area-inset-right)); padding-left: max(14px, env(safe-area-inset-left)); }
+  .app-shell.sidebar-collapsed,
+  .app-shell.sidebar-collapsed.agent-open { display: block; }
+}

@@ -5,7 +5,6 @@ import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
 import type { Habit, Task } from "./types";
-import { BrandMark } from "./components/BrandMark";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
@@ -20,8 +19,9 @@ import { HabitComposer } from "./components/HabitComposer";
 import { HabitView } from "./components/HabitView";
 import { CompletionBurst } from "./components/CompletionBurst";
 import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/completionExit";
+import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
+import { AgentIdentity } from "./components/AgentIdentity";
 
-type WorkspaceView = "eisenhower" | "all" | "habits";
 type Layout = "list" | "board";
 
 export function App() {
@@ -32,6 +32,13 @@ export function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
   const [activeView, setActiveView] = useState<WorkspaceView>("all");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("prior.sidebar.collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>(defaultTaskFilters);
   const [layout, setLayout] = useState<Layout>("list");
   const [completionCelebration, setCompletionCelebration] = useState<{ title: string; key: number } | null>(null);
@@ -55,6 +62,14 @@ export function App() {
       // ignore
     }
   }, [agentOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("prior.sidebar.collapsed", String(sidebarCollapsed));
+    } catch {
+      // ignore
+    }
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (!completionCelebration) return undefined;
@@ -220,27 +235,16 @@ export function App() {
   }
 
   return (
-    <div className={`app-shell ${agentOpen ? "agent-open" : ""}`}>
-      <aside className="sidebar" inert={composerOpen || habitComposerOpen || authOpen}>
-        <div className="sidebar-brand" title="Prior"><BrandMark withTitle /></div>
-        <nav className="sidebar-nav" aria-label="Task views">
-          <button type="button" className={`nav-item ${activeView === "all" ? "active" : ""}`} aria-current={activeView === "all" ? "page" : undefined} onClick={() => setActiveView("all")}>
-            <Icon name="inbox" /><span>All tasks</span>
-          </button>
-          <button type="button" className={`nav-item ${activeView === "eisenhower" ? "active" : ""}`} aria-current={activeView === "eisenhower" ? "page" : undefined} onClick={() => setActiveView("eisenhower")}>
-            <Icon name="grid" /><span>Eisenhower</span>
-          </button>
-          <button type="button" className={`nav-item ${activeView === "habits" ? "active" : ""}`} aria-current={activeView === "habits" ? "page" : undefined} onClick={() => setActiveView("habits")}>
-            <Icon name="refresh" /><span>Habits</span>
-          </button>
-        </nav>
-        <div className="sidebar-bottom">
-          <button className="account-trigger" type="button" aria-label="Account" onClick={() => setAuthOpen(true)}>
-            <span className="account-trigger-avatar">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}</span>
-            <span className="account-trigger-label">{user?.displayName || "Account"}</span>
-          </button>
-        </div>
-      </aside>
+    <div className={`app-shell ${agentOpen ? "agent-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <AppSidebar
+        activeView={activeView}
+        user={user}
+        collapsed={sidebarCollapsed}
+        inert={composerOpen || habitComposerOpen || authOpen}
+        onViewChange={setActiveView}
+        onAccount={() => setAuthOpen(true)}
+        onToggle={() => setSidebarCollapsed((value) => !value)}
+      />
 
       <main className="workspace" inert={composerOpen || habitComposerOpen || authOpen}>
         <header className="workspace-header">
@@ -258,8 +262,8 @@ export function App() {
               aria-pressed={agentOpen}
               onClick={() => setAgentOpen((v) => !v)}
             >
-              <Icon name="sparkles" />
-              <span>AI Agent</span>
+              <AgentIdentity size="tiny" />
+              <span>AI Assistant</span>
               <kbd>{aiShortcut}</kbd>
             </button>
             {activeView !== "habits" && <button className="primary-button new-task-button" type="button" aria-label="New task" title={`New task (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>}
