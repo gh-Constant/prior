@@ -461,8 +461,8 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
         {error && <p className="habit-card-error" role="alert">{error}</p>}
       </div>
       <div className="habit-card-actions">
-        <button className={`task-action ${habit.important ? "active important" : ""}`} type="button" aria-label={`${habit.important ? "Remove" : "Mark"} important`} title={`${habit.important ? "Remove" : "Mark"} important`} aria-pressed={habit.important} onClick={() => void changeHabit({ ...habit, important: !habit.important })} disabled={disabled}><Icon name="star" /></button>
-        <button className={`task-action ${habit.urgent ? "active urgent" : ""}`} type="button" aria-label={`${habit.urgent ? "Remove" : "Mark"} urgent`} title={`${habit.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={habit.urgent} onClick={() => void changeHabit({ ...habit, urgent: !habit.urgent })} disabled={disabled}><Icon name="bolt" /></button>
+        <button className={`task-action flag-toggle ${habit.important ? "active important" : ""}`} type="button" aria-label={`${habit.important ? "Remove" : "Mark"} important`} title={`${habit.important ? "Remove" : "Mark"} important`} aria-pressed={habit.important} onClick={() => void changeHabit({ ...habit, important: !habit.important })} disabled={disabled}><Icon name="star" /></button>
+        <button className={`task-action flag-toggle ${habit.urgent ? "active urgent" : ""}`} type="button" aria-label={`${habit.urgent ? "Remove" : "Mark"} urgent`} title={`${habit.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={habit.urgent} onClick={() => void changeHabit({ ...habit, urgent: !habit.urgent })} disabled={disabled}><Icon name="bolt" /></button>
         <button className="task-action danger" type="button" aria-label={`Delete ${habit.title}`} title={`Delete ${habit.title}`} onClick={() => void deleteHabit()} disabled={disabled}><Icon name="trash" /></button>
       </div>
     </article>

@@ -45,6 +45,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [chatHistory, setChatHistory] = useState<AgentChatSummary[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(() => typeof window === "undefined" || !window.matchMedia("(max-width: 760px)").matches);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -56,6 +57,8 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     void fetchAvailableFreeModels().then((list) => {
@@ -104,6 +107,46 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   }, [open]);
 
   useEffect(() => {
+    if (!open) return undefined;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => panelRef.current?.focus(), 0);
+    return () => {
+      window.clearTimeout(focusTimer);
+      if (previousFocus && document.contains(previousFocus)) previousFocus.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (settingsOpen) setSettingsOpen(false); else onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !panelRef.current) return;
+      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), textarea, input:not(:disabled), select:not(:disabled), a[href]'
+      )).filter((element) => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [open, onClose, settingsOpen]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
@@ -150,6 +193,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
       setActiveChatId(chat.id);
       setMessages(chat.messages ?? []);
       setInput("");
+      if (window.matchMedia("(max-width: 760px)").matches) setHistoryOpen(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unable to load this conversation.");
     } finally {
@@ -168,7 +212,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   async function handleSend(customPrompt?: string) {
     const promptToSend = (customPrompt ?? input).trim();
-    if (!promptToSend || loading) return;
+    if (!promptToSend || loadingRef.current) return;
 
     if (!settings.apiKey) {
       setSettingsOpen(true);
@@ -178,24 +222,25 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
     setError(null);
     setInput("");
-
-    const token = sessionToken ?? await getToken();
-    if (token && !sessionToken) setSessionToken(token);
-    const chatId = token && user ? await ensureChat(token) : null;
-
-    const userMsg: AgentMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: promptToSend,
-      createdAt: new Date().toISOString(),
-    };
-
-    const nextMessages = [...messages, userMsg];
-    setMessages(nextMessages);
-    if (chatId && token) await persistMessage(chatId, userMsg, token);
+    loadingRef.current = true;
     setLoading(true);
 
     try {
+      const token = sessionToken ?? await getToken();
+      if (token && !sessionToken) setSessionToken(token);
+      const chatId = token && user ? await ensureChat(token) : null;
+
+      const userMsg: AgentMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: promptToSend,
+        createdAt: new Date().toISOString(),
+      };
+
+      const nextMessages = [...messages, userMsg];
+      setMessages(nextMessages);
+      if (chatId && token) await persistMessage(chatId, userMsg, token);
+
       const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings);
       const assistantMsg: AgentMessage = {
         id: crypto.randomUUID(),
@@ -212,6 +257,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
       const msg = err instanceof Error ? err.message : "Failed to generate tasks with AI";
       setError(msg);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   }
@@ -346,11 +392,13 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   if (!open) return null;
 
   return (
-    <aside className="agent-sidebar" aria-label="AI Task Assistant">
+    <>
+      <div className="agent-overlay-backdrop" aria-hidden="true" onMouseDown={onClose} />
+      <aside ref={panelRef} id="prior-ai-assistant" className="agent-sidebar" role="dialog" aria-modal="true" aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
       <header className="agent-header">
         <div className="agent-title-row">
-          <AgentIdentity size="small" thinking={loading} />
-          <h3>AI Assistant</h3>
+          <AgentIdentity size="small" />
+          <h3 id="prior-ai-assistant-title">AI Assistant</h3>
         </div>
         <div className="agent-header-actions">
           <button
@@ -368,7 +416,11 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
         </div>
       </header>
 
-      <nav className="agent-chat-history" aria-label="Chat history">
+      <button className="agent-history-toggle" type="button" aria-expanded={historyOpen} aria-controls="prior-chat-history" onClick={() => setHistoryOpen((value) => !value)}>
+        <span>Chat history</span>
+        <Icon name="chevron-down" />
+      </button>
+      <nav id="prior-chat-history" className="agent-chat-history" aria-label="Chat history" hidden={!historyOpen}>
         {historyLoading && <span className="agent-history-note">Loading chats…</span>}
         {!historyLoading && chatHistory.map((chat) => (
           <button
@@ -376,6 +428,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             type="button"
             className={`agent-chat-item ${chat.id === activeChatId ? "active" : ""}`}
             aria-current={chat.id === activeChatId ? "page" : undefined}
+            aria-label={chat.title}
             title={chat.title}
             onClick={() => void selectChat(chat.id)}
             disabled={chatLoading || loading}
@@ -499,7 +552,9 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                                 <div className="proposed-toggles">
                                   <button
                                     type="button"
-                                    className={`task-action ${t.important ? "active important" : ""}`}
+                                    className={`task-action flag-toggle ${t.important ? "active important" : ""}`}
+                                    aria-label={t.important ? "Remove important flag" : "Mark important"}
+                                    aria-pressed={t.important}
                                     title={t.important ? "Important (Click to change)" : "Not Important (Click to mark Important)"}
                                     disabled={t.added}
                                     onClick={() => handleToggleImportant(msg.id, t.id)}
@@ -508,7 +563,9 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                                   </button>
                                   <button
                                     type="button"
-                                    className={`task-action ${t.urgent ? "active urgent" : ""}`}
+                                    className={`task-action flag-toggle ${t.urgent ? "active urgent" : ""}`}
+                                    aria-label={t.urgent ? "Remove urgent flag" : "Mark urgent"}
+                                    aria-pressed={t.urgent}
                                     title={t.urgent ? "Urgent (Click to change)" : "Not Urgent (Click to mark Urgent)"}
                                     disabled={t.added}
                                     onClick={() => handleToggleUrgent(msg.id, t.id)}
@@ -586,7 +643,9 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                                 <div className="proposed-toggles">
                                   <button
                                     type="button"
-                                    className={`task-action ${habit.important ? "active important" : ""}`}
+                                    className={`task-action flag-toggle ${habit.important ? "active important" : ""}`}
+                                    aria-label={habit.important ? "Remove important flag" : "Mark important"}
+                                    aria-pressed={habit.important}
                                     title={habit.important ? "Important (Click to change)" : "Not Important (Click to mark Important)"}
                                     disabled={habit.added}
                                     onClick={() => updateProposedHabit(msg.id, habit.id, { important: !habit.important })}
@@ -595,7 +654,9 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                                   </button>
                                   <button
                                     type="button"
-                                    className={`task-action ${habit.urgent ? "active urgent" : ""}`}
+                                    className={`task-action flag-toggle ${habit.urgent ? "active urgent" : ""}`}
+                                    aria-label={habit.urgent ? "Remove urgent flag" : "Mark urgent"}
+                                    aria-pressed={habit.urgent}
                                     title={habit.urgent ? "Urgent (Click to change)" : "Not Urgent (Click to mark Urgent)"}
                                     disabled={habit.added}
                                     onClick={() => updateProposedHabit(msg.id, habit.id, { urgent: !habit.urgent })}
@@ -622,7 +683,6 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                   <AgentIdentity size="tiny" thinking />
                 </div>
                 <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
-                  <AgentIdentity size="tiny" thinking />
                   <span className="loading-text">Thinking through your priorities…</span>
                 </div>
               </div>
@@ -790,6 +850,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
           </div>
         </form>
       </footer>
-    </aside>
+      </aside>
+    </>
   );
 }

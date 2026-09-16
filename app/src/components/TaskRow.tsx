@@ -82,8 +82,8 @@ export function TaskRow({ task, onChange, onDelete, onEdit }: Props) {
         </div>
       </div>
       <div className="task-actions">
-        <button className={`task-action ${task.important ? "active important" : ""}`} aria-label={`${task.important ? "Remove" : "Mark"} important`} aria-pressed={task.important} onClick={() => void onChange({ ...task, important: !task.important })}><Icon name="star" /></button>
-        <button className={`task-action ${task.urgent ? "active urgent" : ""}`} aria-label={`${task.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={task.urgent} onClick={() => void onChange({ ...task, urgent: !task.urgent })}><Icon name="bolt" /></button>
+        <button className={`task-action flag-toggle ${task.important ? "active important" : ""}`} aria-label={`${task.important ? "Remove" : "Mark"} important`} aria-pressed={task.important} onClick={() => void onChange({ ...task, important: !task.important })}><Icon name="star" /></button>
+        <button className={`task-action flag-toggle ${task.urgent ? "active urgent" : ""}`} aria-label={`${task.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={task.urgent} onClick={() => void onChange({ ...task, urgent: !task.urgent })}><Icon name="bolt" /></button>
         <button className="task-action danger" aria-label={`Delete ${task.title}`} onClick={() => void onDelete(task)}><Icon name="trash" /></button>
       </div>
     </div>

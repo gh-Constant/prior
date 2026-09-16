@@ -32,16 +32,16 @@
   filter: blur(10px);
   opacity: .38;
   transform: rotate(10deg);
-  animation: agent-symbol-aura-idle 8s ease-in-out infinite;
+  animation: none;
 }
 
-.agent-symbol-shape { transform-box: fill-box; transform-origin: center; animation: agent-symbol-idle 8s ease-in-out infinite; }
-.agent-symbol-highlight { opacity: .72; mix-blend-mode: screen; animation: agent-symbol-highlight-idle 6s ease-in-out infinite; }
-.agent-symbol-glint { fill: #fffdf5d4; opacity: .82; transform-box: fill-box; transform-origin: center; animation: agent-symbol-glint-idle 5s ease-in-out infinite; }
+.agent-symbol-shape { transform-box: fill-box; transform-origin: center; }
+.agent-symbol-highlight { opacity: .72; mix-blend-mode: screen; }
+.agent-symbol-glint { fill: #fffdf5d4; opacity: .82; transform-box: fill-box; transform-origin: center; }
 
-.agent-symbol-stop-one { animation: agent-symbol-stop-one 7s ease-in-out infinite alternate; }
-.agent-symbol-stop-two { animation: agent-symbol-stop-two 8s ease-in-out infinite alternate; }
-.agent-symbol-stop-three { animation: agent-symbol-stop-three 9s ease-in-out infinite alternate; }
+.agent-symbol-stop-one,
+.agent-symbol-stop-two,
+.agent-symbol-stop-three { animation: none; }
 
 .agent-identity.is-thinking .agent-symbol-aura {
   opacity: .72;

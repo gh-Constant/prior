@@ -42,6 +42,7 @@ export function App() {
     }
   });
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>(defaultTaskFilters);
+  const [, setRelativeDateTick] = useState(0);
   const [layout, setLayout] = useState<Layout>("list");
   const [completionCelebration, setCompletionCelebration] = useState<{ title: string; key: number } | null>(null);
   const celebrationKey = useRef(0);
@@ -61,6 +62,24 @@ export function App() {
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
   const aiShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ J" : "Ctrl J";
+
+  useEffect(() => {
+    let timeout: number | undefined;
+    const refreshRelativeDates = () => {
+      setRelativeDateTick((value) => value + 1);
+      const now = new Date();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 50);
+      timeout = window.setTimeout(refreshRelativeDates, Math.max(1000, nextMidnight.getTime() - now.getTime()));
+    };
+    const onFocus = () => setRelativeDateTick((value) => value + 1);
+    refreshRelativeDates();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -322,13 +341,13 @@ export function App() {
         activeView={activeView}
         user={user}
         collapsed={sidebarCollapsed}
-        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}
+        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || agentOpen}
         onViewChange={setActiveView}
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
 
-      <main className="workspace" inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}>
+      <main className="workspace" inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || agentOpen}>
         <header className="workspace-header">
           <h1>{activeView === "eisenhower" ? "Eisenhower" : activeView === "habits" ? "Habits" : "All tasks"}</h1>
           <div className="workspace-actions">
@@ -341,7 +360,8 @@ export function App() {
               type="button"
               aria-label="AI Assistant"
               title={`AI Assistant (${aiShortcut})`}
-              aria-pressed={agentOpen}
+              aria-expanded={agentOpen}
+              aria-controls="prior-ai-assistant"
               onClick={() => setAgentOpen((v) => !v)}
             >
               <AgentIdentity size="tiny" />

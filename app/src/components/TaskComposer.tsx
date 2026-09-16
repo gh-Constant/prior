@@ -57,8 +57,8 @@ export function TaskComposer({ task, onSave, onCancel }: Props) {
               <option value={4}>Priority 4</option>
             </select>
           </label>
-          <button type="button" className={`option-button ${important ? "selected important" : ""}`} aria-pressed={important} onClick={() => setImportant((value) => !value)}><Icon name="star" /> Important</button>
-          <button type="button" className={`option-button ${urgent ? "selected urgent" : ""}`} aria-pressed={urgent} onClick={() => setUrgent((value) => !value)}><Icon name="bolt" /> Urgent</button>
+          <button type="button" className={`option-button flag-toggle ${important ? "selected important" : ""}`} aria-pressed={important} onClick={() => setImportant((value) => !value)}><Icon name="star" /> Important</button>
+          <button type="button" className={`option-button flag-toggle ${urgent ? "selected urgent" : ""}`} aria-pressed={urgent} onClick={() => setUrgent((value) => !value)}><Icon name="bolt" /> Urgent</button>
         </div>
         <div className="modal-footer">
           <button type="button" className="secondary-button" onClick={onCancel}>Cancel</button>

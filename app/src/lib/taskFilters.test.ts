@@ -63,4 +63,31 @@ describe("filterTasks", () => {
     expect(filterTasks(tasks, { ...defaultTaskFilters, date: "today" }, reference).map((task) => task.id)).toEqual(["today"]);
     expect(filterTasks(tasks, { ...defaultTaskFilters, date: "older" }, reference).map((task) => task.id)).toEqual(["older"]);
   });
+
+  it("filters due dates using local date-only values", () => {
+    const tasks = [
+      makeTask("overdue", "2026-09-10T08:00:00.000Z", { dueDate: "2026-09-14" }),
+      makeTask("today", "2026-09-10T09:00:00.000Z", { dueDate: "2026-09-15" }),
+      makeTask("next", "2026-09-10T10:00:00.000Z", { dueDate: "2026-09-20" }),
+      makeTask("later", "2026-09-10T11:00:00.000Z", { dueDate: "2026-09-22" }),
+      makeTask("none", "2026-09-10T12:00:00.000Z"),
+    ];
+
+    expect(filterTasks(tasks, { ...defaultTaskFilters, dueDate: "overdue" }, reference).map((task) => task.id)).toEqual(["overdue"]);
+    expect(filterTasks(tasks, { ...defaultTaskFilters, dueDate: "today" }, reference).map((task) => task.id)).toEqual(["today"]);
+    expect(filterTasks(tasks, { ...defaultTaskFilters, dueDate: "next7", sort: "dueSoonest" }, reference).map((task) => task.id)).toEqual(["today", "next"]);
+    expect(filterTasks(tasks, { ...defaultTaskFilters, dueDate: "none" }, reference).map((task) => task.id)).toEqual(["none"]);
+  });
+
+  it("sorts by due date with undated tasks last and deterministic ties", () => {
+    const tasks = [
+      makeTask("undated", "2026-09-15T08:00:00.000Z"),
+      makeTask("late", "2026-09-15T09:00:00.000Z", { dueDate: "2026-09-20" }),
+      makeTask("early-b", "2026-09-15T10:00:00.000Z", { dueDate: "2026-09-16" }),
+      makeTask("early-a", "2026-09-15T10:00:00.000Z", { dueDate: "2026-09-16" }),
+    ];
+
+    expect(filterTasks(tasks, { ...defaultTaskFilters, sort: "dueSoonest" }, reference).map((task) => task.id)).toEqual(["early-a", "early-b", "late", "undated"]);
+    expect(filterTasks(tasks, { ...defaultTaskFilters, sort: "dueLatest" }, reference).map((task) => task.id)).toEqual(["late", "early-a", "early-b", "undated"]);
+  });
 });

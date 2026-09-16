@@ -31,6 +31,15 @@ export function TaskFilters({ value, onChange }: Props) {
         </select>
       </label>
       <label className="filter-control">
+        <select aria-label="Due date" value={value.dueDate} onChange={(event) => onChange({ ...value, dueDate: event.target.value as TaskFilterState["dueDate"] })}>
+          <option value="any">Any due date</option>
+          <option value="overdue">Overdue</option>
+          <option value="today">Due today</option>
+          <option value="next7">Next 7 days</option>
+          <option value="none">No due date</option>
+        </select>
+      </label>
+      <label className="filter-control">
         <select aria-label="Task priority" value={value.taskPriority} onChange={(event) => onChange({ ...value, taskPriority: event.target.value as TaskFilterState["taskPriority"] })}>
           <option value="any">Any task priority</option>
           <option value="p1">Priority 1</option>
@@ -59,6 +68,8 @@ export function TaskFilters({ value, onChange }: Props) {
         <select aria-label="Sort tasks" value={value.sort} onChange={(event) => onChange({ ...value, sort: event.target.value as TaskFilterState["sort"] })}>
           <option value="recent">Recently updated</option>
           <option value="oldest">Oldest first</option>
+          <option value="dueSoonest">Due soonest</option>
+          <option value="dueLatest">Due latest</option>
         </select>
       </label>
       {hasActiveFilters && <button className="filter-reset" type="button" title="Reset filters" aria-label="Reset filters" onClick={() => onChange(defaultTaskFilters)}><Icon name="close" /></button>}
