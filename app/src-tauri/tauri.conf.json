@@ -49,6 +49,6 @@
       "endpoints": ["https://github.com/gh-Constant/prior/releases/latest/download/latest.json"],
       "windows": { "installMode": "passive" }
     },
-    "opener": { "open": "^https://(api\\.)?prior\\.constantsuchet\\.fr/|^https://github\\.com/gh-Constant/prior/|^http://localhost:8080/" }
+    "opener": { "requireLiteralLeadingDot": true }
   }
 }
