@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { buildSystemPrompt, getAgentSettings, parseAiResponse, saveAgentSettings } from "./ai";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { askAgent, buildSystemPrompt, getAgentSettings, parseAiResponse, saveAgentSettings } from "./ai";
 import type { Habit, Task } from "../types";
 
 describe("ai engine", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it("builds a system prompt including active tasks", () => {
     const existing: Task[] = [
       {
@@ -152,6 +154,12 @@ Hope this helps!`;
     const parsed = parseAiResponse(raw);
     expect(parsed.reply).toBe("Not valid JSON at all");
     expect(parsed.tasks).toEqual([]);
+  });
+
+  it("reports a useful error when OpenRouter cannot be reached", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Load failed")));
+    await expect(askAgent("Hello", [], [], [], { apiKey: "test-key", model: "openrouter/free", webSearch: false }))
+      .rejects.toThrow("could not reach OpenRouter");
   });
 
   it("persists and retrieves agent settings", () => {

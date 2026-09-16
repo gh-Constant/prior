@@ -32,4 +32,23 @@ describe("OAuth code exchange", () => {
     await expect(api.exchange("valid-code")).resolves.toEqual(session);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("turns native-style network failures into an actionable error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Load failed")));
+    await expect(api.logout("session-token")).rejects.toThrow("could not reach the server");
+  });
+
+  it("times out logout requests so callers are never blocked by the network", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      signal = init.signal as AbortSignal;
+      signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+    })));
+    const failure = expect(api.logout("session-token")).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(5_000);
+    await failure;
+    expect(signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

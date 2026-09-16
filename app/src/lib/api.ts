@@ -1,25 +1,88 @@
 import type { AgentChat, AgentChatMessage, AgentChatSummary, Habit, Mutation, Task } from "../types";
 
 const isNativeApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-const defaultApiUrl = isNativeApp ? "https://api.prior.constantsuchet.fr" : "http://localhost:8080";
-export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? defaultApiUrl;
+const productionApiUrl = "https://api.prior.constantsuchet.fr";
+const defaultApiUrl = isNativeApp ? productionApiUrl : "http://localhost:8080";
+const configuredApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
+
+function isLocalApiUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+// A local .env is useful for browser/Tauri development, but it must never leak
+// into a packaged native build. Vite's DEV flag distinguishes those cases.
+const useConfiguredApiUrl = !isNativeApp || import.meta.env.DEV || !isLocalApiUrl(configuredApiUrl);
+export const API_URL = useConfiguredApiUrl ? (configuredApiUrl ?? defaultApiUrl) : defaultApiUrl;
+export const FALLBACK_API_URL = isNativeApp && API_URL !== productionApiUrl ? productionApiUrl : undefined;
+const REQUEST_TIMEOUT_MS = 15_000;
+
+class ApiRequestError extends Error {
+  constructor(public readonly kind: "network" | "timeout", message: string) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+function isNetworkFailure(error: unknown): boolean {
+  return error instanceof TypeError || (error instanceof Error && /load failed|failed to fetch|networkerror|network request failed/i.test(error.message));
+}
 
 type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
 export type PasswordAuthResponse = ExchangeResponse;
 type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }> };
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number };
 
-async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? `Prior API returned ${response.status}`);
+async function requestOnce<T>(url: string, path: string, init: RequestInit, token: string | undefined, timeoutMs: number): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const externalSignal = init.signal;
+  const abortFromCaller = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener("abort", abortFromCaller, { once: true });
   }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+
+  try {
+    const response = await fetch(`${url}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error ?? `Prior API returned ${response.status}`);
+    }
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+  } catch (error) {
+    if (externalSignal?.aborted) throw error;
+    if (controller.signal.aborted) throw new ApiRequestError("timeout", "Prior API request timed out. Check your connection and try again.");
+    if (isNetworkFailure(error)) throw new ApiRequestError("network", "Prior could not reach the server. Check your connection and try again.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}, token?: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+  const urls = FALLBACK_API_URL ? [API_URL, FALLBACK_API_URL] : [API_URL];
+  let lastError: unknown;
+  for (const url of urls) {
+    try {
+      return await requestOnce<T>(url, path, init, token, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof ApiRequestError) || error.kind !== "network" || url === urls.at(-1)) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Prior could not reach the server. Check your connection and try again.");
 }
 
 export const api = {
@@ -33,7 +96,7 @@ export const api = {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
-      return await request<ExchangeResponse>("/v1/auth/exchange", { method: "POST", body: JSON.stringify({ code }), signal: controller.signal });
+      return await request<ExchangeResponse>("/v1/auth/exchange", { method: "POST", body: JSON.stringify({ code }), signal: controller.signal }, undefined, 30_000);
     } catch (error) {
       if (controller.signal.aborted) throw new Error("Sign-in timed out. Check your connection and try again.");
       throw error;
@@ -42,7 +105,7 @@ export const api = {
     }
   },
   logout(token: string): Promise<void> {
-    return request<void>("/v1/auth/logout", { method: "POST" }, token);
+    return request<void>("/v1/auth/logout", { method: "POST" }, token, 5_000);
   },
   push(mutations: Mutation[], token: string): Promise<PushResponse> {
     return request<PushResponse>("/v1/sync/push", { method: "POST", body: JSON.stringify({ mutations }) }, token);

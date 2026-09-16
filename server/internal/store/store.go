@@ -534,8 +534,8 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 
 func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]tasks.Task, []tasks.Habit, int64, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT ON (task_id) task_id::text, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision
-		FROM task_changes WHERE user_id = $1 AND revision > $2 ORDER BY task_id, revision DESC`, userID, since)
+		SELECT id::text, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		FROM tasks WHERE user_id = $1 AND revision > $2 ORDER BY revision ASC, id`, userID, since)
 	if err != nil {
 		return nil, nil, since, err
 	}
@@ -558,8 +558,8 @@ func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]task
 	}
 	rows.Close()
 	habitRows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT ON (habit_id) habit_id::text, title, important, urgent, interval, unit, start_date::text, completed_dates, created_at, updated_at, deleted_at, revision
-		FROM habit_changes WHERE user_id = $1 AND revision > $2 ORDER BY habit_id, revision DESC`, userID, since)
+		SELECT id::text, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, revision
+		FROM habits WHERE user_id = $1 AND revision > $2 ORDER BY revision ASC, id`, userID, since)
 	if err != nil {
 		return nil, nil, since, err
 	}

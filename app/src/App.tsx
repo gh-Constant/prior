@@ -45,6 +45,11 @@ export function App() {
   const [layout, setLayout] = useState<Layout>("list");
   const [completionCelebration, setCompletionCelebration] = useState<{ title: string; key: number } | null>(null);
   const celebrationKey = useRef(0);
+  const syncInFlight = useRef<Promise<void> | null>(null);
+  const syncQueued = useRef(false);
+  const sessionGeneration = useRef(0);
+  const realtimeClose = useRef<(() => Promise<void>) | undefined>(undefined);
+  const realtimeGeneration = useRef(0);
   const { deadlines: completionExitDeadlines, retain: retainCompletionExit, release: releaseCompletionExit } = useCompletionExits();
   const [agentOpen, setAgentOpen] = useState(() => {
     try {
@@ -91,42 +96,66 @@ export function App() {
     void updateAndroidWidget(nextTasks, nextHabits).catch(() => undefined);
   }, []);
 
-  const syncNow = useCallback(async () => {
-    const token = await getToken();
-    if (!token || !navigator.onLine) return;
-    try {
-      const state = await localStore.getSyncState();
-      let highestPushedRevision = state.lastServerRevision;
-      const pending = await localStore.pendingMutations();
-      if (pending.length) {
-        const pushed = await api.push(pending, token);
-        await localStore.removeMutations(pushed.applied.map((item) => item.mutationId));
-        highestPushedRevision = pushed.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
-      }
-      const pulled = await api.pull(state.lastServerRevision, token);
-      await localStore.applyRemoteTasks(pulled.tasks);
-      await localStore.applyRemoteHabits(pulled.habits ?? []);
-      const finalRevision = Math.max(pulled.revision, highestPushedRevision);
-      await localStore.setSyncRevision(finalRevision);
-      await refresh();
-    } catch (error) {
-      console.warn("Prior sync failed:", error);
-      // Local data remains authoritative until the next successful sync.
+  const syncNow = useCallback((): Promise<void> => {
+    if (syncInFlight.current) {
+      syncQueued.current = true;
+      return syncInFlight.current;
     }
+
+    const run = (async () => {
+      try {
+        const generation = sessionGeneration.current;
+        const token = await getToken();
+        if (!token || generation !== sessionGeneration.current) return;
+        // navigator.onLine is unreliable in Tauri webviews. The API request has
+        // its own timeout and is the source of truth for connectivity.
+        const state = await localStore.getSyncState();
+        let highestPushedRevision = state.lastServerRevision;
+        const pending = await localStore.pendingMutations();
+        if (pending.length) {
+          const pushed = await api.push(pending, token);
+          if (generation !== sessionGeneration.current) return;
+          await localStore.removeMutations(pushed.applied.map((item) => item.mutationId));
+          highestPushedRevision = pushed.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
+        }
+        const pulled = await api.pull(state.lastServerRevision, token);
+        if (generation !== sessionGeneration.current) return;
+        await localStore.applyRemoteTasks(pulled.tasks);
+        await localStore.applyRemoteHabits(pulled.habits ?? []);
+        const finalRevision = Math.max(pulled.revision, highestPushedRevision);
+        await localStore.setSyncRevision(finalRevision);
+        await refresh();
+      } catch (error) {
+        console.warn("Prior sync failed:", error);
+        // Local data remains authoritative until the next successful sync.
+      }
+    })();
+    syncInFlight.current = run;
+    void run.finally(() => {
+      if (syncInFlight.current === run) syncInFlight.current = null;
+      if (syncQueued.current) {
+        syncQueued.current = false;
+        void syncNow();
+      }
+    }).catch(() => undefined);
+    return run;
   }, [refresh]);
 
+  const attachRealtime = useCallback(async () => {
+    const generation = ++realtimeGeneration.current;
+    const token = await getToken();
+    if (!token || generation !== realtimeGeneration.current) return;
+    await realtimeClose.current?.();
+    if (generation !== realtimeGeneration.current) return;
+    realtimeClose.current = await connectRealtime(token, () => void syncNow());
+  }, [syncNow]);
+
   useEffect(() => {
-    void refresh();
+    void refresh().catch((error) => console.warn("Prior local store failed:", error));
     void syncNow();
-    let closeRealtime: (() => Promise<void>) | undefined;
-    const attachRealtime = async () => {
-      const token = await getToken();
-      if (!token) return;
-      await closeRealtime?.();
-      closeRealtime = await connectRealtime(token, () => void syncNow());
-    };
     void attachRealtime().catch(() => undefined);
     const dispose = listenForAuth((nextUser) => {
+      sessionGeneration.current += 1;
       setUser(nextUser);
       setAuthError("");
       setAuthOpen(false);
@@ -136,8 +165,14 @@ export function App() {
       setAuthError(error.message);
       setAuthOpen(true);
     });
-    return () => { dispose(); void closeRealtime?.(); };
-  }, [refresh, syncNow]);
+    return () => {
+      dispose();
+      realtimeGeneration.current += 1;
+      const close = realtimeClose.current;
+      realtimeClose.current = undefined;
+      void close?.();
+    };
+  }, [attachRealtime, refresh, syncNow]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -238,12 +273,19 @@ export function App() {
   async function deleteHabit(habit: Habit) { await localStore.removeHabit(habit); await refresh(); void syncNow(); }
 
   async function logout() {
-    const token = await getToken();
-    if (token) await api.logout(token).catch(() => undefined);
-    await clearSession();
-    await localStore.resetSyncRevision();
+    const token = await getToken().catch(() => null);
+    sessionGeneration.current += 1;
+    realtimeGeneration.current += 1;
+    const close = realtimeClose.current;
+    realtimeClose.current = undefined;
+    void close?.();
+    // Local logout must not wait for a network round trip. Remote revocation
+    // is best-effort and the API client has a short timeout.
+    await clearSession().catch((error) => console.warn("Prior could not clear the saved session:", error));
+    await localStore.resetSyncRevision().catch((error) => console.warn("Prior could not reset sync state:", error));
     setUser(null);
     setAuthOpen(false);
+    if (token) void api.logout(token).catch(() => undefined);
   }
 
   const visibleTasks = useMemo(
@@ -254,9 +296,11 @@ export function App() {
   const grouped = useMemo(() => Object.fromEntries(QUADRANTS.map((quadrant) => [quadrant.key, visibleTasks.filter((task) => quadrantFor(task) === quadrant.key)])), [visibleTasks]);
 
   function handleAuthenticated(nextUser: SessionUser) {
+    sessionGeneration.current += 1;
     setUser(nextUser);
     setAuthError("");
     setAuthOpen(false);
+    void attachRealtime().catch(() => undefined);
     void syncNow();
   }
 

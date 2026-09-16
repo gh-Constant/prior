@@ -218,6 +218,31 @@ function contentFromMessage(value: unknown): string {
   }).join("");
 }
 
+class OpenRouterRequestError extends Error {
+  constructor(public readonly kind: "network" | "timeout", message: string) {
+    super(message);
+    this.name = "OpenRouterRequestError";
+  }
+}
+
+function isNetworkFailure(error: unknown): boolean {
+  return error instanceof TypeError || (error instanceof Error && /load failed|failed to fetch|networkerror|network request failed/i.test(error.message));
+}
+
+async function requestOpenRouter(init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch("https://openrouter.ai/api/v1/chat/completions", { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new OpenRouterRequestError("timeout", "OpenRouter took too long to respond. Check your connection and try again.");
+    if (isNetworkFailure(error)) throw new OpenRouterRequestError("network", "Prior could not reach OpenRouter. Check your connection and try again.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function habitRecurrence(item: RawAction): { interval: number; unit: HabitUnit } {
   const recurrence = item.recurrence ?? item.repeat ?? item.schedule;
   const recurrenceObject = recurrence && typeof recurrence === "object" ? recurrence as RawAction : undefined;
@@ -380,7 +405,7 @@ export async function askAgent(
 
   // Attempt with structured response_format first
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await requestOpenRouter({
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -389,7 +414,7 @@ export async function askAgent(
           type: "json_object",
         },
       }),
-    });
+    }, 45_000);
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
@@ -411,7 +436,7 @@ export async function askAgent(
       actualModel: (data.model as string | undefined) || String(payload.model),
     };
   } catch (err: unknown) {
-    if (err instanceof Error && err.message.includes("OpenRouter error")) {
+    if (err instanceof OpenRouterRequestError || (err instanceof Error && err.message.includes("OpenRouter error"))) {
       throw err;
     }
     // Try plain request without response_format
@@ -423,11 +448,11 @@ async function sendPlainRequest(
   payload: Record<string, unknown>,
   headers: Record<string, string>,
 ): Promise<{ reply: string; tasks: ProposedTask[]; habits: ProposedHabit[]; actualModel?: string }> {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await requestOpenRouter({
     method: "POST",
     headers,
     body: JSON.stringify(payload),
-  });
+  }, 45_000);
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");

@@ -18,8 +18,17 @@ export function getUser(): SessionUser | null {
 }
 
 export async function clearSession(): Promise<void> {
-  await removeSecret("session_token");
-  localStorage.removeItem(USER_KEY);
+  let failure: unknown;
+  try {
+    await removeSecret("session_token");
+  } catch (error) {
+    failure = error;
+  } finally {
+    // The UI must leave the authenticated state even if the keychain is
+    // temporarily unavailable. The caller can report the storage failure.
+    localStorage.removeItem(USER_KEY);
+  }
+  if (failure) throw failure;
 }
 
 async function saveSession(result: { token: string; user: SessionUser }): Promise<SessionUser> {
