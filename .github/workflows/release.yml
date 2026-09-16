@@ -78,12 +78,13 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "$APPLE_CERTIFICATE" ]; then
-            echo "APPLE_CERTIFICATE is required for macOS releases" >&2
-            exit 1
+          if [ -z "$APPLE_CERTIFICATE" ] && [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            echo "::warning::Apple signing secrets are not configured; using an ad-hoc macOS signature."
+            printf 'APPLE_SIGNING_IDENTITY=-\n' >> "$GITHUB_ENV"
+            exit 0
           fi
-          if [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
-            echo "APPLE_CERTIFICATE_PASSWORD is required for macOS releases" >&2
+          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            echo "APPLE_CERTIFICATE and APPLE_CERTIFICATE_PASSWORD must be configured together" >&2
             exit 1
           fi
 
