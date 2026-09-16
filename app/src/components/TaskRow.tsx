@@ -4,7 +4,7 @@ import type { CompletionExitDeadlines } from "../lib/completionExit";
 import { CompletionBurst } from "./CompletionBurst";
 import { Icon } from "./Icon";
 
-type Props = { task: Task; onChange: (task: Task) => Promise<void>; onDelete: (task: Task) => Promise<void>; onEdit?: (task: Task) => void };
+type Props = { task: Task; onChange: (task: Task) => Promise<void>; onDelete: (task: Task) => Promise<void>; onEdit?: (task: Task) => void; hideFlags?: boolean };
 const CompletionExitContext = createContext<CompletionExitDeadlines>({});
 
 function formatDueDate(value: string): string {
@@ -15,7 +15,7 @@ export function CompletionExitProvider({ deadlines, children }: { deadlines: Com
   return <CompletionExitContext.Provider value={deadlines}>{children}</CompletionExitContext.Provider>;
 }
 
-export function TaskRow({ task, onChange, onDelete, onEdit }: Props) {
+export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false }: Props) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [completionBurstKey, setCompletionBurstKey] = useState(0);
@@ -82,8 +82,10 @@ export function TaskRow({ task, onChange, onDelete, onEdit }: Props) {
         </div>
       </div>
       <div className="task-actions">
-        <button className={`task-action flag-toggle ${task.important ? "active important" : ""}`} aria-label={`${task.important ? "Remove" : "Mark"} important`} aria-pressed={task.important} onClick={() => void onChange({ ...task, important: !task.important })}><Icon name="star" /></button>
-        <button className={`task-action flag-toggle ${task.urgent ? "active urgent" : ""}`} aria-label={`${task.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={task.urgent} onClick={() => void onChange({ ...task, urgent: !task.urgent })}><Icon name="bolt" /></button>
+        {!hideFlags && <>
+          <button className={`task-action flag-toggle ${task.important ? "active important" : ""}`} aria-label={`${task.important ? "Remove" : "Mark"} important`} aria-pressed={task.important} onClick={() => void onChange({ ...task, important: !task.important })}><Icon name="star" /></button>
+          <button className={`task-action flag-toggle ${task.urgent ? "active urgent" : ""}`} aria-label={`${task.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={task.urgent} onClick={() => void onChange({ ...task, urgent: !task.urgent })}><Icon name="bolt" /></button>
+        </>}
         <button className="task-action danger" aria-label={`Delete ${task.title}`} onClick={() => void onDelete(task)}><Icon name="trash" /></button>
       </div>
     </div>

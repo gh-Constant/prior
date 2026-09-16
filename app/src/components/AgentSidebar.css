@@ -519,8 +519,8 @@
 .add-single-btn:hover:not(:disabled) { background: #fff1eb; }
 .proposed-reasoning { color: #917f76; }
 .proposed-toggles { display: flex; gap: 4px; }
-.proposed-toggles .task-action { width: 44px; height: 44px; opacity: 1; border: 1px solid #e4e0d9; background: #fffdfa; }
-.proposed-toggles .task-action svg { width: 17px; height: 17px; }
+.proposed-toggles .task-action { width: 34px; height: 34px; opacity: 1; border: 1px solid #e4e0d9; background: #fffdfa; }
+.proposed-toggles .task-action svg { width: 14px; height: 14px; }
 .proposed-toggles .task-action.active.important { border-color: #d9c39d; background: #f6f1e6; color: #876834; }
 .proposed-toggles .task-action.active.urgent { border-color: #f3b09c; background: #fff0e9; color: #b64a32; }
 .proposed-toggles .task-action:disabled { opacity: .68; }

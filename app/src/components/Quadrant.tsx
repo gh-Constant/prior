@@ -10,7 +10,7 @@ export function Quadrant({ id, label, tasks, onChange, onDelete, onEdit }: Props
         <div><span className="quadrant-dot" aria-hidden="true" /><h2 id={`${id}-heading`}>{label}</h2></div>
       </header>
       <div className="task-list">
-        {tasks.map((task) => <TaskRow key={task.id} task={task} onChange={onChange} onDelete={onDelete} onEdit={onEdit} />)}
+        {tasks.map((task) => <TaskRow key={task.id} task={task} onChange={onChange} onDelete={onDelete} onEdit={onEdit} hideFlags />)}
       </div>
     </section>
   );
