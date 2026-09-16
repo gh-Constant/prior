@@ -69,6 +69,53 @@ jobs:
       - name: Install macOS universal target
         if: runner.os == 'macOS'
         run: rustup target add x86_64-apple-darwin
+      # macOS 26 no longer reliably infers PKCS#12 when Tauri imports APPLE_CERTIFICATE.
+      # Import it explicitly, then let Tauri use the already-configured keychain.
+      - name: Prepare macOS signing keychain
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "APPLE_CERTIFICATE is required for macOS releases" >&2
+            exit 1
+          fi
+          if [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            echo "APPLE_CERTIFICATE_PASSWORD is required for macOS releases" >&2
+            exit 1
+          fi
+
+          certificate_path="$RUNNER_TEMP/prior-signing.p12"
+          keychain_path="$RUNNER_TEMP/prior-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -t 21600 -u "$keychain_path"
+          security import "$certificate_path" \
+            -k "$keychain_path" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
+          security default-keychain -s "$keychain_path"
+
+          signing_identity="$(security find-identity -v -p codesigning "$keychain_path" | sed -n 's/.*"\(.*\)".*/\1/p' | head -n 1)"
+          if [ -z "$signing_identity" ]; then
+            echo "No valid code-signing identity was found in APPLE_CERTIFICATE" >&2
+            security find-identity -v -p codesigning "$keychain_path" >&2 || true
+            exit 1
+          fi
+          printf 'APPLE_SIGNING_IDENTITY=%s\n' "$signing_identity" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile=false
         working-directory: app
       - uses: tauri-apps/tauri-action@v0.6.2
@@ -76,9 +123,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
