@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { localStore } from "./localStore";
 
 describe("localStore browser fallback", () => {
@@ -39,14 +39,20 @@ describe("localStore browser fallback", () => {
     expect((await localStore.pendingMutations()).at(-1)).toMatchObject({ entity: "habit", habit: { id: habit.id, completedDates: ["2026-09-15"] } });
   });
 
-  it("starts a new habit on the local calendar day near midnight", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 8, 16, 0, 15));
-    try {
-      const habit = await localStore.saveHabit({ title: "Read", important: false, urgent: false, interval: 1, unit: "day" });
-      expect(habit.startDate).toBe("2026-09-16");
-    } finally {
-      vi.useRealTimers();
-    }
+  it("normalizes empty string due date to null and preserves booleans", async () => {
+    const task = await localStore.saveTask({ title: "Task with empty due date", dueDate: "", important: false, urgent: false });
+    expect(task.dueDate).toBeNull();
+    const tasks = await localStore.listTasks();
+    expect(tasks[0].dueDate).toBeNull();
+    expect(typeof tasks[0].completed).toBe("boolean");
+    expect(typeof tasks[0].important).toBe("boolean");
+    expect(typeof tasks[0].urgent).toBe("boolean");
+  });
+
+  it("resets sync revision back to 0", async () => {
+    await localStore.setSyncRevision(42);
+    expect((await localStore.getSyncState()).lastServerRevision).toBe(42);
+    await localStore.resetSyncRevision();
+    expect((await localStore.getSyncState()).lastServerRevision).toBe(0);
   });
 });

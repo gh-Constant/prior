@@ -95,27 +95,29 @@ export function App() {
     const token = await getToken();
     if (!token || !navigator.onLine) return;
     try {
+      const state = await localStore.getSyncState();
+      let highestPushedRevision = state.lastServerRevision;
       const pending = await localStore.pendingMutations();
       if (pending.length) {
         const pushed = await api.push(pending, token);
         await localStore.removeMutations(pushed.applied.map((item) => item.mutationId));
-        const current = await localStore.getSyncState();
-        const highest = pushed.applied.reduce((value, item) => Math.max(value, item.revision), current.lastServerRevision);
-        await localStore.setSyncRevision(highest);
+        highestPushedRevision = pushed.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
       }
-      const state = await localStore.getSyncState();
       const pulled = await api.pull(state.lastServerRevision, token);
       await localStore.applyRemoteTasks(pulled.tasks);
       await localStore.applyRemoteHabits(pulled.habits ?? []);
-      await localStore.setSyncRevision(pulled.revision);
+      const finalRevision = Math.max(pulled.revision, highestPushedRevision);
+      await localStore.setSyncRevision(finalRevision);
       await refresh();
-    } catch {
+    } catch (error) {
+      console.warn("Prior sync failed:", error);
       // Local data remains authoritative until the next successful sync.
     }
   }, [refresh]);
 
   useEffect(() => {
     void refresh();
+    void syncNow();
     let closeRealtime: (() => Promise<void>) | undefined;
     const attachRealtime = async () => {
       const token = await getToken();
@@ -239,6 +241,7 @@ export function App() {
     const token = await getToken();
     if (token) await api.logout(token).catch(() => undefined);
     await clearSession();
+    await localStore.resetSyncRevision();
     setUser(null);
     setAuthOpen(false);
   }

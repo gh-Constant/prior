@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
@@ -108,10 +109,185 @@ func (s *Server) googleCallback(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "authentication failed", http.StatusBadRequest)
 			return
 		}
-		http.Redirect(w, r, returnTo+"?error=auth_failed", http.StatusFound)
+		target := returnTo + "?error=auth_failed"
+		if isCustomScheme(target) {
+			renderAuthCallbackPage(w, false, target)
+			return
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+		return
+	}
+	if isCustomScheme(returnTo) {
+		renderAuthCallbackPage(w, true, returnTo)
 		return
 	}
 	http.Redirect(w, r, returnTo, http.StatusFound)
+}
+
+func isCustomScheme(candidate string) bool {
+	return !strings.HasPrefix(candidate, "http://") && !strings.HasPrefix(candidate, "https://")
+}
+
+var authCallbackTmpl = template.Must(template.New("authCallback").Parse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{if .Success}}Signed in to Prior{{else}}Sign-in failed - Prior{{end}}</title>
+  <style>
+    :root {
+      --bg: #0c0d0e;
+      --card-bg: #16181a;
+      --border: #26292d;
+      --text: #f0f1f2;
+      --text-muted: #8b9098;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #10b981;
+      --error: #ef4444;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f8fafc;
+        --card-bg: #ffffff;
+        --border: #e2e8f0;
+        --text: #0f172a;
+        --text-muted: #64748b;
+        --primary: #2563eb;
+        --primary-hover: #1d4ed8;
+        --success: #059669;
+        --error: #dc2626;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem 2rem;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    }
+    .icon-wrapper {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.25rem;
+    }
+    .icon-success {
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--success);
+    }
+    .icon-error {
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--error);
+    }
+    .icon-wrapper svg {
+      width: 28px;
+      height: 28px;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.01em;
+    }
+    p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin-bottom: 1.75rem;
+    }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      background: var(--primary);
+      color: #ffffff;
+      font-weight: 500;
+      font-size: 0.95rem;
+      text-decoration: none;
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background: var(--primary-hover);
+    }
+    .note {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    {{if .Success}}
+      <div class="icon-wrapper icon-success">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+      <h1>You're all set!</h1>
+      <p>You can return to the Prior app. You can safely close this browser window.</p>
+      {{if .TargetURL}}
+        <a href="{{.TargetURL}}" class="btn">Open Prior</a>
+        <p class="note">If the app doesn't open automatically, click the button above.</p>
+      {{end}}
+    {{else}}
+      <div class="icon-wrapper icon-error">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </div>
+      <h1>Authentication Failed</h1>
+      <p>Google sign-in could not be completed. You can return to Prior and try again.</p>
+      {{if .TargetURL}}
+        <a href="{{.TargetURL}}" class="btn">Return to Prior</a>
+      {{end}}
+    {{end}}
+  </div>
+  {{if and .Success .TargetURL}}
+  <script>
+    (function() {
+      var target = {{.TargetURL}};
+      try {
+        window.location.replace(target);
+      } catch (e) {
+        window.location.href = target;
+      }
+    })();
+  </script>
+  {{end}}
+</body>
+</html>`))
+
+func renderAuthCallbackPage(w http.ResponseWriter, success bool, targetURL string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_ = authCallbackTmpl.Execute(w, struct {
+		Success   bool
+		TargetURL string
+	}{
+		Success:   success,
+		TargetURL: targetURL,
+	})
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {

@@ -52,7 +52,7 @@ function normalizePriority(value: unknown): TaskPriority {
 }
 
 function normalizeDueDate(value: unknown): string | null {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? value.trim() : null;
 }
 
 function normalizeTask(task: Task): Task {
@@ -61,6 +61,20 @@ function normalizeTask(task: Task): Task {
     description: typeof task.description === "string" ? task.description : "",
     dueDate: normalizeDueDate(task.dueDate),
     priority: normalizePriority(task.priority),
+    completed: Boolean(task.completed),
+    important: Boolean(task.important),
+    urgent: Boolean(task.urgent),
+  };
+}
+
+function normalizeHabit(habit: Habit): Habit {
+  return {
+    ...habit,
+    important: Boolean(habit.important),
+    urgent: Boolean(habit.urgent),
+    interval: Number.isFinite(habit.interval) && habit.interval > 0 ? Math.floor(habit.interval) : 1,
+    unit: habit.unit ?? "day",
+    completedDates: Array.isArray(habit.completedDates) ? [...habit.completedDates] : [],
   };
 }
 
@@ -68,9 +82,10 @@ export const localStore = {
   async listTasks(): Promise<Task[]> {
     const db = await getSqlDatabase();
     if (db) {
-      return db.select<Task>(
+      const rows = await db.select<Task>(
         "SELECT id, title, description, due_date as dueDate, priority, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
       );
+      return rows.map(normalizeTask);
     }
     return read<Task[]>(TASKS_KEY, []).filter((task) => !task.deletedAt).map(normalizeTask);
   },
@@ -79,20 +94,20 @@ export const localStore = {
     const timestamp = now();
     const previousRaw = input.id ? read<Task[]>(TASKS_KEY, []).find((task) => task.id === input.id) : undefined;
     const previous = previousRaw ? normalizeTask(previousRaw) : undefined;
-    const task: Task = {
+    const task: Task = normalizeTask({
       id: input.id ?? uuid(),
       title: input.title.trim(),
       description: input.description?.trim() ?? previous?.description ?? "",
-      dueDate: input.dueDate ?? previous?.dueDate ?? null,
+      dueDate: normalizeDueDate(input.dueDate ?? previous?.dueDate),
       priority: normalizePriority(input.priority ?? previous?.priority),
-      completed: input.completed ?? previous?.completed ?? false,
-      important: input.important,
-      urgent: input.urgent,
+      completed: Boolean(input.completed ?? previous?.completed ?? false),
+      important: Boolean(input.important),
+      urgent: Boolean(input.urgent),
       createdAt: input.createdAt ?? previous?.createdAt ?? timestamp,
       updatedAt: input.updatedAt ?? timestamp,
       deletedAt: input.deletedAt ?? null,
       serverRevision: input.serverRevision ?? previous?.serverRevision,
-    };
+    });
     const db = await getSqlDatabase();
     if (db) {
       await db.execute(
@@ -130,20 +145,29 @@ export const localStore = {
       const rows = await db.select<Omit<Habit, "startDate" | "completedDates"> & { start_date: string; completed_dates: string }>(
         "SELECT id, title, important, urgent, interval, unit, start_date, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE deleted_at IS NULL ORDER BY updated_at DESC",
       );
-      return rows.map((row) => ({ ...row, startDate: row.start_date, completedDates: JSON.parse(row.completed_dates || "[]") as string[] }));
+      return rows.map((row) => {
+        let completedDates: string[] = [];
+        try {
+          const parsed = JSON.parse(row.completed_dates || "[]");
+          if (Array.isArray(parsed)) completedDates = parsed;
+        } catch {
+          completedDates = [];
+        }
+        return normalizeHabit({ ...row, startDate: row.start_date, completedDates });
+      });
     }
-    return read<Habit[]>(HABITS_KEY, []).filter((habit) => !habit.deletedAt);
+    return read<Habit[]>(HABITS_KEY, []).filter((habit) => !habit.deletedAt).map(normalizeHabit);
   },
 
   async saveHabit(input: Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> & Partial<Pick<Habit, "id" | "startDate" | "completedDates" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>): Promise<Habit> {
     const timestamp = now();
     const existing = input.id ? read<Habit[]>(HABITS_KEY, []).find((habit) => habit.id === input.id) : undefined;
     const interval = Number.isFinite(input.interval) && input.interval > 0 ? Math.floor(input.interval) : 1;
-    const habit: Habit = {
+    const habit: Habit = normalizeHabit({
       id: input.id ?? uuid(),
       title: input.title.trim(),
-      important: input.important,
-      urgent: input.urgent,
+      important: Boolean(input.important),
+      urgent: Boolean(input.urgent),
       interval,
       unit: input.unit as HabitUnit,
       startDate: input.startDate ?? existing?.startDate ?? dateKey(new Date(timestamp)),
@@ -152,7 +176,7 @@ export const localStore = {
       updatedAt: input.updatedAt ?? timestamp,
       deletedAt: input.deletedAt ?? null,
       serverRevision: input.serverRevision ?? existing?.serverRevision,
-    };
+    });
     const db = await getSqlDatabase();
     if (db) {
       await db.execute(
@@ -238,9 +262,10 @@ export const localStore = {
 
   async applyRemoteTasks(tasks: Task[]): Promise<void> {
     const pendingTaskIds = new Set((await this.pendingMutations()).filter((mutation) => mutation.entity !== "habit").map((mutation) => mutation.task.id));
+    const normalizedTasks = tasks.map(normalizeTask);
     const db = await getSqlDatabase();
     if (db) {
-      for (const task of tasks) {
+      for (const task of normalizedTasks) {
         if (pendingTaskIds.has(task.id)) continue;
         const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM tasks WHERE id = ?", [task.id]);
         const currentRevision = current[0]?.server_revision ?? 0;
@@ -254,36 +279,47 @@ export const localStore = {
     }
     const current = read<Task[]>(TASKS_KEY, []);
     const merged = new Map(current.map((task) => [task.id, task]));
-    for (const task of tasks) {
+    for (const task of normalizedTasks) {
       if (pendingTaskIds.has(task.id)) continue;
       const local = merged.get(task.id);
-      if (!local || (task.serverRevision ?? 0) >= (local.serverRevision ?? 0)) merged.set(task.id, normalizeTask(task));
+      if (!local || (task.serverRevision ?? 0) >= (local.serverRevision ?? 0)) merged.set(task.id, task);
     }
     write(TASKS_KEY, [...merged.values()]);
   },
 
   async applyRemoteHabits(habits: Habit[]): Promise<void> {
     const pendingHabitIds = new Set((await this.pendingMutations()).filter((mutation) => mutation.entity === "habit").map((mutation) => mutation.habit.id));
+    const normalizedHabits = habits.map(normalizeHabit);
     const db = await getSqlDatabase();
     if (db) {
-      for (const habit of habits) {
+      for (const habit of normalizedHabits) {
         if (pendingHabitIds.has(habit.id)) continue;
         const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM habits WHERE id = ?", [habit.id]);
         if ((habit.serverRevision ?? 0) < (current[0]?.server_revision ?? 0)) continue;
         await db.execute(
           "INSERT INTO habits (id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
-          [habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, JSON.stringify(habit.completedDates), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
+          [habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
         );
       }
       return;
     }
     const current = read<Habit[]>(HABITS_KEY, []);
     const merged = new Map(current.map((habit) => [habit.id, habit]));
-    for (const habit of habits) {
+    for (const habit of normalizedHabits) {
       if (pendingHabitIds.has(habit.id)) continue;
       const local = merged.get(habit.id);
       if (!local || (habit.serverRevision ?? 0) >= (local.serverRevision ?? 0)) merged.set(habit.id, habit);
     }
     write(HABITS_KEY, [...merged.values()]);
+  },
+
+  async resetSyncRevision(): Promise<void> {
+    const db = await getSqlDatabase();
+    if (db) {
+      await db.execute("UPDATE sync_state SET last_server_revision = 0 WHERE id = 1");
+      return;
+    }
+    const current = await this.getSyncState();
+    write(SYNC_KEY, { ...current, lastServerRevision: 0 });
   },
 };

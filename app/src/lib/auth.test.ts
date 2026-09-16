@@ -21,7 +21,16 @@ describe("OAuth return", () => {
   beforeEach(() => {
     dispose = undefined;
     vi.resetAllMocks();
-    localStorage.clear();
+    const storageMap = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => storageMap.get(key) ?? null,
+      setItem: (key: string, value: string) => { storageMap.set(key, value); },
+      removeItem: (key: string) => { storageMap.delete(key); },
+      clear: () => storageMap.clear(),
+      key: (index: number) => [...storageMap.keys()][index] ?? null,
+      get length() { return storageMap.size; },
+    } as Storage;
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
     window.history.replaceState({}, "", "/");
     vi.stubGlobal("__TAURI_INTERNALS__", {});
     vi.mocked(getCurrent).mockResolvedValue(null);

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -41,4 +42,48 @@ func TestRejectUntrustedOrigins(t *testing.T) {
 			t.Errorf("unexpectedly allowed origin %q", origin)
 		}
 	}
+}
+
+func TestCustomScheme(t *testing.T) {
+	if !isCustomScheme("prior://auth/callback?code=123") {
+		t.Error("expected prior:// scheme to be detected as custom scheme")
+	}
+	if isCustomScheme("https://app.prior.constantsuchet.fr/auth/callback") {
+		t.Error("expected https:// not to be custom scheme")
+	}
+	if isCustomScheme("http://localhost:1420/auth/callback") {
+		t.Error("expected http:// not to be custom scheme")
+	}
+}
+
+func TestRenderAuthCallbackPage(t *testing.T) {
+	t.Run("success page", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		renderAuthCallbackPage(w, true, "prior://auth/callback?code=test-code")
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", w.Code)
+		}
+		if contentType := w.Header().Get("Content-Type"); !strings.Contains(contentType, "text/html") {
+			t.Fatalf("expected text/html content type, got %s", contentType)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "Signed in to Prior") || !strings.Contains(body, "Open Prior") {
+			t.Fatalf("body missing success messages: %s", body)
+		}
+		if !strings.Contains(body, "prior://auth/callback?code=test-code") {
+			t.Fatalf("body missing target url: %s", body)
+		}
+	})
+
+	t.Run("error page", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		renderAuthCallbackPage(w, false, "prior://auth/callback?error=auth_failed")
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", w.Code)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "Authentication Failed") {
+			t.Fatalf("body missing error message: %s", body)
+		}
+	})
 }

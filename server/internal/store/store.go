@@ -428,6 +428,9 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 			if updatedAt.IsZero() {
 				updatedAt = time.Now().UTC()
 			}
+			if mutation.Habit.CompletedDates == nil {
+				mutation.Habit.CompletedDates = []string{}
+			}
 			completedJSON, err := json.Marshal(mutation.Habit.CompletedDates)
 			if err != nil {
 				return nil, err
@@ -471,8 +474,13 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 			return nil, fmt.Errorf("task description is too long")
 		}
 		if mutation.Task.DueDate != nil {
-			if _, err := time.Parse("2006-01-02", *mutation.Task.DueDate); err != nil {
+			trimmed := strings.TrimSpace(*mutation.Task.DueDate)
+			if trimmed == "" {
+				mutation.Task.DueDate = nil
+			} else if _, err := time.Parse("2006-01-02", trimmed); err != nil {
 				return nil, errors.New("invalid task due date")
+			} else {
+				mutation.Task.DueDate = &trimmed
 			}
 		}
 		if mutation.Task.Priority == 0 {
@@ -526,7 +534,7 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 
 func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]tasks.Task, []tasks.Habit, int64, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT ON (task_id) task_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		SELECT DISTINCT ON (task_id) task_id::text, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision
 		FROM task_changes WHERE user_id = $1 AND revision > $2 ORDER BY task_id, revision DESC`, userID, since)
 	if err != nil {
 		return nil, nil, since, err
@@ -550,7 +558,7 @@ func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]task
 	}
 	rows.Close()
 	habitRows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT ON (habit_id) habit_id, title, important, urgent, interval, unit, start_date::text, completed_dates, created_at, updated_at, deleted_at, revision
+		SELECT DISTINCT ON (habit_id) habit_id::text, title, important, urgent, interval, unit, start_date::text, completed_dates, created_at, updated_at, deleted_at, revision
 		FROM habit_changes WHERE user_id = $1 AND revision > $2 ORDER BY habit_id, revision DESC`, userID, since)
 	if err != nil {
 		return nil, nil, since, err
@@ -566,6 +574,9 @@ func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]task
 		if err := json.Unmarshal(completedJSON, &habit.CompletedDates); err != nil {
 			habitRows.Close()
 			return nil, nil, since, err
+		}
+		if habit.CompletedDates == nil {
+			habit.CompletedDates = []string{}
 		}
 		if habit.ServerRevision > latest {
 			latest = habit.ServerRevision
