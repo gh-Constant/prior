@@ -130,61 +130,60 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
     setError(null);
     setStatus("preparing");
 
+    const provider = createSpeechRecognitionProvider({
+      language: languageRef.current,
+      mode: "online",
+      onStart: () => {
+        if (isCurrent(id)) setStatus("listening");
+      },
+      onSnapshot: (snapshot) => {
+        const current = sessionRef.current;
+        if (!current || current.id !== id) return;
+        current.snapshot = snapshot;
+        setFinalText(snapshot.finalText);
+        setInterimText(snapshot.interimText);
+      },
+      onError: (message) => {
+        if (isCurrent(id)) finishWithError(id, message);
+      },
+      onEnd: () => {
+        if (isCurrent(id)) completeSession(id);
+      },
+    });
+
+    if (!provider) {
+      void requestMicrophoneAccess()
+        .catch((caught: unknown) => {
+          if (isCurrent(id)) finishWithError(id, mapSpeechRecognitionError(caught));
+        })
+        .finally(() => {
+          if (isCurrent(id)) finishWithError(id, "Dictation is unavailable in this browser or app. You can still type or use your system keyboard dictation.");
+        });
+      return false;
+    }
+
+    session.provider = provider;
+    session.timer = window.setTimeout(() => {
+      if (isCurrent(id)) completeSession(id, "Dictation reached its two-minute safety limit. Review the inserted text before sending.");
+    }, MAX_SESSION_MS);
+
     try {
-      await requestMicrophoneAccess();
-      if (!isCurrent(id)) return false;
-      if (!isSpeechRecognitionAvailable()) {
-        finishWithError(id, "Dictation is unavailable in this browser or app. You can still type or use your system keyboard dictation.");
-        return false;
-      }
-      const capabilities = await getSpeechRecognitionCapabilities(languageRef.current);
-      if (!isCurrent(id)) return false;
-      setMode(capabilities.mode);
-      setNotice(capabilities.notice);
-      if (session.stopRequested) {
-        finishWithError(id, "Dictation stopped before microphone access completed.");
-        return false;
-      }
-      if (!capabilities.available) {
-        finishWithError(id, capabilities.notice ?? "Dictation is unavailable in this browser or app.");
-        return false;
-      }
-
-      const provider = createSpeechRecognitionProvider({
-        language: languageRef.current,
-        mode: capabilities.mode,
-        onStart: () => {
-          if (isCurrent(id)) setStatus("listening");
-        },
-        onSnapshot: (snapshot) => {
-          const current = sessionRef.current;
-          if (!current || current.id !== id) return;
-          current.snapshot = snapshot;
-          setFinalText(snapshot.finalText);
-          setInterimText(snapshot.interimText);
-        },
-        onError: (message) => {
-          if (isCurrent(id)) finishWithError(id, message);
-        },
-        onEnd: () => {
-          if (isCurrent(id)) completeSession(id);
-        },
-      });
-
-      if (!provider) {
-        finishWithError(id, "Dictation is unavailable in this browser or app. You can still type or use your system keyboard dictation.");
-        return false;
-      }
-      session.provider = provider;
-      session.timer = window.setTimeout(() => {
-        if (isCurrent(id)) completeSession(id, "Dictation reached its two-minute safety limit. Review the inserted text before sending.");
-      }, MAX_SESSION_MS);
+      // Keep this call in the original click task so browser/WebView permission and
+      // speech services do not reject the request after an awaited preflight.
       provider.start();
-      return true;
     } catch (caught: unknown) {
       if (isCurrent(id)) finishWithError(id, mapSpeechRecognitionError(caught));
       return false;
     }
+
+    void getSpeechRecognitionCapabilities(languageRef.current).then((capabilities) => {
+      if (!isCurrent(id)) return;
+      setMode(capabilities.mode);
+      setNotice(capabilities.notice);
+    }).catch(() => {
+      // Capability detection is optional; recognition is already running.
+    });
+    return true;
   }
 
   function stop(): void {

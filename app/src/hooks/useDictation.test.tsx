@@ -59,7 +59,7 @@ describe("useDictation", () => {
       container?.querySelector<HTMLButtonElement>("[data-start]")?.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    const recognition = HookRecognition.instances.at(-1);
+    const recognition = HookRecognition.instances.find((candidate) => candidate.start.mock.calls.length > 0);
     expect(recognition).toBeDefined();
     expect(recognition?.start).toHaveBeenCalledTimes(1);
     recognition?.onresult?.({ results: { length: 1, 0: { isFinal: false, length: 1, 0: { transcript: "there" } } } });
