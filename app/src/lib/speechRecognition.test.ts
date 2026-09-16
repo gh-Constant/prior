@@ -3,6 +3,7 @@ import {
   createSpeechRecognitionProvider,
   getSpeechRecognitionCapabilities,
   mapSpeechRecognitionError,
+  requestMicrophoneAccess,
   type SpeechRecognitionEventLike,
   type SpeechRecognitionLike,
 } from "./speechRecognition";
@@ -80,5 +81,16 @@ describe("browser speech recognition adapter", () => {
   it("sanitizes browser error codes", () => {
     expect(mapSpeechRecognitionError({ error: "not-allowed" })).toContain("Microphone access was denied");
     expect(mapSpeechRecognitionError({ error: "network", message: "secret transcript" })).not.toContain("secret transcript");
+  });
+
+  it("requests microphone access and immediately releases the stream", async () => {
+    const stop = vi.fn();
+    const getUserMedia = vi.fn(async () => ({ getTracks: () => [{ stop }] }));
+    const scope = { navigator: { mediaDevices: { getUserMedia } } };
+
+    await requestMicrophoneAccess(scope);
+
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(stop).toHaveBeenCalledOnce();
   });
 });

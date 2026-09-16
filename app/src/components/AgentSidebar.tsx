@@ -8,7 +8,7 @@ import { quadrantFor } from "../lib/priority";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
-import { DictationControls } from "./DictationControls";
+import { DictationControls, DictationPreview } from "./DictationControls";
 import { useDictation } from "../hooks/useDictation";
 
 type Props = {
@@ -56,7 +56,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingIds, setAddingIds] = useState<Record<string, boolean>>({});
-  const [dictationLanguage, setDictationLanguage] = useState(() => typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US");
+  const [dictationLanguage] = useState(() => typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -883,19 +883,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             placeholder="Plan something…"
             rows={2}
           />
-          <DictationControls
-            status={dictation.status}
-            language={dictationLanguage}
-            onLanguageChange={setDictationLanguage}
-            onStart={startDictation}
-            onStop={dictation.stop}
-            onCancel={cancelDictation}
-            finalText={dictation.finalText}
-            interimText={dictation.interimText}
-            notice={dictation.notice}
-            error={dictation.error}
-            warning={dictation.warning}
-          />
+          <DictationPreview finalText={dictation.finalText} interimText={dictation.interimText} warning={dictation.warning} />
           <div className="agent-input-actions">
             <div className="agent-input-tools">
               <button
@@ -916,6 +904,12 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                 </button>
               )}
             </div>
+            <DictationControls
+              status={dictation.status}
+              onStart={startDictation}
+              onStop={dictation.stop}
+              onCancel={cancelDictation}
+            />
             <button
               type="submit"
               className="primary-button agent-send-btn"

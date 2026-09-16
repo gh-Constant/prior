@@ -18,6 +18,15 @@ export type SpeechRecognitionEventLike = Event & {
 export type SpeechRecognitionErrorEventLike = Event & {
   error?: string;
   message?: string;
+  name?: string;
+};
+
+type MediaStreamLike = {
+  getTracks?: () => Array<{ stop: () => void }>;
+};
+
+type MediaDevicesLike = {
+  getUserMedia?: (constraints: { audio: boolean }) => Promise<MediaStreamLike>;
 };
 
 export type SpeechRecognitionLike = {
@@ -46,6 +55,7 @@ export type SpeechRecognitionWindow = {
   webkitSpeechRecognition?: SpeechRecognitionConstructor;
   isSecureContext?: boolean;
   location?: { hostname?: string };
+  navigator?: { mediaDevices?: MediaDevicesLike };
 };
 
 export type SpeechRecognitionMode = "local" | "online";
@@ -95,6 +105,24 @@ export function isSpeechRecognitionAvailable(scope: SpeechRecognitionWindow | nu
   return getSpeechRecognitionConstructor(scope) !== null;
 }
 
+/**
+ * Ask the host WebView/browser for microphone access from an explicit user action.
+ * The stream is never consumed: it is closed as soon as permission is granted.
+ */
+export async function requestMicrophoneAccess(scope: SpeechRecognitionWindow | null = getGlobalWindow()): Promise<void> {
+  const mediaDevices = scope?.navigator?.mediaDevices;
+  if (!mediaDevices?.getUserMedia) return;
+
+  let stream: MediaStreamLike | undefined;
+  try {
+    stream = await mediaDevices.getUserMedia.call(mediaDevices, { audio: true });
+  } finally {
+    for (const track of stream?.getTracks?.() ?? []) {
+      try { track.stop(); } catch { /* The host may already have closed the track. */ }
+    }
+  }
+}
+
 export async function getSpeechRecognitionCapabilities(
   language: string,
   scope: SpeechRecognitionWindow | null = getGlobalWindow(),
@@ -130,12 +158,16 @@ export async function getSpeechRecognitionCapabilities(
 }
 
 export function mapSpeechRecognitionError(error: unknown): string {
-  const code = typeof error === "string" ? error : (error as SpeechRecognitionErrorEventLike | null)?.error;
+  const speechError = error as SpeechRecognitionErrorEventLike | null;
+  const code = typeof error === "string" ? error : speechError?.error ?? speechError?.name;
   switch (code) {
     case "not-allowed":
     case "service-not-allowed":
+    case "NotAllowedError":
+    case "SecurityError":
       return "Microphone access was denied or speech recognition is blocked. Check your browser permissions.";
     case "audio-capture":
+    case "NotReadableError":
       return "No usable microphone was found. You can still type or use your system keyboard dictation.";
     case "network":
       return "The browser speech service is unavailable right now. Check your connection and try again.";

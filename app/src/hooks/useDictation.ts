@@ -5,6 +5,7 @@ import {
   getSpeechRecognitionCapabilities,
   isSpeechRecognitionAvailable,
   mapSpeechRecognitionError,
+  requestMicrophoneAccess,
   type SpeechRecognitionMode,
   type SpeechRecognitionProvider,
 } from "../lib/speechRecognition";
@@ -111,11 +112,6 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
 
   async function start(draft: string, selection: DictationSelection): Promise<boolean> {
     if (!enabled || sessionRef.current || status === "preparing" || status === "listening" || status === "stopping") return false;
-    if (!isSpeechRecognitionAvailable()) {
-      setStatus("unavailable");
-      setNotice("Dictation is unavailable in this browser or app. You can still type or use your system keyboard dictation.");
-      return false;
-    }
 
     const id = sessionNumberRef.current + 1;
     sessionNumberRef.current = id;
@@ -135,6 +131,12 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
     setStatus("preparing");
 
     try {
+      await requestMicrophoneAccess();
+      if (!isCurrent(id)) return false;
+      if (!isSpeechRecognitionAvailable()) {
+        finishWithError(id, "Dictation is unavailable in this browser or app. You can still type or use your system keyboard dictation.");
+        return false;
+      }
       const capabilities = await getSpeechRecognitionCapabilities(languageRef.current);
       if (!isCurrent(id)) return false;
       setMode(capabilities.mode);
