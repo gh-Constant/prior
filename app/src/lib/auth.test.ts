@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { api } from "./api";
-import { listenForAuth } from "./auth";
-import { setSecret } from "./secureStore";
+import { clearSession, getToken, listenForAuth } from "./auth";
+import { getSecret, setSecret } from "./secureStore";
 
 vi.mock("@tauri-apps/plugin-deep-link", () => ({ getCurrent: vi.fn(), onOpenUrl: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
@@ -10,6 +10,24 @@ vi.mock("./api", () => ({ API_URL: "https://api.prior.constantsuchet.fr", api: {
 vi.mock("./secureStore", () => ({ getSecret: vi.fn(), setSecret: vi.fn(), removeSecret: vi.fn() }));
 
 const user = { id: "user-1", email: "test@example.com", displayName: "Test" };
+
+describe("Session token reads", () => {
+  it("shares concurrent Keychain reads and caches the result", async () => {
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { removeItem: vi.fn() } });
+    let resolveToken: (token: string | null) => void = () => undefined;
+    vi.mocked(getSecret).mockReturnValue(new Promise((resolve) => { resolveToken = resolve; }));
+
+    const first = getToken();
+    const second = getToken();
+    expect(getSecret).toHaveBeenCalledOnce();
+
+    resolveToken("session-token");
+    await expect(Promise.all([first, second])).resolves.toEqual(["session-token", "session-token"]);
+    await expect(getToken()).resolves.toBe("session-token");
+    expect(getSecret).toHaveBeenCalledOnce();
+    await clearSession();
+  });
+});
 
 describe("OAuth return", () => {
   let dispose: (() => void) | undefined;

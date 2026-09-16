@@ -7,8 +7,20 @@ const USER_KEY = "prior.session.user";
 
 export type SessionUser = { id: string; email: string; displayName: string; avatarUrl?: string };
 
+let cachedToken: string | null | undefined;
+let tokenRead: Promise<string | null> | null = null;
+
 export function getToken(): Promise<string | null> {
-  return getSecret("session_token");
+  if (cachedToken !== undefined) return Promise.resolve(cachedToken);
+  if (!tokenRead) {
+    // Several startup paths need the token at once (sync, realtime, and chat
+    // history). Share one Keychain request so macOS shows at most one prompt.
+    tokenRead = getSecret("session_token").then((token) => {
+      cachedToken = token;
+      return token;
+    });
+  }
+  return tokenRead;
 }
 
 export function getUser(): SessionUser | null {
@@ -26,6 +38,8 @@ export async function clearSession(): Promise<void> {
   } finally {
     // The UI must leave the authenticated state even if the keychain is
     // temporarily unavailable. The caller can report the storage failure.
+    cachedToken = null;
+    tokenRead = null;
     localStorage.removeItem(USER_KEY);
   }
   if (failure) throw failure;
@@ -33,6 +47,8 @@ export async function clearSession(): Promise<void> {
 
 async function saveSession(result: { token: string; user: SessionUser }): Promise<SessionUser> {
   await setSecret("session_token", result.token);
+  cachedToken = result.token;
+  tokenRead = null;
   localStorage.setItem(USER_KEY, JSON.stringify(result.user));
   return result.user;
 }
