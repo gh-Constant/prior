@@ -8,7 +8,7 @@ import { quadrantFor } from "../lib/priority";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
-import { DictationControls, DictationPreview } from "./DictationControls";
+import { DictationControls, DictationPreview, DictationStatusBar } from "./DictationControls";
 import { useDictation } from "../hooks/useDictation";
 
 type Props = {
@@ -46,6 +46,11 @@ function useOverlayMode(): boolean {
   return isOverlay;
 }
 
+function shortModelName(id: string): string {
+  if (id === DEFAULT_MODEL) return "Free model";
+  return id.split("/").pop()?.replace(":free", "") || id;
+}
+
 export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, onAddHabits }: Props) {
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -55,9 +60,10 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   const [showApiKey, setShowApiKey] = useState(false);
 
   const [modelList, setModelList] = useState(POPULAR_FREE_MODELS);
-  const [customModelMode, setCustomModelMode] = useState(() => {
-    return !POPULAR_FREE_MODELS.some((m) => m.id === settings.model);
-  });
+  const [modelModalOpen, setModelModalOpen] = useState(false);
+  const [modelSearch, setModelSearch] = useState("");
+  const [listDraft, setListDraft] = useState(settings.model);
+  const [customDraft, setCustomDraft] = useState("");
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [chatHistory, setChatHistory] = useState<AgentChatSummary[]>([]);
@@ -75,6 +81,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const modelSearchRef = useRef<HTMLInputElement>(null);
   const loadingRef = useRef(false);
   const isComposingRef = useRef(false);
   const isOverlay = useOverlayMode();
@@ -168,6 +175,10 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
+        if (modelModalOpen) {
+          setModelModalOpen(false);
+          return;
+        }
         if (dictation.isActive) {
           cancelDictation();
           return;
@@ -194,7 +205,24 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [dictation, open, onClose, settingsOpen, isOverlay]);
+  }, [dictation, open, onClose, settingsOpen, isOverlay, modelModalOpen]);
+
+  useEffect(() => {
+    // Docked mode has no focus trap; still let Escape dismiss the model modal
+    // before the app-level handler can close the whole sidebar.
+    if (!open || isOverlay || !modelModalOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setModelModalOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [open, isOverlay, modelModalOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -214,6 +242,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   function handleClose(): void {
     dictation.stop();
+    setModelModalOpen(false);
     onClose();
   }
 
@@ -221,6 +250,30 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
     dictation.stop();
     setSettingsOpen((value) => !value);
   }
+
+  function openModelModal(): void {
+    dictation.stop();
+    const current = modelInput.trim() || DEFAULT_MODEL;
+    if (modelList.some((m) => m.id === current)) {
+      setListDraft(current);
+      setCustomDraft("");
+    } else {
+      setListDraft(modelList[0]?.id ?? DEFAULT_MODEL);
+      setCustomDraft(current);
+    }
+    setModelSearch("");
+    setModelModalOpen(true);
+  }
+
+  function confirmModelModal(): void {
+    const effective = customDraft.trim() || listDraft.trim() || DEFAULT_MODEL;
+    setModelInput(effective);
+    setModelModalOpen(false);
+  }
+
+  useEffect(() => {
+    if (modelModalOpen) window.setTimeout(() => modelSearchRef.current?.focus(), 60);
+  }, [modelModalOpen]);
 
   function startDictation(): void {
     const textarea = textareaRef.current;
@@ -289,6 +342,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
     setInput("");
     setError(null);
     setSettingsOpen(false);
+    setModelModalOpen(false);
   }
 
   async function handleSend(customPrompt?: string) {
@@ -827,49 +881,14 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             </small>
           </label>
 
-          <label className="settings-field">
-            <div className="model-label-row">
-              <span>Model</span>
-              <button
-                type="button"
-                className="custom-model-toggle-btn"
-                onClick={() => setCustomModelMode(!customModelMode)}
-              >
-                {customModelMode ? "Use model list" : "Custom ID"}
-              </button>
-            </div>
-
-            {customModelMode ? (
-              <div className="field">
-                <input
-                  type="text"
-                  placeholder="openrouter/free"
-                  value={modelInput}
-                  onChange={(e) => setModelInput(e.target.value)}
-                />
-              </div>
-            ) : (
-              <div className="filter-control">
-                <select
-                  value={modelList.some((m) => m.id === modelInput) ? modelInput : "custom"}
-                  onChange={(e) => {
-                    if (e.target.value === "custom") {
-                      setCustomModelMode(true);
-                    } else {
-                      setModelInput(e.target.value);
-                    }
-                  }}
-                >
-                  {modelList.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                  <option value="custom">Enter custom model ID…</option>
-                </select>
-              </div>
-            )}
-          </label>
+          <div className="settings-field">
+            <span>Model</span>
+            <button type="button" className="model-picker-trigger" onClick={openModelModal} aria-haspopup="dialog">
+              <span className="model-picker-name">{shortModelName(modelInput.trim() || DEFAULT_MODEL)}</span>
+              <span className="model-picker-id">{modelInput.trim() || DEFAULT_MODEL}</span>
+              <Icon name="chevron-down" />
+            </button>
+          </div>
 
           <div className="settings-footer">
             <button type="button" className="secondary-button" onClick={() => setSettingsOpen(false)}>
@@ -908,6 +927,12 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             rows={2}
           />
           <DictationPreview finalText={dictation.finalText} interimText={dictation.interimText} warning={dictation.warning} />
+          <DictationStatusBar
+            status={dictation.status}
+            error={dictation.error}
+            onCancel={cancelDictation}
+            onDismissError={dictation.cancel}
+          />
           <div className="agent-input-actions">
             <div className="agent-input-tools">
               <button
@@ -919,7 +944,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                 onClick={openSettings}
               >
                 <Icon name="gear" />
-                <span>{settings.model === DEFAULT_MODEL ? "Free model" : settings.model.split("/").pop()?.replace(":free", "") || settings.model}</span>
+                <span>{shortModelName(settings.model)}</span>
                 {!settings.apiKey && <span className="settings-alert-dot" />}
               </button>
               {messages.length > 0 && (
@@ -932,7 +957,6 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
               status={dictation.status}
               onStart={startDictation}
               onStop={dictation.stop}
-              onCancel={cancelDictation}
             />
             <button
               type="submit"
@@ -945,6 +969,83 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
           </div>
         </form>
       </footer>
+
+      {modelModalOpen && (
+        <div className="model-modal-layer">
+          <div className="model-modal-backdrop" aria-hidden="true" onMouseDown={() => setModelModalOpen(false)} />
+          <div className="model-modal" role="dialog" aria-modal="true" aria-labelledby="prior-model-modal-title">
+            <header className="model-modal-header">
+              <h4 id="prior-model-modal-title">Choose a model</h4>
+              <button type="button" className="icon-button" aria-label="Close model picker" onClick={() => setModelModalOpen(false)}>
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="model-modal-search">
+              <Icon name="search" />
+              <input
+                ref={modelSearchRef}
+                type="search"
+                value={modelSearch}
+                aria-label="Search models"
+                placeholder="Search free models…"
+                onChange={(event) => setModelSearch(event.target.value)}
+              />
+            </div>
+            <div className="model-modal-list" role="radiogroup" aria-label="Available models">
+              {modelList
+                .filter((m) => {
+                  const query = modelSearch.trim().toLowerCase();
+                  if (!query) return true;
+                  return `${m.label} ${m.id}`.toLowerCase().includes(query);
+                })
+                .map((m) => {
+                  const selected = !customDraft.trim() && listDraft === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      className={`model-option ${selected ? "selected" : ""}`}
+                      onClick={() => { setListDraft(m.id); setCustomDraft(""); }}
+                    >
+                      <span className="model-radio" aria-hidden="true" />
+                      <span className="model-option-copy">
+                        <strong>{m.label}</strong>
+                        <small>{m.id}</small>
+                        <small className="model-option-desc">{m.desc}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              {!modelList.filter((m) => {
+                const query = modelSearch.trim().toLowerCase();
+                if (!query) return true;
+                return `${m.label} ${m.id}`.toLowerCase().includes(query);
+              }).length && <span className="agent-history-note">No models match “{modelSearch.trim()}”. Enter a custom ID below.</span>}
+            </div>
+            <label className="model-custom-field">
+              <span>Or enter a custom model ID</span>
+              <div className="field">
+                <input
+                  type="text"
+                  placeholder="provider/model-name"
+                  value={customDraft}
+                  onChange={(event) => setCustomDraft(event.target.value)}
+                />
+              </div>
+            </label>
+            <div className="settings-footer">
+              <button type="button" className="secondary-button" onClick={() => setModelModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="button" className="primary-button" onClick={confirmModelModal}>
+                Use {(customDraft.trim() || listDraft.trim() || DEFAULT_MODEL) === DEFAULT_MODEL ? "free model" : shortModelName(customDraft.trim() || listDraft.trim())}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </aside>
     </>
   );

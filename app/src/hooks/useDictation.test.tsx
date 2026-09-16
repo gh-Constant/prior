@@ -29,6 +29,7 @@ function Harness({ onCommit }: { onCommit: (result: { value: string; selectionSt
       <button data-cancel onClick={dictation.cancel} />
       <output data-status>{dictation.status}</output>
       <output data-preview>{dictation.previewText}</output>
+      <output data-error>{dictation.error ?? ""}</output>
     </>
   );
 }
@@ -92,5 +93,33 @@ describe("useDictation", () => {
 
     expect(onCommit).not.toHaveBeenCalled();
     expect(container?.querySelector("[data-status]")?.textContent).toBe("idle");
+  });
+
+  it("reports a blocked microphone when the session ends instantly with no audio", async () => {
+    Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: HookRecognition });
+    const onCommit = vi.fn();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<Harness onCommit={onCommit} />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>("[data-start]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // The engine ends the session immediately without results or an error,
+    // as happens when the microphone cannot be opened.
+    await act(async () => {
+      const recognition = HookRecognition.instances.find((candidate) => candidate.start.mock.calls.length > 0);
+      recognition?.onend?.();
+      await Promise.resolve();
+    });
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(container?.querySelector("[data-status]")?.textContent).toBe("error");
+    expect(container?.querySelector("[data-error]")?.textContent).toContain("microphone");
   });
 });

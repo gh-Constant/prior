@@ -25,6 +25,7 @@ type DictationSession = {
   snapshot: TranscriptSnapshot;
   timer: number | null;
   stopRequested: boolean;
+  startedAt: number;
 };
 
 type UseDictationOptions = {
@@ -35,6 +36,14 @@ type UseDictationOptions = {
 
 const STOP_WATCHDOG_MS = 3000;
 const MAX_SESSION_MS = 120000;
+// Browsers and WebViews fire onend almost immediately (often with no onerror)
+// when the microphone cannot be opened: permission denied/blocked, no input
+// device, or another capture holding the device. Anything below this threshold
+// with zero captured audio is a failed start, not "no speech detected".
+const MIN_AUDIBLE_SESSION_MS = 1500;
+
+export const MICROPHONE_BLOCKED_MESSAGE =
+  "Prior could not open the microphone. Allow microphone access for this site or app, then try again.";
 
 function clearTimer(timer: number | null): void {
   if (timer !== null && typeof window !== "undefined") window.clearTimeout(timer);
@@ -91,6 +100,16 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
       return;
     }
 
+    if (!message && Date.now() - session.startedAt < MIN_AUDIBLE_SESSION_MS) {
+      // The session is already disposed and cleared above; report the likely
+      // cause directly instead of claiming no speech was detected.
+      draftRef.current = null;
+      clearPreview();
+      setError(MICROPHONE_BLOCKED_MESSAGE);
+      setStatus("error");
+      return;
+    }
+
     setError(message ?? "No speech was detected. Try again when you are ready.");
     setStatus("error");
   }
@@ -123,6 +142,7 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
       snapshot: { finalText: "", interimText: "" },
       timer: null,
       stopRequested: false,
+      startedAt: Date.now(),
     };
     sessionRef.current = session;
     draftRef.current = { draft, selection };
