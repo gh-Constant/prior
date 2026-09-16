@@ -4,7 +4,7 @@ import { clearSession, getToken, getUser, listenForAuth, startGoogleLogin, type 
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
-import type { Habit, Task } from "./types";
+import type { Habit, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
@@ -28,6 +28,7 @@ export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [habitComposerOpen, setHabitComposerOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
@@ -144,6 +145,7 @@ export function App() {
       }
       if (event.key === "Escape") {
         setComposerOpen(false);
+        setEditingTask(null);
         setHabitComposerOpen(false);
         setAuthOpen(false);
         setAgentOpen(false);
@@ -154,16 +156,32 @@ export function App() {
     return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("online", syncNow); };
   }, [activeView, syncNow]);
 
-  async function saveTask(input: Pick<Task, "title" | "important" | "urgent">) {
+  async function saveTask(input: TaskDraft) {
     await localStore.saveTask(input);
     setComposerOpen(false);
     await refresh();
     void syncNow();
   }
 
-  async function addAgentTasks(batch: Array<Pick<Task, "title" | "important" | "urgent">>) {
+  async function saveEditedTask(input: TaskDraft) {
+    if (!editingTask) return;
+    await localStore.updateTask({ ...editingTask, ...input, description: input.description ?? "", dueDate: input.dueDate ?? null, priority: input.priority ?? 4 });
+    setEditingTask(null);
+    await refresh();
+    void syncNow();
+  }
+
+  async function addAgentTasks(batch: TaskDraft[]) {
     for (const item of batch) {
       await localStore.saveTask(item);
+    }
+    await refresh();
+    void syncNow();
+  }
+
+  async function addAgentHabits(batch: Array<Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">>) {
+    for (const item of batch) {
+      await localStore.saveHabit(item);
     }
     await refresh();
     void syncNow();
@@ -240,13 +258,13 @@ export function App() {
         activeView={activeView}
         user={user}
         collapsed={sidebarCollapsed}
-        inert={composerOpen || habitComposerOpen || authOpen}
+        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}
         onViewChange={setActiveView}
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
 
-      <main className="workspace" inert={composerOpen || habitComposerOpen || authOpen}>
+      <main className="workspace" inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}>
         <header className="workspace-header">
           <h1>{activeView === "eisenhower" ? "Eisenhower" : activeView === "habits" ? "Habits" : "All tasks"}</h1>
           <div className="workspace-actions">
@@ -275,13 +293,13 @@ export function App() {
         <CompletionExitProvider deadlines={completionExitDeadlines}>
           {activeView === "habits" ? <HabitView habits={habits} onAdd={() => setHabitComposerOpen(true)} onComplete={completeHabit} onChange={changeHabit} onDelete={deleteHabit} /> : activeView === "eisenhower" ? (
             <div className="quadrant-grid">
-              {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={changeTask} onDelete={deleteTask} />)}
+              {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={changeTask} onDelete={deleteTask} onEdit={(task) => setEditingTask(task)} />)}
             </div>
           ) : layout === "board" ? (
-            <TaskColumns tasks={visibleTasks} onChange={changeTask} onDelete={deleteTask} />
+            <TaskColumns tasks={visibleTasks} onChange={changeTask} onDelete={deleteTask} onEdit={(task) => setEditingTask(task)} />
           ) : (
             <section className="list-view" aria-label="All tasks">
-              {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={changeTask} onDelete={deleteTask} />)}
+              {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={changeTask} onDelete={deleteTask} onEdit={(nextTask) => setEditingTask(nextTask)} />)}
             </section>
           )}
         </CompletionExitProvider>
@@ -292,11 +310,13 @@ export function App() {
         open={agentOpen}
         onClose={() => setAgentOpen(false)}
         tasks={tasks}
+        habits={habits}
         user={user}
         onAddTasks={addAgentTasks}
+        onAddHabits={addAgentHabits}
       />
 
-      {composerOpen && <TaskComposer onSave={saveTask} onCancel={() => setComposerOpen(false)} />}
+      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); }} />}
       {habitComposerOpen && <HabitComposer onSave={saveHabit} onCancel={() => setHabitComposerOpen(false)} />}
       {authOpen && <AuthModal user={user} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} onGoogle={() => { setAuthOpen(false); void startGoogleLogin(); }} onLogout={logout} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}

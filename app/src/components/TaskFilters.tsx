@@ -31,12 +31,21 @@ export function TaskFilters({ value, onChange }: Props) {
         </select>
       </label>
       <label className="filter-control">
-        <select aria-label="Priority" value={value.priority} onChange={(event) => onChange({ ...value, priority: event.target.value as TaskFilterState["priority"] })}>
-          <option value="any">Any priority</option>
+        <select aria-label="Task priority" value={value.taskPriority} onChange={(event) => onChange({ ...value, taskPriority: event.target.value as TaskFilterState["taskPriority"] })}>
+          <option value="any">Any task priority</option>
+          <option value="p1">Priority 1</option>
+          <option value="p2">Priority 2</option>
+          <option value="p3">Priority 3</option>
+          <option value="p4">Priority 4</option>
+        </select>
+      </label>
+      <label className="filter-control">
+        <select aria-label="Importance and urgency" value={value.priority} onChange={(event) => onChange({ ...value, priority: event.target.value as TaskFilterState["priority"] })}>
+          <option value="any">Any importance</option>
           <option value="important">Important</option>
           <option value="urgent">Urgent</option>
           <option value="both">Important + urgent</option>
-          <option value="none">No priority</option>
+          <option value="none">Not important or urgent</option>
         </select>
       </label>
       <label className="filter-control">

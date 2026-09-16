@@ -4,14 +4,18 @@ import type { CompletionExitDeadlines } from "../lib/completionExit";
 import { CompletionBurst } from "./CompletionBurst";
 import { Icon } from "./Icon";
 
-type Props = { task: Task; onChange: (task: Task) => Promise<void>; onDelete: (task: Task) => Promise<void> };
+type Props = { task: Task; onChange: (task: Task) => Promise<void>; onDelete: (task: Task) => Promise<void>; onEdit?: (task: Task) => void };
 const CompletionExitContext = createContext<CompletionExitDeadlines>({});
+
+function formatDueDate(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
 
 export function CompletionExitProvider({ deadlines, children }: { deadlines: CompletionExitDeadlines; children: ReactNode }) {
   return <CompletionExitContext.Provider value={deadlines}>{children}</CompletionExitContext.Provider>;
 }
 
-export function TaskRow({ task, onChange, onDelete }: Props) {
+export function TaskRow({ task, onChange, onDelete, onEdit }: Props) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [completionBurstKey, setCompletionBurstKey] = useState(0);
@@ -69,7 +73,14 @@ export function TaskRow({ task, onChange, onDelete }: Props) {
         </button>
         <CompletionBurst trigger={completionBurstKey} />
       </span>
-      {editing ? <input className="edit-input" value={title} autoFocus onChange={(event) => setTitle(event.target.value)} onBlur={() => void saveTitle()} onKeyDown={(event) => { if (event.key === "Enter") void saveTitle(); if (event.key === "Escape") setEditing(false); }} /> : <button className="task-title" onDoubleClick={() => setEditing(true)} onClick={() => setEditing(true)}>{task.title}</button>}
+      <div className="task-content">
+        {editing ? <input className="edit-input" value={title} autoFocus onChange={(event) => setTitle(event.target.value)} onBlur={() => void saveTitle()} onKeyDown={(event) => { if (event.key === "Enter") void saveTitle(); if (event.key === "Escape") setEditing(false); }} /> : <button className="task-title" onDoubleClick={() => onEdit ? onEdit(task) : setEditing(true)} onClick={() => onEdit ? onEdit(task) : setEditing(true)}>{task.title}</button>}
+        {task.description && <p className="task-description">{task.description}</p>}
+        <div className="task-meta" aria-label="Task details">
+          <span className={`task-priority priority-${task.priority ?? 4}`}>P{task.priority ?? 4}</span>
+          {task.dueDate && <span className="task-due-date"><Icon name="calendar-check" /> {formatDueDate(task.dueDate)}</span>}
+        </div>
+      </div>
       <div className="task-actions">
         <button className={`task-action ${task.important ? "active important" : ""}`} aria-label={`${task.important ? "Remove" : "Mark"} important`} aria-pressed={task.important} onClick={() => void onChange({ ...task, important: !task.important })}><Icon name="star" /></button>
         <button className={`task-action ${task.urgent ? "active urgent" : ""}`} aria-label={`${task.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={task.urgent} onClick={() => void onChange({ ...task, urgent: !task.urgent })}><Icon name="bolt" /></button>

@@ -274,12 +274,13 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ID            string          `json:"id"`
-		Role          string          `json:"role"`
-		Content       string          `json:"content"`
-		ProposedTasks json.RawMessage `json:"proposedTasks"`
-		ActualModel   string          `json:"actualModel"`
-		CreatedAt     string          `json:"createdAt"`
+		ID             string          `json:"id"`
+		Role           string          `json:"role"`
+		Content        string          `json:"content"`
+		ProposedTasks  json.RawMessage `json:"proposedTasks"`
+		ProposedHabits json.RawMessage `json:"proposedHabits"`
+		ActualModel    string          `json:"actualModel"`
+		CreatedAt      string          `json:"createdAt"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid chat message request"))
@@ -290,7 +291,7 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid chat message id"))
 		return
 	}
-	message, err := s.store.SaveAgentChatMessage(r.Context(), user.ID, chatID, messageID, body.Role, body.Content, body.ProposedTasks, body.ActualModel)
+	message, err := s.store.SaveAgentChatMessage(r.Context(), user.ID, chatID, messageID, body.Role, body.Content, body.ProposedTasks, body.ProposedHabits, body.ActualModel)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, err)
 		return

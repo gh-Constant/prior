@@ -158,6 +158,12 @@ pub fn run() {
             sql: include_str!("../migrations/002_habits.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 3,
+            description: "task details and priority",
+            sql: include_str!("../migrations/003_task_details.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();

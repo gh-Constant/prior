@@ -92,9 +92,18 @@ svg { display: block; flex-shrink: 0; }
 .complete-button:hover { border-color: var(--accent); background: #fff1ec; }
 .complete-button.checked { border-color: var(--accent); background: var(--accent); color: #30150e; }
 .complete-button svg { width: 13px; height: 13px; }
-.task-title { flex: 1; min-width: 0; padding: 5px 0; border: 0; background: transparent; color: var(--ink); text-align: left; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; cursor: text; }
+.task-content { min-width: 0; flex: 1; }
+.task-title { display: block; width: 100%; min-width: 0; padding: 5px 0 1px; border: 0; background: transparent; color: var(--ink); text-align: left; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; cursor: pointer; }
+.task-description { margin: 2px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.task-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px; min-height: 18px; color: var(--muted); font-size: 10px; }
+.task-priority, .task-due-date { display: inline-flex; align-items: center; gap: 4px; min-height: 18px; padding: 0 6px; border-radius: 5px; background: #f2f0ec; color: #766f66; font-weight: 650; }
+.task-priority.priority-1 { background: #ffe8e3; color: #b43f2c; }
+.task-priority.priority-2 { background: #fff1df; color: #a56825; }
+.task-priority.priority-3 { background: #edf3e8; color: #53714d; }
+.task-due-date { background: #f4efeb; color: #8a6456; font-weight: 550; }
+.task-due-date svg { width: 12px; height: 12px; }
 .completed .task-title { color: #a29e96; text-decoration: line-through; text-decoration-color: #c1bcb2; }
-.edit-input { min-width: 0; flex: 1; padding: 5px 0; border: 0; border-bottom: 1px solid var(--accent); background: transparent; color: var(--ink); font-size: 13px; }
+.edit-input { width: 100%; min-width: 0; padding: 5px 0; border: 0; border-bottom: 1px solid var(--accent); outline: 0; background: transparent; color: var(--ink); font-size: 13px; }
 .task-actions { display: flex; gap: 2px; align-items: center; }
 .task-action { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #a5a198; opacity: 0; }
 .task-row:hover .task-action, .task-row:focus-within .task-action, .task-action.active { opacity: 1; }
@@ -178,16 +187,24 @@ svg { display: block; flex-shrink: 0; }
 .icon-button:hover { background: #f3f1ed; color: var(--ink); }
 .icon-button svg { width: 17px; height: 17px; }
 .composer-modal, .auth-modal { padding-bottom: 24px; }
+.task-composer-modal { width: min(100%, 560px); }
 .composer-input-row { display: flex; align-items: center; gap: 10px; margin: 0 24px; padding: 15px 12px; border: 1px solid var(--line); border-radius: 9px; background: #faf9f7; }
 .composer-input-row:focus-within, .field:focus-within { border-color: #f29985; box-shadow: 0 0 0 3px #fa654a0b; }
 .composer-mark { color: var(--accent); }
 .composer-mark svg { width: 18px; height: 18px; }
 .composer-input-row input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 16px; }
+.composer-description { display: block; width: calc(100% - 48px); min-height: 74px; margin: 12px 24px 0; padding: 12px; resize: vertical; border: 1px solid var(--line); border-radius: 9px; outline: 0; background: #faf9f7; color: var(--ink); font-size: 13px; line-height: 1.5; }
+.composer-description:focus { border-color: #f29985; box-shadow: 0 0 0 3px #fa654a0b; }
+.composer-description::placeholder { color: #a39d94; }
 .composer-options { display: flex; gap: 8px; margin: 14px 24px 0; }
+.task-composer-options { flex-wrap: wrap; }
 .option-button { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: #7a746b; font-size: 11px; font-weight: 500; }
 .option-button svg { width: 14px; height: 14px; }
 .option-button.selected.important { background: #f6f1e6; border-color: #d9c39d; color: #876834; }
 .option-button.selected.urgent { background: #fff0e9; border-color: #f3b09c; color: #b64a32; }
+.due-date-option, .priority-option { position: relative; cursor: pointer; }
+.due-date-option input, .priority-option select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.priority-option { min-width: 112px; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin: 28px 24px 0; }
 .profile-tabs, .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 0 24px 22px; padding: 3px; border-radius: 8px; background: #f3f2ef; }
 .profile-tabs button, .auth-tabs button { min-height: 36px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #817b73; font-size: 12px; font-weight: 500; }

@@ -1,6 +1,11 @@
+export type TaskPriority = 1 | 2 | 3 | 4;
+
 export type Task = {
   id: string;
   title: string;
+  description: string;
+  dueDate: string | null;
+  priority: TaskPriority;
   completed: boolean;
   important: boolean;
   urgent: boolean;
@@ -9,6 +14,8 @@ export type Task = {
   deletedAt: string | null;
   serverRevision?: number;
 };
+
+export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "priority">>;
 
 export type HabitUnit = "day" | "week" | "month" | "year";
 
@@ -55,8 +62,23 @@ export type QuadrantKey = "focus" | "plan" | "quick" | "later";
 export type ProposedTask = {
   id: string;
   title: string;
+  description: string;
+  dueDate: string | null;
+  priority: TaskPriority;
   important: boolean;
   urgent: boolean;
+  reasoning: string;
+  selected: boolean;
+  added?: boolean;
+};
+
+export type ProposedHabit = {
+  id: string;
+  title: string;
+  important: boolean;
+  urgent: boolean;
+  interval: number;
+  unit: HabitUnit;
   reasoning: string;
   selected: boolean;
   added?: boolean;
@@ -67,6 +89,7 @@ export type AgentMessage = {
   role: "user" | "assistant";
   content: string;
   proposedTasks?: ProposedTask[];
+  proposedHabits?: ProposedHabit[];
   actualModel?: string;
   createdAt: string;
 };
@@ -88,4 +111,5 @@ export type AgentChat = AgentChatSummary & {
 export type AgentSettings = {
   apiKey: string;
   model: string;
+  webSearch: boolean;
 };

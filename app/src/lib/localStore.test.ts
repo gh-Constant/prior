@@ -9,8 +9,9 @@ describe("localStore browser fallback", () => {
   });
 
   it("creates a task immediately and records an outbox mutation", async () => {
-    const task = await localStore.saveTask({ title: "Write the release notes", important: true, urgent: false });
+    const task = await localStore.saveTask({ title: "Write the release notes", description: "Include the migration notes", dueDate: "2026-09-20", priority: 2, important: true, urgent: false });
     expect((await localStore.listTasks()).map((item) => item.title)).toEqual(["Write the release notes"]);
+    expect((await localStore.listTasks())[0]).toMatchObject({ description: "Include the migration notes", dueDate: "2026-09-20", priority: 2 });
     expect((await localStore.pendingMutations()).filter((item) => item.entity !== "habit").map((item) => item.task.id)).toEqual([task.id]);
   });
 

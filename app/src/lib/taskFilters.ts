@@ -1,14 +1,16 @@
 import type { Task } from "../types";
 
 export type TaskDateFilter = "any" | "today" | "week" | "older";
-export type TaskPriorityFilter = "any" | "important" | "urgent" | "both" | "none";
+export type TaskPriorityFilter = "any" | "p1" | "p2" | "p3" | "p4";
+export type TaskMatrixFilter = "any" | "important" | "urgent" | "both" | "none";
 export type TaskStatusFilter = "open" | "completed" | "all";
 export type TaskSort = "recent" | "oldest";
 
 export type TaskFilterState = {
   query: string;
   date: TaskDateFilter;
-  priority: TaskPriorityFilter;
+  priority: TaskMatrixFilter;
+  taskPriority: TaskPriorityFilter;
   status: TaskStatusFilter;
   sort: TaskSort;
 };
@@ -17,6 +19,7 @@ export const defaultTaskFilters: TaskFilterState = {
   query: "",
   date: "any",
   priority: "any",
+  taskPriority: "any",
   status: "open",
   sort: "recent",
 };
@@ -34,10 +37,11 @@ export function filterTasks(tasks: Task[], filters: TaskFilterState, reference =
 
   return tasks
     .filter((task) => {
-      if (query && !task.title.toLocaleLowerCase().includes(query)) return false;
+      if (query && !`${task.title} ${task.description ?? ""}`.toLocaleLowerCase().includes(query)) return false;
       if (filters.status === "open" && task.completed) return false;
       if (filters.status === "completed" && !task.completed) return false;
 
+      if (filters.taskPriority !== "any" && `p${task.priority ?? 4}` !== filters.taskPriority) return false;
       if (filters.priority === "important" && !task.important) return false;
       if (filters.priority === "urgent" && !task.urgent) return false;
       if (filters.priority === "both" && (!task.important || !task.urgent)) return false;

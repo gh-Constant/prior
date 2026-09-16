@@ -7,6 +7,9 @@ import { TaskRow, CompletionExitProvider } from "./TaskRow";
 const task: Task = {
   id: "task-1",
   title: "Ship the fix",
+  description: "",
+  dueDate: null,
+  priority: 4,
   completed: false,
   important: false,
   urgent: false,

@@ -1,4 +1,4 @@
-import type { Habit, HabitUnit, Mutation, SyncState, Task } from "../types";
+import type { Habit, HabitUnit, Mutation, SyncState, Task, TaskDraft, TaskPriority } from "../types";
 import { dateKey } from "./habits";
 
 const TASKS_KEY = "prior.tasks.v1";
@@ -47,23 +47,44 @@ function uuid(): string {
   return crypto.randomUUID();
 }
 
+function normalizePriority(value: unknown): TaskPriority {
+  return value === 1 || value === 2 || value === 3 || value === 4 ? value : 4;
+}
+
+function normalizeDueDate(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function normalizeTask(task: Task): Task {
+  return {
+    ...task,
+    description: typeof task.description === "string" ? task.description : "",
+    dueDate: normalizeDueDate(task.dueDate),
+    priority: normalizePriority(task.priority),
+  };
+}
+
 export const localStore = {
   async listTasks(): Promise<Task[]> {
     const db = await getSqlDatabase();
     if (db) {
       return db.select<Task>(
-        "SELECT id, title, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
+        "SELECT id, title, description, due_date as dueDate, priority, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
       );
     }
-    return read<Task[]>(TASKS_KEY, []).filter((task) => !task.deletedAt);
+    return read<Task[]>(TASKS_KEY, []).filter((task) => !task.deletedAt).map(normalizeTask);
   },
 
-  async saveTask(input: Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "id" | "completed" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>): Promise<Task> {
+  async saveTask(input: TaskDraft & Partial<Pick<Task, "id" | "completed" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>): Promise<Task> {
     const timestamp = now();
-    const previous = input.id ? read<Task[]>(TASKS_KEY, []).find((task) => task.id === input.id) : undefined;
+    const previousRaw = input.id ? read<Task[]>(TASKS_KEY, []).find((task) => task.id === input.id) : undefined;
+    const previous = previousRaw ? normalizeTask(previousRaw) : undefined;
     const task: Task = {
       id: input.id ?? uuid(),
       title: input.title.trim(),
+      description: input.description?.trim() ?? previous?.description ?? "",
+      dueDate: input.dueDate ?? previous?.dueDate ?? null,
+      priority: normalizePriority(input.priority ?? previous?.priority),
       completed: input.completed ?? previous?.completed ?? false,
       important: input.important,
       urgent: input.urgent,
@@ -75,8 +96,8 @@ export const localStore = {
     const db = await getSqlDatabase();
     if (db) {
       await db.execute(
-        "INSERT INTO tasks (id, title, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL",
-        [task.id, task.title, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
+        "INSERT INTO tasks (id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL",
+        [task.id, task.title, task.description, task.dueDate, task.priority, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
       );
     } else {
       const tasks = read<Task[]>(TASKS_KEY, []).filter((item) => item.id !== task.id);
@@ -225,8 +246,8 @@ export const localStore = {
         const currentRevision = current[0]?.server_revision ?? 0;
         if ((task.serverRevision ?? 0) < currentRevision) continue;
         await db.execute(
-          "INSERT INTO tasks (id, title, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
-          [task.id, task.title, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
+          "INSERT INTO tasks (id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
+          [task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
         );
       }
       return;
@@ -236,7 +257,7 @@ export const localStore = {
     for (const task of tasks) {
       if (pendingTaskIds.has(task.id)) continue;
       const local = merged.get(task.id);
-      if (!local || (task.serverRevision ?? 0) >= (local.serverRevision ?? 0)) merged.set(task.id, task);
+      if (!local || (task.serverRevision ?? 0) >= (local.serverRevision ?? 0)) merged.set(task.id, normalizeTask(task));
     }
     write(TASKS_KEY, [...merged.values()]);
   },

@@ -7,6 +7,9 @@ function makeTask(id: string, updatedAt: string, options: Partial<Task> = {}): T
   return {
     id,
     title: `Task ${id}`,
+    description: "",
+    dueDate: null,
+    priority: 4,
     completed: false,
     important: false,
     urgent: false,

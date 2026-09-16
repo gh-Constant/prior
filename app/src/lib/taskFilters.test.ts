@@ -8,6 +8,9 @@ function makeTask(id: string, createdAt: string, options: Partial<Task> = {}): T
   return {
     id,
     title: `Task ${id}`,
+    description: "",
+    dueDate: null,
+    priority: 4,
     completed: false,
     important: false,
     urgent: false,
@@ -38,6 +41,16 @@ describe("filterTasks", () => {
 
     expect(filterTasks(tasks, { ...defaultTaskFilters, query: "launch", priority: "both" }, reference).map((task) => task.id)).toEqual(["both"]);
     expect(filterTasks(tasks, { ...defaultTaskFilters, status: "completed" }, reference).map((task) => task.id)).toEqual(["done"]);
+  });
+
+  it("filters the explicit P1–P4 task priority separately from the matrix flags", () => {
+    const tasks = [
+      makeTask("p1", "2026-09-15T10:00:00.000Z", { priority: 1, important: false }),
+      makeTask("p4", "2026-09-15T11:00:00.000Z", { priority: 4, important: true }),
+    ];
+
+    expect(filterTasks(tasks, { ...defaultTaskFilters, taskPriority: "p1" }, reference).map((task) => task.id)).toEqual(["p1"]);
+    expect(filterTasks(tasks, { ...defaultTaskFilters, priority: "important" }, reference).map((task) => task.id)).toEqual(["p4"]);
   });
 
   it("filters tasks added today or earlier", () => {

@@ -37,12 +37,13 @@ type AgentChat struct {
 }
 
 type AgentChatMessage struct {
-	ID            uuid.UUID       `json:"id"`
-	Role          string          `json:"role"`
-	Content       string          `json:"content"`
-	ProposedTasks json.RawMessage `json:"proposedTasks,omitempty"`
-	ActualModel   string          `json:"actualModel,omitempty"`
-	CreatedAt     time.Time       `json:"createdAt"`
+	ID             uuid.UUID       `json:"id"`
+	Role           string          `json:"role"`
+	Content        string          `json:"content"`
+	ProposedTasks  json.RawMessage `json:"proposedTasks,omitempty"`
+	ProposedHabits json.RawMessage `json:"proposedHabits,omitempty"`
+	ActualModel    string          `json:"actualModel,omitempty"`
+	CreatedAt      time.Time       `json:"createdAt"`
 }
 
 type AppliedMutation struct {
@@ -226,7 +227,7 @@ func (s *Store) GetAgentChat(ctx context.Context, userID, chatID uuid.UUID) (Age
 	}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, role, content, proposed_tasks, actual_model, created_at
+		SELECT id, role, content, proposed_tasks, proposed_habits, actual_model, created_at
 		FROM agent_chat_messages
 		WHERE chat_id = $1
 		ORDER BY created_at ASC, id ASC`, chatID)
@@ -238,7 +239,7 @@ func (s *Store) GetAgentChat(ctx context.Context, userID, chatID uuid.UUID) (Age
 	for rows.Next() {
 		var message AgentChatMessage
 		var actualModel *string
-		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &actualModel, &message.CreatedAt); err != nil {
+		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &actualModel, &message.CreatedAt); err != nil {
 			return AgentChat{}, err
 		}
 		if actualModel != nil {
@@ -252,7 +253,7 @@ func (s *Store) GetAgentChat(ctx context.Context, userID, chatID uuid.UUID) (Age
 	return chat, nil
 }
 
-func (s *Store) SaveAgentChatMessage(ctx context.Context, userID, chatID, messageID uuid.UUID, role, content string, proposedTasks json.RawMessage, actualModel string) (AgentChatMessage, error) {
+func (s *Store) SaveAgentChatMessage(ctx context.Context, userID, chatID, messageID uuid.UUID, role, content string, proposedTasks, proposedHabits json.RawMessage, actualModel string) (AgentChatMessage, error) {
 	content = strings.TrimSpace(content)
 	if role != "user" && role != "assistant" {
 		return AgentChatMessage{}, errors.New("invalid chat message role")
@@ -267,8 +268,15 @@ func (s *Store) SaveAgentChatMessage(ctx context.Context, userID, chatID, messag
 	if err := json.Unmarshal(proposedTasks, &proposedList); err != nil {
 		return AgentChatMessage{}, errors.New("proposed tasks must be a JSON array")
 	}
-	if len(proposedTasks) > 1<<20 {
-		return AgentChatMessage{}, errors.New("proposed tasks payload is too large")
+	if len(proposedTasks) > 1<<20 || len(proposedHabits) > 1<<20 {
+		return AgentChatMessage{}, errors.New("proposed items payload is too large")
+	}
+	if len(proposedHabits) == 0 || string(proposedHabits) == "null" {
+		proposedHabits = json.RawMessage("[]")
+	}
+	var proposedHabitList []json.RawMessage
+	if err := json.Unmarshal(proposedHabits, &proposedHabitList); err != nil {
+		return AgentChatMessage{}, errors.New("proposed habits must be a JSON array")
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -302,13 +310,13 @@ func (s *Store) SaveAgentChatMessage(ctx context.Context, userID, chatID, messag
 	var message AgentChatMessage
 	var returnedModel *string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO agent_chat_messages (id, chat_id, role, content, proposed_tasks, actual_model)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO agent_chat_messages (id, chat_id, role, content, proposed_tasks, proposed_habits, actual_model)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, content = EXCLUDED.content,
-		proposed_tasks = EXCLUDED.proposed_tasks, actual_model = EXCLUDED.actual_model
-		RETURNING id, role, content, proposed_tasks, actual_model, created_at`,
-		messageID, chatID, role, content, proposedTasks, actualModelValue).
-		Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &returnedModel, &message.CreatedAt)
+		proposed_tasks = EXCLUDED.proposed_tasks, proposed_habits = EXCLUDED.proposed_habits, actual_model = EXCLUDED.actual_model
+		RETURNING id, role, content, proposed_tasks, proposed_habits, actual_model, created_at`,
+		messageID, chatID, role, content, proposedTasks, proposedHabits, actualModelValue).
+		Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &returnedModel, &message.CreatedAt)
 	if err != nil {
 		return AgentChatMessage{}, err
 	}
@@ -459,6 +467,20 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 		if len(mutation.Task.Title) == 0 || len(mutation.Task.Title) > 400 {
 			return nil, fmt.Errorf("task title must be between 1 and 400 characters")
 		}
+		if len(mutation.Task.Description) > 10000 {
+			return nil, fmt.Errorf("task description is too long")
+		}
+		if mutation.Task.DueDate != nil {
+			if _, err := time.Parse("2006-01-02", *mutation.Task.DueDate); err != nil {
+				return nil, errors.New("invalid task due date")
+			}
+		}
+		if mutation.Task.Priority == 0 {
+			mutation.Task.Priority = 4
+		}
+		if mutation.Task.Priority < 1 || mutation.Task.Priority > 4 {
+			return nil, errors.New("invalid task priority")
+		}
 		var revision int64
 		if err := tx.QueryRow(ctx, `SELECT nextval('server_revision_seq')`).Scan(&revision); err != nil {
 			return nil, err
@@ -472,11 +494,12 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 			updatedAt = time.Now().UTC()
 		}
 		_, err = tx.Exec(ctx, `
-			INSERT INTO tasks (id, user_id, title, completed, important, urgent, created_at, updated_at, deleted_at, revision)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, completed = EXCLUDED.completed, important = EXCLUDED.important,
-			 urgent = EXCLUDED.urgent, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
-			WHERE tasks.user_id = EXCLUDED.user_id`, taskID, userID, mutation.Task.Title, mutation.Task.Completed, mutation.Task.Important, mutation.Task.Urgent, createdAt, updatedAt, mutation.Task.DeletedAt, revision)
+			INSERT INTO tasks (id, user_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date,
+			 priority = EXCLUDED.priority, completed = EXCLUDED.completed, important = EXCLUDED.important, urgent = EXCLUDED.urgent,
+			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
+			WHERE tasks.user_id = EXCLUDED.user_id`, taskID, userID, mutation.Task.Title, mutation.Task.Description, mutation.Task.DueDate, mutation.Task.Priority, mutation.Task.Completed, mutation.Task.Important, mutation.Task.Urgent, createdAt, updatedAt, mutation.Task.DeletedAt, revision)
 		if err != nil {
 			return nil, err
 		}
@@ -485,7 +508,7 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 		if err != nil {
 			return nil, err
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, revision, taskID, userID, mutation.Task.Title, mutation.Task.Completed, mutation.Task.Important, mutation.Task.Urgent, createdAt, updatedAt, mutation.Task.DeletedAt)
+		_, err = tx.Exec(ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, revision, taskID, userID, mutation.Task.Title, mutation.Task.Description, mutation.Task.DueDate, mutation.Task.Priority, mutation.Task.Completed, mutation.Task.Important, mutation.Task.Urgent, createdAt, updatedAt, mutation.Task.DeletedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -503,7 +526,7 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 
 func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]tasks.Task, []tasks.Habit, int64, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT ON (task_id) task_id, title, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		SELECT DISTINCT ON (task_id) task_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision
 		FROM task_changes WHERE user_id = $1 AND revision > $2 ORDER BY task_id, revision DESC`, userID, since)
 	if err != nil {
 		return nil, nil, since, err
@@ -512,7 +535,7 @@ func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]task
 	var latest int64 = since
 	for rows.Next() {
 		var task tasks.Task
-		if err := rows.Scan(&task.ID, &task.Title, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
+		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.Priority, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
 			rows.Close()
 			return nil, nil, since, err
 		}

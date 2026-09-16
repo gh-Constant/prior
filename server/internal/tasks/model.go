@@ -5,6 +5,9 @@ import "time"
 type Task struct {
 	ID             string     `json:"id"`
 	Title          string     `json:"title"`
+	Description    string     `json:"description"`
+	DueDate        *string    `json:"dueDate,omitempty"`
+	Priority       int        `json:"priority"`
 	Completed      bool       `json:"completed"`
 	Important      bool       `json:"important"`
 	Urgent         bool       `json:"urgent"`

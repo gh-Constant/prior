@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt, getAgentSettings, parseAiResponse, saveAgentSettings } from "./ai";
-import type { Task } from "../types";
+import type { Habit, Task } from "../types";
 
 describe("ai engine", () => {
   it("builds a system prompt including active tasks", () => {
@@ -8,6 +8,9 @@ describe("ai engine", () => {
       {
         id: "1",
         title: "Test task",
+        description: "",
+        dueDate: null,
+        priority: 2,
         completed: false,
         important: true,
         urgent: false,
@@ -18,8 +21,29 @@ describe("ai engine", () => {
     ];
     const prompt = buildSystemPrompt(existing);
     expect(prompt).toContain("Test task");
-    expect(prompt).toContain("Quadrant 1 (Focus / Do First)");
-    expect(prompt).toContain("Eisenhower Matrix Guidelines");
+    expect(prompt).toContain("Q1 Focus = important + urgent");
+    expect(prompt).toContain("EISENHOWER CLASSIFICATION");
+  });
+
+  it("teaches the agent about real task, habit, and search capabilities", () => {
+    const existingHabits: Habit[] = [{
+      id: "habit-1",
+      title: "Read for 20 minutes",
+      important: true,
+      urgent: false,
+      interval: 1,
+      unit: "day",
+      startDate: "2026-09-16",
+      completedDates: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      deletedAt: null,
+    }];
+    const prompt = buildSystemPrompt([], existingHabits);
+    expect(prompt).toContain("create_task");
+    expect(prompt).toContain("create_habit");
+    expect(prompt).toContain("search_web");
+    expect(prompt).toContain("Read for 20 minutes");
   });
 
   it("parses valid JSON response", () => {
@@ -28,6 +52,9 @@ describe("ai engine", () => {
       tasks: [
         {
           title: "Finish quarterly report",
+          description: "Include the latest numbers",
+          dueDate: "2026-09-16",
+          priority: 1,
           important: true,
           urgent: true,
           reasoning: "Due today for executive meeting",
@@ -45,12 +72,49 @@ describe("ai engine", () => {
     expect(parsed.reply).toBe("Here is your plan:");
     expect(parsed.tasks).toHaveLength(2);
     expect(parsed.tasks[0].title).toBe("Finish quarterly report");
+    expect(parsed.tasks[0].description).toBe("Include the latest numbers");
+    expect(parsed.tasks[0].dueDate).toBe("2026-09-16");
+    expect(parsed.tasks[0].priority).toBe(1);
     expect(parsed.tasks[0].important).toBe(true);
     expect(parsed.tasks[0].urgent).toBe(true);
     expect(parsed.tasks[0].selected).toBe(true);
     expect(parsed.tasks[1].title).toBe("Read design book");
     expect(parsed.tasks[1].important).toBe(true);
     expect(parsed.tasks[1].urgent).toBe(false);
+    expect(parsed.habits).toEqual([]);
+  });
+
+  it("parses recurring habits and clamps invalid intervals", () => {
+    const parsed = parseAiResponse(JSON.stringify({
+      reply: "Je t’ai préparé cette habitude.",
+      habits: [{
+        title: "Lire 20 minutes",
+        important: true,
+        urgent: false,
+        interval: 999,
+        unit: "week",
+        reasoning: "Une pratique régulière aide à progresser.",
+      }],
+    }));
+    expect(parsed.tasks).toEqual([]);
+    expect(parsed.habits).toHaveLength(1);
+    expect(parsed.habits[0]).toMatchObject({ title: "Lire 20 minutes", interval: 365, unit: "week", selected: true });
+  });
+
+  it("accepts tool-shaped create actions as a model fallback", () => {
+    const parsed = parseAiResponse(JSON.stringify({
+      reply: "Je t’ai préparé une habitude quotidienne.",
+      actions: [{ tool: "create_habit", arguments: { title: "Boire de l’eau", interval: 1, unit: "day" } }],
+    }));
+    expect(parsed.habits[0]).toMatchObject({ title: "Boire de l’eau", interval: 1, unit: "day" });
+  });
+
+  it("accepts nested tool calls and recurring aliases", () => {
+    const parsed = parseAiResponse(JSON.stringify({
+      reply: "Prepared.",
+      tool_calls: [{ function: { name: "create_habit", arguments: JSON.stringify({ title: "Walk", frequency: 2, period: "week" }) } }],
+    }));
+    expect(parsed.habits[0]).toMatchObject({ title: "Walk", interval: 2, unit: "week" });
   });
 
   it("extracts JSON enclosed in markdown code fences", () => {
@@ -104,10 +168,11 @@ Hope this helps!`;
     Object.defineProperty(globalThis, "localStorage", { value: mockStorage, configurable: true });
 
     try {
-      saveAgentSettings({ apiKey: "test-key-123", model: "meta-llama/llama-3.3-70b-instruct:free" });
+      saveAgentSettings({ apiKey: "test-key-123", model: "meta-llama/llama-3.3-70b-instruct:free", webSearch: false });
       const loaded = getAgentSettings();
       expect(loaded.apiKey).toBe("test-key-123");
       expect(loaded.model).toBe("meta-llama/llama-3.3-70b-instruct:free");
+      expect(loaded.webSearch).toBe(false);
     } finally {
       Object.defineProperty(globalThis, "localStorage", { value: original, configurable: true });
     }

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentChatSummary, AgentMessage, AgentSettings, ProposedTask, QuadrantKey, Task } from "../types";
+import type { AgentChatSummary, AgentMessage, AgentSettings, Habit, ProposedHabit, ProposedTask, QuadrantKey, Task, TaskDraft } from "../types";
 import { askAgent, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
+import { habitScheduleLabel } from "../lib/habits";
 import { quadrantFor } from "../lib/priority";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
@@ -12,8 +13,10 @@ type Props = {
   open: boolean;
   onClose: () => void;
   tasks: Task[];
+  habits: Habit[];
   user: SessionUser | null;
-  onAddTasks: (tasks: Array<Pick<Task, "title" | "important" | "urgent">>) => Promise<void>;
+  onAddTasks: (tasks: TaskDraft[]) => Promise<void>;
+  onAddHabits: (habits: Array<Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">>) => Promise<void>;
 };
 
 const STARTER_PROMPTS = [
@@ -23,11 +26,16 @@ const STARTER_PROMPTS = [
   { icon: "sparkles" as const, title: "Organize my inbox", prompt: "Review my current task list and suggest what to tackle first, what to schedule, and what to defer." },
 ];
 
-export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) {
+function formatDueDate(value: string): string {
+  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, onAddHabits }: Props) {
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(settings.apiKey);
   const [modelInput, setModelInput] = useState(settings.model);
+  const [webSearchInput, setWebSearchInput] = useState(settings.webSearch !== false);
   const [showApiKey, setShowApiKey] = useState(false);
 
   const [modelList, setModelList] = useState(POPULAR_FREE_MODELS);
@@ -103,6 +111,7 @@ export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) 
     const updated: AgentSettings = {
       apiKey: apiKeyInput.trim(),
       model: modelInput.trim() || DEFAULT_MODEL,
+      webSearch: webSearchInput,
     };
     setSettings(updated);
     saveAgentSettings(updated);
@@ -187,12 +196,13 @@ export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) 
     setLoading(true);
 
     try {
-      const response = await askAgent(promptToSend, nextMessages, tasks, settings);
+      const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings);
       const assistantMsg: AgentMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: response.reply,
         proposedTasks: response.tasks,
+        proposedHabits: response.habits,
         actualModel: response.actualModel,
         createdAt: new Date().toISOString(),
       };
@@ -245,7 +255,7 @@ export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) 
   async function handleAddSingle(messageId: string, task: ProposedTask) {
     setAddingIds((prev) => ({ ...prev, [task.id]: true }));
     try {
-      await onAddTasks([{ title: task.title, important: task.important, urgent: task.urgent }]);
+      await onAddTasks([{ title: task.title, description: task.description, dueDate: task.dueDate, priority: task.priority, important: task.important, urgent: task.urgent }]);
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== messageId || !msg.proposedTasks) return msg;
@@ -266,7 +276,7 @@ export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) 
 
     toAdd.forEach((t) => setAddingIds((prev) => ({ ...prev, [t.id]: true })));
     try {
-      await onAddTasks(toAdd.map((t) => ({ title: t.title, important: t.important, urgent: t.urgent })));
+      await onAddTasks(toAdd.map((t) => ({ title: t.title, description: t.description, dueDate: t.dueDate, priority: t.priority, important: t.important, urgent: t.urgent })));
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== messageId || !msg.proposedTasks) return msg;
@@ -279,6 +289,43 @@ export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) 
       );
     } finally {
       toAdd.forEach((t) => setAddingIds((prev) => ({ ...prev, [t.id]: false })));
+    }
+  }
+
+  function updateProposedHabit(messageId: string, habitId: string, update: Partial<ProposedHabit>) {
+    setMessages((prev) => prev.map((message) => {
+      if (message.id !== messageId || !message.proposedHabits) return message;
+      return {
+        ...message,
+        proposedHabits: message.proposedHabits.map((habit) => habit.id === habitId ? { ...habit, ...update } : habit),
+      };
+    }));
+  }
+
+  async function handleAddSingleHabit(messageId: string, habit: ProposedHabit) {
+    setAddingIds((prev) => ({ ...prev, [habit.id]: true }));
+    try {
+      await onAddHabits([{ title: habit.title, important: habit.important, urgent: habit.urgent, interval: habit.interval, unit: habit.unit }]);
+      updateProposedHabit(messageId, habit.id, { added: true });
+    } finally {
+      setAddingIds((prev) => ({ ...prev, [habit.id]: false }));
+    }
+  }
+
+  async function handleAddAllHabits(messageId: string, proposed: ProposedHabit[]) {
+    const toAdd = proposed.filter((habit) => habit.selected && !habit.added);
+    if (!toAdd.length) return;
+
+    toAdd.forEach((habit) => setAddingIds((prev) => ({ ...prev, [habit.id]: true })));
+    try {
+      await onAddHabits(toAdd.map((habit) => ({ title: habit.title, important: habit.important, urgent: habit.urgent, interval: habit.interval, unit: habit.unit })));
+      const ids = new Set(toAdd.map((habit) => habit.id));
+      setMessages((prev) => prev.map((message) => {
+        if (message.id !== messageId || !message.proposedHabits) return message;
+        return { ...message, proposedHabits: message.proposedHabits.map((habit) => ids.has(habit.id) ? { ...habit, added: true } : habit) };
+      }));
+    } finally {
+      toAdd.forEach((habit) => setAddingIds((prev) => ({ ...prev, [habit.id]: false })));
     }
   }
 
@@ -409,6 +456,7 @@ export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) 
                       <div className="proposed-task-list">
                         {msg.proposedTasks.map((t) => {
                           const badge = getQuadrantBadge(t);
+                          const priority = t.priority ?? 4;
                           const isAdding = addingIds[t.id];
                           return (
                             <div key={t.id} className={`proposed-task-item ${t.added ? "is-added" : ""}`}>
@@ -440,10 +488,13 @@ export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) 
                                 )}
                               </div>
 
+                              {t.description && <p className="proposed-description">{t.description}</p>}
                               <div className="proposed-task-meta">
                                 <span className={`quadrant-chip quadrant-chip-${badge.key}`}>
                                   {badge.label}
                                 </span>
+                                <span className={`proposed-priority proposed-priority-${priority}`}>P{priority}</span>
+                                {t.dueDate && <span className="proposed-due-date">Due {formatDueDate(t.dueDate)}</span>}
 
                                 <div className="proposed-toggles">
                                   <button
@@ -468,6 +519,93 @@ export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) 
                               </div>
 
                               {t.reasoning && <p className="proposed-reasoning">{t.reasoning}</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {msg.proposedHabits && msg.proposedHabits.length > 0 && (
+                    <div className="proposed-tasks-box proposed-habits-box">
+                      <div className="proposed-tasks-header">
+                        <span className="proposed-count">
+                          {msg.proposedHabits.filter((habit) => habit.added).length}/{msg.proposedHabits.length} habits added
+                        </span>
+                        {msg.proposedHabits.some((habit) => !habit.added) && (
+                          <button
+                            type="button"
+                            className="primary-button add-all-btn"
+                            onClick={() => void handleAddAllHabits(msg.id, msg.proposedHabits!)}
+                          >
+                            <Icon name="plus" />
+                            <span>Add habits to Prior</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="proposed-task-list">
+                        {msg.proposedHabits.map((habit) => {
+                          const badge = getQuadrantBadge(habit);
+                          const isAdding = addingIds[habit.id];
+                          return (
+                            <div key={habit.id} className={`proposed-task-item ${habit.added ? "is-added" : ""}`}>
+                              <div className="proposed-task-top">
+                                <label className="proposed-checkbox-label">
+                                  <input
+                                    type="checkbox"
+                                    checked={habit.selected}
+                                    disabled={habit.added}
+                                    onChange={() => updateProposedHabit(msg.id, habit.id, { selected: !habit.selected })}
+                                  />
+                                  <span className="proposed-task-title">{habit.title}</span>
+                                </label>
+
+                                {habit.added ? (
+                                  <span className="task-added-badge">
+                                    <Icon name="check" /> Added
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="add-single-btn"
+                                    disabled={isAdding}
+                                    onClick={() => void handleAddSingleHabit(msg.id, habit)}
+                                    title="Add habit to Prior"
+                                  >
+                                    <Icon name="plus" />
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="proposed-task-meta">
+                                <span className={`quadrant-chip quadrant-chip-${badge.key}`}>
+                                  {habitScheduleLabel(habit)} · {badge.label}
+                                </span>
+
+                                <div className="proposed-toggles">
+                                  <button
+                                    type="button"
+                                    className={`task-action ${habit.important ? "active important" : ""}`}
+                                    title={habit.important ? "Important (Click to change)" : "Not Important (Click to mark Important)"}
+                                    disabled={habit.added}
+                                    onClick={() => updateProposedHabit(msg.id, habit.id, { important: !habit.important })}
+                                  >
+                                    <Icon name="star" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`task-action ${habit.urgent ? "active urgent" : ""}`}
+                                    title={habit.urgent ? "Urgent (Click to change)" : "Not Urgent (Click to mark Urgent)"}
+                                    disabled={habit.added}
+                                    onClick={() => updateProposedHabit(msg.id, habit.id, { urgent: !habit.urgent })}
+                                  >
+                                    <Icon name="bolt" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {habit.reasoning && <p className="proposed-reasoning">{habit.reasoning}</p>}
                             </div>
                           );
                         })}
@@ -509,6 +647,14 @@ export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) 
           <p className="settings-desc">
             Add your OpenRouter key and choose the model used by the assistant.
           </p>
+
+          <label className="settings-search-toggle">
+            <input type="checkbox" checked={webSearchInput} onChange={(event) => setWebSearchInput(event.target.checked)} />
+            <span>
+              <strong>Web search when needed</strong>
+              <small>Use it for current or niche information. Search provider costs may apply.</small>
+            </span>
+          </label>
 
           <label className="settings-field">
             <span>OpenRouter API Key</span>
