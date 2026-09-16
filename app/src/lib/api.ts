@@ -29,8 +29,17 @@ export const api = {
   login(email: string, password: string): Promise<PasswordAuthResponse> {
     return request<PasswordAuthResponse>("/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password, device: "Prior", platform: "web" }) });
   },
-  exchange(code: string): Promise<ExchangeResponse> {
-    return request<ExchangeResponse>("/v1/auth/exchange", { method: "POST", body: JSON.stringify({ code }) });
+  async exchange(code: string): Promise<ExchangeResponse> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    try {
+      return await request<ExchangeResponse>("/v1/auth/exchange", { method: "POST", body: JSON.stringify({ code }), signal: controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error("Sign-in timed out. Check your connection and try again.");
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   },
   logout(token: string): Promise<void> {
     return request<void>("/v1/auth/logout", { method: "POST" }, token);

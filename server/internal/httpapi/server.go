@@ -489,7 +489,7 @@ func bearer(r *http.Request) string {
 }
 
 func allowedOrigin(origin string) bool {
-	return origin == "http://localhost:1420" || origin == "http://127.0.0.1:1420" || origin == "http://tauri.localhost" || origin == "https://tauri.localhost" || origin == "https://prior.constantsuchet.fr" || strings.HasSuffix(origin, ".prior.constantsuchet.fr")
+	return origin == "tauri://localhost" || origin == "http://localhost:1420" || origin == "http://127.0.0.1:1420" || origin == "http://tauri.localhost" || origin == "https://tauri.localhost" || origin == "https://prior.constantsuchet.fr" || strings.HasSuffix(origin, ".prior.constantsuchet.fr")
 }
 
 func clientKey(r *http.Request) string {

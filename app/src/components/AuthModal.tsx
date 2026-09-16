@@ -7,6 +7,7 @@ import { Icon } from "./Icon";
 
 type Props = {
   user: SessionUser | null;
+  authError?: string;
   onClose: () => void;
   onAuthenticated: (user: SessionUser) => void;
   onGoogle: () => void;
@@ -15,7 +16,7 @@ type Props = {
 
 type UpdateState = "idle" | "checking" | "current" | "available" | "installing" | "error";
 
-export function AuthModal({ user, onClose, onAuthenticated, onGoogle, onLogout }: Props) {
+export function AuthModal({ user, authError, onClose, onAuthenticated, onGoogle, onLogout }: Props) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [panel, setPanel] = useState<"account" | "downloads">("account");
   const [name, setName] = useState("");
@@ -104,7 +105,7 @@ export function AuthModal({ user, onClose, onAuthenticated, onGoogle, onLogout }
               {mode === "signup" && <label><span>Name</span><div className="field"><Icon name="user" /><input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="Your name" /></div></label>}
               <label><span>Email</span><div className="field"><Icon name="mail" /><input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="you@example.com" /></div></label>
               <label><span>Password</span><div className="field"><Icon name="lock" /><input type="password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "signup" ? "new-password" : "current-password"} placeholder="At least 8 characters" /></div></label>
-              {error && <p className="auth-error" role="alert">{error}</p>}
+              {(error || authError) && <p className="auth-error" role="alert">{error || authError}</p>}
               <button className="primary-button auth-submit" type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}</button>
             </form>
             <div className="auth-divider"><span>or</span></div>

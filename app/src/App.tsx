@@ -31,6 +31,7 @@ export function App() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [habitComposerOpen, setHabitComposerOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
   const [activeView, setActiveView] = useState<WorkspaceView>("all");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -123,14 +124,17 @@ export function App() {
       closeRealtime = await connectRealtime(token, () => void syncNow());
     };
     void attachRealtime().catch(() => undefined);
-    let dispose: (() => void) | undefined;
-    void listenForAuth((nextUser) => {
+    const dispose = listenForAuth((nextUser) => {
       setUser(nextUser);
+      setAuthError("");
       setAuthOpen(false);
       void attachRealtime().catch(() => undefined);
       void syncNow();
-    }).then((cleanup) => { dispose = cleanup; });
-    return () => { dispose?.(); void closeRealtime?.(); };
+    }, (error) => {
+      setAuthError(error.message);
+      setAuthOpen(true);
+    });
+    return () => { dispose(); void closeRealtime?.(); };
   }, [refresh, syncNow]);
 
   useEffect(() => {
@@ -248,8 +252,21 @@ export function App() {
 
   function handleAuthenticated(nextUser: SessionUser) {
     setUser(nextUser);
+    setAuthError("");
     setAuthOpen(false);
     void syncNow();
+  }
+
+  async function googleLogin() {
+    setAuthError("");
+    try {
+      await startGoogleLogin();
+      setAuthOpen(false);
+    } catch {
+      console.warn("Prior could not open Google sign-in.");
+      setAuthError("Unable to open Google sign-in. Please try again.");
+      setAuthOpen(true);
+    }
   }
 
   return (
@@ -318,7 +335,7 @@ export function App() {
 
       {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); }} />}
       {habitComposerOpen && <HabitComposer onSave={saveHabit} onCancel={() => setHabitComposerOpen(false)} />}
-      {authOpen && <AuthModal user={user} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} onGoogle={() => { setAuthOpen(false); void startGoogleLogin(); }} onLogout={logout} />}
+      {authOpen && <AuthModal user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}
     </div>
   );

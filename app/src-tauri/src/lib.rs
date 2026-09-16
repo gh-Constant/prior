@@ -218,3 +218,16 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running Prior");
 }
+
+#[cfg(all(test, desktop))]
+mod tests {
+    #[test]
+    fn sessions_use_a_persistent_credential_store() {
+        // A keyring build without a platform feature silently uses a mock that
+        // forgets the token as soon as session_set's Entry is dropped.
+        assert!(matches!(
+            keyring::default::default_credential_builder().persistence(),
+            keyring::credential::CredentialPersistence::UntilDelete
+        ));
+    }
+}

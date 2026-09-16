@@ -44,30 +44,58 @@ export async function startGoogleLogin(): Promise<void> {
   else window.location.href = url;
 }
 
-async function finish(url: string): Promise<SessionUser | null> {
-  const parsed = new URL(url);
-  if (parsed.pathname !== "/auth/callback" || !parsed.searchParams.has("code")) return null;
+async function finish(url: string, handledCodes: Set<string>): Promise<SessionUser | null> {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return null; }
+  const nativeCallback = parsed.protocol === "prior:" && parsed.host === "auth" && parsed.pathname === "/callback";
+  const webCallback = parsed.pathname === "/auth/callback" && (
+    parsed.origin === "https://app.prior.constantsuchet.fr" ||
+    (parsed.origin === window.location.origin && ["http:", "https:"].includes(parsed.protocol))
+  );
+  if ((!nativeCallback && !webCallback) || parsed.username || parsed.password) return null;
+  if (parsed.searchParams.has("error")) throw new Error("Google sign-in failed or was cancelled. Please try again.");
   const code = parsed.searchParams.get("code");
-  if (!code) return null;
+  if (!code) throw new Error("The sign-in link is missing its code. Please sign in again.");
+  // Tauri can deliver the same one-use code through both startup and open events.
+  if (handledCodes.has(code)) return null;
+  handledCodes.add(code);
   return saveSession(await api.exchange(code));
 }
 
-export async function listenForAuth(onAuthenticated: (user: SessionUser) => void): Promise<() => void> {
-  const cleanup: Array<() => void> = [];
-  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-    const initial = await getCurrent();
-    if (initial?.[0]) {
-      const user = await finish(initial[0]);
-      if (user) onAuthenticated(user);
+export function listenForAuth(onAuthenticated: (user: SessionUser) => void, onError: (error: Error) => void): () => void {
+  let disposed = false;
+  let unlisten: (() => void) | undefined;
+  const handledCodes = new Set<string>();
+  const reportError = (error: unknown) => {
+    if (disposed) return;
+    // Callback URLs contain one-use credentials; never log them.
+    console.warn("Prior could not complete Google sign-in.");
+    onError(error instanceof Error ? error : new Error("Unable to complete Google sign-in. Please try again."));
+  };
+  const handleUrls = async (urls: string[]) => {
+    for (const url of urls) {
+      if (disposed) return;
+      try {
+        const user = await finish(url, handledCodes);
+        if (user && !disposed) onAuthenticated(user);
+      } catch (error) {
+        reportError(error);
+      }
     }
-    cleanup.push(await onOpenUrl(async (urls) => {
-      const user = urls[0] ? await finish(urls[0]) : null;
-      if (user) onAuthenticated(user);
-    }));
-  } else if (window.location.pathname === "/auth/callback") {
-    const user = await finish(window.location.href);
-    if (user) onAuthenticated(user);
-    window.history.replaceState({}, "", "/");
-  }
-  return () => cleanup.forEach((dispose) => dispose());
+  };
+  const attach = async () => {
+    if ("__TAURI_INTERNALS__" in window) {
+      // Subscribe before reading startup URLs so a return cannot fall in between.
+      unlisten = await onOpenUrl((urls) => { void handleUrls(urls); });
+      if (disposed) { unlisten(); return; }
+      await handleUrls(await getCurrent() ?? []);
+    } else if (window.location.pathname === "/auth/callback") {
+      const url = window.location.href;
+      window.history.replaceState({}, "", "/");
+      await handleUrls([url]);
+    }
+  };
+  // Let React dispose a development StrictMode mount before consuming a code.
+  void Promise.resolve().then(() => { if (!disposed) return attach(); }).catch(reportError);
+  return () => { disposed = true; unlisten?.(); };
 }
