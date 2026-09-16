@@ -1,6 +1,8 @@
 import type { AgentChat, AgentChatMessage, AgentChatSummary, Habit, Mutation, Task } from "../types";
 
-export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "http://localhost:8080";
+const isNativeApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const defaultApiUrl = isNativeApp ? "https://api.prior.constantsuchet.fr" : "http://localhost:8080";
+export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? defaultApiUrl;
 
 type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
 export type PasswordAuthResponse = ExchangeResponse;
