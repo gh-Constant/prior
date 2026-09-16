@@ -71,8 +71,21 @@ export type AgentMessage = {
   createdAt: string;
 };
 
+export type AgentChatMessage = AgentMessage;
+
+export type AgentChatSummary = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+};
+
+export type AgentChat = AgentChatSummary & {
+  messages: AgentMessage[];
+};
+
 export type AgentSettings = {
   apiKey: string;
   model: string;
 };
-

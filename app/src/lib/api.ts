@@ -1,4 +1,4 @@
-import type { Habit, Mutation, Task } from "../types";
+import type { AgentChat, AgentChatMessage, AgentChatSummary, Habit, Mutation, Task } from "../types";
 
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "http://localhost:8080";
 
@@ -38,5 +38,17 @@ export const api = {
   },
   pull(since: number, token: string): Promise<PullResponse> {
     return request<PullResponse>(`/v1/sync/pull?since=${encodeURIComponent(since)}`, {}, token);
+  },
+  listAgentChats(token: string): Promise<AgentChatSummary[]> {
+    return request<AgentChatSummary[]>("/v1/agent/chats", {}, token);
+  },
+  createAgentChat(title: string, token: string): Promise<AgentChatSummary> {
+    return request<AgentChatSummary>("/v1/agent/chats", { method: "POST", body: JSON.stringify({ title }) }, token);
+  },
+  getAgentChat(chatId: string, token: string): Promise<AgentChat> {
+    return request<AgentChat>(`/v1/agent/chats/${encodeURIComponent(chatId)}`, {}, token);
+  },
+  saveAgentChatMessage(chatId: string, message: AgentChatMessage, token: string): Promise<AgentChatMessage> {
+    return request<AgentChatMessage>(`/v1/agent/chats/${encodeURIComponent(chatId)}/messages`, { method: "POST", body: JSON.stringify(message) }, token);
   },
 };

@@ -236,9 +236,6 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete }: Pro
           <p className="eyebrow">Routines</p>
           <p className="habits-summary">{periodSummary(period, dueCount, habits.length, progress)}</p>
         </div>
-        <button className="primary-button habit-add-button" type="button" onClick={onAdd}>
-          <Icon name="plus" /> <span className="habit-add-label">New habit</span>
-        </button>
       </div>
 
       <div className="habit-period-bar">

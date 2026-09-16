@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { AgentMessage, AgentSettings, ProposedTask, QuadrantKey, Task } from "../types";
+import { useEffect, useRef, useState } from "react";
+import type { AgentChatSummary, AgentMessage, AgentSettings, ProposedTask, QuadrantKey, Task } from "../types";
 import { askAgent, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
+import { getToken, type SessionUser } from "../lib/auth";
+import { api } from "../lib/api";
 import { quadrantFor } from "../lib/priority";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
@@ -10,6 +12,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   tasks: Task[];
+  user: SessionUser | null;
   onAddTasks: (tasks: Array<Pick<Task, "title" | "important" | "urgent">>) => Promise<void>;
 };
 
@@ -20,7 +23,7 @@ const STARTER_PROMPTS = [
   { icon: "sparkles" as const, title: "Organize my inbox", prompt: "Review my current task list and suggest what to tackle first, what to schedule, and what to defer." },
 ];
 
-export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
+export function AgentSidebar({ open, onClose, tasks, user, onAddTasks }: Props) {
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(settings.apiKey);
@@ -33,6 +36,11 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
   });
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [chatHistory, setChatHistory] = useState<AgentChatSummary[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,12 +55,39 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
     });
   }, []);
 
-  const lastActualModel = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].actualModel) return messages[i].actualModel;
+  useEffect(() => {
+    let cancelled = false;
+    if (!open || !user) {
+      if (!user) {
+        setSessionToken(null);
+        setChatHistory([]);
+        setActiveChatId(null);
+        setMessages([]);
+      }
+      return () => { cancelled = true; };
     }
-    return undefined;
-  }, [messages]);
+
+    setHistoryLoading(true);
+    void getToken()
+      .then(async (token) => {
+        if (cancelled) return;
+        setSessionToken(token);
+        if (!token) {
+          setChatHistory([]);
+          return;
+        }
+        const chats = await api.listAgentChats(token);
+        if (!cancelled) setChatHistory(chats);
+      })
+      .catch(() => {
+        if (!cancelled) setChatHistory([]);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [open, user]);
 
   useEffect(() => {
     if (open) {
@@ -75,6 +110,53 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
     setError(null);
   }
 
+  async function ensureChat(token: string): Promise<string | null> {
+    if (activeChatId) return activeChatId;
+    try {
+      const chat = await api.createAgentChat("New chat", token);
+      setActiveChatId(chat.id);
+      setChatHistory((current) => [chat, ...current.filter((item) => item.id !== chat.id)]);
+      return chat.id;
+    } catch {
+      return null;
+    }
+  }
+
+  async function persistMessage(chatId: string, message: AgentMessage, token: string): Promise<void> {
+    try {
+      await api.saveAgentChatMessage(chatId, message, token);
+      const chats = await api.listAgentChats(token);
+      setChatHistory(chats);
+    } catch {
+      // Keep the conversation usable when the sync API is temporarily unavailable.
+    }
+  }
+
+  async function selectChat(chatId: string) {
+    if (!sessionToken || chatId === activeChatId || chatLoading || loading) return;
+    setChatLoading(true);
+    setError(null);
+    try {
+      const chat = await api.getAgentChat(chatId, sessionToken);
+      setActiveChatId(chat.id);
+      setMessages(chat.messages ?? []);
+      setInput("");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Unable to load this conversation.");
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
+  function startNewChat() {
+    if (loading || chatLoading) return;
+    setActiveChatId(null);
+    setMessages([]);
+    setInput("");
+    setError(null);
+    setSettingsOpen(false);
+  }
+
   async function handleSend(customPrompt?: string) {
     const promptToSend = (customPrompt ?? input).trim();
     if (!promptToSend || loading) return;
@@ -88,6 +170,10 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
     setError(null);
     setInput("");
 
+    const token = sessionToken ?? await getToken();
+    if (token && !sessionToken) setSessionToken(token);
+    const chatId = token && user ? await ensureChat(token) : null;
+
     const userMsg: AgentMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -97,6 +183,7 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
 
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
+    if (chatId && token) await persistMessage(chatId, userMsg, token);
     setLoading(true);
 
     try {
@@ -110,6 +197,7 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
         createdAt: new Date().toISOString(),
       };
       setMessages([...nextMessages, assistantMsg]);
+      if (chatId && token) await persistMessage(chatId, assistantMsg, token);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to generate tasks with AI";
       setError(msg);
@@ -215,36 +303,17 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
       <header className="agent-header">
         <div className="agent-title-row">
           <AgentIdentity size="small" thinking={loading} />
-          <div className="agent-title-text">
-            <div className="agent-title-line">
-              <h3>AI Assistant</h3>
-              <span className={`agent-status ${loading ? "is-thinking" : ""}`} aria-live="polite">
-                <span className="agent-status-dot" />
-                {loading ? "Thinking" : "Ready"}
-              </span>
-            </div>
-            <span
-              className="agent-model-tag"
-              title={`Configured: ${settings.model}${lastActualModel ? `\nResolved model: ${lastActualModel}` : ""}`}
-            >
-              {settings.model === DEFAULT_MODEL
-                ? lastActualModel
-                  ? `free → ${lastActualModel.split("/").pop()?.replace(":free", "")}`
-                  : "openrouter/free"
-                : settings.model.split("/").pop()?.replace(":free", "") || settings.model}
-            </span>
-          </div>
+          <h3>AI Assistant</h3>
         </div>
         <div className="agent-header-actions">
           <button
             type="button"
-            className={`icon-button agent-gear-btn ${!settings.apiKey ? "needs-key" : ""}`}
-            title="AI Settings"
-            aria-label="AI Settings"
-            onClick={() => setSettingsOpen(!settingsOpen)}
+            className="icon-button agent-new-chat"
+            title="New conversation"
+            aria-label="New conversation"
+            onClick={startNewChat}
           >
-            <Icon name="gear" />
-            {!settings.apiKey && <span className="settings-alert-dot" />}
+            <Icon name="plus" />
           </button>
           <button type="button" className="icon-button" aria-label="Close assistant" onClick={onClose}>
             <Icon name="close" />
@@ -252,113 +321,23 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
         </div>
       </header>
 
-      {settingsOpen && (
-        <div className="agent-settings-panel">
-          <h4>OpenRouter Settings</h4>
-          <p className="settings-desc">
-            Provide your own OpenRouter key and pick a model. By default, <code>openrouter/free</code> routes to free models and reveals the active model used.
-          </p>
-
-          <label className="settings-field">
-            <span>OpenRouter API Key</span>
-            <div className="field">
-              <Icon name="lock" />
-              <input
-                type={showApiKey ? "text" : "password"}
-                placeholder="sk-or-v1-..."
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-              />
-              <button
-                type="button"
-                className="show-key-btn"
-                onClick={() => setShowApiKey(!showApiKey)}
-                tabIndex={-1}
-              >
-                {showApiKey ? "Hide" : "Show"}
-              </button>
-            </div>
-            <small className="settings-help">
-              Don't have a key? Get one free in 10s at{" "}
-              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">
-                openrouter.ai/keys
-              </a>
-            </small>
-          </label>
-
-          <label className="settings-field">
-            <div className="model-label-row">
-              <span>Model Selection (Default: openrouter/free)</span>
-              <button
-                type="button"
-                className="custom-model-toggle-btn"
-                onClick={() => setCustomModelMode(!customModelMode)}
-              >
-                {customModelMode ? "Select from list" : "Custom model ID"}
-              </button>
-            </div>
-
-            {customModelMode ? (
-              <div className="field">
-                <input
-                  type="text"
-                  placeholder="e.g. openrouter/free, openai/gpt-4o-mini"
-                  value={modelInput}
-                  onChange={(e) => setModelInput(e.target.value)}
-                />
-              </div>
-            ) : (
-              <div className="filter-control">
-                <select
-                  value={modelList.some((m) => m.id === modelInput) ? modelInput : "custom"}
-                  onChange={(e) => {
-                    if (e.target.value === "custom") {
-                      setCustomModelMode(true);
-                    } else {
-                      setModelInput(e.target.value);
-                    }
-                  }}
-                >
-                  {modelList.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                  <option value="custom">✏️ Enter custom model ID...</option>
-                </select>
-              </div>
-            )}
-            <small className="settings-help">
-              By default, <code>openrouter/free</code> auto-routes to available free models and displays the active model for every response.
-            </small>
-          </label>
-
-          <div className="settings-footer">
-            <button type="button" className="secondary-button" onClick={() => setSettingsOpen(false)}>
-              Cancel
-            </button>
-            <button type="button" className="primary-button" onClick={handleSaveSettings}>
-              Save Settings
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="agent-thread-bar">
-        <div className="agent-thread-label">
-          <AgentIdentity size="tiny" />
-          <span>Prior</span>
-        </div>
-        <button
-          type="button"
-          className="agent-thread-new"
-          aria-label="New conversation"
-          title="New conversation"
-          onClick={() => { setMessages([]); setError(null); }}
-        >
-          <Icon name="plus" />
-        </button>
-      </div>
+      <nav className="agent-chat-history" aria-label="Chat history">
+        {historyLoading && <span className="agent-history-note">Loading chats…</span>}
+        {!historyLoading && chatHistory.map((chat) => (
+          <button
+            key={chat.id}
+            type="button"
+            className={`agent-chat-item ${chat.id === activeChatId ? "active" : ""}`}
+            aria-current={chat.id === activeChatId ? "page" : undefined}
+            title={chat.title}
+            onClick={() => void selectChat(chat.id)}
+            disabled={chatLoading || loading}
+          >
+            <span>{chat.title}</span>
+          </button>
+        ))}
+        {!historyLoading && !chatHistory.length && !user && <span className="agent-history-note">Sign in to save chats</span>}
+      </nav>
 
       <div className="agent-body">
         {messages.length === 0 ? (
@@ -524,6 +503,95 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
         </div>
       )}
 
+      {settingsOpen && (
+        <div className="agent-settings-panel">
+          <h4>OpenRouter Settings</h4>
+          <p className="settings-desc">
+            Add your OpenRouter key and choose the model used by the assistant.
+          </p>
+
+          <label className="settings-field">
+            <span>OpenRouter API Key</span>
+            <div className="field">
+              <Icon name="lock" />
+              <input
+                type={showApiKey ? "text" : "password"}
+                placeholder="sk-or-v1-..."
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+              />
+              <button
+                type="button"
+                className="show-key-btn"
+                onClick={() => setShowApiKey(!showApiKey)}
+                tabIndex={-1}
+              >
+                {showApiKey ? "Hide" : "Show"}
+              </button>
+            </div>
+            <small className="settings-help">
+              Get a key at{" "}
+              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">
+                openrouter.ai/keys
+              </a>
+            </small>
+          </label>
+
+          <label className="settings-field">
+            <div className="model-label-row">
+              <span>Model</span>
+              <button
+                type="button"
+                className="custom-model-toggle-btn"
+                onClick={() => setCustomModelMode(!customModelMode)}
+              >
+                {customModelMode ? "Use model list" : "Custom ID"}
+              </button>
+            </div>
+
+            {customModelMode ? (
+              <div className="field">
+                <input
+                  type="text"
+                  placeholder="openrouter/free"
+                  value={modelInput}
+                  onChange={(e) => setModelInput(e.target.value)}
+                />
+              </div>
+            ) : (
+              <div className="filter-control">
+                <select
+                  value={modelList.some((m) => m.id === modelInput) ? modelInput : "custom"}
+                  onChange={(e) => {
+                    if (e.target.value === "custom") {
+                      setCustomModelMode(true);
+                    } else {
+                      setModelInput(e.target.value);
+                    }
+                  }}
+                >
+                  {modelList.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                  <option value="custom">Enter custom model ID…</option>
+                </select>
+              </div>
+            )}
+          </label>
+
+          <div className="settings-footer">
+            <button type="button" className="secondary-button" onClick={() => setSettingsOpen(false)}>
+              Cancel
+            </button>
+            <button type="button" className="primary-button" onClick={handleSaveSettings}>
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
       <footer className="agent-footer">
         <form
           className="agent-input-form"
@@ -546,16 +614,25 @@ export function AgentSidebar({ open, onClose, tasks, onAddTasks }: Props) {
             rows={2}
           />
           <div className="agent-input-actions">
-            {messages.length > 0 && (
+            <div className="agent-input-tools">
               <button
                 type="button"
-                className="clear-chat-btn"
-                title="Clear conversation"
-                onClick={() => setMessages([])}
+                className={`agent-settings-trigger ${!settings.apiKey ? "needs-key" : ""}`}
+                title="AI settings"
+                aria-label="AI settings"
+                aria-expanded={settingsOpen}
+                onClick={() => setSettingsOpen(!settingsOpen)}
               >
-                Clear
+                <Icon name="gear" />
+                <span>{settings.model === DEFAULT_MODEL ? "Free model" : settings.model.split("/").pop()?.replace(":free", "") || settings.model}</span>
+                {!settings.apiKey && <span className="settings-alert-dot" />}
               </button>
-            )}
+              {messages.length > 0 && (
+                <button type="button" className="clear-chat-btn" title="Clear conversation" onClick={startNewChat}>
+                  Clear
+                </button>
+              )}
+            </div>
             <button
               type="submit"
               className="primary-button agent-send-btn"

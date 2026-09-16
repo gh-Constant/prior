@@ -62,6 +62,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/exchange", s.exchange)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/me", s.me)
+	mux.HandleFunc("GET /v1/agent/chats", s.listAgentChats)
+	mux.HandleFunc("POST /v1/agent/chats", s.createAgentChat)
+	mux.HandleFunc("GET /v1/agent/chats/{chatID}", s.getAgentChat)
+	mux.HandleFunc("POST /v1/agent/chats/{chatID}/messages", s.saveAgentChatMessage)
 	mux.HandleFunc("POST /v1/sync/push", s.push)
 	mux.HandleFunc("GET /v1/sync/pull", s.pull)
 	mux.HandleFunc("GET /v1/realtime", s.realtime)
@@ -198,6 +202,104 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
+}
+
+func (s *Server) listAgentChats(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return
+	}
+	chats, err := s.store.ListAgentChats(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, chats)
+}
+
+func (s *Server) createAgentChat(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return
+	}
+	var body struct {
+		Title string `json:"title"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid chat request"))
+		return
+	}
+	chat, err := s.store.CreateAgentChat(r.Context(), user.ID, body.Title)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, chat)
+}
+
+func (s *Server) getAgentChat(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return
+	}
+	chatID, err := uuid.Parse(r.PathValue("chatID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid chat id"))
+		return
+	}
+	chat, err := s.store.GetAgentChat(r.Context(), user.ID, chatID)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, chat)
+}
+
+func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return
+	}
+	chatID, err := uuid.Parse(r.PathValue("chatID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid chat id"))
+		return
+	}
+	var body struct {
+		ID            string          `json:"id"`
+		Role          string          `json:"role"`
+		Content       string          `json:"content"`
+		ProposedTasks json.RawMessage `json:"proposedTasks"`
+		ActualModel   string          `json:"actualModel"`
+		CreatedAt     string          `json:"createdAt"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid chat message request"))
+		return
+	}
+	messageID, err := uuid.Parse(body.ID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid chat message id"))
+		return
+	}
+	message, err := s.store.SaveAgentChatMessage(r.Context(), user.ID, chatID, messageID, body.Role, body.Content, body.ProposedTasks, body.ActualModel)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, message)
 }
 
 func (s *Server) push(w http.ResponseWriter, r *http.Request) {

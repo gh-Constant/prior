@@ -40,10 +40,6 @@ export function AgentIdentity({ thinking = false, size = "small" }: AgentIdentit
           fill={`url(#${highlightId})`}
           d="M50 3c3 0 5 2 6 6l6 28 28 6c4 1 6 3 6 7s-2 6-6 7l-28 6-6 28c-1 4-3 6-6 6s-5-2-6-6l-6-28-28-6c-4-1-6-3-6-7s2-6 6-7l28-6 6-28c1-4 3-6 6-6Z"
         />
-        <path
-          className="agent-symbol-outline"
-          d="M50 8c2 0 3 2 4 5l6 29 29 6c3 1 5 2 5 4s-2 3-5 4l-29 6-6 29c-1 3-2 5-4 5s-3-2-4-5l-6-29-29-6c-3-1-5-2-5-4s2-3 5-4l29-6 6-29c1-3 2-5 4-5Z"
-        />
         <path className="agent-symbol-glint" d="m34 28 2 7 7 2-7 2-2 7-2-7-7-2 7-2 2-7Z" />
       </svg>
     </span>

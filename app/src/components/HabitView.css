@@ -6,21 +6,12 @@
 
 .habits-intro {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
   align-items: center;
   gap: 16px;
 }
 
 .habits-intro-copy { min-width: 0; }
-.habit-add-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  min-width: max-content;
-  white-space: nowrap;
-}
-.habit-add-label { display: inline; }
 
 .habit-period-bar {
   display: flex;
@@ -258,7 +249,6 @@
 
 @media (max-width: 760px) {
   .habits-intro { gap: 12px; margin-bottom: 18px; }
-  .habit-add-button { min-height: 40px; padding: 0 12px; }
   .habit-period-bar { align-items: stretch; flex-direction: column; gap: 9px; }
   .habit-period-tabs { flex-basis: auto; width: 100%; }
   .habit-range-label { padding-left: 4px; }
@@ -270,11 +260,6 @@
   .habit-week-card { margin-bottom: 18px; padding: 11px 8px; }
   .habit-week-strip { gap: 3px; }
   .habit-week-day { padding-right: 2px; padding-left: 2px; }
-}
-
-@media (max-width: 380px) {
-  .habits-intro { gap: 8px; }
-  .habit-add-button { padding-right: 10px; padding-left: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

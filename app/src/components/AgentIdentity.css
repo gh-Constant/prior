@@ -37,7 +37,6 @@
 
 .agent-symbol-shape { transform-box: fill-box; transform-origin: center; animation: agent-symbol-idle 8s ease-in-out infinite; }
 .agent-symbol-highlight { opacity: .72; mix-blend-mode: screen; animation: agent-symbol-highlight-idle 6s ease-in-out infinite; }
-.agent-symbol-outline { fill: none; stroke: #fff8e5a8; stroke-width: 1.2; stroke-linejoin: round; stroke-dasharray: 2 7; opacity: .82; transform-box: fill-box; transform-origin: center; animation: agent-symbol-idle 8s ease-in-out infinite; }
 .agent-symbol-glint { fill: #fffdf5d4; opacity: .82; transform-box: fill-box; transform-origin: center; animation: agent-symbol-glint-idle 5s ease-in-out infinite; }
 
 .agent-symbol-stop-one { animation: agent-symbol-stop-one 7s ease-in-out infinite alternate; }
@@ -53,7 +52,6 @@
 .agent-identity.is-thinking .agent-symbol { filter: drop-shadow(0 7px 15px #d95e4a70); }
 .agent-identity.is-thinking .agent-symbol-shape { animation: agent-symbol-thinking 1.35s ease-in-out infinite; }
 .agent-identity.is-thinking .agent-symbol-highlight { animation: agent-symbol-highlight-thinking .7s ease-in-out infinite; }
-.agent-identity.is-thinking .agent-symbol-outline { stroke: #fff9e8d0; stroke-dasharray: 3 5; animation: agent-symbol-thinking 1.35s ease-in-out infinite; }
 .agent-identity.is-thinking .agent-symbol-glint { animation: agent-symbol-glint-thinking .8s ease-in-out infinite; }
 .agent-identity.is-thinking .agent-symbol-stop-one { animation-duration: 1.2s; }
 .agent-identity.is-thinking .agent-symbol-stop-two { animation-duration: 1.35s; }
@@ -126,5 +124,4 @@
     transition: none !important;
   }
 
-  .agent-identity.is-thinking .agent-symbol-outline { opacity: .74; }
 }

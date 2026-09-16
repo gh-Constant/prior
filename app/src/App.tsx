@@ -266,7 +266,7 @@ export function App() {
               <span>AI Assistant</span>
               <kbd>{aiShortcut}</kbd>
             </button>
-            {activeView !== "habits" && <button className="primary-button new-task-button" type="button" aria-label="New task" title={`New task (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={() => setComposerOpen(true)}><Icon name="plus" /><span>New task</span><kbd>{shortcut}</kbd></button>}
+            <button className="primary-button new-task-button" type="button" aria-label={activeView === "habits" ? "New habit" : "New task"} title={`${activeView === "habits" ? "New habit" : "New task"} (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={() => activeView === "habits" ? setHabitComposerOpen(true) : setComposerOpen(true)}><Icon name="plus" /><span>{activeView === "habits" ? "New habit" : "New task"}</span><kbd>{shortcut}</kbd></button>
           </div>
         </header>
 
@@ -292,6 +292,7 @@ export function App() {
         open={agentOpen}
         onClose={() => setAgentOpen(false)}
         tasks={tasks}
+        user={user}
         onAddTasks={addAgentTasks}
       />
 

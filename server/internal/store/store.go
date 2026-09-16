@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gh-Constant/prior/server/internal/tasks"
@@ -24,6 +25,24 @@ type User struct {
 	EmailVerified bool      `json:"emailVerified"`
 	DisplayName   string    `json:"displayName"`
 	AvatarURL     string    `json:"avatarUrl,omitempty"`
+}
+
+type AgentChat struct {
+	ID           uuid.UUID          `json:"id"`
+	Title        string             `json:"title"`
+	CreatedAt    time.Time          `json:"createdAt"`
+	UpdatedAt    time.Time          `json:"updatedAt"`
+	MessageCount int                `json:"messageCount"`
+	Messages     []AgentChatMessage `json:"messages,omitempty"`
+}
+
+type AgentChatMessage struct {
+	ID            uuid.UUID       `json:"id"`
+	Role          string          `json:"role"`
+	Content       string          `json:"content"`
+	ProposedTasks json.RawMessage `json:"proposedTasks,omitempty"`
+	ActualModel   string          `json:"actualModel,omitempty"`
+	CreatedAt     time.Time       `json:"createdAt"`
 }
 
 type AppliedMutation struct {
@@ -142,6 +161,176 @@ func (s *Store) RevokeSession(ctx context.Context, token string) error {
 	hash := sha256.Sum256([]byte(token))
 	_, err := s.pool.Exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE token_hash = $1`, hash[:])
 	return err
+}
+
+func (s *Store) ListAgentChats(ctx context.Context, userID uuid.UUID) ([]AgentChat, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.id, c.title, c.created_at, c.updated_at, COUNT(m.id)::int
+		FROM agent_chats c
+		LEFT JOIN agent_chat_messages m ON m.chat_id = c.id
+		WHERE c.user_id = $1
+		GROUP BY c.id
+		ORDER BY c.updated_at DESC
+		LIMIT 100`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	chats := make([]AgentChat, 0)
+	for rows.Next() {
+		var chat AgentChat
+		if err := rows.Scan(&chat.ID, &chat.Title, &chat.CreatedAt, &chat.UpdatedAt, &chat.MessageCount); err != nil {
+			return nil, err
+		}
+		chats = append(chats, chat)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return chats, nil
+}
+
+func (s *Store) CreateAgentChat(ctx context.Context, userID uuid.UUID, title string) (AgentChat, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "New chat"
+	}
+	if len(title) > 160 {
+		title = title[:160]
+	}
+
+	var chat AgentChat
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO agent_chats (user_id, title)
+		VALUES ($1, $2)
+		RETURNING id, title, created_at, updated_at`, userID, title).
+		Scan(&chat.ID, &chat.Title, &chat.CreatedAt, &chat.UpdatedAt)
+	return chat, err
+}
+
+func (s *Store) GetAgentChat(ctx context.Context, userID, chatID uuid.UUID) (AgentChat, error) {
+	var chat AgentChat
+	err := s.pool.QueryRow(ctx, `
+		SELECT c.id, c.title, c.created_at, c.updated_at, COUNT(m.id)::int
+		FROM agent_chats c
+		LEFT JOIN agent_chat_messages m ON m.chat_id = c.id
+		WHERE c.id = $1 AND c.user_id = $2
+		GROUP BY c.id`, chatID, userID).
+		Scan(&chat.ID, &chat.Title, &chat.CreatedAt, &chat.UpdatedAt, &chat.MessageCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AgentChat{}, ErrNotFound
+	}
+	if err != nil {
+		return AgentChat{}, err
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, role, content, proposed_tasks, actual_model, created_at
+		FROM agent_chat_messages
+		WHERE chat_id = $1
+		ORDER BY created_at ASC, id ASC`, chatID)
+	if err != nil {
+		return AgentChat{}, err
+	}
+	defer rows.Close()
+	chat.Messages = make([]AgentChatMessage, 0, chat.MessageCount)
+	for rows.Next() {
+		var message AgentChatMessage
+		var actualModel *string
+		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &actualModel, &message.CreatedAt); err != nil {
+			return AgentChat{}, err
+		}
+		if actualModel != nil {
+			message.ActualModel = *actualModel
+		}
+		chat.Messages = append(chat.Messages, message)
+	}
+	if err := rows.Err(); err != nil {
+		return AgentChat{}, err
+	}
+	return chat, nil
+}
+
+func (s *Store) SaveAgentChatMessage(ctx context.Context, userID, chatID, messageID uuid.UUID, role, content string, proposedTasks json.RawMessage, actualModel string) (AgentChatMessage, error) {
+	content = strings.TrimSpace(content)
+	if role != "user" && role != "assistant" {
+		return AgentChatMessage{}, errors.New("invalid chat message role")
+	}
+	if content == "" || len(content) > 20000 {
+		return AgentChatMessage{}, errors.New("chat message content must be between 1 and 20000 characters")
+	}
+	if len(proposedTasks) == 0 || string(proposedTasks) == "null" {
+		proposedTasks = json.RawMessage("[]")
+	}
+	var proposedList []json.RawMessage
+	if err := json.Unmarshal(proposedTasks, &proposedList); err != nil {
+		return AgentChatMessage{}, errors.New("proposed tasks must be a JSON array")
+	}
+	if len(proposedTasks) > 1<<20 {
+		return AgentChatMessage{}, errors.New("proposed tasks payload is too large")
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return AgentChatMessage{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var owner uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT user_id FROM agent_chats WHERE id = $1`, chatID).Scan(&owner); errors.Is(err, pgx.ErrNoRows) {
+		return AgentChatMessage{}, ErrNotFound
+	} else if err != nil {
+		return AgentChatMessage{}, err
+	} else if owner != userID {
+		return AgentChatMessage{}, errors.New("chat belongs to another user")
+	}
+
+	var existingChatID uuid.UUID
+	existingErr := tx.QueryRow(ctx, `SELECT chat_id FROM agent_chat_messages WHERE id = $1`, messageID).Scan(&existingChatID)
+	if existingErr == nil && existingChatID != chatID {
+		return AgentChatMessage{}, errors.New("message belongs to another chat")
+	}
+	if existingErr != nil && !errors.Is(existingErr, pgx.ErrNoRows) {
+		return AgentChatMessage{}, existingErr
+	}
+
+	var actualModelValue any
+	if strings.TrimSpace(actualModel) != "" {
+		actualModelValue = strings.TrimSpace(actualModel)
+	}
+	var message AgentChatMessage
+	var returnedModel *string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO agent_chat_messages (id, chat_id, role, content, proposed_tasks, actual_model)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, content = EXCLUDED.content,
+		proposed_tasks = EXCLUDED.proposed_tasks, actual_model = EXCLUDED.actual_model
+		RETURNING id, role, content, proposed_tasks, actual_model, created_at`,
+		messageID, chatID, role, content, proposedTasks, actualModelValue).
+		Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &returnedModel, &message.CreatedAt)
+	if err != nil {
+		return AgentChatMessage{}, err
+	}
+	if returnedModel != nil {
+		message.ActualModel = *returnedModel
+	}
+
+	if role == "user" {
+		_, err = tx.Exec(ctx, `
+			UPDATE agent_chats
+			SET title = CASE WHEN title = 'New chat' THEN LEFT($3, 80) ELSE title END, updated_at = now()
+			WHERE id = $1 AND user_id = $2`, chatID, userID, content)
+	} else {
+		_, err = tx.Exec(ctx, `UPDATE agent_chats SET updated_at = now() WHERE id = $1 AND user_id = $2`, chatID, userID)
+	}
+	if err != nil {
+		return AgentChatMessage{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AgentChatMessage{}, err
+	}
+	return message, nil
 }
 
 func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mutation) ([]AppliedMutation, error) {
