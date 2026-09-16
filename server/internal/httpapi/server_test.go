@@ -67,7 +67,11 @@ func TestRenderAuthCallbackPage(t *testing.T) {
 			t.Fatalf("expected text/html content type, got %s", contentType)
 		}
 		body := w.Body.String()
-		if !strings.Contains(body, "Signed in to Prior") || !strings.Contains(body, "Open Prior") {
+		if !strings.Contains(body, "Welcome to Prior") ||
+			!strings.Contains(body, "Google sign-in complete") ||
+			!strings.Contains(body, "You're in.") ||
+			!strings.Contains(body, "Open Prior") ||
+			!strings.Contains(body, "coral-ribbon") {
 			t.Fatalf("body missing success messages: %s", body)
 		}
 		if !strings.Contains(body, "prior://auth/callback?code=test-code") {
@@ -82,7 +86,9 @@ func TestRenderAuthCallbackPage(t *testing.T) {
 			t.Fatalf("expected status 200, got %d", w.Code)
 		}
 		body := w.Body.String()
-		if !strings.Contains(body, "Authentication Failed") {
+		if !strings.Contains(body, "Sign-in interrupted") ||
+			!strings.Contains(body, "Let's try that again.") ||
+			!strings.Contains(body, "Return to Prior") {
 			t.Fatalf("body missing error message: %s", body)
 		}
 	})

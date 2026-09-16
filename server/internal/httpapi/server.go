@@ -133,145 +133,277 @@ var authCallbackTmpl = template.Must(template.New("authCallback").Parse(`<!DOCTY
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{if .Success}}Signed in to Prior{{else}}Sign-in failed - Prior{{end}}</title>
+  <meta name="theme-color" content="#20201f">
+  <title>{{if .Success}}Welcome to Prior{{else}}Sign-in interrupted - Prior{{end}}</title>
   <style>
     :root {
-      --bg: #0c0d0e;
-      --card-bg: #16181a;
-      --border: #26292d;
-      --text: #f0f1f2;
-      --text-muted: #8b9098;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --success: #10b981;
-      --error: #ef4444;
+      --bg: #20201f;
+      --panel: #2a2825e8;
+      --text: #f8f7f4;
+      --muted: #a5a39e;
+      --soft-muted: #c9c4bc;
+      --accent: #fa654a;
+      --accent-bright: #ff9670;
+      --ink: #272522;
+      --line: #ffffff1c;
     }
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #f8fafc;
-        --card-bg: #ffffff;
-        --border: #e2e8f0;
-        --text: #0f172a;
-        --text-muted: #64748b;
-        --primary: #2563eb;
-        --primary-hover: #1d4ed8;
-        --success: #059669;
-        --error: #dc2626;
-      }
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+    html { min-height: 100%; background: var(--bg); }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: var(--bg);
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
       color: var(--text);
+      background: var(--bg);
+      font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    .page {
+      position: relative;
+      isolation: isolate;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      padding: 32px 20px;
+      overflow: hidden;
+    }
+    .coral-field {
+      position: absolute;
+      inset: -100px 0 -160px;
+      z-index: -1;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .coral-field::before {
+      content: "";
+      position: absolute;
+      inset: 20% 10% 0;
+      background: radial-gradient(ellipse at 50% 80%, #f64c262b, transparent 60%);
+    }
+    .coral-ribbon {
+      position: absolute;
+      width: 1180px;
+      height: 430px;
+      top: 54%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-19deg);
+      border-radius: 50%;
+      background: conic-gradient(from 24deg, #542921, #ff9670 9%, #ff5838 24%, #862c20 35%, #20201f 45%, #20201f 53%, #743c2b 65%, #ffb394 76%, #fa654a 86%, #782f24);
+      mask-image: radial-gradient(ellipse at center, transparent 51%, #000 51.5%, #000 67%, transparent 67.5%);
+      filter: drop-shadow(0 20px 30px #0005);
+      opacity: .74;
+    }
+    .coral-ribbon-edge {
+      position: absolute;
+      width: 1170px;
+      height: 420px;
+      top: 54%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-19deg);
+      border: 1px solid #ff977438;
+      border-radius: 50%;
+      box-shadow: 0 0 60px #fa654a0b;
+    }
+    .coral-field::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 32%, #20201f00 10%, #20201f80 42%, transparent 70%), linear-gradient(0deg, #20201f, transparent 24%);
+    }
+    .auth-shell {
       display: flex;
       align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 1.5rem;
+      flex-direction: column;
+      width: min(100%, 500px);
+      gap: 24px;
     }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 2.5rem 2rem;
-      max-width: 420px;
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -.06em;
+      text-decoration: none;
+    }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      object-fit: contain;
+    }
+    .panel {
       width: 100%;
+      padding: 42px 40px 34px;
       text-align: center;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 28px 80px #0006, inset 0 1px #ffffff0c;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
     }
-    .icon-wrapper {
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
+    .status-mark {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 1.25rem;
+      width: 62px;
+      height: 62px;
+      margin-bottom: 26px;
+      border-radius: 16px;
     }
-    .icon-success {
-      background: rgba(16, 185, 129, 0.12);
-      color: var(--success);
+    .status-mark.success {
+      color: var(--ink);
+      background: var(--accent);
+      box-shadow: 0 12px 30px #fa654a3d;
     }
-    .icon-error {
-      background: rgba(239, 68, 68, 0.12);
-      color: var(--error);
+    .status-mark.error {
+      color: var(--accent-bright);
+      background: #fa654a16;
+      border: 1px solid #fa654a66;
     }
-    .icon-wrapper svg {
-      width: 28px;
-      height: 28px;
+    .status-mark svg {
+      width: 30px;
+      height: 30px;
+    }
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--accent-bright);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .18em;
+      line-height: 1.2;
+      text-transform: uppercase;
     }
     h1 {
-      font-size: 1.35rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-      letter-spacing: -0.01em;
+      margin: 0;
+      color: var(--text);
+      font-size: clamp(42px, 9vw, 62px);
+      font-weight: 500;
+      letter-spacing: -.073em;
+      line-height: .94;
     }
-    p {
-      color: var(--text-muted);
-      font-size: 0.95rem;
-      line-height: 1.5;
-      margin-bottom: 1.75rem;
+    .copy {
+      max-width: 350px;
+      margin: 18px auto 0;
+      color: var(--soft-muted);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .actions {
+      display: grid;
+      gap: 12px;
+      margin-top: 30px;
     }
     .btn {
-      display: inline-block;
-      width: 100%;
-      background: var(--primary);
-      color: #ffffff;
-      font-weight: 500;
-      font-size: 0.95rem;
-      text-decoration: none;
-      padding: 0.75rem 1.25rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      gap: 14px;
+      padding: 0 18px;
+      color: var(--ink);
+      background: var(--accent);
       border-radius: 8px;
-      transition: background 0.15s ease;
-      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background .15s ease, transform .15s ease;
     }
     .btn:hover {
-      background: var(--primary-hover);
+      background: var(--accent-bright);
+      transform: translateY(-1px);
     }
-    .note {
-      margin-top: 1rem;
-      font-size: 0.8rem;
-      color: var(--text-muted);
+    .btn:focus-visible {
+      outline: 2px solid var(--accent-bright);
+      outline-offset: 4px;
+    }
+    .arrow {
+      font-size: 18px;
+      font-weight: 400;
+      line-height: 0;
+    }
+    .note,
+    .footer-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .footer-note {
+      opacity: .74;
+    }
+    @media (max-width: 520px) {
+      .page { padding: 24px 16px; }
+      .auth-shell { gap: 20px; }
+      .panel { padding: 34px 24px 28px; }
+      .status-mark { margin-bottom: 22px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .btn { transition: none; }
+      .btn:hover { transform: none; }
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    {{if .Success}}
-      <div class="icon-wrapper icon-success">
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+  <div class="page">
+    <div class="coral-field" aria-hidden="true">
+      <div class="coral-ribbon"></div>
+      <div class="coral-ribbon-edge"></div>
+    </div>
+    <main class="auth-shell">
+      <a class="brand" href="https://prior.constantsuchet.fr/" aria-label="Prior home">
+        <svg class="brand-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+          <rect width="64" height="64" rx="18" fill="#183D4E"/>
+          <path d="M17 16h16.5c8.56 0 13.5 4.53 13.5 11.56 0 7.16-5.1 11.72-13.5 11.72H25v8.72h-8V16ZM25 22.82v11.64h7.83c3.62 0 5.99-2.02 5.99-5.86 0-3.78-2.37-5.78-5.99-5.78H25Z" fill="#F6F7F2"/>
+          <path d="m39.75 42.5 6.25 6.25" stroke="#C5E86C" stroke-width="4.5" stroke-linecap="round"/>
         </svg>
-      </div>
-      <h1>You're all set!</h1>
-      <p>You can return to the Prior app. You can safely close this browser window.</p>
-      {{if .TargetURL}}
-        <a href="{{.TargetURL}}" class="btn">Open Prior</a>
-        <p class="note">If the app doesn't open automatically, click the button above.</p>
-      {{end}}
-    {{else}}
-      <div class="icon-wrapper icon-error">
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </div>
-      <h1>Authentication Failed</h1>
-      <p>Google sign-in could not be completed. You can return to Prior and try again.</p>
-      {{if .TargetURL}}
-        <a href="{{.TargetURL}}" class="btn">Return to Prior</a>
-      {{end}}
-    {{end}}
+        <span>Prior</span>
+      </a>
+      <section class="panel" aria-labelledby="auth-title">
+        {{if .Success}}
+          <div class="status-mark success" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m5 12.5 4.2 4.2L19 7"/>
+            </svg>
+          </div>
+          <p class="eyebrow">Google sign-in complete</p>
+          <h1 id="auth-title">You're in.</h1>
+          <p class="copy">Your Prior account is connected. Return to the app and get back to what matters.</p>
+          {{if .TargetURL}}
+            <div class="actions">
+              <a href="{{.TargetURL}}" class="btn">Open Prior <span class="arrow" aria-hidden="true">↗</span></a>
+              <p class="note">Prior should open automatically. You can close this window.</p>
+            </div>
+          {{end}}
+        {{else}}
+          <div class="status-mark error" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5"/>
+            </svg>
+          </div>
+          <p class="eyebrow">Sign-in interrupted</p>
+          <h1 id="auth-title">Let's try that again.</h1>
+          <p class="copy">Google sign-in could not be completed. Return to Prior and try again.</p>
+          {{if .TargetURL}}
+            <div class="actions">
+              <a href="{{.TargetURL}}" class="btn">Return to Prior <span class="arrow" aria-hidden="true">↗</span></a>
+            </div>
+          {{end}}
+        {{end}}
+      </section>
+      <p class="footer-note">A clearer space for your tasks.</p>
+    </main>
   </div>
   {{if and .Success .TargetURL}}
   <script>
     (function() {
       var target = {{.TargetURL}};
-      try {
-        window.location.replace(target);
-      } catch (e) {
-        window.location.href = target;
-      }
+      if (!target || window.__priorRedirected) return;
+      window.__priorRedirected = true;
+      window.location.replace(target);
     })();
   </script>
   {{end}}
