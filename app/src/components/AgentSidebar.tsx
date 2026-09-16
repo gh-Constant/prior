@@ -8,6 +8,8 @@ import { quadrantFor } from "../lib/priority";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
+import { DictationControls } from "./DictationControls";
+import { useDictation } from "../hooks/useDictation";
 
 type Props = {
   open: boolean;
@@ -54,11 +56,31 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingIds, setAddingIds] = useState<Record<string, boolean>>({});
+  const [dictationLanguage, setDictationLanguage] = useState(() => typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const loadingRef = useRef(false);
+  const isComposingRef = useRef(false);
+  const pendingDictationSelectionRef = useRef<{ start: number; end: number } | null>(null);
+  const dictationSelectionRef = useRef<{ start: number; end: number } | null>(null);
+
+  const dictation = useDictation({
+    enabled: open,
+    language: dictationLanguage,
+    onCommit: ({ value, selectionStart, selectionEnd }) => {
+      dictationSelectionRef.current = null;
+      pendingDictationSelectionRef.current = { start: selectionStart, end: selectionEnd };
+      setInput(value);
+      window.setTimeout(() => {
+        if (!textareaRef.current || pendingDictationSelectionRef.current?.start !== selectionStart) return;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(selectionStart, selectionEnd);
+        pendingDictationSelectionRef.current = null;
+      }, 0);
+    },
+  });
 
   useEffect(() => {
     void fetchAvailableFreeModels().then((list) => {
@@ -102,7 +124,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   useEffect(() => {
     if (open) {
-      setTimeout(() => textareaRef.current?.focus(), 150);
+      window.setTimeout(() => textareaRef.current?.focus(), 150);
     }
   }, [open]);
 
@@ -122,6 +144,10 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
+        if (dictation.isActive) {
+          cancelDictation();
+          return;
+        }
         if (settingsOpen) setSettingsOpen(false); else onClose();
         return;
       }
@@ -144,7 +170,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [open, onClose, settingsOpen]);
+  }, [dictation, open, onClose, settingsOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -160,6 +186,37 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
     saveAgentSettings(updated);
     setSettingsOpen(false);
     setError(null);
+  }
+
+  function handleClose(): void {
+    dictation.stop();
+    onClose();
+  }
+
+  function openSettings(): void {
+    dictation.stop();
+    setSettingsOpen((value) => !value);
+  }
+
+  function startDictation(): void {
+    const textarea = textareaRef.current;
+    if (!textarea || dictation.isActive) return;
+    const selection = {
+      start: textarea.selectionStart ?? input.length,
+      end: textarea.selectionEnd ?? input.length,
+    };
+    dictationSelectionRef.current = selection;
+    void dictation.start(input, selection);
+  }
+
+  function cancelDictation(): void {
+    const selection = dictationSelectionRef.current;
+    dictation.cancel();
+    dictationSelectionRef.current = null;
+    if (selection && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(selection.start, selection.end);
+    }
   }
 
   async function ensureChat(token: string): Promise<string | null> {
@@ -185,7 +242,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   }
 
   async function selectChat(chatId: string) {
-    if (!sessionToken || chatId === activeChatId || chatLoading || loading) return;
+    if (!sessionToken || chatId === activeChatId || chatLoading || loading || dictation.isActive) return;
     setChatLoading(true);
     setError(null);
     try {
@@ -202,7 +259,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   }
 
   function startNewChat() {
-    if (loading || chatLoading) return;
+    if (loading || chatLoading || dictation.isActive) return;
     setActiveChatId(null);
     setMessages([]);
     setInput("");
@@ -212,7 +269,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   async function handleSend(customPrompt?: string) {
     const promptToSend = (customPrompt ?? input).trim();
-    if (!promptToSend || loadingRef.current) return;
+    if (!promptToSend || loadingRef.current || dictation.isActive) return;
 
     if (!settings.apiKey) {
       setSettingsOpen(true);
@@ -393,7 +450,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   return (
     <>
-      <div className="agent-overlay-backdrop" aria-hidden="true" onMouseDown={onClose} />
+      <div className="agent-overlay-backdrop" aria-hidden="true" onMouseDown={handleClose} />
       <aside ref={panelRef} id="prior-ai-assistant" className="agent-sidebar" role="dialog" aria-modal="true" aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
       <header className="agent-header">
         <div className="agent-title-row">
@@ -407,10 +464,11 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             title="New conversation"
             aria-label="New conversation"
             onClick={startNewChat}
+            disabled={dictation.isActive}
           >
             <Icon name="plus" />
           </button>
-          <button type="button" className="icon-button" aria-label="Close assistant" onClick={onClose}>
+          <button type="button" className="icon-button" aria-label="Close assistant" onClick={handleClose}>
             <Icon name="close" />
           </button>
         </div>
@@ -431,7 +489,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             aria-label={chat.title}
             title={chat.title}
             onClick={() => void selectChat(chat.id)}
-            disabled={chatLoading || loading}
+            disabled={chatLoading || loading || dictation.isActive}
           >
             <span>{chat.title}</span>
           </button>
@@ -454,7 +512,9 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                   key={idx}
                   type="button"
                   className="starter-chip"
+                  disabled={dictation.isActive}
                   onClick={() => {
+                    if (dictation.isActive) return;
                     if (item.prompt.endsWith(": ")) {
                       setInput(item.prompt);
                       textareaRef.current?.focus();
@@ -810,14 +870,31 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            readOnly={dictation.isActive}
+            title={dictation.isActive ? "Stop dictation to edit" : undefined}
+            onCompositionStart={() => { isComposingRef.current = true; }}
+            onCompositionEnd={() => { isComposingRef.current = false; }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 void handleSend();
               }
             }}
             placeholder="Plan something…"
             rows={2}
+          />
+          <DictationControls
+            status={dictation.status}
+            language={dictationLanguage}
+            onLanguageChange={setDictationLanguage}
+            onStart={startDictation}
+            onStop={dictation.stop}
+            onCancel={cancelDictation}
+            finalText={dictation.finalText}
+            interimText={dictation.interimText}
+            notice={dictation.notice}
+            error={dictation.error}
+            warning={dictation.warning}
           />
           <div className="agent-input-actions">
             <div className="agent-input-tools">
@@ -827,14 +904,14 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                 title="AI settings"
                 aria-label="AI settings"
                 aria-expanded={settingsOpen}
-                onClick={() => setSettingsOpen(!settingsOpen)}
+                onClick={openSettings}
               >
                 <Icon name="gear" />
                 <span>{settings.model === DEFAULT_MODEL ? "Free model" : settings.model.split("/").pop()?.replace(":free", "") || settings.model}</span>
                 {!settings.apiKey && <span className="settings-alert-dot" />}
               </button>
               {messages.length > 0 && (
-                <button type="button" className="clear-chat-btn" title="Clear conversation" onClick={startNewChat}>
+                <button type="button" className="clear-chat-btn" title="Clear conversation" onClick={startNewChat} disabled={dictation.isActive}>
                   Clear
                 </button>
               )}
@@ -842,7 +919,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             <button
               type="submit"
               className="primary-button agent-send-btn"
-              disabled={!input.trim() || loading}
+              disabled={!input.trim() || loading || dictation.isActive}
               aria-label="Send to AI assistant"
             >
               <Icon name="arrow" />

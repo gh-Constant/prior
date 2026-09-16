@@ -32,7 +32,9 @@ export type IconName =
   | "gear"
   | "chevron-left"
   | "chevron-right"
-  | "chevron-down";
+  | "chevron-down"
+  | "microphone"
+  | "stop";
 
 const calendarCheckPath = Array.isArray(faCalendarCheck.icon[4])
   ? faCalendarCheck.icon[4].join(" ")
@@ -72,6 +74,8 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconN
     "chevron-left": <path d="m14.5 5-7 7 7 7" />,
     "chevron-right": <path d="m9.5 5 7 7-7 7" />,
     "chevron-down": <path d="m5 9 7 7 7-7" />,
+    microphone: <><rect x="8" y="3" width="8" height="12" rx="4" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" /></>,
+    stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
   };
   return <svg aria-hidden="true" {...common}>{paths[name]}</svg>;
 }

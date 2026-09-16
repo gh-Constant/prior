@@ -572,6 +572,95 @@
 
 .agent-input-form textarea::placeholder { color: #aa9a92; }
 
+.agent-input-form textarea[readonly] {
+  cursor: not-allowed;
+  opacity: .78;
+}
+
+.dictation-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 2px;
+  color: #806f67;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.dictation-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+
+.dictation-microphone,
+.dictation-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #ead8d1;
+  border-radius: 9px;
+  background: #fffdfb;
+  color: #9a5849;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dictation-microphone:hover:not(:disabled),
+.dictation-action:hover:not(:disabled) {
+  border-color: #ef9d8b;
+  background: #fff1eb;
+  color: #b84e39;
+}
+
+.dictation-microphone:disabled { cursor: not-allowed; opacity: .55; }
+.dictation-stop { border-color: #f2b5a7; background: #fff0eb; color: #b84e39; }
+.dictation-cancel { color: #766760; }
+.dictation-action svg, .dictation-microphone svg { width: 16px; height: 16px; }
+
+.dictation-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-left: auto;
+  color: #9a887f;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.dictation-language select {
+  max-width: 132px;
+  min-height: 34px;
+  padding: 0 6px;
+  border: 1px solid #eaded8;
+  border-radius: 7px;
+  background: #fffdfb;
+  color: #65554d;
+  font: inherit;
+}
+
+.dictation-status { color: #806f67; font-weight: 650; }
+.dictation-controls.is-active .dictation-status { color: #b84e39; }
+.dictation-notice { color: #a08e86; }
+.dictation-preview {
+  max-height: 84px;
+  padding: 7px 8px;
+  overflow-y: auto;
+  border-left: 2px solid #f1ad9d;
+  background: #fff5f1;
+  color: #5e4941;
+  white-space: pre-wrap;
+}
+.dictation-preview-label { display: block; margin-bottom: 2px; color: #a76c5d; font-size: 9px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
+.dictation-interim { color: #a58b82; font-style: italic; }
+.dictation-warning { color: #9a6c38; }
+.dictation-error { color: #b44c38; }
+
 .agent-input-actions { min-height: 30px; }
 
 .clear-chat-btn {
