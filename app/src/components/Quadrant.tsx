@@ -1,7 +1,7 @@
 import type { QuadrantKey, Task } from "../types";
 import { TaskRow } from "./TaskRow";
 
-type Props = { id: QuadrantKey; label: string; tasks: Task[]; onChange: (task: Task) => Promise<void>; onDelete: (task: Task) => Promise<void>; onEdit: (task: Task) => void };
+type Props = { readonly id: QuadrantKey; readonly label: string; readonly tasks: Task[]; readonly onChange: (task: Task) => Promise<void>; readonly onDelete: (task: Task) => Promise<void>; readonly onEdit: (task: Task) => void };
 
 export function Quadrant({ id, label, tasks, onChange, onDelete, onEdit }: Props) {
   return (

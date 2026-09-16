@@ -1,4 +1,4 @@
-export function BrandMark({ small = false, withTitle = false }: { small?: boolean; withTitle?: boolean }) {
+export function BrandMark({ small = false, withTitle = false }: { readonly small?: boolean; readonly withTitle?: boolean }) {
   return (
     <span className={`brand-lockup ${small ? "small" : ""} ${withTitle ? "with-title" : ""}`}>
       <img className="brand-mark" src="/prior-logo.png" alt="" aria-hidden="true" />

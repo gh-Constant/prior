@@ -1,6 +1,6 @@
 import "./CompletionBurst.css";
 
-type Props = { trigger: number };
+type Props = { readonly trigger: number };
 
 export function CompletionBurst({ trigger }: Props) {
   if (!trigger) return null;

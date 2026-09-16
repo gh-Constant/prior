@@ -1,3 +1,15 @@
+/* Neutralize native <dialog> UA styles (position/padding/margin/max-width) so the
+   component classes below fully control presentation in every mode. */
+:where(dialog.agent-sidebar, dialog.model-modal) {
+  position: relative;
+  inset: auto;
+  padding: 0;
+  margin: 0;
+  max-width: none;
+  max-height: none;
+  color: inherit;
+}
+
 .agent-sidebar {
   position: fixed;
   top: 16px;
@@ -235,7 +247,8 @@
   flex: 0 0 auto;
 }
 
-.settings-search-toggle span {
+.settings-search-toggle span,
+.settings-search-toggle label {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -342,7 +355,7 @@
   border: 1px solid #eaded8;
   border-radius: 9px;
   background: #fffaf7;
-  color: #9a8a82;
+  color: #7d7069;
 }
 
 .model-modal-search svg { width: 15px; height: 15px; flex: 0 0 auto; }
@@ -624,7 +637,7 @@
   border: 1px solid #f0e2dc;
   border-radius: 999px;
   background: #fff7f3;
-  color: #927d74;
+  color: #7f6d65;
   font-size: 10px;
 }
 
@@ -661,9 +674,9 @@
 .proposed-task-item.is-added { background: #fffaf7; border-color: #f2e9e5; }
 .proposed-task-title { color: #493a34; font-size: 12px; }
 .proposed-description { margin: 5px 0 0 22px; color: #8d7e77; font-size: 10px; line-height: 1.4; }
-.proposed-priority, .proposed-due-date { display: inline-flex; align-items: center; min-height: 18px; padding: 0 6px; border-radius: 5px; background: #f2f0ec; color: #756d66; font-size: 10px; font-weight: 650; }
+.proposed-priority, .proposed-due-date { display: inline-flex; align-items: center; min-height: 18px; padding: 0 6px; border-radius: 5px; background: #f2f0ec; color: #716a63; font-size: 10px; font-weight: 650; }
 .proposed-priority-1 { background: #ffe8e3; color: #b43f2c; }
-.proposed-priority-2 { background: #fff1df; color: #a56825; }
+.proposed-priority-2 { background: #fff1df; color: #996122; }
 .proposed-priority-3 { background: #edf3e8; color: #53714d; }
 .proposed-due-date { background: #f4efeb; color: #8a6456; font-weight: 550; }
 .add-single-btn { border-color: #eadbd5; }

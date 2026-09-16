@@ -94,8 +94,6 @@ export type AgentMessage = {
   createdAt: string;
 };
 
-export type AgentChatMessage = AgentMessage;
-
 export type AgentChatSummary = {
   id: string;
   title: string;

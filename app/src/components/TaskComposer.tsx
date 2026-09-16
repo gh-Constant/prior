@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Task, TaskDraft, TaskPriority } from "../types";
+import { useModalDialog } from "../hooks/useModalDialog";
 import { Icon } from "./Icon";
 
-type Props = { task?: Task; onSave: (input: TaskDraft) => Promise<void>; onCancel: () => void };
+type Props = { readonly task?: Task; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
 
 export function TaskComposer({ task, onSave, onCancel }: Props) {
   const [title, setTitle] = useState(task?.title ?? "");
@@ -12,6 +13,8 @@ export function TaskComposer({ task, onSave, onCancel }: Props) {
   const [important, setImportant] = useState(task?.important ?? false);
   const [urgent, setUrgent] = useState(task?.urgent ?? false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useModalDialog(dialogRef);
 
   useEffect(() => inputRef.current?.focus(), []);
 
@@ -29,9 +32,16 @@ export function TaskComposer({ task, onSave, onCancel }: Props) {
     }
   }
 
+  function handleCancel(event: React.SyntheticEvent<HTMLDialogElement>) {
+    event.preventDefault();
+    onCancel();
+  }
+
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
-      <form className="modal composer-modal task-composer-modal" role="dialog" aria-modal="true" aria-labelledby="new-task-title" onSubmit={(event) => { event.preventDefault(); void submit(); }} onMouseDown={(event) => event.stopPropagation()}>
+    <>
+      <button type="button" className="modal-backdrop" aria-label="Close task dialog" onClick={onCancel} />
+      <dialog ref={dialogRef} className="modal composer-modal task-composer-modal" aria-labelledby="new-task-title" onCancel={handleCancel}>
+      <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <div className="modal-header">
           <h2 id="new-task-title">{task ? "Edit task" : "New task"}</h2>
           <button type="button" className="icon-button" aria-label="Close" onClick={onCancel}><Icon name="close" /></button>
@@ -65,6 +75,7 @@ export function TaskComposer({ task, onSave, onCancel }: Props) {
           <button className="primary-button" type="submit" disabled={!title.trim()}>{task ? "Save task" : "Create task"}</button>
         </div>
       </form>
-    </div>
+    </dialog>
+    </>
   );
 }

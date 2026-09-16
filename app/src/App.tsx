@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { api } from "./lib/api";
 import { clearSession, getToken, getUser, listenForAuth, startGoogleLogin, type SessionUser } from "./lib/auth";
 import { localStore } from "./lib/localStore";
@@ -24,6 +24,90 @@ import { AgentIdentity } from "./components/AgentIdentity";
 
 type Layout = "list" | "board";
 
+function viewTitle(view: WorkspaceView): string {
+  if (view === "eisenhower") return "Eisenhower";
+  if (view === "habits") return "Habits";
+  return "All tasks";
+}
+
+type WorkspaceHeaderProps = {
+  readonly activeView: WorkspaceView;
+  readonly layout: Layout;
+  readonly onLayoutChange: (layout: Layout) => void;
+  readonly agentOpen: boolean;
+  readonly onToggleAgent: () => void;
+  readonly aiShortcut: string;
+  readonly shortcut: string;
+  readonly shortcutKey: string;
+  readonly onNewTask: () => void;
+};
+
+function WorkspaceHeader({ activeView, layout, onLayoutChange, agentOpen, onToggleAgent, aiShortcut, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
+  const creatingHabit = activeView === "habits";
+  const newTaskLabel = creatingHabit ? "New habit" : "New task";
+  return (
+    <header className="workspace-header">
+      <h1>{viewTitle(activeView)}</h1>
+      <div className="workspace-actions">
+        {activeView === "all" && <div className="layout-switch" role="toolbar" aria-label="Task layout">
+          <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /></button>
+          <button type="button" className={layout === "board" ? "active" : ""} aria-label="Column view" title="Column view" aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /></button>
+        </div>}
+        <button
+          className={`ai-toggle-button ${agentOpen ? "active" : ""}`}
+          type="button"
+          aria-label="AI Assistant"
+          title={`AI Assistant (${aiShortcut})`}
+          aria-expanded={agentOpen}
+          aria-controls="prior-ai-assistant"
+          onClick={onToggleAgent}
+        >
+          <AgentIdentity size="tiny" />
+          <span>AI Assistant</span>
+          <kbd>{aiShortcut}</kbd>
+        </button>
+        <button className="primary-button new-task-button" type="button" aria-label={newTaskLabel} title={`${newTaskLabel} (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={onNewTask}><Icon name="plus" /><span>{newTaskLabel}</span><kbd>{shortcut}</kbd></button>
+      </div>
+    </header>
+  );
+}
+
+type WorkspaceContentProps = {
+  readonly activeView: WorkspaceView;
+  readonly layout: Layout;
+  readonly grouped: Record<string, Task[]>;
+  readonly visibleTasks: Task[];
+  readonly habits: Habit[];
+  readonly onHabitAdd: () => void;
+  readonly onHabitComplete: (habit: Habit, date: string) => Promise<void>;
+  readonly onHabitChange: (habit: Habit) => Promise<void>;
+  readonly onHabitDelete: (habit: Habit) => Promise<void>;
+  readonly onTaskChange: (task: Task) => Promise<void>;
+  readonly onTaskDelete: (task: Task) => Promise<void>;
+  readonly onTaskEdit: (task: Task) => void;
+};
+
+function WorkspaceContent({ activeView, layout, grouped, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onTaskChange, onTaskDelete, onTaskEdit }: WorkspaceContentProps) {
+  if (activeView === "habits") {
+    return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} />;
+  }
+  if (activeView === "eisenhower") {
+    return (
+      <div className="quadrant-grid">
+        {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}
+      </div>
+    );
+  }
+  if (layout === "board") {
+    return <TaskColumns tasks={visibleTasks} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />;
+  }
+  return (
+    <section className="list-view" aria-label="All tasks">
+      {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}
+    </section>
+  );
+}
+
 export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
@@ -42,7 +126,7 @@ export function App() {
     }
   });
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>(defaultTaskFilters);
-  const [, setRelativeDateTick] = useState(0);
+  const [, bumpRelativeDateTick] = useReducer((value: number) => value + 1, 0);
   const [layout, setLayout] = useState<Layout>("list");
   const [completionCelebration, setCompletionCelebration] = useState<{ title: string; key: number } | null>(null);
   const celebrationKey = useRef(0);
@@ -66,13 +150,13 @@ export function App() {
   useEffect(() => {
     let timeout: number | undefined;
     const refreshRelativeDates = () => {
-      setRelativeDateTick((value) => value + 1);
+      bumpRelativeDateTick();
       const now = new Date();
       const nextMidnight = new Date(now);
       nextMidnight.setHours(24, 0, 0, 50);
       timeout = window.setTimeout(refreshRelativeDates, Math.max(1000, nextMidnight.getTime() - now.getTime()));
     };
-    const onFocus = () => setRelativeDateTick((value) => value + 1);
+    const onFocus = () => bumpRelativeDateTick();
     refreshRelativeDates();
     window.addEventListener("focus", onFocus);
     return () => {
@@ -348,44 +432,35 @@ export function App() {
       />
 
       <main className="workspace" inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}>
-        <header className="workspace-header">
-          <h1>{activeView === "eisenhower" ? "Eisenhower" : activeView === "habits" ? "Habits" : "All tasks"}</h1>
-          <div className="workspace-actions">
-            {activeView === "all" && <div className="layout-switch" role="group" aria-label="Task layout">
-              <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => setLayout("list")}><Icon name="list" /></button>
-              <button type="button" className={layout === "board" ? "active" : ""} aria-label="Column view" title="Column view" aria-pressed={layout === "board"} onClick={() => setLayout("board")}><Icon name="columns" /></button>
-            </div>}
-            <button
-              className={`ai-toggle-button ${agentOpen ? "active" : ""}`}
-              type="button"
-              aria-label="AI Assistant"
-              title={`AI Assistant (${aiShortcut})`}
-              aria-expanded={agentOpen}
-              aria-controls="prior-ai-assistant"
-              onClick={() => setAgentOpen((v) => !v)}
-            >
-              <AgentIdentity size="tiny" />
-              <span>AI Assistant</span>
-              <kbd>{aiShortcut}</kbd>
-            </button>
-            <button className="primary-button new-task-button" type="button" aria-label={activeView === "habits" ? "New habit" : "New task"} title={`${activeView === "habits" ? "New habit" : "New task"} (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={() => activeView === "habits" ? setHabitComposerOpen(true) : setComposerOpen(true)}><Icon name="plus" /><span>{activeView === "habits" ? "New habit" : "New task"}</span><kbd>{shortcut}</kbd></button>
-          </div>
-        </header>
+        <WorkspaceHeader
+          activeView={activeView}
+          layout={layout}
+          onLayoutChange={setLayout}
+          agentOpen={agentOpen}
+          onToggleAgent={() => setAgentOpen((value) => !value)}
+          aiShortcut={aiShortcut}
+          shortcut={shortcut}
+          shortcutKey={shortcutKey}
+          onNewTask={() => activeView === "habits" ? setHabitComposerOpen(true) : setComposerOpen(true)}
+        />
 
         {activeView !== "habits" && <TaskFilters value={taskFilters} onChange={setTaskFilters} />}
 
         <CompletionExitProvider deadlines={completionExitDeadlines}>
-          {activeView === "habits" ? <HabitView habits={habits} onAdd={() => setHabitComposerOpen(true)} onComplete={completeHabit} onChange={changeHabit} onDelete={deleteHabit} /> : activeView === "eisenhower" ? (
-            <div className="quadrant-grid">
-              {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={changeTask} onDelete={deleteTask} onEdit={(task) => setEditingTask(task)} />)}
-            </div>
-          ) : layout === "board" ? (
-            <TaskColumns tasks={visibleTasks} onChange={changeTask} onDelete={deleteTask} onEdit={(task) => setEditingTask(task)} />
-          ) : (
-            <section className="list-view" aria-label="All tasks">
-              {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={changeTask} onDelete={deleteTask} onEdit={(nextTask) => setEditingTask(nextTask)} />)}
-            </section>
-          )}
+          <WorkspaceContent
+            activeView={activeView}
+            layout={layout}
+            grouped={grouped}
+            visibleTasks={visibleTasks}
+            habits={habits}
+            onHabitAdd={() => setHabitComposerOpen(true)}
+            onHabitComplete={completeHabit}
+            onHabitChange={changeHabit}
+            onHabitDelete={deleteHabit}
+            onTaskChange={changeTask}
+            onTaskDelete={deleteTask}
+            onTaskEdit={(task) => setEditingTask(task)}
+          />
         </CompletionExitProvider>
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => setComposerOpen(true)}><Icon name="plus" /> New task</button>}
       </main>

@@ -12,14 +12,12 @@ let tokenRead: Promise<string | null> | null = null;
 
 export function getToken(): Promise<string | null> {
   if (cachedToken !== undefined) return Promise.resolve(cachedToken);
-  if (!tokenRead) {
-    // Several startup paths need the token at once (sync, realtime, and chat
-    // history). Share one Keychain request so macOS shows at most one prompt.
-    tokenRead = getSecret("session_token").then((token) => {
-      cachedToken = token;
-      return token;
-    });
-  }
+  // Several startup paths need the token at once (sync, realtime, and chat
+  // history). Share one Keychain request so macOS shows at most one prompt.
+  tokenRead ??= getSecret("session_token").then((token) => {
+    cachedToken = token;
+    return token;
+  });
   return tokenRead;
 }
 

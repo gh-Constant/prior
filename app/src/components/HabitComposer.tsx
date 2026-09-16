@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { Habit, HabitUnit } from "../types";
 import { habitScheduleLabel } from "../lib/habits";
+import { useModalDialog } from "../hooks/useModalDialog";
 import { Icon } from "./Icon";
 
 type HabitInput = Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">;
-type Props = { onSave: (input: HabitInput) => Promise<void>; onCancel: () => void };
+type Props = { readonly onSave: (input: HabitInput) => Promise<void>; readonly onCancel: () => void };
 
 export function HabitComposer({ onSave, onCancel }: Props) {
   const [title, setTitle] = useState("");
@@ -13,6 +14,8 @@ export function HabitComposer({ onSave, onCancel }: Props) {
   const [interval, setInterval] = useState(1);
   const [unit, setUnit] = useState<HabitUnit>("day");
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useModalDialog(dialogRef);
 
   useEffect(() => inputRef.current?.focus(), []);
 
@@ -22,9 +25,16 @@ export function HabitComposer({ onSave, onCancel }: Props) {
     await onSave({ title: clean, important, urgent, interval: Math.max(1, Math.floor(interval) || 1), unit });
   }
 
+  function handleCancel(event: React.SyntheticEvent<HTMLDialogElement>) {
+    event.preventDefault();
+    onCancel();
+  }
+
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
-      <form className="modal composer-modal habit-composer" role="dialog" aria-modal="true" aria-labelledby="new-habit-title" onSubmit={(event) => { event.preventDefault(); void submit(); }} onMouseDown={(event) => event.stopPropagation()}>
+    <>
+      <button type="button" className="modal-backdrop" aria-label="Close habit dialog" onClick={onCancel} />
+      <dialog ref={dialogRef} className="modal composer-modal habit-composer" aria-labelledby="new-habit-title" onCancel={handleCancel}>
+      <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <div className="modal-header">
           <div><p className="eyebrow">Habits</p><h2 id="new-habit-title">New habit</h2></div>
           <button type="button" className="icon-button" aria-label="Close" onClick={onCancel}><Icon name="close" /></button>
@@ -44,6 +54,7 @@ export function HabitComposer({ onSave, onCancel }: Props) {
         </div>
         <div className="modal-footer"><button type="button" className="secondary-button" onClick={onCancel}>Cancel</button><button className="primary-button" type="submit" disabled={!title.trim()}>Create habit</button></div>
       </form>
-    </div>
+    </dialog>
+    </>
   );
 }

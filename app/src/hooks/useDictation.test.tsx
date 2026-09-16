@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useDictation } from "./useDictation";
 
 class HookRecognition {
-  static instances: HookRecognition[] = [];
+  static readonly instances: HookRecognition[] = [];
   lang = "";
   interimResults = false;
   continuous = false;
@@ -20,7 +20,7 @@ class HookRecognition {
   abort = vi.fn();
 }
 
-function Harness({ onCommit }: { onCommit: (result: { value: string; selectionStart: number; selectionEnd: number }) => void }) {
+function Harness({ onCommit }: { readonly onCommit: (result: { value: string; selectionStart: number; selectionEnd: number }) => void }) {
   const dictation = useDictation({ language: "en-US", onCommit });
   return (
     <>
@@ -41,7 +41,7 @@ describe("useDictation", () => {
   afterEach(() => {
     if (root) act(() => root?.unmount());
     container?.remove();
-    HookRecognition.instances = [];
+    HookRecognition.instances.length = 0;
     delete (window as Window & { SpeechRecognition?: unknown }).SpeechRecognition;
   });
 

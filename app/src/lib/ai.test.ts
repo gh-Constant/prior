@@ -142,6 +142,26 @@ Hope this helps!`;
     expect(parsed.tasks[0].title).toBe("Send client contract");
   });
 
+  it("extracts JSON from fences without a language tag or with uppercase tags", () => {
+    const untagged = parseAiResponse('```\n{"reply": "Hi", "tasks": []}\n```');
+    expect(untagged.reply).toBe("Hi");
+    const upper = parseAiResponse('```JSON\n{"reply": "Yo", "tasks": []}\n```');
+    expect(upper.reply).toBe("Yo");
+  });
+
+  it("ignores non-object recurrence values when inferring habit units", () => {
+    const parsed = parseAiResponse(JSON.stringify({
+      reply: "Prepared.",
+      habits: [{ title: "Stretch", recurrence: { interval: 2, unit: "week" } }],
+    }));
+    expect(parsed.habits[0]).toMatchObject({ title: "Stretch", interval: 2, unit: "week" });
+    const fallback = parseAiResponse(JSON.stringify({
+      reply: "Prepared.",
+      habits: [{ title: "Read", unit: { nested: true } }],
+    }));
+    expect(fallback.habits[0]).toMatchObject({ title: "Read", unit: "day" });
+  });
+
   it("handles conversational replies without tasks safely", () => {
     const raw = "Hello! How can I assist you with your priorities today?";
     const parsed = parseAiResponse(raw);

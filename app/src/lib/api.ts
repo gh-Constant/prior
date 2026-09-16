@@ -1,4 +1,4 @@
-import type { AgentChat, AgentChatMessage, AgentChatSummary, Habit, Mutation, Task } from "../types";
+import type { AgentChat, AgentMessage, AgentChatSummary, Habit, Mutation, Task } from "../types";
 
 const isNativeApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const productionApiUrl = "https://api.prior.constantsuchet.fr";
@@ -34,7 +34,6 @@ function isNetworkFailure(error: unknown): boolean {
 }
 
 type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
-export type PasswordAuthResponse = ExchangeResponse;
 type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }> };
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number };
 
@@ -86,11 +85,11 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string, 
 }
 
 export const api = {
-  register(email: string, password: string, displayName: string): Promise<PasswordAuthResponse> {
-    return request<PasswordAuthResponse>("/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName, device: "Prior", platform: "web" }) });
+  register(email: string, password: string, displayName: string): Promise<ExchangeResponse> {
+    return request<ExchangeResponse>("/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName, device: "Prior", platform: "web" }) });
   },
-  login(email: string, password: string): Promise<PasswordAuthResponse> {
-    return request<PasswordAuthResponse>("/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password, device: "Prior", platform: "web" }) });
+  login(email: string, password: string): Promise<ExchangeResponse> {
+    return request<ExchangeResponse>("/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password, device: "Prior", platform: "web" }) });
   },
   async exchange(code: string): Promise<ExchangeResponse> {
     const controller = new AbortController();
@@ -122,7 +121,7 @@ export const api = {
   getAgentChat(chatId: string, token: string): Promise<AgentChat> {
     return request<AgentChat>(`/v1/agent/chats/${encodeURIComponent(chatId)}`, {}, token);
   },
-  saveAgentChatMessage(chatId: string, message: AgentChatMessage, token: string): Promise<AgentChatMessage> {
-    return request<AgentChatMessage>(`/v1/agent/chats/${encodeURIComponent(chatId)}/messages`, { method: "POST", body: JSON.stringify(message) }, token);
+  saveAgentChatMessage(chatId: string, message: AgentMessage, token: string): Promise<AgentMessage> {
+    return request<AgentMessage>(`/v1/agent/chats/${encodeURIComponent(chatId)}/messages`, { method: "POST", body: JSON.stringify(message) }, token);
   },
 };

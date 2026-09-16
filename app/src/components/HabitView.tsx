@@ -18,11 +18,11 @@ type HabitPeriod = "today" | "week" | "month" | "all";
 type ScheduleGroup = "daily" | "weekly" | "monthly" | "custom";
 
 type Props = {
-  habits: Habit[];
-  onAdd: () => void;
-  onComplete: (habit: Habit, date: string) => Promise<void>;
-  onChange: (habit: Habit) => Promise<void>;
-  onDelete: (habit: Habit) => Promise<void>;
+  readonly habits: Habit[];
+  readonly onAdd: () => void;
+  readonly onComplete: (habit: Habit, date: string) => Promise<void>;
+  readonly onChange: (habit: Habit) => Promise<void>;
+  readonly onDelete: (habit: Habit) => Promise<void>;
 };
 
 type CompletionSnapshot = {
@@ -34,18 +34,18 @@ type CompletionSnapshot = {
 };
 
 type HabitCardProps = {
-  habit: Habit;
-  reference: Date;
-  period: HabitPeriod;
-  from: Date;
-  to: Date;
-  snapshot?: CompletionSnapshot;
-  onComplete: Props["onComplete"];
-  onChange: Props["onChange"];
-  onDelete: Props["onDelete"];
-  onVisualCompletionStart: (habit: Habit, date: string, order: number) => void;
-  onVisualCompletionFailure: (habitId: string) => void;
-  order: number;
+  readonly habit: Habit;
+  readonly reference: Date;
+  readonly period: HabitPeriod;
+  readonly from: Date;
+  readonly to: Date;
+  readonly snapshot?: CompletionSnapshot;
+  readonly onComplete: Props["onComplete"];
+  readonly onChange: Props["onChange"];
+  readonly onDelete: Props["onDelete"];
+  readonly onVisualCompletionStart: (habit: Habit, date: string, order: number) => void;
+  readonly onVisualCompletionFailure: (habitId: string) => void;
+  readonly order: number;
 };
 
 const VISUAL_HOLD_MS = 600;
@@ -103,7 +103,10 @@ function scheduleGroupFor(habit: Habit): ScheduleGroup {
 }
 
 function statusRank(status: HabitStatus): number {
-  return status === "overdue" ? 0 : status === "due" ? 1 : status === "upcoming" ? 2 : 3;
+  if (status === "overdue") return 0;
+  if (status === "due") return 1;
+  if (status === "upcoming") return 2;
+  return 3;
 }
 
 function compareHabits(left: Habit, right: Habit, reference: Date): number {
@@ -112,9 +115,23 @@ function compareHabits(left: Habit, right: Habit, reference: Date): number {
     || left.id.localeCompare(right.id);
 }
 
+const PERIOD_LABELS: Record<HabitPeriod, string> = {
+  today: "Today",
+  week: "This week",
+  month: "This month",
+  all: "All habits",
+};
+
 function periodLabel(period: HabitPeriod): string {
-  return period === "today" ? "Today" : period === "week" ? "This week" : period === "month" ? "This month" : "All habits";
+  return PERIOD_LABELS[period];
 }
+
+const EMPTY_TITLES: Record<HabitPeriod, string> = {
+  today: "Nothing due today",
+  week: "Nothing scheduled this week",
+  month: "Nothing scheduled this month",
+  all: "No habits yet",
+};
 
 function rangeLabel(period: HabitPeriod, from: Date, to: Date): string {
   if (period === "today") {
@@ -227,7 +244,7 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete }: Pro
     .filter(({ items }) => items.length > 0);
   const dueCount = habits.filter((habit) => ["due", "overdue"].includes(habitStatus(habit, reference))).length;
   const progress = useMemo(() => countPeriodProgress(visibleItems.map(({ habit }) => habit), from, to), [from.getTime(), to.getTime(), visibleItems]);
-  const emptyTitle = period === "today" ? "Nothing due today" : period === "week" ? "Nothing scheduled this week" : period === "month" ? "Nothing scheduled this month" : "No habits yet";
+  const emptyTitle = EMPTY_TITLES[period];
 
   return (
     <section className="habits-view" aria-label="Habits">
@@ -296,7 +313,7 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete }: Pro
   );
 }
 
-function HabitWeekStrip({ habits, reference, from }: { habits: Habit[]; reference: Date; from: Date }) {
+function HabitWeekStrip({ habits, reference, from }: { readonly habits: Habit[]; readonly reference: Date; readonly from: Date }) {
   const today = dateKey(reference);
   const days = Array.from({ length: 7 }, (_, index) => addDays(from, index));
   const stats = days.map((day) => {
@@ -319,24 +336,24 @@ function HabitWeekStrip({ habits, reference, from }: { habits: Habit[]; referenc
         <span>Week at a glance</span>
         <span>{totalCompleted}/{totalScheduled} done</span>
       </div>
-      <div className="habit-week-strip" role="list">
+      <ul className="habit-week-strip" aria-label="This week">
         {stats.map(({ day, key, scheduled, completed }) => {
           const isToday = key === today;
           const isMissed = key < today && scheduled > completed;
           return (
-            <div className={`habit-week-day ${isToday ? "is-today" : ""} ${scheduled ? "is-scheduled" : ""} ${completed === scheduled && scheduled ? "is-done" : ""} ${isMissed ? "is-missed" : ""}`} key={key} role="listitem" aria-label={`${new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(day)}: ${completed} of ${scheduled} complete`}>
+            <li className={`habit-week-day ${isToday ? "is-today" : ""} ${scheduled ? "is-scheduled" : ""} ${completed === scheduled && scheduled ? "is-done" : ""} ${isMissed ? "is-missed" : ""}`} key={key} aria-label={`${new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(day)}: ${completed} of ${scheduled} complete`}>
               <span className="habit-week-day-name">{new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(day)}</span>
               <span className="habit-week-day-number">{day.getDate()}</span>
               <span className="habit-week-day-progress">{scheduled ? `${completed}/${scheduled}` : "—"}</span>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 }
 
-function HabitOccurrenceTrail({ habit, period, from, to }: { habit: Habit; period: HabitPeriod; from: Date; to: Date }) {
+function HabitOccurrenceTrail({ habit, period, from, to }: { readonly habit: Habit; readonly period: HabitPeriod; readonly from: Date; readonly to: Date }) {
   if (period === "today" || period === "all") return null;
   const occurrences = habitOccurrenceDates(habit, from, to);
   if (!occurrences.length) return null;
@@ -359,6 +376,44 @@ function HabitOccurrenceTrail({ habit, period, from, to }: { habit: Habit; perio
 
   const completed = occurrences.filter((occurrence) => completedDates.has(occurrence)).length;
   return <span className="habit-month-progress">{completed}/{occurrences.length} this month</span>;
+}
+
+function checkAccessibilityLabel(habitTitle: string, isSaving: boolean, checkVisible: boolean): string {
+  if (isSaving) return `Saving ${habitTitle}`;
+  if (checkVisible) return `Mark ${habitTitle} incomplete`;
+  return `Mark ${habitTitle} complete`;
+}
+
+function cardStatusLabel(isSettling: boolean, isSaving: boolean, habit: Habit, reference: Date): string {
+  if (isSettling) return "Saved";
+  if (isSaving) return "Saving";
+  return habitStatusLabel(habit, reference);
+}
+
+type HabitCardActionsProps = {
+  readonly habit: Habit;
+  readonly disabled: boolean;
+  readonly onToggleImportant: () => void;
+  readonly onToggleUrgent: () => void;
+  readonly onDelete: () => void;
+};
+
+function HabitCardActions({ habit, disabled, onToggleImportant, onToggleUrgent, onDelete }: HabitCardActionsProps) {
+  return (
+    <div className="habit-card-actions">
+      <button className={`task-action flag-toggle ${habit.important ? "active important" : ""}`} type="button" aria-label={`${habit.important ? "Remove" : "Mark"} important`} title={`${habit.important ? "Remove" : "Mark"} important`} aria-pressed={habit.important} onClick={onToggleImportant} disabled={disabled}><Icon name="star" /></button>
+      <button className={`task-action flag-toggle ${habit.urgent ? "active urgent" : ""}`} type="button" aria-label={`${habit.urgent ? "Remove" : "Mark"} urgent`} title={`${habit.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={habit.urgent} onClick={onToggleUrgent} disabled={disabled}><Icon name="bolt" /></button>
+      <button className="task-action danger" type="button" aria-label={`Delete ${habit.title}`} title={`Delete ${habit.title}`} onClick={onDelete} disabled={disabled}><Icon name="trash" /></button>
+    </div>
+  );
+}
+
+async function runGuarded(action: () => Promise<void>, onError: (message: string) => void, message: string, mounted: { current: boolean }): Promise<void> {
+  try {
+    await action();
+  } catch {
+    if (mounted.current) onError(message);
+  }
 }
 
 function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, onChange, onDelete, onVisualCompletionStart, onVisualCompletionFailure, order }: HabitCardProps) {
@@ -394,55 +449,47 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
       onVisualCompletionStart(habit, completionDate, order);
     }
 
-    try {
+    await runGuarded(async () => {
       await onComplete(habit, completionDate);
-    } catch {
+    }, (message) => {
       if (markingComplete) onVisualCompletionFailure(habit.id);
-      if (mounted.current) {
-        setBurst(0);
-        setError("Couldn’t save. Try again.");
-      }
-    } finally {
-      completionInFlight.current = false;
-      if (mounted.current) setIsSaving(false);
-    }
+      setBurst(0);
+      setError(message);
+    }, "Couldn’t save. Try again.", mounted);
+    completionInFlight.current = false;
+    if (mounted.current) setIsSaving(false);
   }
 
   async function changeHabit(nextHabit: Habit) {
     if (actionBusy || isSaving || isSettling) return;
     setActionBusy(true);
     setError(null);
-    try {
+    await runGuarded(async () => {
       await onChange(nextHabit);
-    } catch {
-      if (mounted.current) setError("Couldn’t save. Try again.");
-    } finally {
-      if (mounted.current) setActionBusy(false);
-    }
+    }, setError, "Couldn’t save. Try again.", mounted);
+    if (mounted.current) setActionBusy(false);
   }
 
   async function deleteHabit() {
     if (actionBusy || isSaving || isSettling) return;
     setActionBusy(true);
     setError(null);
-    try {
+    await runGuarded(async () => {
       await onDelete(habit);
-    } catch {
-      if (mounted.current) {
-        setActionBusy(false);
-        setError("Couldn’t delete. Try again.");
-      }
-    }
+    }, (message) => {
+      setActionBusy(false);
+      setError(message);
+    }, "Couldn’t delete. Try again.", mounted);
   }
 
   const disabled = isSaving || actionBusy || isSettling;
   const checkVisible = checkedToday || isSettlingDateComplete;
-  const statusLabel = isSettling ? "Saved" : isSaving ? "Saving" : habitStatusLabel(habit, reference);
+  const statusLabel = cardStatusLabel(isSettling, isSaving, habit, reference);
 
   return (
     <article className={`habit-card habit-${status} ${isSettling ? "is-completing" : ""}`}>
       <span className="habit-check-wrap">
-        <button className={`complete-button habit-check ${checkVisible ? "checked" : ""}`} type="button" aria-label={isSaving ? `Saving ${habit.title}` : checkVisible ? `Mark ${habit.title} incomplete` : `Mark ${habit.title} complete`} onClick={() => void complete()} disabled={disabled || !completionDate}>
+        <button className={`complete-button habit-check ${checkVisible ? "checked" : ""}`} type="button" aria-label={checkAccessibilityLabel(habit.title, isSaving, checkVisible)} onClick={() => void complete()} disabled={disabled || !completionDate}>
           {checkVisible && <Icon name="check" />}
         </button>
         <CompletionBurst trigger={burst} />
@@ -460,11 +507,13 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
         <HabitOccurrenceTrail habit={habit} period={period} from={from} to={to} />
         {error && <p className="habit-card-error" role="alert">{error}</p>}
       </div>
-      <div className="habit-card-actions">
-        <button className={`task-action flag-toggle ${habit.important ? "active important" : ""}`} type="button" aria-label={`${habit.important ? "Remove" : "Mark"} important`} title={`${habit.important ? "Remove" : "Mark"} important`} aria-pressed={habit.important} onClick={() => void changeHabit({ ...habit, important: !habit.important })} disabled={disabled}><Icon name="star" /></button>
-        <button className={`task-action flag-toggle ${habit.urgent ? "active urgent" : ""}`} type="button" aria-label={`${habit.urgent ? "Remove" : "Mark"} urgent`} title={`${habit.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={habit.urgent} onClick={() => void changeHabit({ ...habit, urgent: !habit.urgent })} disabled={disabled}><Icon name="bolt" /></button>
-        <button className="task-action danger" type="button" aria-label={`Delete ${habit.title}`} title={`Delete ${habit.title}`} onClick={() => void deleteHabit()} disabled={disabled}><Icon name="trash" /></button>
-      </div>
+      <HabitCardActions
+        habit={habit}
+        disabled={disabled}
+        onToggleImportant={() => void changeHabit({ ...habit, important: !habit.important })}
+        onToggleUrgent={() => void changeHabit({ ...habit, urgent: !habit.urgent })}
+        onDelete={() => void deleteHabit()}
+      />
     </article>
   );
 }

@@ -599,7 +599,16 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid chat message id"))
 		return
 	}
-	message, err := s.store.SaveAgentChatMessage(r.Context(), user.ID, chatID, messageID, body.Role, body.Content, body.ProposedTasks, body.ProposedHabits, body.ActualModel)
+	message, err := s.store.SaveAgentChatMessage(r.Context(), store.SaveAgentChatMessageParams{
+		UserID:         user.ID,
+		ChatID:         chatID,
+		MessageID:      messageID,
+		Role:           body.Role,
+		Content:        body.Content,
+		ProposedTasks:  body.ProposedTasks,
+		ProposedHabits: body.ProposedHabits,
+		ActualModel:    body.ActualModel,
+	})
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, err)
 		return

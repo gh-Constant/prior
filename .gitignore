@@ -17,3 +17,5 @@ coverage/
 *.tsbuildinfo
 *.jks
 *.keystore
+.scannerwork/
+coverage.out

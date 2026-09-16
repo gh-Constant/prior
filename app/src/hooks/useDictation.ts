@@ -85,7 +85,7 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
 
   function completeSession(id: number, message?: string): void {
     const session = sessionRef.current;
-    if (!session || session.id !== id) return;
+    if (session?.id !== id) return;
     sessionRef.current = null;
     disposeSession(session);
 
@@ -116,7 +116,7 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
 
   function finishWithError(id: number, message: string): void {
     const session = sessionRef.current;
-    if (!session || session.id !== id) return;
+    if (session?.id !== id) return;
     sessionRef.current = null;
     disposeSession(session);
     const captured = transcriptText(session.snapshot);
@@ -158,7 +158,7 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
       },
       onSnapshot: (snapshot) => {
         const current = sessionRef.current;
-        if (!current || current.id !== id) return;
+        if (current?.id !== id) return;
         current.snapshot = snapshot;
         setFinalText(snapshot.finalText);
         setInterimText(snapshot.interimText);
@@ -173,8 +173,8 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
 
     if (!provider) {
       void requestMicrophoneAccess()
-        .catch((caught: unknown) => {
-          if (isCurrent(id)) finishWithError(id, mapSpeechRecognitionError(caught));
+        .catch((error_: unknown) => {
+          if (isCurrent(id)) finishWithError(id, mapSpeechRecognitionError(error_));
         })
         .finally(() => {
           if (isCurrent(id)) finishWithError(id, "Dictation is unavailable in this browser or app. You can still type or use your system keyboard dictation.");
@@ -191,8 +191,8 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
       // Keep this call in the original click task so browser/WebView permission and
       // speech services do not reject the request after an awaited preflight.
       provider.start();
-    } catch (caught: unknown) {
-      if (isCurrent(id)) finishWithError(id, mapSpeechRecognitionError(caught));
+    } catch (error_: unknown) {
+      if (isCurrent(id)) finishWithError(id, mapSpeechRecognitionError(error_));
       return false;
     }
 
@@ -213,8 +213,8 @@ export function useDictation({ enabled = true, language, onCommit }: UseDictatio
     setStatus("stopping");
     try {
       session.provider?.stop();
-    } catch (caught: unknown) {
-      completeSession(session.id, mapSpeechRecognitionError(caught));
+    } catch (error_: unknown) {
+      completeSession(session.id, mapSpeechRecognitionError(error_));
       return;
     }
     if (!isCurrent(session.id)) return;

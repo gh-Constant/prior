@@ -17,8 +17,7 @@ export type TranscriptResultList = {
 export function assembleTranscript(results: TranscriptResultList): TranscriptSnapshot {
   let finalText = "";
   let interimText = "";
-  for (let index = 0; index < results.length; index += 1) {
-    const result = results[index];
+  for (const result of Array.from(results)) {
     const text = result?.[0]?.transcript ?? "";
     if (result?.isFinal) finalText += text;
     else interimText += text;

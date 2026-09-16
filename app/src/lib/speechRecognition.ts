@@ -90,7 +90,7 @@ function getGlobalWindow(): SpeechRecognitionWindow | null {
 }
 
 export function isSpeechRecognitionSecure(scope: SpeechRecognitionWindow | null = getGlobalWindow()): boolean {
-  if (!scope || scope.isSecureContext === undefined) return true;
+  if (scope?.isSecureContext === undefined) return true;
   if (scope.isSecureContext) return true;
   const hostname = scope.location?.hostname;
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
@@ -115,7 +115,7 @@ export async function requestMicrophoneAccess(scope: SpeechRecognitionWindow | n
 
   let stream: MediaStreamLike | undefined;
   try {
-    stream = await mediaDevices.getUserMedia.call(mediaDevices, { audio: true });
+    stream = await mediaDevices.getUserMedia({ audio: true });
   } finally {
     for (const track of stream?.getTracks?.() ?? []) {
       try { track.stop(); } catch { /* The host may already have closed the track. */ }

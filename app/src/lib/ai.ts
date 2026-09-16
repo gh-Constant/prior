@@ -45,13 +45,13 @@ export function buildSystemPrompt(existingTasks: Task[] = [], existingHabits: Ha
   const activeTasksSummary = existingTasks
     .filter((task) => !task.completed && !task.deletedAt)
     .slice(0, 30)
-    .map((task) => `- "${task.title}" (P${task.priority ?? 4}, ${task.important ? "Important" : "Not important"}, ${task.urgent ? "Urgent" : "Not urgent"}${task.dueDate ? `, due ${task.dueDate}` : ""}${task.description ? `, details: ${task.description.slice(0, 120)}` : ""})`)
+    .map(describeTaskForPrompt)
     .join("\n");
 
   const activeHabitsSummary = existingHabits
     .filter((habit) => !habit.deletedAt)
     .slice(0, 30)
-    .map((habit) => `- "${habit.title}" (every ${habit.interval} ${habit.unit}, ${habit.important ? "Important" : "Not important"}, ${habit.urgent ? "Urgent" : "Not urgent"})`)
+    .map(describeHabitForPrompt)
     .join("\n");
 
   return `You are Prior's practical in-app assistant. You are not a generic chatbot: you are embedded inside Prior, a local-first task and habit manager. Help the user turn messy thoughts into useful next actions, answer naturally, and never invent capabilities or claim an action happened when it has not.
@@ -146,27 +146,51 @@ OUTPUT CONTRACT:
 
 type RawAction = Record<string, unknown>;
 
+function flagLabel(value: boolean, positive: string, negative: string): string {
+  return value ? positive : negative;
+}
+
+function describeTaskForPrompt(task: Task): string {
+  const importance = flagLabel(task.important, "Important", "Not important");
+  const urgency = flagLabel(task.urgent, "Urgent", "Not urgent");
+  const due = task.dueDate ? `, due ${task.dueDate}` : "";
+  const details = task.description ? `, details: ${task.description.slice(0, 120)}` : "";
+  return `- "${task.title}" (P${task.priority ?? 4}, ${importance}, ${urgency}${due}${details})`;
+}
+
+function describeHabitForPrompt(habit: Habit): string {
+  const importance = flagLabel(habit.important, "Important", "Not important");
+  const urgency = flagLabel(habit.urgent, "Urgent", "Not urgent");
+  return `- "${habit.title}" (every ${habit.interval} ${habit.unit}, ${importance}, ${urgency})`;
+}
+
+function actionNameOf(candidate: RawAction, functionCall: RawAction | undefined): unknown {
+  return candidate.tool ?? candidate.type ?? candidate.name ?? functionCall?.name;
+}
+
+function resolveActionPayload(candidate: RawAction, functionCall: RawAction | undefined): RawAction {
+  const argumentsValue = candidate.arguments ?? candidate.input ?? candidate.params ?? functionCall?.arguments;
+  if (typeof argumentsValue === "string") {
+    try {
+      const parsed = JSON.parse(argumentsValue) as unknown;
+      return parsed && typeof parsed === "object" ? (parsed as RawAction) : candidate;
+    } catch {
+      return candidate;
+    }
+  }
+  return argumentsValue && typeof argumentsValue === "object" ? (argumentsValue as RawAction) : candidate;
+}
+
 function actionItems(value: unknown, tool: "create_task" | "create_habit"): RawAction[] {
   const candidates = Array.isArray(value) ? value : [value];
   return candidates.flatMap((action) => {
     if (!action || typeof action !== "object") return [];
     const candidate = action as RawAction;
     const functionCall = candidate.function && typeof candidate.function === "object" ? candidate.function as RawAction : undefined;
-    const actionName = candidate.tool ?? candidate.type ?? candidate.name ?? functionCall?.name;
-    const isDirectItem = !actionName && typeof candidate.title === "string";
+    const actionName = actionNameOf(candidate, functionCall);
     if (actionName && actionName !== tool) return [];
-    if (!isDirectItem && actionName !== tool) return [];
-
-    const argumentsValue = candidate.arguments ?? candidate.input ?? candidate.params ?? functionCall?.arguments;
-    if (typeof argumentsValue === "string") {
-      try {
-        const parsed = JSON.parse(argumentsValue) as unknown;
-        return parsed && typeof parsed === "object" ? [parsed as RawAction] : [candidate];
-      } catch {
-        return [candidate];
-      }
-    }
-    return argumentsValue && typeof argumentsValue === "object" ? [argumentsValue as RawAction] : [candidate];
+    if (!actionName && typeof candidate.title !== "string") return [];
+    return [resolveActionPayload(candidate, functionCall)];
   });
 }
 
@@ -195,7 +219,7 @@ function taskDueDate(value: unknown): string | null {
 }
 
 function habitUnit(value: unknown): HabitUnit {
-  const normalized = String(value ?? "day").toLowerCase();
+  const normalized = typeof value === "string" || typeof value === "number" ? String(value).toLowerCase() : "day";
   if (normalized.includes("week") || normalized.includes("semaine")) return "week";
   if (normalized.includes("month") || normalized.includes("mois")) return "month";
   if (normalized.includes("year") || normalized.includes("an") || normalized.includes("année")) return "year";
@@ -251,86 +275,99 @@ function habitRecurrence(item: RawAction): { interval: number; unit: HabitUnit }
   return { interval: habitInterval(intervalValue), unit: habitUnit(unitValue) };
 }
 
+function stripFenceLanguageTag(inner: string): string {
+  const firstLineBreak = inner.indexOf("\n");
+  const firstLine = firstLineBreak === -1 ? inner : inner.slice(0, firstLineBreak).trim().toLowerCase();
+  if (firstLine !== "json" && firstLine !== "") return inner;
+  return firstLineBreak === -1 ? "" : inner.slice(firstLineBreak + 1).trim();
+}
+
+function extractFencedBlock(clean: string): string | null {
+  const fenceStart = clean.indexOf("```");
+  if (fenceStart === -1) return null;
+  const fenceEnd = clean.indexOf("```", fenceStart + 3);
+  if (fenceEnd === -1) return null;
+  const inner = stripFenceLanguageTag(clean.slice(fenceStart + 3, fenceEnd).trim());
+  return inner || null;
+}
+
+function extractJsonPayload(raw: string): string {
+  const clean = raw.trim();
+  // Extract from a markdown fenced block without backtracking-prone patterns.
+  const fenced = extractFencedBlock(clean);
+  if (fenced) return fenced;
+  // Otherwise look for the outer JSON object {...}.
+  const firstBrace = clean.indexOf("{");
+  const lastBrace = clean.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    return clean.slice(firstBrace, lastBrace + 1);
+  }
+  return clean;
+}
+
+type ParsedAgentPayload = {
+  reply?: string;
+  tasks?: Array<Record<string, unknown>>;
+  habits?: Array<Record<string, unknown>>;
+  actions?: RawAction[];
+  tool_calls?: RawAction[];
+  toolCalls?: RawAction[];
+  create_task?: RawAction | RawAction[];
+  create_habit?: RawAction | RawAction[];
+};
+
+function collectItems(parsed: ParsedAgentPayload, tool: "create_task" | "create_habit"): RawAction[] {
+  if (tool === "create_task" && parsed.tasks?.length) return parsed.tasks;
+  if (tool === "create_habit" && parsed.habits?.length) return parsed.habits;
+  const sources = tool === "create_task"
+    ? [parsed.actions, parsed.tool_calls, parsed.toolCalls, parsed.create_task]
+    : [parsed.actions, parsed.tool_calls, parsed.toolCalls, parsed.create_habit];
+  return sources.flatMap((source) => (source === undefined ? [] : actionItems(source, tool)));
+}
+
+function hasTitle(item: RawAction): boolean {
+  return typeof item.title === "string" && item.title.trim().length > 0;
+}
+
+function buildProposedTask(item: Record<string, unknown>): ProposedTask {
+  return {
+    id: crypto.randomUUID(),
+    title: (item.title as string).trim(),
+    description: typeof item.description === "string" ? item.description.trim() : "",
+    dueDate: taskDueDate(item.dueDate ?? item.due_date),
+    priority: taskPriority(item.priority),
+    important: booleanValue(item.important),
+    urgent: booleanValue(item.urgent),
+    reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
+    selected: true,
+    added: false,
+  };
+}
+
+function buildProposedHabit(item: Record<string, unknown>): ProposedHabit {
+  const recurrence = habitRecurrence(item);
+  return {
+    id: crypto.randomUUID(),
+    title: (item.title as string).trim(),
+    important: booleanValue(item.important),
+    urgent: booleanValue(item.urgent),
+    interval: recurrence.interval,
+    unit: recurrence.unit,
+    reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
+    selected: true,
+    added: false,
+  };
+}
+
 export function parseAiResponse(raw: string): { reply: string; tasks: ProposedTask[]; habits: ProposedHabit[] } {
   const clean = raw.trim();
-  let jsonStr = clean;
-
-  // Extract from markdown code block if present
-  const markdownMatch = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(clean);
-  if (markdownMatch && markdownMatch[1]) {
-    jsonStr = markdownMatch[1].trim();
-  } else {
-    // If not in code blocks, look for the outer JSON object {...}
-    const firstBrace = clean.indexOf("{");
-    const lastBrace = clean.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      jsonStr = clean.slice(firstBrace, lastBrace + 1);
-    }
-  }
+  const jsonStr = extractJsonPayload(raw);
 
   try {
-    const parsed = JSON.parse(jsonStr) as {
-      reply?: string;
-      tasks?: Array<Record<string, unknown>>;
-      habits?: Array<Record<string, unknown>>;
-      actions?: RawAction[];
-      tool_calls?: RawAction[];
-      toolCalls?: RawAction[];
-      create_task?: RawAction | RawAction[];
-      create_habit?: RawAction | RawAction[];
-    };
+    const parsed = JSON.parse(jsonStr) as ParsedAgentPayload;
     const reply = typeof parsed.reply === "string" ? parsed.reply : "Here are the suggested items based on your input:";
-    const tasks: ProposedTask[] = [];
-    const habits: ProposedHabit[] = [];
-
-    const taskItems = parsed.tasks?.length
-      ? parsed.tasks
-      : [
-          ...actionItems(parsed.actions, "create_task"),
-          ...actionItems(parsed.tool_calls, "create_task"),
-          ...actionItems(parsed.toolCalls, "create_task"),
-          ...actionItems(parsed.create_task, "create_task"),
-        ];
-    for (const item of taskItems) {
-      if (!item || typeof item.title !== "string" || !item.title.trim()) continue;
-      tasks.push({
-        id: crypto.randomUUID(),
-        title: item.title.trim(),
-        description: typeof item.description === "string" ? item.description.trim() : "",
-        dueDate: taskDueDate(item.dueDate ?? item.due_date),
-        priority: taskPriority(item.priority),
-        important: booleanValue(item.important),
-        urgent: booleanValue(item.urgent),
-        reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
-        selected: true,
-        added: false,
-      });
-    }
-
-    const habitItems = parsed.habits?.length
-      ? parsed.habits
-      : [
-          ...actionItems(parsed.actions, "create_habit"),
-          ...actionItems(parsed.tool_calls, "create_habit"),
-          ...actionItems(parsed.toolCalls, "create_habit"),
-          ...actionItems(parsed.create_habit, "create_habit"),
-        ];
-    for (const item of habitItems) {
-      if (!item || typeof item.title !== "string" || !item.title.trim()) continue;
-      const recurrence = habitRecurrence(item);
-      habits.push({
-        id: crypto.randomUUID(),
-        title: item.title.trim(),
-        important: booleanValue(item.important),
-        urgent: booleanValue(item.urgent),
-        interval: recurrence.interval,
-        unit: recurrence.unit,
-        reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
-        selected: true,
-        added: false,
-      });
-    }
-
+    const tasks = collectItems(parsed, "create_task").filter(hasTitle).map(buildProposedTask);
+    const habits = collectItems(parsed, "create_habit").filter(hasTitle).map(buildProposedHabit);
     return { reply, tasks, habits };
   } catch {
     // Fallback: could not parse JSON, return raw message with empty tasks
@@ -342,8 +379,13 @@ export function parseAiResponse(raw: string): { reply: string; tasks: ProposedTa
   }
 }
 
-export async function fetchAvailableFreeModels(): Promise<Array<{ id: string; label: string; desc: string }>> {
-  try {
+function shortenModelDescription(description: string | undefined): string {
+  if (!description) return "Free model on OpenRouter";
+  const truncated = description.slice(0, 70);
+  return description.length > 70 ? `${truncated}…` : truncated;
+}
+
+export async function fetchAvailableFreeModels(): Promise<Array<{ id: string; label: string; desc: string }>> {  try {
     const res = await fetch("https://openrouter.ai/api/v1/models");
     if (!res.ok) return POPULAR_FREE_MODELS;
     const json = await res.json();
@@ -355,7 +397,7 @@ export async function fetchAvailableFreeModels(): Promise<Array<{ id: string; la
       .map((m) => ({
         id: m.id,
         label: m.name || m.id,
-        desc: m.description ? m.description.slice(0, 70) + (m.description.length > 70 ? "…" : "") : "Free model on OpenRouter",
+        desc: shortenModelDescription(m.description),
       }));
 
     return [

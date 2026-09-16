@@ -1,24 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentChatSummary, AgentMessage, AgentSettings, Habit, ProposedHabit, ProposedTask, QuadrantKey, Task, TaskDraft } from "../types";
+import type { AgentChatSummary, AgentMessage, AgentSettings, Habit, ProposedHabit, ProposedTask, Task, TaskDraft } from "../types";
 import { askAgent, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
-import { habitScheduleLabel } from "../lib/habits";
-import { quadrantFor } from "../lib/priority";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
+import { AssistantMessage, habitDraftOf, markHabitsAdded, markTasksAdded, taskDraftOf, updateHabitProposal, updateTaskProposal, type AssistantMessageHandlers } from "./AgentMessageView";
 import { Icon } from "./Icon";
 import { DictationControls, DictationPreview, DictationStatusBar } from "./DictationControls";
 import { useDictation } from "../hooks/useDictation";
 
 type Props = {
-  open: boolean;
-  onClose: () => void;
-  tasks: Task[];
-  habits: Habit[];
-  user: SessionUser | null;
-  onAddTasks: (tasks: TaskDraft[]) => Promise<void>;
-  onAddHabits: (habits: Array<Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">>) => Promise<void>;
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly tasks: Task[];
+  readonly habits: Habit[];
+  readonly user: SessionUser | null;
+  readonly onAddTasks: (tasks: TaskDraft[]) => Promise<void>;
+  readonly onAddHabits: (habits: Array<Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">>) => Promise<void>;
 };
 
 const STARTER_PROMPTS = [
@@ -27,10 +26,6 @@ const STARTER_PROMPTS = [
   { icon: "plan" as const, title: "Break down a project", prompt: "Break down this project into atomic, actionable Eisenhower tasks with clear urgency and importance: " },
   { icon: "sparkles" as const, title: "Organize my inbox", prompt: "Review my current task list and suggest what to tackle first, what to schedule, and what to defer." },
 ];
-
-function formatDueDate(value: string): string {
-  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-}
 
 function useOverlayMode(): boolean {
   const [isOverlay, setIsOverlay] = useState(() =>
@@ -49,6 +44,12 @@ function useOverlayMode(): boolean {
 function shortModelName(id: string): string {
   if (id === DEFAULT_MODEL) return "Free model";
   return id.split("/").pop()?.replace(":free", "") || id;
+}
+
+function modelConfirmLabel(customDraft: string, listDraft: string): string {
+  const effective = customDraft.trim() || listDraft.trim() || DEFAULT_MODEL;
+  if (effective === DEFAULT_MODEL) return "Use free model";
+  return `Use ${shortModelName(effective)}`;
 }
 
 export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, onAddHabits }: Props) {
@@ -80,7 +81,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const panelRef = useRef<HTMLElement>(null);
+  const panelRef = useRef<HTMLDialogElement>(null);
   const modelSearchRef = useRef<HTMLInputElement>(null);
   const loadingRef = useRef(false);
   const isComposingRef = useRef(false);
@@ -106,7 +107,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
 
   useEffect(() => {
     void fetchAvailableFreeModels().then((list) => {
-      if (list && list.length) setModelList(list);
+      if (list?.length) setModelList(list);
     });
   }, []);
 
@@ -192,7 +193,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
       )).filter((element) => element.offsetParent !== null);
       if (!focusable.length) return;
       const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const last = focusable.at(-1) ?? first;
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -398,95 +399,48 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   }
 
   function handleToggleImportant(messageId: string, taskId: string) {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id !== messageId || !msg.proposedTasks) return msg;
-        return {
-          ...msg,
-          proposedTasks: msg.proposedTasks.map((t) => (t.id === taskId ? { ...t, important: !t.important } : t)),
-        };
-      }),
-    );
+    setMessages((prev) => updateTaskProposal(prev, messageId, taskId, (task) => ({ ...task, important: !task.important })));
   }
 
   function handleToggleUrgent(messageId: string, taskId: string) {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id !== messageId || !msg.proposedTasks) return msg;
-        return {
-          ...msg,
-          proposedTasks: msg.proposedTasks.map((t) => (t.id === taskId ? { ...t, urgent: !t.urgent } : t)),
-        };
-      }),
-    );
+    setMessages((prev) => updateTaskProposal(prev, messageId, taskId, (task) => ({ ...task, urgent: !task.urgent })));
   }
 
   function handleToggleSelect(messageId: string, taskId: string) {
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id !== messageId || !msg.proposedTasks) return msg;
-        return {
-          ...msg,
-          proposedTasks: msg.proposedTasks.map((t) => (t.id === taskId ? { ...t, selected: !t.selected } : t)),
-        };
-      }),
-    );
+    setMessages((prev) => updateTaskProposal(prev, messageId, taskId, (task) => ({ ...task, selected: !task.selected })));
   }
 
   async function handleAddSingle(messageId: string, task: ProposedTask) {
     setAddingIds((prev) => ({ ...prev, [task.id]: true }));
     try {
-      await onAddTasks([{ title: task.title, description: task.description, dueDate: task.dueDate, priority: task.priority, important: task.important, urgent: task.urgent }]);
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id !== messageId || !msg.proposedTasks) return msg;
-          return {
-            ...msg,
-            proposedTasks: msg.proposedTasks.map((t) => (t.id === task.id ? { ...t, added: true } : t)),
-          };
-        }),
-      );
+      await onAddTasks([taskDraftOf(task)]);
+      setMessages((prev) => markTasksAdded(prev, messageId, new Set([task.id])));
     } finally {
       setAddingIds((prev) => ({ ...prev, [task.id]: false }));
     }
   }
 
   async function handleAddAll(messageId: string, proposed: ProposedTask[]) {
-    const toAdd = proposed.filter((t) => t.selected && !t.added);
+    const toAdd = proposed.filter((task) => task.selected && !task.added);
     if (!toAdd.length) return;
-
-    toAdd.forEach((t) => setAddingIds((prev) => ({ ...prev, [t.id]: true })));
+    const ids = new Set(toAdd.map((task) => task.id));
+    toAdd.forEach((task) => setAddingIds((prev) => ({ ...prev, [task.id]: true })));
     try {
-      await onAddTasks(toAdd.map((t) => ({ title: t.title, description: t.description, dueDate: t.dueDate, priority: t.priority, important: t.important, urgent: t.urgent })));
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id !== messageId || !msg.proposedTasks) return msg;
-          const ids = new Set(toAdd.map((t) => t.id));
-          return {
-            ...msg,
-            proposedTasks: msg.proposedTasks.map((t) => (ids.has(t.id) ? { ...t, added: true } : t)),
-          };
-        }),
-      );
+      await onAddTasks(toAdd.map(taskDraftOf));
+      setMessages((prev) => markTasksAdded(prev, messageId, ids));
     } finally {
-      toAdd.forEach((t) => setAddingIds((prev) => ({ ...prev, [t.id]: false })));
+      toAdd.forEach((task) => setAddingIds((prev) => ({ ...prev, [task.id]: false })));
     }
   }
 
   function updateProposedHabit(messageId: string, habitId: string, update: Partial<ProposedHabit>) {
-    setMessages((prev) => prev.map((message) => {
-      if (message.id !== messageId || !message.proposedHabits) return message;
-      return {
-        ...message,
-        proposedHabits: message.proposedHabits.map((habit) => habit.id === habitId ? { ...habit, ...update } : habit),
-      };
-    }));
+    setMessages((prev) => updateHabitProposal(prev, messageId, habitId, update));
   }
 
   async function handleAddSingleHabit(messageId: string, habit: ProposedHabit) {
     setAddingIds((prev) => ({ ...prev, [habit.id]: true }));
     try {
-      await onAddHabits([{ title: habit.title, important: habit.important, urgent: habit.urgent, interval: habit.interval, unit: habit.unit }]);
+      await onAddHabits([habitDraftOf(habit)]);
       updateProposedHabit(messageId, habit.id, { added: true });
     } finally {
       setAddingIds((prev) => ({ ...prev, [habit.id]: false }));
@@ -496,40 +450,34 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   async function handleAddAllHabits(messageId: string, proposed: ProposedHabit[]) {
     const toAdd = proposed.filter((habit) => habit.selected && !habit.added);
     if (!toAdd.length) return;
-
+    const ids = new Set(toAdd.map((habit) => habit.id));
     toAdd.forEach((habit) => setAddingIds((prev) => ({ ...prev, [habit.id]: true })));
     try {
-      await onAddHabits(toAdd.map((habit) => ({ title: habit.title, important: habit.important, urgent: habit.urgent, interval: habit.interval, unit: habit.unit })));
-      const ids = new Set(toAdd.map((habit) => habit.id));
-      setMessages((prev) => prev.map((message) => {
-        if (message.id !== messageId || !message.proposedHabits) return message;
-        return { ...message, proposedHabits: message.proposedHabits.map((habit) => ids.has(habit.id) ? { ...habit, added: true } : habit) };
-      }));
+      await onAddHabits(toAdd.map(habitDraftOf));
+      setMessages((prev) => markHabitsAdded(prev, messageId, ids));
     } finally {
       toAdd.forEach((habit) => setAddingIds((prev) => ({ ...prev, [habit.id]: false })));
     }
   }
 
-  function getQuadrantBadge(task: Pick<Task, "important" | "urgent">): { key: QuadrantKey; label: string } {
-    const key = quadrantFor(task);
-    switch (key) {
-      case "focus":
-        return { key, label: "Focus (Do First)" };
-      case "plan":
-        return { key, label: "Plan (Schedule)" };
-      case "quick":
-        return { key, label: "Quick (Delegate)" };
-      case "later":
-        return { key, label: "Later (Eliminate)" };
-    }
-  }
+  const messageHandlers: AssistantMessageHandlers = {
+    addingIds,
+    onToggleTaskSelect: handleToggleSelect,
+    onToggleTaskImportant: handleToggleImportant,
+    onToggleTaskUrgent: handleToggleUrgent,
+    onAddSingleTask: (messageId, task) => void handleAddSingle(messageId, task),
+    onAddAllTasks: (messageId, tasks) => void handleAddAll(messageId, tasks),
+    onUpdateHabit: updateProposedHabit,
+    onAddSingleHabit: (messageId, habit) => void handleAddSingleHabit(messageId, habit),
+    onAddAllHabits: (messageId, habits) => void handleAddAllHabits(messageId, habits),
+  };
 
   if (!open) return null;
 
   return (
     <>
       {isOverlay && <div className="agent-overlay-backdrop" aria-hidden="true" onMouseDown={handleClose} />}
-      <aside ref={panelRef} id="prior-ai-assistant" className={`agent-sidebar ${isOverlay ? "overlay" : "docked"}`} role={isOverlay ? "dialog" : "complementary"} aria-modal={isOverlay ? "true" : undefined} aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
+      <dialog ref={panelRef} id="prior-ai-assistant" open className={`agent-sidebar ${isOverlay ? "overlay" : "docked"}`} aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
       <header className="agent-header">
         <div className="agent-title-row">
           <AgentIdentity size="small" />
@@ -585,9 +533,9 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             <h4>What’s next?</h4>
 
             <div className="starter-prompts-grid">
-              {STARTER_PROMPTS.map((item, idx) => (
+              {STARTER_PROMPTS.map((item) => (
                 <button
-                  key={idx}
+                  key={item.title}
                   type="button"
                   className="starter-chip"
                   disabled={dictation.isActive}
@@ -610,209 +558,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
         ) : (
           <div className="agent-messages">
             {messages.map((msg) => (
-              <div key={msg.id} className={`agent-message-row ${msg.role}`}>
-                {msg.role === "assistant" && (
-                  <div className="agent-message-avatar">
-                    <AgentIdentity size="tiny" />
-                  </div>
-                )}
-                <div className="agent-message-bubble">
-                  <p className="agent-message-text">{msg.content}</p>
-
-                  {msg.actualModel && (
-                    <div className="agent-model-info" title={`Resolved via OpenRouter: ${msg.actualModel}`}>
-                      <span className="routed-dot" />
-                      <span>Model: <strong>{msg.actualModel}</strong></span>
-                    </div>
-                  )}
-
-                  {msg.proposedTasks && msg.proposedTasks.length > 0 && (
-                    <div className="proposed-tasks-box">
-                      <div className="proposed-tasks-header">
-                        <span className="proposed-count">
-                          {msg.proposedTasks.filter((t) => t.added).length}/{msg.proposedTasks.length} added
-                        </span>
-                        {msg.proposedTasks.some((t) => !t.added) && (
-                          <button
-                            type="button"
-                            className="primary-button add-all-btn"
-                            onClick={() => void handleAddAll(msg.id, msg.proposedTasks!)}
-                          >
-                            <Icon name="plus" />
-                            <span>Add all to Prior</span>
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="proposed-task-list">
-                        {msg.proposedTasks.map((t) => {
-                          const badge = getQuadrantBadge(t);
-                          const priority = t.priority ?? 4;
-                          const isAdding = addingIds[t.id];
-                          return (
-                            <div key={t.id} className={`proposed-task-item ${t.added ? "is-added" : ""}`}>
-                              <div className="proposed-task-top">
-                                <label className="proposed-checkbox-label">
-                                  <input
-                                    type="checkbox"
-                                    checked={t.selected}
-                                    disabled={t.added}
-                                    onChange={() => handleToggleSelect(msg.id, t.id)}
-                                  />
-                                  <span className="proposed-task-title">{t.title}</span>
-                                </label>
-
-                                {t.added ? (
-                                  <span className="task-added-badge">
-                                    <Icon name="check" /> Added
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="add-single-btn"
-                                    disabled={isAdding}
-                                    onClick={() => void handleAddSingle(msg.id, t)}
-                                    title="Add task to Prior"
-                                  >
-                                    <Icon name="plus" />
-                                  </button>
-                                )}
-                              </div>
-
-                              {t.description && <p className="proposed-description">{t.description}</p>}
-                              <div className="proposed-task-meta">
-                                <span className={`quadrant-chip quadrant-chip-${badge.key}`}>
-                                  {badge.label}
-                                </span>
-                                <span className={`proposed-priority proposed-priority-${priority}`}>P{priority}</span>
-                                {t.dueDate && <span className="proposed-due-date">Due {formatDueDate(t.dueDate)}</span>}
-
-                                <div className="proposed-toggles">
-                                  <button
-                                    type="button"
-                                    className={`task-action flag-toggle ${t.important ? "active important" : ""}`}
-                                    aria-label={t.important ? "Remove important flag" : "Mark important"}
-                                    aria-pressed={t.important}
-                                    title={t.important ? "Important (Click to change)" : "Not Important (Click to mark Important)"}
-                                    disabled={t.added}
-                                    onClick={() => handleToggleImportant(msg.id, t.id)}
-                                  >
-                                    <Icon name="star" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`task-action flag-toggle ${t.urgent ? "active urgent" : ""}`}
-                                    aria-label={t.urgent ? "Remove urgent flag" : "Mark urgent"}
-                                    aria-pressed={t.urgent}
-                                    title={t.urgent ? "Urgent (Click to change)" : "Not Urgent (Click to mark Urgent)"}
-                                    disabled={t.added}
-                                    onClick={() => handleToggleUrgent(msg.id, t.id)}
-                                  >
-                                    <Icon name="bolt" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              {t.reasoning && <p className="proposed-reasoning">{t.reasoning}</p>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {msg.proposedHabits && msg.proposedHabits.length > 0 && (
-                    <div className="proposed-tasks-box proposed-habits-box">
-                      <div className="proposed-tasks-header">
-                        <span className="proposed-count">
-                          {msg.proposedHabits.filter((habit) => habit.added).length}/{msg.proposedHabits.length} habits added
-                        </span>
-                        {msg.proposedHabits.some((habit) => !habit.added) && (
-                          <button
-                            type="button"
-                            className="primary-button add-all-btn"
-                            onClick={() => void handleAddAllHabits(msg.id, msg.proposedHabits!)}
-                          >
-                            <Icon name="plus" />
-                            <span>Add habits to Prior</span>
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="proposed-task-list">
-                        {msg.proposedHabits.map((habit) => {
-                          const badge = getQuadrantBadge(habit);
-                          const isAdding = addingIds[habit.id];
-                          return (
-                            <div key={habit.id} className={`proposed-task-item ${habit.added ? "is-added" : ""}`}>
-                              <div className="proposed-task-top">
-                                <label className="proposed-checkbox-label">
-                                  <input
-                                    type="checkbox"
-                                    checked={habit.selected}
-                                    disabled={habit.added}
-                                    onChange={() => updateProposedHabit(msg.id, habit.id, { selected: !habit.selected })}
-                                  />
-                                  <span className="proposed-task-title">{habit.title}</span>
-                                </label>
-
-                                {habit.added ? (
-                                  <span className="task-added-badge">
-                                    <Icon name="check" /> Added
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="add-single-btn"
-                                    disabled={isAdding}
-                                    onClick={() => void handleAddSingleHabit(msg.id, habit)}
-                                    title="Add habit to Prior"
-                                  >
-                                    <Icon name="plus" />
-                                  </button>
-                                )}
-                              </div>
-
-                              <div className="proposed-task-meta">
-                                <span className={`quadrant-chip quadrant-chip-${badge.key}`}>
-                                  {habitScheduleLabel(habit)} · {badge.label}
-                                </span>
-
-                                <div className="proposed-toggles">
-                                  <button
-                                    type="button"
-                                    className={`task-action flag-toggle ${habit.important ? "active important" : ""}`}
-                                    aria-label={habit.important ? "Remove important flag" : "Mark important"}
-                                    aria-pressed={habit.important}
-                                    title={habit.important ? "Important (Click to change)" : "Not Important (Click to mark Important)"}
-                                    disabled={habit.added}
-                                    onClick={() => updateProposedHabit(msg.id, habit.id, { important: !habit.important })}
-                                  >
-                                    <Icon name="star" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`task-action flag-toggle ${habit.urgent ? "active urgent" : ""}`}
-                                    aria-label={habit.urgent ? "Remove urgent flag" : "Mark urgent"}
-                                    aria-pressed={habit.urgent}
-                                    title={habit.urgent ? "Urgent (Click to change)" : "Not Urgent (Click to mark Urgent)"}
-                                    disabled={habit.added}
-                                    onClick={() => updateProposedHabit(msg.id, habit.id, { urgent: !habit.urgent })}
-                                  >
-                                    <Icon name="bolt" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              {habit.reasoning && <p className="proposed-reasoning">{habit.reasoning}</p>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <AssistantMessage key={msg.id} message={msg} handlers={messageHandlers} />
             ))}
 
             {loading && (
@@ -846,13 +592,13 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
             Add your OpenRouter key and choose the model used by the assistant.
           </p>
 
-          <label className="settings-search-toggle">
-            <input type="checkbox" checked={webSearchInput} onChange={(event) => setWebSearchInput(event.target.checked)} />
-            <span>
+          <div className="settings-search-toggle">
+            <input id="prior-web-search" type="checkbox" checked={webSearchInput} onChange={(event) => setWebSearchInput(event.target.checked)} />
+            <label htmlFor="prior-web-search">
               <strong>Web search when needed</strong>
               <small>Use it for current or niche information. Search provider costs may apply.</small>
-            </span>
-          </label>
+            </label>
+          </div>
 
           <label className="settings-field">
             <span>OpenRouter API Key</span>
@@ -973,7 +719,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
       {modelModalOpen && (
         <div className="model-modal-layer">
           <div className="model-modal-backdrop" aria-hidden="true" onMouseDown={() => setModelModalOpen(false)} />
-          <div className="model-modal" role="dialog" aria-modal="true" aria-labelledby="prior-model-modal-title">
+          <dialog className="model-modal" aria-labelledby="prior-model-modal-title" open>
             <header className="model-modal-header">
               <h4 id="prior-model-modal-title">Choose a model</h4>
               <button type="button" className="icon-button" aria-label="Close model picker" onClick={() => setModelModalOpen(false)}>
@@ -1040,13 +786,13 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
                 Cancel
               </button>
               <button type="button" className="primary-button" onClick={confirmModelModal}>
-                Use {(customDraft.trim() || listDraft.trim() || DEFAULT_MODEL) === DEFAULT_MODEL ? "free model" : shortModelName(customDraft.trim() || listDraft.trim())}
+                {modelConfirmLabel(customDraft, listDraft)}
               </button>
             </div>
-          </div>
+          </dialog>
         </div>
       )}
-      </aside>
+      </dialog>
     </>
   );
 }

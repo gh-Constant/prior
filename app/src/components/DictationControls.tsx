@@ -2,16 +2,22 @@ import type { DictationStatus } from "../hooks/useDictation";
 import { Icon } from "./Icon";
 
 type ControlsProps = {
-  status: DictationStatus;
-  onStart: () => void;
-  onStop: () => void;
+  readonly status: DictationStatus;
+  readonly onStart: () => void;
+  readonly onStop: () => void;
 };
 
 type StatusBarProps = {
-  status: DictationStatus;
-  error: string | null;
-  onCancel: () => void;
-  onDismissError: () => void;
+  readonly status: DictationStatus;
+  readonly error: string | null;
+  readonly onCancel: () => void;
+  readonly onDismissError: () => void;
+};
+
+type PreviewProps = {
+  readonly finalText: string;
+  readonly interimText: string;
+  readonly warning: string | null;
 };
 
 function statusLabel(status: DictationStatus): string {
@@ -46,6 +52,12 @@ export function DictationControls({ status, onStart, onStop }: ControlsProps) {
   );
 }
 
+function listeningLabel(status: DictationStatus): string {
+  if (status === "preparing") return "Requesting microphone…";
+  if (status === "stopping") return "Finishing…";
+  return "Listening… tap stop to insert";
+}
+
 export function DictationStatusBar({ status, error, onCancel, onDismissError }: StatusBarProps) {
   const active = status === "preparing" || status === "listening" || status === "stopping";
 
@@ -65,7 +77,7 @@ export function DictationStatusBar({ status, error, onCancel, onDismissError }: 
     return (
       <div className="dictation-status-bar dictation-listening" role="status" aria-live="polite">
         <span className="dictation-pulse" aria-hidden="true" />
-        <span>{status === "preparing" ? "Requesting microphone…" : status === "stopping" ? "Finishing…" : "Listening… tap stop to insert"}</span>
+        <span>{listeningLabel(status)}</span>
         <button type="button" className="dictation-cancel-text" onClick={onCancel}>
           Cancel
         </button>
@@ -76,7 +88,7 @@ export function DictationStatusBar({ status, error, onCancel, onDismissError }: 
   return null;
 }
 
-export function DictationPreview({ finalText, interimText, warning }: { finalText: string; interimText: string; warning: string | null }) {
+export function DictationPreview({ finalText, interimText, warning }: PreviewProps) {
   if (!finalText && !interimText && !warning) return null;
   return (
     <div className="dictation-preview" aria-label="Dictation preview">

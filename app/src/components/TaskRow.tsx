@@ -4,14 +4,14 @@ import type { CompletionExitDeadlines } from "../lib/completionExit";
 import { CompletionBurst } from "./CompletionBurst";
 import { Icon } from "./Icon";
 
-type Props = { task: Task; onChange: (task: Task) => Promise<void>; onDelete: (task: Task) => Promise<void>; onEdit?: (task: Task) => void; hideFlags?: boolean };
+type Props = { readonly task: Task; readonly onChange: (task: Task) => Promise<void>; readonly onDelete: (task: Task) => Promise<void>; readonly onEdit?: (task: Task) => void; readonly hideFlags?: boolean };
 const CompletionExitContext = createContext<CompletionExitDeadlines>({});
 
 function formatDueDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-export function CompletionExitProvider({ deadlines, children }: { deadlines: CompletionExitDeadlines; children: ReactNode }) {
+export function CompletionExitProvider({ deadlines, children }: { readonly deadlines: CompletionExitDeadlines; readonly children: ReactNode }) {
   return <CompletionExitContext.Provider value={deadlines}>{children}</CompletionExitContext.Provider>;
 }
 
@@ -41,6 +41,16 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false }:
     const nextTitle = title.trim();
     if (nextTitle && nextTitle !== task.title) await onChange({ ...task, title: nextTitle });
     setEditing(false);
+  }
+
+  function startEditing() {
+    if (onEdit) onEdit(task);
+    else setEditing(true);
+  }
+
+  function handleTitleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") void saveTitle();
+    else if (event.key === "Escape") setEditing(false);
   }
 
   async function toggleCompletion() {
@@ -74,7 +84,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false }:
         <CompletionBurst trigger={completionBurstKey} />
       </span>
       <div className="task-content">
-        {editing ? <input className="edit-input" value={title} autoFocus onChange={(event) => setTitle(event.target.value)} onBlur={() => void saveTitle()} onKeyDown={(event) => { if (event.key === "Enter") void saveTitle(); if (event.key === "Escape") setEditing(false); }} /> : <button className="task-title" onDoubleClick={() => onEdit ? onEdit(task) : setEditing(true)} onClick={() => onEdit ? onEdit(task) : setEditing(true)}>{task.title}</button>}
+        {editing ? <input className="edit-input" value={title} autoFocus onChange={(event) => setTitle(event.target.value)} onBlur={() => void saveTitle()} onKeyDown={handleTitleKeyDown} /> : <button className="task-title" onDoubleClick={startEditing} onClick={startEditing}>{task.title}</button>}
         {task.description && <p className="task-description">{task.description}</p>}
         <div className="task-meta" aria-label="Task details">
           <span className={`task-priority priority-${task.priority ?? 4}`}>P{task.priority ?? 4}</span>

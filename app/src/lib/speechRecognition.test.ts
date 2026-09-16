@@ -9,8 +9,8 @@ import {
 } from "./speechRecognition";
 
 class MockRecognition implements SpeechRecognitionLike {
-  static available = vi.fn(async () => "available");
-  static instances: MockRecognition[] = [];
+  static readonly available = vi.fn(async () => "available");
+  static readonly instances: MockRecognition[] = [];
   lang = "";
   interimResults = false;
   continuous = false;
@@ -32,7 +32,7 @@ class MockRecognition implements SpeechRecognitionLike {
 describe("browser speech recognition adapter", () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    MockRecognition.instances = [];
+    MockRecognition.instances.length = 0;
     delete (window as Window & { SpeechRecognition?: unknown }).SpeechRecognition;
     delete (window as Window & { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
   });

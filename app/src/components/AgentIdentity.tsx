@@ -2,12 +2,12 @@ import { useId } from "react";
 import "./AgentIdentity.css";
 
 type AgentIdentityProps = {
-  thinking?: boolean;
-  size?: "tiny" | "small" | "hero";
+  readonly thinking?: boolean;
+  readonly size?: "tiny" | "small" | "hero";
 };
 
 export function AgentIdentity({ thinking = false, size = "small" }: AgentIdentityProps) {
-  const gradientId = `prior-agent-gradient-${useId().replace(/:/g, "")}`;
+  const gradientId = `prior-agent-gradient-${useId().replaceAll(":", "")}`;
   const highlightId = `${gradientId}-highlight`;
 
   return (

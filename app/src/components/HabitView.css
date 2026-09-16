@@ -76,7 +76,7 @@
   border: 1px solid var(--habit-border);
   border-radius: 999px;
   background: #fff;
-  color: #958b83;
+  color: #7c736d;
   font-size: 10px;
   font-weight: 700;
 }
@@ -155,7 +155,7 @@
   border: 1px solid #ebe5df;
   border-radius: 6px;
   background: #faf9f7;
-  color: #9a9088;
+  color: #78706a;
   font-size: 9px;
   font-weight: 650;
 }
@@ -163,7 +163,7 @@
 .habit-occurrence-chip.is-complete {
   border-color: #dce9dc;
   background: #f1f8f0;
-  color: #54805a;
+  color: #4f7855;
 }
 
 .habit-month-progress {
@@ -226,7 +226,7 @@
 
 .habit-week-day.is-scheduled { background: #fff; border-color: #eee7e1; }
 .habit-week-day.is-today { border-color: #f2b09f; box-shadow: 0 0 0 2px #fa654a12; }
-.habit-week-day.is-done { background: #f1f8f0; border-color: #dce9dc; color: #54805a; }
+.habit-week-day.is-done { background: #f1f8f0; border-color: #dce9dc; color: #4f7855; }
 .habit-week-day.is-missed { background: #fff3ef; border-color: #f3c9bf; color: #b44c38; }
 .habit-week-day-name { font-size: 9px; font-weight: 700; text-transform: uppercase; }
 .habit-week-day-number { color: #4b403a; font-size: 15px; font-weight: 700; }

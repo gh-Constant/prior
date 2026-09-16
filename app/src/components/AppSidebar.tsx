@@ -6,13 +6,13 @@ import "./AppSidebar.css";
 export type WorkspaceView = "eisenhower" | "all" | "habits";
 
 type AppSidebarProps = {
-  activeView: WorkspaceView;
-  user: SessionUser | null;
-  collapsed: boolean;
-  inert?: boolean;
-  onViewChange: (view: WorkspaceView) => void;
-  onAccount: () => void;
-  onToggle: () => void;
+  readonly activeView: WorkspaceView;
+  readonly user: SessionUser | null;
+  readonly collapsed: boolean;
+  readonly inert?: boolean;
+  readonly onViewChange: (view: WorkspaceView) => void;
+  readonly onAccount: () => void;
+  readonly onToggle: () => void;
 };
 
 const NAV_ITEMS: Array<{ view: WorkspaceView; label: string; icon: "inbox" | "grid" | "calendar-check" }> = [

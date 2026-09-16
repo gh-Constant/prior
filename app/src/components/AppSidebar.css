@@ -25,19 +25,18 @@
 
 .sidebar-collapse-button:hover {
   border-color: #ffffff12;
-  background: #ffffff0b;
+  background: #2a2a29;
   color: #fff;
 }
 
 .sidebar-collapse-button svg { width: 15px; height: 15px; }
 .sidebar.is-collapsed { padding-right: 10px; padding-left: 10px; }
-.sidebar.is-collapsed .sidebar-top { justify-content: center; margin-right: 0; margin-left: 0; }
+.sidebar.is-collapsed .sidebar-top { justify-content: center; margin-right: 0; margin-left: 0; flex-direction: column; gap: 13px; }
 .sidebar.is-collapsed .brand-title,
 .sidebar.is-collapsed .nav-item span,
 .sidebar.is-collapsed .account-trigger-label { display: none; }
 .sidebar.is-collapsed .sidebar-brand { display: block; }
 .sidebar.is-collapsed .sidebar-top .brand-lockup { gap: 0; }
-.sidebar.is-collapsed .sidebar-top { flex-direction: column; gap: 13px; }
 .sidebar.is-collapsed .nav-item { justify-content: center; padding: 0; }
 .sidebar.is-collapsed .nav-item.active::before { left: 0; }
 .sidebar.is-collapsed .account-trigger { justify-content: center; padding: 4px; }

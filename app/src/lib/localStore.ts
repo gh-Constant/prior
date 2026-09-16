@@ -1,4 +1,4 @@
-import type { Habit, HabitUnit, Mutation, SyncState, Task, TaskDraft, TaskPriority } from "../types";
+import type { Habit, HabitMutation, HabitUnit, Mutation, SyncState, Task, TaskDraft, TaskMutation, TaskPriority } from "../types";
 import { dateKey } from "./habits";
 
 const TASKS_KEY = "prior.tasks.v1";
@@ -76,6 +76,61 @@ function normalizeHabit(habit: Habit): Habit {
     unit: habit.unit ?? "day",
     completedDates: Array.isArray(habit.completedDates) ? [...habit.completedDates] : [],
   };
+}
+
+function pendingEntityIds(mutations: Mutation[], entity: "task" | "habit"): Set<string> {
+  const ids = mutations
+    .filter((mutation) => (mutation.entity ?? "task") === entity)
+    .map((mutation) => (entity === "habit" ? (mutation as HabitMutation).habit.id : (mutation as TaskMutation).task.id));
+  return new Set(ids);
+}
+
+function isRemoteStale(remoteRevision: number | undefined, localRevision: number | undefined): boolean {
+  return (remoteRevision ?? 0) < (localRevision ?? 0);
+}
+
+async function mergeRemoteTasksIntoDb(db: SqlDatabase, pendingIds: Set<string>, tasks: Task[]): Promise<void> {
+  for (const task of tasks) {
+    if (pendingIds.has(task.id)) continue;
+    const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM tasks WHERE id = ?", [task.id]);
+    if (isRemoteStale(task.serverRevision, current[0]?.server_revision ?? undefined)) continue;
+    await db.execute(
+      "INSERT INTO tasks (id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
+      [task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
+    );
+  }
+}
+
+function mergeRemoteTasksLocally(pendingIds: Set<string>, tasks: Task[]): void {
+  const merged = new Map(read<Task[]>(TASKS_KEY, []).map((task) => [task.id, task]));
+  for (const task of tasks) {
+    if (pendingIds.has(task.id)) continue;
+    const local = merged.get(task.id);
+    if (!local || !isRemoteStale(task.serverRevision, local.serverRevision)) merged.set(task.id, task);
+  }
+  write(TASKS_KEY, [...merged.values()]);
+}
+
+async function mergeRemoteHabitsIntoDb(db: SqlDatabase, pendingIds: Set<string>, habits: Habit[]): Promise<void> {
+  for (const habit of habits) {
+    if (pendingIds.has(habit.id)) continue;
+    const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM habits WHERE id = ?", [habit.id]);
+    if (isRemoteStale(habit.serverRevision, current[0]?.server_revision ?? undefined)) continue;
+    await db.execute(
+      "INSERT INTO habits (id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
+      [habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
+    );
+  }
+}
+
+function mergeRemoteHabitsLocally(pendingIds: Set<string>, habits: Habit[]): void {
+  const merged = new Map(read<Habit[]>(HABITS_KEY, []).map((habit) => [habit.id, habit]));
+  for (const habit of habits) {
+    if (pendingIds.has(habit.id)) continue;
+    const local = merged.get(habit.id);
+    if (!local || !isRemoteStale(habit.serverRevision, local.serverRevision)) merged.set(habit.id, habit);
+  }
+  write(HABITS_KEY, [...merged.values()]);
 }
 
 export const localStore = {
@@ -171,7 +226,7 @@ export const localStore = {
       interval,
       unit: input.unit as HabitUnit,
       startDate: input.startDate ?? existing?.startDate ?? dateKey(new Date(timestamp)),
-      completedDates: [...new Set(input.completedDates ?? existing?.completedDates ?? [])].sort(),
+      completedDates: [...new Set(input.completedDates ?? existing?.completedDates ?? [])].sort((left, right) => left.localeCompare(right)),
       createdAt: input.createdAt ?? existing?.createdAt ?? timestamp,
       updatedAt: input.updatedAt ?? timestamp,
       deletedAt: input.deletedAt ?? null,
@@ -218,8 +273,7 @@ export const localStore = {
     write(OUTBOX_KEY, [...read<Mutation[]>(OUTBOX_KEY, []), mutation]);
   },
 
-  async pendingMutations(): Promise<Mutation[]> {
-    const db = await getSqlDatabase();
+  async pendingMutations(): Promise<Mutation[]> {    const db = await getSqlDatabase();
     if (db) {
       const rows = await db.select<{ id: string; entity: "task" | "habit"; kind: Mutation["kind"]; payload: string; created_at: string }>(
         "SELECT id, entity, kind, payload, created_at FROM outbox ORDER BY created_at ASC",
@@ -229,6 +283,10 @@ export const localStore = {
         : { id: row.id, entity: "task", kind: row.kind, task: JSON.parse(row.payload) as Task, createdAt: row.created_at });
     }
     return read<Mutation[]>(OUTBOX_KEY, []);
+  },
+
+  async pendingIdsFor(entity: "task" | "habit"): Promise<Set<string>> {
+    return pendingEntityIds(await this.pendingMutations(), entity);
   },
 
   async removeMutations(ids: string[]): Promise<void> {
@@ -261,56 +319,25 @@ export const localStore = {
   },
 
   async applyRemoteTasks(tasks: Task[]): Promise<void> {
-    const pendingTaskIds = new Set((await this.pendingMutations()).filter((mutation) => mutation.entity !== "habit").map((mutation) => mutation.task.id));
+    const pendingTaskIds = await this.pendingIdsFor("task");
     const normalizedTasks = tasks.map(normalizeTask);
     const db = await getSqlDatabase();
     if (db) {
-      for (const task of normalizedTasks) {
-        if (pendingTaskIds.has(task.id)) continue;
-        const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM tasks WHERE id = ?", [task.id]);
-        const currentRevision = current[0]?.server_revision ?? 0;
-        if ((task.serverRevision ?? 0) < currentRevision) continue;
-        await db.execute(
-          "INSERT INTO tasks (id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
-          [task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
-        );
-      }
+      await mergeRemoteTasksIntoDb(db, pendingTaskIds, normalizedTasks);
       return;
     }
-    const current = read<Task[]>(TASKS_KEY, []);
-    const merged = new Map(current.map((task) => [task.id, task]));
-    for (const task of normalizedTasks) {
-      if (pendingTaskIds.has(task.id)) continue;
-      const local = merged.get(task.id);
-      if (!local || (task.serverRevision ?? 0) >= (local.serverRevision ?? 0)) merged.set(task.id, task);
-    }
-    write(TASKS_KEY, [...merged.values()]);
+    mergeRemoteTasksLocally(pendingTaskIds, normalizedTasks);
   },
 
   async applyRemoteHabits(habits: Habit[]): Promise<void> {
-    const pendingHabitIds = new Set((await this.pendingMutations()).filter((mutation) => mutation.entity === "habit").map((mutation) => mutation.habit.id));
+    const pendingHabitIds = await this.pendingIdsFor("habit");
     const normalizedHabits = habits.map(normalizeHabit);
     const db = await getSqlDatabase();
     if (db) {
-      for (const habit of normalizedHabits) {
-        if (pendingHabitIds.has(habit.id)) continue;
-        const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM habits WHERE id = ?", [habit.id]);
-        if ((habit.serverRevision ?? 0) < (current[0]?.server_revision ?? 0)) continue;
-        await db.execute(
-          "INSERT INTO habits (id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
-          [habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
-        );
-      }
+      await mergeRemoteHabitsIntoDb(db, pendingHabitIds, normalizedHabits);
       return;
     }
-    const current = read<Habit[]>(HABITS_KEY, []);
-    const merged = new Map(current.map((habit) => [habit.id, habit]));
-    for (const habit of normalizedHabits) {
-      if (pendingHabitIds.has(habit.id)) continue;
-      const local = merged.get(habit.id);
-      if (!local || (habit.serverRevision ?? 0) >= (local.serverRevision ?? 0)) merged.set(habit.id, habit);
-    }
-    write(HABITS_KEY, [...merged.values()]);
+    mergeRemoteHabitsLocally(pendingHabitIds, normalizedHabits);
   },
 
   async resetSyncRevision(): Promise<void> {

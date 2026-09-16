@@ -58,6 +58,22 @@ type Store struct{ pool *pgxpool.Pool }
 
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
+// isoDateLayout is the YYYY-MM-DD layout used for habit and task dates.
+const isoDateLayout = "2006-01-02"
+
+// SaveAgentChatMessageParams groups SaveAgentChatMessage arguments so the
+// method stays within the parameter-count limit.
+type SaveAgentChatMessageParams struct {
+	UserID         uuid.UUID
+	ChatID         uuid.UUID
+	MessageID      uuid.UUID
+	Role           string
+	Content        string
+	ProposedTasks  json.RawMessage
+	ProposedHabits json.RawMessage
+	ActualModel    string
+}
+
 func (s *Store) UpsertUser(ctx context.Context, googleSub, email string, verified bool, displayName, avatarURL string) (User, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -253,30 +269,14 @@ func (s *Store) GetAgentChat(ctx context.Context, userID, chatID uuid.UUID) (Age
 	return chat, nil
 }
 
-func (s *Store) SaveAgentChatMessage(ctx context.Context, userID, chatID, messageID uuid.UUID, role, content string, proposedTasks, proposedHabits json.RawMessage, actualModel string) (AgentChatMessage, error) {
-	content = strings.TrimSpace(content)
-	if role != "user" && role != "assistant" {
-		return AgentChatMessage{}, errors.New("invalid chat message role")
+func (s *Store) SaveAgentChatMessage(ctx context.Context, params SaveAgentChatMessageParams) (AgentChatMessage, error) {
+	content, err := validateChatMessage(params.Role, params.Content)
+	if err != nil {
+		return AgentChatMessage{}, err
 	}
-	if content == "" || len(content) > 20000 {
-		return AgentChatMessage{}, errors.New("chat message content must be between 1 and 20000 characters")
-	}
-	if len(proposedTasks) == 0 || string(proposedTasks) == "null" {
-		proposedTasks = json.RawMessage("[]")
-	}
-	var proposedList []json.RawMessage
-	if err := json.Unmarshal(proposedTasks, &proposedList); err != nil {
-		return AgentChatMessage{}, errors.New("proposed tasks must be a JSON array")
-	}
-	if len(proposedTasks) > 1<<20 || len(proposedHabits) > 1<<20 {
-		return AgentChatMessage{}, errors.New("proposed items payload is too large")
-	}
-	if len(proposedHabits) == 0 || string(proposedHabits) == "null" {
-		proposedHabits = json.RawMessage("[]")
-	}
-	var proposedHabitList []json.RawMessage
-	if err := json.Unmarshal(proposedHabits, &proposedHabitList); err != nil {
-		return AgentChatMessage{}, errors.New("proposed habits must be a JSON array")
+	proposedTasks, proposedHabits, err := normalizeProposedPayloads(params.ProposedTasks, params.ProposedHabits)
+	if err != nil {
+		return AgentChatMessage{}, err
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -285,37 +285,102 @@ func (s *Store) SaveAgentChatMessage(ctx context.Context, userID, chatID, messag
 	}
 	defer tx.Rollback(ctx)
 
-	var owner uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT user_id FROM agent_chats WHERE id = $1`, chatID).Scan(&owner); errors.Is(err, pgx.ErrNoRows) {
-		return AgentChatMessage{}, ErrNotFound
-	} else if err != nil {
+	if err := verifyChatOwner(ctx, tx, params.ChatID, params.UserID); err != nil {
 		return AgentChatMessage{}, err
-	} else if owner != userID {
-		return AgentChatMessage{}, errors.New("chat belongs to another user")
 	}
+	if err := verifyMessageChat(ctx, tx, params.MessageID, params.ChatID); err != nil {
+		return AgentChatMessage{}, err
+	}
+	message, err := upsertChatMessage(ctx, tx, params, content, proposedTasks, proposedHabits)
+	if err != nil {
+		return AgentChatMessage{}, err
+	}
+	if err := touchChatAfterMessage(ctx, tx, params.ChatID, params.UserID, params.Role, content); err != nil {
+		return AgentChatMessage{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AgentChatMessage{}, err
+	}
+	return message, nil
+}
 
+func validateChatMessage(role, content string) (string, error) {
+	trimmed := strings.TrimSpace(content)
+	if role != "user" && role != "assistant" {
+		return "", errors.New("invalid chat message role")
+	}
+	if trimmed == "" || len(trimmed) > 20000 {
+		return "", errors.New("chat message content must be between 1 and 20000 characters")
+	}
+	return trimmed, nil
+}
+
+func normalizeProposedPayloads(proposedTasks, proposedHabits json.RawMessage) (json.RawMessage, json.RawMessage, error) {
+	if len(proposedTasks) == 0 || string(proposedTasks) == "null" {
+		proposedTasks = json.RawMessage("[]")
+	}
+	var proposedList []json.RawMessage
+	if err := json.Unmarshal(proposedTasks, &proposedList); err != nil {
+		return nil, nil, errors.New("proposed tasks must be a JSON array")
+	}
+	if len(proposedTasks) > 1<<20 || len(proposedHabits) > 1<<20 {
+		return nil, nil, errors.New("proposed items payload is too large")
+	}
+	if len(proposedHabits) == 0 || string(proposedHabits) == "null" {
+		proposedHabits = json.RawMessage("[]")
+	}
+	var proposedHabitList []json.RawMessage
+	if err := json.Unmarshal(proposedHabits, &proposedHabitList); err != nil {
+		return nil, nil, errors.New("proposed habits must be a JSON array")
+	}
+	return proposedTasks, proposedHabits, nil
+}
+
+func verifyChatOwner(ctx context.Context, tx pgx.Tx, chatID, userID uuid.UUID) error {
+	var owner uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT user_id FROM agent_chats WHERE id = $1`, chatID).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if owner != userID {
+		return errors.New("chat belongs to another user")
+	}
+	return nil
+}
+
+func verifyMessageChat(ctx context.Context, tx pgx.Tx, messageID, chatID uuid.UUID) error {
 	var existingChatID uuid.UUID
 	existingErr := tx.QueryRow(ctx, `SELECT chat_id FROM agent_chat_messages WHERE id = $1`, messageID).Scan(&existingChatID)
 	if existingErr == nil && existingChatID != chatID {
-		return AgentChatMessage{}, errors.New("message belongs to another chat")
+		return errors.New("message belongs to another chat")
 	}
 	if existingErr != nil && !errors.Is(existingErr, pgx.ErrNoRows) {
-		return AgentChatMessage{}, existingErr
+		return existingErr
 	}
+	return nil
+}
 
-	var actualModelValue any
-	if strings.TrimSpace(actualModel) != "" {
-		actualModelValue = strings.TrimSpace(actualModel)
+func chatModelValue(actualModel string) any {
+	trimmed := strings.TrimSpace(actualModel)
+	if trimmed == "" {
+		return nil
 	}
+	return trimmed
+}
+
+func upsertChatMessage(ctx context.Context, tx pgx.Tx, params SaveAgentChatMessageParams, content string, proposedTasks, proposedHabits json.RawMessage) (AgentChatMessage, error) {
 	var message AgentChatMessage
 	var returnedModel *string
-	err = tx.QueryRow(ctx, `
+	err := tx.QueryRow(ctx, `
 		INSERT INTO agent_chat_messages (id, chat_id, role, content, proposed_tasks, proposed_habits, actual_model)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, content = EXCLUDED.content,
 		proposed_tasks = EXCLUDED.proposed_tasks, proposed_habits = EXCLUDED.proposed_habits, actual_model = EXCLUDED.actual_model
 		RETURNING id, role, content, proposed_tasks, proposed_habits, actual_model, created_at`,
-		messageID, chatID, role, content, proposedTasks, proposedHabits, actualModelValue).
+		params.MessageID, params.ChatID, params.Role, content, proposedTasks, proposedHabits, chatModelValue(params.ActualModel)).
 		Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &returnedModel, &message.CreatedAt)
 	if err != nil {
 		return AgentChatMessage{}, err
@@ -323,22 +388,19 @@ func (s *Store) SaveAgentChatMessage(ctx context.Context, userID, chatID, messag
 	if returnedModel != nil {
 		message.ActualModel = *returnedModel
 	}
+	return message, nil
+}
 
+func touchChatAfterMessage(ctx context.Context, tx pgx.Tx, chatID, userID uuid.UUID, role, content string) error {
 	if role == "user" {
-		_, err = tx.Exec(ctx, `
+		_, err := tx.Exec(ctx, `
 			UPDATE agent_chats
 			SET title = CASE WHEN title = 'New chat' THEN LEFT($3, 80) ELSE title END, updated_at = now()
 			WHERE id = $1 AND user_id = $2`, chatID, userID, content)
-	} else {
-		_, err = tx.Exec(ctx, `UPDATE agent_chats SET updated_at = now() WHERE id = $1 AND user_id = $2`, chatID, userID)
+		return err
 	}
-	if err != nil {
-		return AgentChatMessage{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return AgentChatMessage{}, err
-	}
-	return message, nil
+	_, err := tx.Exec(ctx, `UPDATE agent_chats SET updated_at = now() WHERE id = $1 AND user_id = $2`, chatID, userID)
+	return err
 }
 
 func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mutation) ([]AppliedMutation, error) {
@@ -349,182 +411,11 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 	defer tx.Rollback(ctx)
 	results := make([]AppliedMutation, 0, len(mutations))
 	for _, mutation := range mutations {
-		if mutation.Kind != "upsert" && mutation.Kind != "delete" {
-			return nil, fmt.Errorf("unknown mutation kind")
-		}
-		mutationID, parseErr := uuid.Parse(mutation.ID)
-		if parseErr != nil {
-			return nil, fmt.Errorf("mutation id: %w", parseErr)
-		}
-		var priorJSON []byte
-		var priorEntity string
-		var priorRevision int64
-		err := tx.QueryRow(ctx, `SELECT entity, task_json, revision FROM applied_mutations WHERE user_id = $1 AND mutation_id = $2`, userID, mutationID).Scan(&priorEntity, &priorJSON, &priorRevision)
-		if err == nil {
-			if priorEntity == "habit" {
-				var prior tasks.Habit
-				if err := json.Unmarshal(priorJSON, &prior); err != nil {
-					return nil, err
-				}
-				results = append(results, AppliedMutation{MutationID: mutation.ID, Entity: "habit", Habit: prior, Revision: priorRevision})
-			} else {
-				var prior tasks.Task
-				if err := json.Unmarshal(priorJSON, &prior); err != nil {
-					return nil, err
-				}
-				results = append(results, AppliedMutation{MutationID: mutation.ID, Entity: "task", Task: prior, Revision: priorRevision})
-			}
-			continue
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return nil, err
-		}
-		entity := mutation.Entity
-		if entity == "" {
-			entity = "task"
-		}
-		if entity != "task" && entity != "habit" {
-			return nil, errors.New("unknown mutation entity")
-		}
-		if entity == "habit" {
-			habitID, parseErr := uuid.Parse(mutation.Habit.ID)
-			if parseErr != nil {
-				return nil, fmt.Errorf("habit id: %w", parseErr)
-			}
-			var owner uuid.UUID
-			ownerErr := tx.QueryRow(ctx, `SELECT user_id FROM habits WHERE id = $1`, habitID).Scan(&owner)
-			if ownerErr == nil && owner != userID {
-				return nil, errors.New("habit belongs to another user")
-			}
-			if ownerErr != nil && !errors.Is(ownerErr, pgx.ErrNoRows) {
-				return nil, ownerErr
-			}
-			if len(mutation.Habit.Title) == 0 || len(mutation.Habit.Title) > 400 {
-				return nil, fmt.Errorf("habit title must be between 1 and 400 characters")
-			}
-			if mutation.Habit.Interval < 1 || mutation.Habit.Interval > 365 || (mutation.Habit.Unit != "day" && mutation.Habit.Unit != "week" && mutation.Habit.Unit != "month" && mutation.Habit.Unit != "year") {
-				return nil, errors.New("invalid habit schedule")
-			}
-			if _, err := time.Parse("2006-01-02", mutation.Habit.StartDate); err != nil {
-				return nil, errors.New("invalid habit start date")
-			}
-			if len(mutation.Habit.CompletedDates) > 10000 {
-				return nil, errors.New("habit completion history is too large")
-			}
-			for _, completedDate := range mutation.Habit.CompletedDates {
-				if _, err := time.Parse("2006-01-02", completedDate); err != nil {
-					return nil, errors.New("invalid habit completion date")
-				}
-			}
-			var revision int64
-			if err := tx.QueryRow(ctx, `SELECT nextval('server_revision_seq')`).Scan(&revision); err != nil {
-				return nil, err
-			}
-			createdAt := mutation.Habit.CreatedAt.UTC()
-			updatedAt := mutation.Habit.UpdatedAt.UTC()
-			if createdAt.IsZero() {
-				createdAt = time.Now().UTC()
-			}
-			if updatedAt.IsZero() {
-				updatedAt = time.Now().UTC()
-			}
-			if mutation.Habit.CompletedDates == nil {
-				mutation.Habit.CompletedDates = []string{}
-			}
-			completedJSON, err := json.Marshal(mutation.Habit.CompletedDates)
-			if err != nil {
-				return nil, err
-			}
-			_, err = tx.Exec(ctx, `INSERT INTO habits (id, user_id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, important = EXCLUDED.important, urgent = EXCLUDED.urgent, interval = EXCLUDED.interval, unit = EXCLUDED.unit, start_date = EXCLUDED.start_date, completed_dates = EXCLUDED.completed_dates, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision WHERE habits.user_id = EXCLUDED.user_id`, habitID, userID, mutation.Habit.Title, mutation.Habit.Important, mutation.Habit.Urgent, mutation.Habit.Interval, mutation.Habit.Unit, mutation.Habit.StartDate, completedJSON, createdAt, updatedAt, mutation.Habit.DeletedAt, revision)
-			if err != nil {
-				return nil, err
-			}
-			mutation.Habit.ServerRevision = revision
-			payload, err := json.Marshal(mutation.Habit)
-			if err != nil {
-				return nil, err
-			}
-			_, err = tx.Exec(ctx, `INSERT INTO habit_changes (revision, habit_id, user_id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, revision, habitID, userID, mutation.Habit.Title, mutation.Habit.Important, mutation.Habit.Urgent, mutation.Habit.Interval, mutation.Habit.Unit, mutation.Habit.StartDate, completedJSON, createdAt, updatedAt, mutation.Habit.DeletedAt)
-			if err != nil {
-				return nil, err
-			}
-			_, err = tx.Exec(ctx, `INSERT INTO applied_mutations (user_id, mutation_id, task_id, entity, revision, task_json) VALUES ($1, $2, $3, $4, $5, $6)`, userID, mutationID, habitID, "habit", revision, payload)
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, AppliedMutation{MutationID: mutation.ID, Entity: "habit", Habit: mutation.Habit, Revision: revision})
-			continue
-		}
-		taskID, parseErr := uuid.Parse(mutation.Task.ID)
-		if parseErr != nil {
-			return nil, fmt.Errorf("task id: %w", parseErr)
-		}
-		var owner uuid.UUID
-		ownerErr := tx.QueryRow(ctx, `SELECT user_id FROM tasks WHERE id = $1`, taskID).Scan(&owner)
-		if ownerErr == nil && owner != userID {
-			return nil, errors.New("task belongs to another user")
-		}
-		if ownerErr != nil && !errors.Is(ownerErr, pgx.ErrNoRows) {
-			return nil, ownerErr
-		}
-		if len(mutation.Task.Title) == 0 || len(mutation.Task.Title) > 400 {
-			return nil, fmt.Errorf("task title must be between 1 and 400 characters")
-		}
-		if len(mutation.Task.Description) > 10000 {
-			return nil, fmt.Errorf("task description is too long")
-		}
-		if mutation.Task.DueDate != nil {
-			trimmed := strings.TrimSpace(*mutation.Task.DueDate)
-			if trimmed == "" {
-				mutation.Task.DueDate = nil
-			} else if _, err := time.Parse("2006-01-02", trimmed); err != nil {
-				return nil, errors.New("invalid task due date")
-			} else {
-				mutation.Task.DueDate = &trimmed
-			}
-		}
-		if mutation.Task.Priority == 0 {
-			mutation.Task.Priority = 4
-		}
-		if mutation.Task.Priority < 1 || mutation.Task.Priority > 4 {
-			return nil, errors.New("invalid task priority")
-		}
-		var revision int64
-		if err := tx.QueryRow(ctx, `SELECT nextval('server_revision_seq')`).Scan(&revision); err != nil {
-			return nil, err
-		}
-		createdAt := mutation.Task.CreatedAt.UTC()
-		updatedAt := mutation.Task.UpdatedAt.UTC()
-		if createdAt.IsZero() {
-			createdAt = time.Now().UTC()
-		}
-		if updatedAt.IsZero() {
-			updatedAt = time.Now().UTC()
-		}
-		_, err = tx.Exec(ctx, `
-			INSERT INTO tasks (id, user_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date,
-			 priority = EXCLUDED.priority, completed = EXCLUDED.completed, important = EXCLUDED.important, urgent = EXCLUDED.urgent,
-			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
-			WHERE tasks.user_id = EXCLUDED.user_id`, taskID, userID, mutation.Task.Title, mutation.Task.Description, mutation.Task.DueDate, mutation.Task.Priority, mutation.Task.Completed, mutation.Task.Important, mutation.Task.Urgent, createdAt, updatedAt, mutation.Task.DeletedAt, revision)
+		applied, err := pushOneMutation(ctx, tx, userID, mutation)
 		if err != nil {
 			return nil, err
 		}
-		mutation.Task.ServerRevision = revision
-		payload, err := json.Marshal(mutation.Task)
-		if err != nil {
-			return nil, err
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, revision, taskID, userID, mutation.Task.Title, mutation.Task.Description, mutation.Task.DueDate, mutation.Task.Priority, mutation.Task.Completed, mutation.Task.Important, mutation.Task.Urgent, createdAt, updatedAt, mutation.Task.DeletedAt)
-		if err != nil {
-			return nil, err
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO applied_mutations (user_id, mutation_id, task_id, entity, revision, task_json) VALUES ($1, $2, $3, $4, $5, $6)`, userID, mutationID, taskID, "task", revision, payload)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, AppliedMutation{MutationID: mutation.ID, Entity: "task", Task: mutation.Task, Revision: revision})
+		results = append(results, applied)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -532,20 +423,336 @@ func (s *Store) Push(ctx context.Context, userID uuid.UUID, mutations []tasks.Mu
 	return results, nil
 }
 
+func pushOneMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutation tasks.Mutation) (AppliedMutation, error) {
+	if mutation.Kind != "upsert" && mutation.Kind != "delete" {
+		return AppliedMutation{}, fmt.Errorf("unknown mutation kind")
+	}
+	mutationID, err := uuid.Parse(mutation.ID)
+	if err != nil {
+		return AppliedMutation{}, fmt.Errorf("mutation id: %w", err)
+	}
+	if prior, found, err := lookupPriorMutation(ctx, tx, userID, mutation.ID, mutationID); err != nil {
+		return AppliedMutation{}, err
+	} else if found {
+		return prior, nil
+	}
+	entity, err := resolveMutationEntity(mutation.Entity)
+	if err != nil {
+		return AppliedMutation{}, err
+	}
+	if entity == "habit" {
+		return applyHabitMutation(ctx, tx, userID, mutation, mutationID)
+	}
+	return applyTaskMutation(ctx, tx, userID, mutation, mutationID)
+}
+
+func lookupPriorMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutationIDStr string, mutationID uuid.UUID) (AppliedMutation, bool, error) {
+	var priorJSON []byte
+	var priorEntity string
+	var priorRevision int64
+	err := tx.QueryRow(ctx, `SELECT entity, task_json, revision FROM applied_mutations WHERE user_id = $1 AND mutation_id = $2`, userID, mutationID).Scan(&priorEntity, &priorJSON, &priorRevision)
+	if err == nil {
+		prior, convErr := priorToAppliedMutation(mutationIDStr, priorEntity, priorJSON, priorRevision)
+		if convErr != nil {
+			return AppliedMutation{}, false, convErr
+		}
+		return prior, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return AppliedMutation{}, false, err
+	}
+	return AppliedMutation{}, false, nil
+}
+
+func priorToAppliedMutation(mutationID, priorEntity string, priorJSON []byte, priorRevision int64) (AppliedMutation, error) {
+	if priorEntity == "habit" {
+		var prior tasks.Habit
+		if err := json.Unmarshal(priorJSON, &prior); err != nil {
+			return AppliedMutation{}, err
+		}
+		return AppliedMutation{MutationID: mutationID, Entity: "habit", Habit: prior, Revision: priorRevision}, nil
+	}
+	var prior tasks.Task
+	if err := json.Unmarshal(priorJSON, &prior); err != nil {
+		return AppliedMutation{}, err
+	}
+	return AppliedMutation{MutationID: mutationID, Entity: "task", Task: prior, Revision: priorRevision}, nil
+}
+
+func resolveMutationEntity(entity string) (string, error) {
+	if entity == "" {
+		entity = "task"
+	}
+	if entity != "task" && entity != "habit" {
+		return "", errors.New("unknown mutation entity")
+	}
+	return entity, nil
+}
+
+func nextRevision(ctx context.Context, tx pgx.Tx) (int64, error) {
+	var revision int64
+	if err := tx.QueryRow(ctx, `SELECT nextval('server_revision_seq')`).Scan(&revision); err != nil {
+		return 0, err
+	}
+	return revision, nil
+}
+
+func coalesceTimestamps(createdAt, updatedAt time.Time) (time.Time, time.Time) {
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	return createdAt, updatedAt
+}
+
+// mutationContext bundles the ambient write state shared by every row helper
+// for one applied mutation.
+type mutationContext struct {
+	ctx      context.Context
+	tx       pgx.Tx
+	userID   uuid.UUID
+	revision int64
+}
+
+func recordAppliedMutation(mc mutationContext, entityID, mutationID uuid.UUID, entity string, payload []byte) error {
+	_, err := mc.tx.Exec(mc.ctx, `INSERT INTO applied_mutations (user_id, mutation_id, task_id, entity, revision, task_json) VALUES ($1, $2, $3, $4, $5, $6)`, mc.userID, mutationID, entityID, entity, mc.revision, payload)
+	return err
+}
+
+func ensureHabitOwned(ctx context.Context, tx pgx.Tx, habitID, userID uuid.UUID) error {
+	var owner uuid.UUID
+	ownerErr := tx.QueryRow(ctx, `SELECT user_id FROM habits WHERE id = $1`, habitID).Scan(&owner)
+	if ownerErr == nil && owner != userID {
+		return errors.New("habit belongs to another user")
+	}
+	if ownerErr != nil && !errors.Is(ownerErr, pgx.ErrNoRows) {
+		return ownerErr
+	}
+	return nil
+}
+
+func ensureTaskOwned(ctx context.Context, tx pgx.Tx, taskID, userID uuid.UUID) error {
+	var owner uuid.UUID
+	ownerErr := tx.QueryRow(ctx, `SELECT user_id FROM tasks WHERE id = $1`, taskID).Scan(&owner)
+	if ownerErr == nil && owner != userID {
+		return errors.New("task belongs to another user")
+	}
+	if ownerErr != nil && !errors.Is(ownerErr, pgx.ErrNoRows) {
+		return ownerErr
+	}
+	return nil
+}
+
+func validateHabitSchedule(interval int, unit string) error {
+	if interval < 1 || interval > 365 || (unit != "day" && unit != "week" && unit != "month" && unit != "year") {
+		return errors.New("invalid habit schedule")
+	}
+	return nil
+}
+
+func validateHabitDates(startDate string, completedDates []string) error {
+	if _, err := time.Parse(isoDateLayout, startDate); err != nil {
+		return errors.New("invalid habit start date")
+	}
+	if len(completedDates) > 10000 {
+		return errors.New("habit completion history is too large")
+	}
+	for _, completedDate := range completedDates {
+		if _, err := time.Parse(isoDateLayout, completedDate); err != nil {
+			return errors.New("invalid habit completion date")
+		}
+	}
+	return nil
+}
+
+func validateHabit(habit tasks.Habit) error {
+	if len(habit.Title) == 0 || len(habit.Title) > 400 {
+		return fmt.Errorf("habit title must be between 1 and 400 characters")
+	}
+	if err := validateHabitSchedule(habit.Interval, habit.Unit); err != nil {
+		return err
+	}
+	return validateHabitDates(habit.StartDate, habit.CompletedDates)
+}
+
+func applyHabitMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutation tasks.Mutation, mutationID uuid.UUID) (AppliedMutation, error) {
+	habitID, err := uuid.Parse(mutation.Habit.ID)
+	if err != nil {
+		return AppliedMutation{}, fmt.Errorf("habit id: %w", err)
+	}
+	if err := ensureHabitOwned(ctx, tx, habitID, userID); err != nil {
+		return AppliedMutation{}, err
+	}
+	if err := validateHabit(mutation.Habit); err != nil {
+		return AppliedMutation{}, err
+	}
+	return persistHabitMutation(ctx, tx, userID, mutation, habitID, mutationID)
+}
+
+func insertHabitRow(mc mutationContext, habit tasks.Habit, habitID uuid.UUID, completedJSON []byte, createdAt, updatedAt time.Time) error {
+	_, err := mc.tx.Exec(mc.ctx, `INSERT INTO habits (id, user_id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, important = EXCLUDED.important, urgent = EXCLUDED.urgent, interval = EXCLUDED.interval, unit = EXCLUDED.unit, start_date = EXCLUDED.start_date, completed_dates = EXCLUDED.completed_dates, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision WHERE habits.user_id = EXCLUDED.user_id`, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, completedJSON, createdAt, updatedAt, habit.DeletedAt, mc.revision)
+	return err
+}
+
+func insertHabitChangeRow(mc mutationContext, habit tasks.Habit, habitID uuid.UUID, completedJSON []byte, createdAt, updatedAt time.Time) error {
+	_, err := mc.tx.Exec(mc.ctx, `INSERT INTO habit_changes (revision, habit_id, user_id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, mc.revision, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, completedJSON, createdAt, updatedAt, habit.DeletedAt)
+	return err
+}
+
+func persistHabitMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutation tasks.Mutation, habitID, mutationID uuid.UUID) (AppliedMutation, error) {
+	revision, err := nextRevision(ctx, tx)
+	if err != nil {
+		return AppliedMutation{}, err
+	}
+	createdAt, updatedAt := coalesceTimestamps(mutation.Habit.CreatedAt.UTC(), mutation.Habit.UpdatedAt.UTC())
+	if mutation.Habit.CompletedDates == nil {
+		mutation.Habit.CompletedDates = []string{}
+	}
+	completedJSON, err := json.Marshal(mutation.Habit.CompletedDates)
+	if err != nil {
+		return AppliedMutation{}, err
+	}
+	mc := mutationContext{ctx: ctx, tx: tx, userID: userID, revision: revision}
+	if err := insertHabitRow(mc, mutation.Habit, habitID, completedJSON, createdAt, updatedAt); err != nil {
+		return AppliedMutation{}, err
+	}
+	if err := insertHabitChangeRow(mc, mutation.Habit, habitID, completedJSON, createdAt, updatedAt); err != nil {
+		return AppliedMutation{}, err
+	}
+	mutation.Habit.ServerRevision = revision
+	payload, err := json.Marshal(mutation.Habit)
+	if err != nil {
+		return AppliedMutation{}, err
+	}
+	if err := recordAppliedMutation(mc, habitID, mutationID, "habit", payload); err != nil {
+		return AppliedMutation{}, err
+	}
+	return AppliedMutation{MutationID: mutation.ID, Entity: "habit", Habit: mutation.Habit, Revision: revision}, nil
+}
+
+func normalizeTaskDueDate(task *tasks.Task) error {
+	if task.DueDate == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*task.DueDate)
+	if trimmed == "" {
+		task.DueDate = nil
+		return nil
+	}
+	if _, err := time.Parse(isoDateLayout, trimmed); err != nil {
+		return errors.New("invalid task due date")
+	}
+	task.DueDate = &trimmed
+	return nil
+}
+
+func validateTask(task *tasks.Task) error {
+	if len(task.Title) == 0 || len(task.Title) > 400 {
+		return fmt.Errorf("task title must be between 1 and 400 characters")
+	}
+	if len(task.Description) > 10000 {
+		return fmt.Errorf("task description is too long")
+	}
+	if err := normalizeTaskDueDate(task); err != nil {
+		return err
+	}
+	if task.Priority == 0 {
+		task.Priority = 4
+	}
+	if task.Priority < 1 || task.Priority > 4 {
+		return errors.New("invalid task priority")
+	}
+	return nil
+}
+
+func applyTaskMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutation tasks.Mutation, mutationID uuid.UUID) (AppliedMutation, error) {
+	taskID, err := uuid.Parse(mutation.Task.ID)
+	if err != nil {
+		return AppliedMutation{}, fmt.Errorf("task id: %w", err)
+	}
+	if err := ensureTaskOwned(ctx, tx, taskID, userID); err != nil {
+		return AppliedMutation{}, err
+	}
+	if err := validateTask(&mutation.Task); err != nil {
+		return AppliedMutation{}, err
+	}
+	return persistTaskMutation(ctx, tx, userID, mutation, taskID, mutationID)
+}
+
+func insertTaskRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, createdAt, updatedAt time.Time) error {
+	_, err := mc.tx.Exec(mc.ctx, `
+			INSERT INTO tasks (id, user_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date,
+			 priority = EXCLUDED.priority, completed = EXCLUDED.completed, important = EXCLUDED.important, urgent = EXCLUDED.urgent,
+			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
+			WHERE tasks.user_id = EXCLUDED.user_id`, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision)
+	return err
+}
+
+func insertTaskChangeRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, createdAt, updatedAt time.Time) error {
+	_, err := mc.tx.Exec(mc.ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, mc.revision, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt)
+	return err
+}
+
+func persistTaskMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutation tasks.Mutation, taskID, mutationID uuid.UUID) (AppliedMutation, error) {
+	revision, err := nextRevision(ctx, tx)
+	if err != nil {
+		return AppliedMutation{}, err
+	}
+	createdAt, updatedAt := coalesceTimestamps(mutation.Task.CreatedAt.UTC(), mutation.Task.UpdatedAt.UTC())
+	mc := mutationContext{ctx: ctx, tx: tx, userID: userID, revision: revision}
+	if err := insertTaskRow(mc, mutation.Task, taskID, createdAt, updatedAt); err != nil {
+		return AppliedMutation{}, err
+	}
+	mutation.Task.ServerRevision = revision
+	payload, err := json.Marshal(mutation.Task)
+	if err != nil {
+		return AppliedMutation{}, err
+	}
+	if err := insertTaskChangeRow(mc, mutation.Task, taskID, createdAt, updatedAt); err != nil {
+		return AppliedMutation{}, err
+	}
+	if err := recordAppliedMutation(mc, taskID, mutationID, "task", payload); err != nil {
+		return AppliedMutation{}, err
+	}
+	return AppliedMutation{MutationID: mutation.ID, Entity: "task", Task: mutation.Task, Revision: revision}, nil
+}
 func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]tasks.Task, []tasks.Habit, int64, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision
-		FROM tasks WHERE user_id = $1 AND revision > $2 ORDER BY revision ASC, id`, userID, since)
+	result, tasksLatest, err := pullTasks(ctx, s.pool, userID, since)
 	if err != nil {
 		return nil, nil, since, err
 	}
+	habits, habitsLatest, err := pullHabits(ctx, s.pool, userID, since)
+	if err != nil {
+		return nil, nil, since, err
+	}
+	latest := since
+	if tasksLatest > latest {
+		latest = tasksLatest
+	}
+	if habitsLatest > latest {
+		latest = habitsLatest
+	}
+	return result, habits, latest, nil
+}
+
+func pullTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, since int64) ([]tasks.Task, int64, error) {
+	rows, err := pool.Query(ctx, `
+		SELECT id::text, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		FROM tasks WHERE user_id = $1 AND revision > $2 ORDER BY revision ASC, id`, userID, since)
+	if err != nil {
+		return nil, since, err
+	}
+	defer rows.Close()
 	result := make([]tasks.Task, 0)
 	var latest int64 = since
 	for rows.Next() {
 		var task tasks.Task
 		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.Priority, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
-			rows.Close()
-			return nil, nil, since, err
+			return nil, since, err
 		}
 		if task.ServerRevision > latest {
 			latest = task.ServerRevision
@@ -553,30 +760,25 @@ func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]task
 		result = append(result, task)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, nil, since, err
+		return nil, since, err
 	}
-	rows.Close()
-	habitRows, err := s.pool.Query(ctx, `
+	return result, latest, nil
+}
+
+func pullHabits(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, since int64) ([]tasks.Habit, int64, error) {
+	habitRows, err := pool.Query(ctx, `
 		SELECT id::text, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, revision
 		FROM habits WHERE user_id = $1 AND revision > $2 ORDER BY revision ASC, id`, userID, since)
 	if err != nil {
-		return nil, nil, since, err
+		return nil, since, err
 	}
+	defer habitRows.Close()
 	habits := make([]tasks.Habit, 0)
+	var latest int64 = since
 	for habitRows.Next() {
-		var habit tasks.Habit
-		var completedJSON []byte
-		if err := habitRows.Scan(&habit.ID, &habit.Title, &habit.Important, &habit.Urgent, &habit.Interval, &habit.Unit, &habit.StartDate, &completedJSON, &habit.CreatedAt, &habit.UpdatedAt, &habit.DeletedAt, &habit.ServerRevision); err != nil {
-			habitRows.Close()
-			return nil, nil, since, err
-		}
-		if err := json.Unmarshal(completedJSON, &habit.CompletedDates); err != nil {
-			habitRows.Close()
-			return nil, nil, since, err
-		}
-		if habit.CompletedDates == nil {
-			habit.CompletedDates = []string{}
+		habit, err := scanHabitRow(habitRows)
+		if err != nil {
+			return nil, since, err
 		}
 		if habit.ServerRevision > latest {
 			latest = habit.ServerRevision
@@ -584,9 +786,22 @@ func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]task
 		habits = append(habits, habit)
 	}
 	if err := habitRows.Err(); err != nil {
-		habitRows.Close()
-		return nil, nil, since, err
+		return nil, since, err
 	}
-	habitRows.Close()
-	return result, habits, latest, nil
+	return habits, latest, nil
+}
+
+func scanHabitRow(habitRows pgx.Rows) (tasks.Habit, error) {
+	var habit tasks.Habit
+	var completedJSON []byte
+	if err := habitRows.Scan(&habit.ID, &habit.Title, &habit.Important, &habit.Urgent, &habit.Interval, &habit.Unit, &habit.StartDate, &completedJSON, &habit.CreatedAt, &habit.UpdatedAt, &habit.DeletedAt, &habit.ServerRevision); err != nil {
+		return tasks.Habit{}, err
+	}
+	if err := json.Unmarshal(completedJSON, &habit.CompletedDates); err != nil {
+		return tasks.Habit{}, err
+	}
+	if habit.CompletedDates == nil {
+		habit.CompletedDates = []string{}
+	}
+	return habit, nil
 }
