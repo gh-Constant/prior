@@ -2,6 +2,8 @@
 .workhub-intro h2, .project-detail-heading h2, .today-intro h2 { margin: 0; color: var(--ink); font-size: clamp(24px, 3vw, 34px); font-weight: 650; letter-spacing: -.055em; line-height: 1.1; }
 .workhub-intro p:not(.eyebrow), .project-detail-heading p { max-width: 580px; margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .workhub-intro-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.workhub-new-area { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.workhub-new-area svg { width: 15px; height: 15px; flex: 0 0 auto; }
 .workhub-search { display: flex; align-items: center; gap: 10px; width: min(100%, 420px); min-height: 42px; margin-bottom: 22px; padding: 0 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--muted); }
 .workhub-search:focus-within { border-color: #f29985; box-shadow: 0 0 0 3px #fa654a0f; }
 .workhub-search svg { width: 16px; height: 16px; }

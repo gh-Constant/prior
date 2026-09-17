@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
+import { getToken } from "../lib/auth";
+import { pullAssistantSettings, pushAssistantSettings } from "../lib/settingsSync";
 import { getAndroidAppVersion, supportsAndroidUpdates } from "../lib/androidUpdater";
 import { getAppVersion, supportsDesktopUpdates } from "../lib/updater";
 import { UpdateCards } from "./UpdateCards";
@@ -8,8 +10,24 @@ import "./SettingsPage.css";
 
 type SettingsTab = "general" | "assistant";
 
+const LATEST_RELEASE_URL = "https://api.github.com/repos/gh-Constant/prior/releases/latest";
+
+async function fetchLatestReleaseVersion(): Promise<string | null> {
+  try {
+    const response = await fetch(LATEST_RELEASE_URL, { headers: { Accept: "application/vnd.github+json" } });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { tag_name?: string };
+    const tag = data.tag_name?.trim() ?? "";
+    if (!tag) return null;
+    return tag.startsWith("v") ? tag : `v${tag}`;
+  } catch {
+    return null;
+  }
+}
+
 function GeneralSettings() {
   const [version, setVersion] = useState<string | null>(null);
+  const [latest, setLatest] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -24,15 +42,20 @@ function GeneralSettings() {
       } catch {
         if (live) setVersion(null);
       }
+      // Web builds have no bundled version: show the latest published one.
+      if (live && !supportsDesktopUpdates() && !supportsAndroidUpdates()) {
+        setLatest(await fetchLatestReleaseVersion());
+      }
     })();
     return () => { live = false; };
   }, []);
 
+  const versionLabel = version ? `v${version}` : latest ?? "Web app";
   return (
     <div className="settings-general">
       <div className="settings-version-row">
         <span>Version</span>
-        <strong>{version ? `v${version}` : "Web app"}</strong>
+        <strong>{versionLabel}{!version && latest ? " · latest" : ""}</strong>
       </div>
       <UpdateCards />
     </div>
@@ -44,11 +67,31 @@ function AssistantSettings() {
   const [webSearch, setWebSearch] = useState(() => getAgentSettings().webSearch !== false);
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [synced, setSynced] = useState(false);
+
+  // The key follows the account: pull the shared copy when signed in.
+  useEffect(() => {
+    let live = true;
+    void getToken()
+      .catch(() => null)
+      .then(async (token) => {
+        if (!live || !token) return;
+        if (await pullAssistantSettings()) {
+          if (!live) return;
+          const current = getAgentSettings();
+          setApiKey(current.apiKey);
+          setWebSearch(current.webSearch !== false);
+          setSynced(true);
+        }
+      });
+    return () => { live = false; };
+  }, []);
 
   function handleSaveKey() {
     const current = getAgentSettings();
     saveAgentSettings({ ...current, apiKey: apiKey.trim() });
     notifyAgentSettingsChanged();
+    void pushAssistantSettings();
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2500);
   }
@@ -58,6 +101,7 @@ function AssistantSettings() {
     const current = getAgentSettings();
     saveAgentSettings({ ...current, webSearch: checked });
     notifyAgentSettingsChanged();
+    void pushAssistantSettings();
   }
 
   return (
@@ -99,7 +143,7 @@ function AssistantSettings() {
           <small>Use it for current or niche information. Search provider costs may apply.</small>
         </span>
       </label>
-      <p className="settings-hint">Choose the model directly in the Prior Agent sidebar — no dialog needed.</p>
+      <p className="settings-hint">Choose the model directly in the Prior Agent sidebar — no dialog needed.{synced ? " Key synced with your account." : ""}</p>
     </div>
   );
 }

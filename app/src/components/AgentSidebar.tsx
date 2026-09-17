@@ -254,6 +254,27 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  useEffect(() => {
+    // Hydrate $…$ / $$…$$ spans left by the chat markdown renderer.
+    if (!open || !panelRef.current) return undefined;
+    let cancelled = false;
+    const targets = Array.from(panelRef.current.querySelectorAll<HTMLElement>(".chat-math:not([data-rendered])"));
+    if (!targets.length) return undefined;
+    void import("katex").then((katexModule) => {
+      if (cancelled) return;
+      const katex = katexModule.default;
+      targets.forEach((element) => {
+        try {
+          katex.render(element.textContent ?? "", element, { displayMode: element.classList.contains("chat-math-display"), throwOnError: false });
+          element.dataset.rendered = "true";
+        } catch {
+          // Keep the raw source readable when KaTeX cannot parse it.
+        }
+      });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [messages, open, loading]);
+
   function handleModelChange(model: string): void {
     const updated: AgentSettings = { ...settings, model: model || DEFAULT_MODEL };
     setSettings(updated);

@@ -394,6 +394,28 @@
 
 .agent-message-text { margin: 0; overflow-wrap: anywhere; }
 
+/* Rendered assistant markdown: compact, bubble-friendly typography. */
+.chat-markdown > p, .chat-markdown > ul, .chat-markdown > ol, .chat-markdown > blockquote, .chat-markdown > pre { margin: 0 0 8px; }
+.chat-markdown > :last-child { margin-bottom: 0; }
+.chat-markdown h2, .chat-markdown h3, .chat-markdown h4, .chat-markdown h5 { margin: 10px 0 6px; color: #3d302b; line-height: 1.3; }
+.chat-markdown h2 { font-size: 15px; font-weight: 750; }
+.chat-markdown h3 { font-size: 14px; font-weight: 700; }
+.chat-markdown h4, .chat-markdown h5 { font-size: 13px; font-weight: 700; }
+.chat-markdown ul, .chat-markdown ol { padding-left: 20px; }
+.chat-markdown li { margin: 3px 0; }
+.chat-markdown li::marker { color: #c98a76; }
+.chat-markdown strong { font-weight: 700; }
+.chat-markdown a { color: #c65742; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.chat-markdown code { padding: 1px 5px; border-radius: 5px; background: #f3ece7; color: #7c3b2c; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.chat-markdown pre.chat-code { overflow-x: auto; padding: 10px 12px; border: 1px solid #efdfd8; border-radius: 9px; background: #2e2622; }
+.chat-markdown pre.chat-code code { padding: 0; border-radius: 0; background: transparent; color: #f6ece4; font-size: 11.5px; line-height: 1.55; }
+.chat-markdown blockquote { margin-left: 0; padding: 6px 0 6px 12px; border-left: 3px solid #efc5b6; color: #7f6d65; }
+.chat-markdown hr { margin: 10px 0; border: 0; border-top: 1px solid #f0e2dc; }
+.chat-markdown .chat-check { display: inline-grid; place-items: center; width: 15px; height: 15px; margin-right: 7px; border: 1.5px solid #d8cfc8; border-radius: 5px; color: #fff; font-size: 10px; vertical-align: -2px; }
+.chat-markdown .chat-check.checked { border-color: var(--accent); background: var(--accent); }
+.chat-markdown .chat-math-display { display: block; overflow-x: auto; margin: 8px 0; text-align: center; }
+.chat-markdown .katex { font-size: 1em; }
+
 .agent-model-info {
   display: inline-flex;
   align-items: center;

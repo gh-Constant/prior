@@ -21,6 +21,7 @@ import { CompletionBurst } from "./components/CompletionBurst";
 import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/completionExit";
 import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
 import { MobileTopBar } from "./components/MobileTopBar";
+import { pullAssistantSettings } from "./lib/settingsSync";
 import { SettingsPage } from "./components/SettingsPage";
 import { NotesWorkspace } from "./components/NotesWorkspace";
 import { notesStore } from "./lib/notes";
@@ -286,6 +287,7 @@ export function App() {
       setAuthOpen(false);
       void attachRealtime().catch(() => undefined);
       void syncNow();
+      void pullAssistantSettings();
     }, (error) => {
       setAuthError(error.message);
       setAuthOpen(true);
@@ -549,6 +551,7 @@ export function App() {
     setAuthOpen(false);
     void attachRealtime().catch(() => undefined);
     void syncNow();
+    void pullAssistantSettings();
   }
 
   function openProject(projectId: string): void {

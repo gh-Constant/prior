@@ -15,9 +15,11 @@ import type {
   TaskDraft,
 } from "../types";
 import { quadrantFor } from "../lib/priority";
+import { renderChatMarkdown } from "../lib/chatMarkdown";
 import { habitScheduleLabel } from "../lib/habits";
 import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
+import "katex/dist/katex.min.css";
 
 export function getQuadrantBadge(task: Pick<Task, "important" | "urgent">): { key: QuadrantKey; label: string } {
   const key = quadrantFor(task);
@@ -866,7 +868,7 @@ export function AssistantMessage({ message: msg, handlers }: AssistantMessagePro
         <AgentIdentity size="tiny" />
       </div>
       <div className="agent-message-bubble">
-        <p className="agent-message-text">{msg.content}</p>
+        <div className="agent-message-text chat-markdown" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(msg.content) }} />
         {msg.actualModel && (
           <div className="agent-model-info" title={`Resolved via OpenRouter: ${msg.actualModel}`}>
             <span className="routed-dot" />

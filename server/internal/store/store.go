@@ -856,3 +856,38 @@ func scanHabitRow(habitRows pgx.Rows) (tasks.Habit, error) {
 	}
 	return habit, nil
 }
+
+// UserSettings holds per-user assistant settings. OpenRouterAPIKey is the
+// stored (possibly sealed) value; sealing is handled by the HTTP layer.
+type UserSettings struct {
+	OpenRouterAPIKey string
+	WebSearch        bool
+	UpdatedAt        time.Time
+}
+
+func (s *Store) GetUserSettings(ctx context.Context, userID uuid.UUID) (UserSettings, error) {
+	var settings UserSettings
+	err := s.pool.QueryRow(ctx, `
+		SELECT openrouter_api_key, web_search, updated_at
+		FROM user_settings
+		WHERE user_id = $1`, userID).
+		Scan(&settings.OpenRouterAPIKey, &settings.WebSearch, &settings.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return UserSettings{}, ErrNotFound
+	}
+	return settings, err
+}
+
+func (s *Store) SaveUserSettings(ctx context.Context, userID uuid.UUID, apiKey string, webSearch bool) (UserSettings, error) {
+	var settings UserSettings
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO user_settings (user_id, openrouter_api_key, web_search, updated_at)
+		VALUES ($1, $2, $3, now())
+		ON CONFLICT (user_id) DO UPDATE SET
+			openrouter_api_key = EXCLUDED.openrouter_api_key,
+			web_search = EXCLUDED.web_search,
+			updated_at = now()
+		RETURNING openrouter_api_key, web_search, updated_at`, userID, apiKey, webSearch).
+		Scan(&settings.OpenRouterAPIKey, &settings.WebSearch, &settings.UpdatedAt)
+	return settings, err
+}

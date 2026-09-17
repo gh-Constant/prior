@@ -36,6 +36,7 @@ function isNetworkFailure(error: unknown): boolean {
 type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
 type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }> };
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number };
+export type ServerSettings = { openrouterApiKey: string; webSearch: boolean };
 
 async function requestOnce<T>(url: string, path: string, init: RequestInit, token: string | undefined, timeoutMs: number): Promise<T> {
   const controller = new AbortController();
@@ -126,5 +127,11 @@ export const api = {
   },
   saveAgentChatMessage(chatId: string, message: AgentMessage, token: string): Promise<AgentMessage> {
     return request<AgentMessage>(`/v1/agent/chats/${encodeURIComponent(chatId)}/messages`, { method: "POST", body: JSON.stringify(message) }, token);
+  },
+  getSettings(token: string): Promise<ServerSettings> {
+    return request<ServerSettings>("/v1/settings", {}, token);
+  },
+  saveSettings(settings: ServerSettings, token: string): Promise<ServerSettings> {
+    return request<ServerSettings>("/v1/settings", { method: "POST", body: JSON.stringify(settings) }, token);
   },
 };

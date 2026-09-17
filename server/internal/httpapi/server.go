@@ -64,6 +64,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/google/native", s.googleNative)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/me", s.me)
+	mux.HandleFunc("GET /v1/settings", s.getSettings)
+	mux.HandleFunc("POST /v1/settings", s.saveSettings)
 	mux.HandleFunc("GET /v1/agent/chats", s.listAgentChats)
 	mux.HandleFunc("POST /v1/agent/chats", s.createAgentChat)
 	mux.HandleFunc("GET /v1/agent/chats/{chatID}", s.getAgentChat)

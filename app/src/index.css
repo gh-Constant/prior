@@ -302,7 +302,7 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
 .account-dialog-summary .account-avatar { width: 44px; height: 44px; margin: 0; flex-shrink: 0; }
 .account-dialog-summary .account-avatar svg { width: 20px; height: 20px; }
 .account-dialog-summary .account-panel-email { margin-top: 3px; }
-.account-choice-btn { justify-content: flex-start; width: 100%; min-height: 48px; }
+.account-choice-btn { justify-content: center; width: 100%; min-height: 48px; }
 .account-choice .danger-button { margin-top: 0; }
 .update-card { margin-top: 24px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; text-align: left; }
 .update-card-heading { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 12px; }
