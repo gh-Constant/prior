@@ -59,6 +59,16 @@ export function saveAgentSettings(settings: AgentSettings): void {
   }
 }
 
+export const AGENT_SETTINGS_EVENT = "prior-ai-settings-changed";
+
+export function notifyAgentSettingsChanged(): void {
+  try {
+    window.dispatchEvent(new Event(AGENT_SETTINGS_EVENT));
+  } catch {
+    // ignore
+  }
+}
+
 export const MAX_NOTE_BODY_CHARS = 8000;
 export const MAX_NOTE_TITLE_CHARS = 120;
 export const MAX_FOLDER_NAME_CHARS = 60;

@@ -10,7 +10,7 @@ import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
 import { CompletionExitProvider, TaskRow } from "./components/TaskRow";
 import { TaskColumns } from "./components/TaskColumns";
-import { AuthModal } from "./components/AuthModal";
+import { AccountDialog } from "./components/AccountDialog";
 import { updateAndroidWidget } from "./lib/widget";
 import { defaultTaskFilters, type TaskFilterState } from "./lib/taskFilters";
 import { TaskFilters } from "./components/TaskFilters";
@@ -20,7 +20,8 @@ import { HabitView } from "./components/HabitView";
 import { CompletionBurst } from "./components/CompletionBurst";
 import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/completionExit";
 import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
-import { AgentIdentity } from "./components/AgentIdentity";
+import { MobileTopBar } from "./components/MobileTopBar";
+import { SettingsPage } from "./components/SettingsPage";
 import { NotesWorkspace } from "./components/NotesWorkspace";
 import { notesStore } from "./lib/notes";
 import { workspaceStore } from "./lib/workspaceStore";
@@ -37,6 +38,7 @@ function viewTitle(view: WorkspaceView): string {
   if (view === "eisenhower") return "Eisenhower";
   if (view === "habits") return "Habits";
   if (view === "notes") return "Notes";
+  if (view === "settings") return "Settings";
   return "All tasks";
 }
 
@@ -44,16 +46,13 @@ type WorkspaceHeaderProps = {
   readonly activeView: WorkspaceView;
   readonly layout: Layout;
   readonly onLayoutChange: (layout: Layout) => void;
-  readonly agentOpen: boolean;
-  readonly onToggleAgent: () => void;
-  readonly aiShortcut: string;
   readonly shortcut: string;
   readonly shortcutKey: string;
   readonly onNewTask: () => void;
 };
 
-function WorkspaceHeader({ activeView, layout, onLayoutChange, agentOpen, onToggleAgent, aiShortcut, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
-  if (["today", "inbox", "projects", "project", "waiting", "notes"].includes(activeView)) return null;
+function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
+  if (["today", "inbox", "projects", "project", "waiting", "notes", "settings"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? "New habit" : "New task";
   return (
@@ -64,19 +63,6 @@ function WorkspaceHeader({ activeView, layout, onLayoutChange, agentOpen, onTogg
           <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /></button>
           <button type="button" className={layout === "board" ? "active" : ""} aria-label="Column view" title="Column view" aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /></button>
         </div>}
-        <button
-          className={`ai-toggle-button ${agentOpen ? "active" : ""}`}
-          type="button"
-          aria-label="AI Assistant"
-          title={`AI Assistant (${aiShortcut})`}
-          aria-expanded={agentOpen}
-          aria-controls="prior-ai-assistant"
-          onClick={onToggleAgent}
-        >
-          <AgentIdentity size="tiny" />
-          <span>AI Assistant</span>
-          <kbd>{aiShortcut}</kbd>
-        </button>
         <button className="primary-button new-task-button" type="button" aria-label={newTaskLabel} title={`${newTaskLabel} (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={onNewTask}><Icon name="plus" /><span>{newTaskLabel}</span><kbd>{shortcut}</kbd></button>
       </div>
     </header>
@@ -109,6 +95,7 @@ type WorkspaceContentProps = {
 };
 
 function WorkspaceContent({ activeView, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange }: WorkspaceContentProps) {
+  if (activeView === "settings") return <SettingsPage />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (["today", "inbox", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} />;
   if (activeView === "habits") {
@@ -171,6 +158,7 @@ export function App() {
       return false;
     }
   });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
   const aiShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ J" : "Ctrl J";
@@ -330,6 +318,7 @@ export function App() {
         setHabitComposerOpen(false);
         setAuthOpen(false);
         setAgentOpen(false);
+        setMobileNavOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -584,6 +573,7 @@ export function App() {
   function changeView(view: WorkspaceView): void {
     if (view !== "project") setSelectedProjectId(null);
     if (view === "notes") setNotesProjectId(null);
+    setMobileNavOpen(false);
     setActiveView(view);
   }
 
@@ -620,20 +610,28 @@ export function App() {
         activeView={activeView}
         user={user}
         collapsed={sidebarCollapsed}
+        mobileOpen={mobileNavOpen}
+        agentOpen={agentOpen}
+        aiShortcut={aiShortcut}
         inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}
         onViewChange={changeView}
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
+        onToggleAgent={() => setAgentOpen((value) => !value)}
+        onCloseMobile={() => setMobileNavOpen(false)}
       />
 
       <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}>
+        <MobileTopBar
+          activeView={activeView}
+          projectName={projects.find((project) => project.id === selectedProjectId)?.name}
+          menuOpen={mobileNavOpen}
+          onMenu={() => setMobileNavOpen((value) => !value)}
+        />
         <WorkspaceHeader
           activeView={activeView}
           layout={layout}
           onLayoutChange={setLayout}
-          agentOpen={agentOpen}
-          onToggleAgent={() => setAgentOpen((value) => !value)}
-          aiShortcut={aiShortcut}
           shortcut={shortcut}
           shortcutKey={shortcutKey}
           onNewTask={() => activeView === "habits" ? setHabitComposerOpen(true) : openNewTask()}
@@ -685,11 +683,12 @@ export function App() {
         onAddFolders={addAgentFolders}
         onAddAreas={addAgentAreas}
         onAddProjects={addAgentProjects}
+        onOpenSettings={() => { setAgentOpen(false); changeView("settings"); }}
       />
 
       {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); }} />}
       {habitComposerOpen && <HabitComposer onSave={saveHabit} onCancel={() => setHabitComposerOpen(false)} />}
-      {authOpen && <AuthModal user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} />}
+      {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}
     </div>
   );

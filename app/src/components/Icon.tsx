@@ -49,7 +49,9 @@ export type IconName =
   | "pencil"
   | "folder-plus"
   | "file-plus"
-  | "palette";
+  | "palette"
+  | "logout"
+  | "menu";
 
 const calendarCheckPath = Array.isArray(faCalendarCheck.icon[4])
   ? faCalendarCheck.icon[4].join(" ")
@@ -106,6 +108,8 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconN
     "folder-plus": <><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h5l2 2.5h7A1.5 1.5 0 0 1 20.5 9v8.5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17.5Z" /><path d="M12 11v5M9.5 13.5h5" /></>,
     "file-plus": <><path d="M6.5 3.5h7l4 4v13h-11Z" /><path d="M13.5 3.5v4h4" /><path d="M12 11.5v5M9.5 14h5" /></>,
     palette: <><path d="M12 4a8 8 0 1 0 .5 15.97c1.4.12 2-.9 1.4-2-.7-1.2-.1-2.6 1.5-2.6h1.7a3.9 3.9 0 0 0 3.9-3.9C21 6.9 17 4 12 4Z" /><circle cx="8.3" cy="10.2" r=".9" /><circle cx="12" cy="7.6" r=".9" /><circle cx="15.7" cy="9.4" r=".9" /></>,
+    logout: <><path d="M14 4H5v16h9" /><path d="M10 12h11" /><path d="m18 9 3 3-3 3" /></>,
+    menu: <><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>,
   };
   return <svg aria-hidden="true" {...common}>{paths[name]}</svg>;
 }

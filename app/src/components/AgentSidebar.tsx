@@ -18,7 +18,7 @@ import type {
   Task,
   TaskDraft,
 } from "../types";
-import { askAgent, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
+import { askAgent, AGENT_SETTINGS_EVENT, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, notifyAgentSettingsChanged, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
 import "./AgentSidebar.css";
@@ -65,6 +65,7 @@ type Props = {
   readonly onAddFolders: (folders: NoteFolderDraft[]) => Promise<void>;
   readonly onAddAreas?: (areas: Array<{ name: string }>) => Promise<void>;
   readonly onAddProjects?: (projects: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus }>) => Promise<void>;
+  readonly onOpenSettings: () => void;
 };
 
 const STARTER_PROMPTS = [
@@ -94,25 +95,10 @@ function shortModelName(id: string): string {
   return id.split("/").pop()?.replace(":free", "") || id;
 }
 
-function modelConfirmLabel(customDraft: string, listDraft: string): string {
-  const effective = customDraft.trim() || listDraft.trim() || DEFAULT_MODEL;
-  if (effective === DEFAULT_MODEL) return "Use free model";
-  return `Use ${shortModelName(effective)}`;
-}
-
-export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, projects, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders, onAddAreas, onAddProjects }: Props) {
+export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, projects, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders, onAddAreas, onAddProjects, onOpenSettings }: Props) {
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState(settings.apiKey);
-  const [modelInput, setModelInput] = useState(settings.model);
-  const [webSearchInput, setWebSearchInput] = useState(settings.webSearch !== false);
-  const [showApiKey, setShowApiKey] = useState(false);
 
   const [modelList, setModelList] = useState(POPULAR_FREE_MODELS);
-  const [modelModalOpen, setModelModalOpen] = useState(false);
-  const [modelSearch, setModelSearch] = useState("");
-  const [listDraft, setListDraft] = useState(settings.model);
-  const [customDraft, setCustomDraft] = useState("");
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [chatHistory, setChatHistory] = useState<AgentChatSummary[]>([]);
@@ -130,7 +116,6 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDialogElement>(null);
-  const modelSearchRef = useRef<HTMLInputElement>(null);
   const loadingRef = useRef(false);
   const isComposingRef = useRef(false);
   const isOverlay = useOverlayMode();
@@ -158,6 +143,19 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       if (list?.length) setModelList(list);
     });
   }, []);
+
+  useEffect(() => {
+    // The API key and web search live in Settings now: reload whenever the
+    // sidebar opens or Settings saves new values.
+    if (open) setSettings(getAgentSettings());
+    const reload = () => setSettings(getAgentSettings());
+    window.addEventListener(AGENT_SETTINGS_EVENT, reload);
+    window.addEventListener("storage", reload);
+    return () => {
+      window.removeEventListener(AGENT_SETTINGS_EVENT, reload);
+      window.removeEventListener("storage", reload);
+    };
+  }, [open]);
 
   useEffect(() => {
     let cancelled = false;
@@ -224,15 +222,11 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        if (modelModalOpen) {
-          setModelModalOpen(false);
-          return;
-        }
         if (dictation.isActive) {
           cancelDictation();
           return;
         }
-        if (settingsOpen) setSettingsOpen(false); else onClose();
+        onClose();
         return;
       }
       if (event.key !== "Tab" || !panelRef.current) return;
@@ -254,75 +248,27 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [dictation, open, onClose, settingsOpen, isOverlay, modelModalOpen]);
-
-  useEffect(() => {
-    // Docked mode has no focus trap; still let Escape dismiss the model modal
-    // before the app-level handler can close the whole sidebar.
-    if (!open || isOverlay || !modelModalOpen) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setModelModalOpen(false);
-      }
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [open, isOverlay, modelModalOpen]);
+  }, [dictation, open, onClose, isOverlay]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  function handleSaveSettings() {
-    const updated: AgentSettings = {
-      apiKey: apiKeyInput.trim(),
-      model: modelInput.trim() || DEFAULT_MODEL,
-      webSearch: webSearchInput,
-    };
+  function handleModelChange(model: string): void {
+    const updated: AgentSettings = { ...settings, model: model || DEFAULT_MODEL };
     setSettings(updated);
     saveAgentSettings(updated);
-    setSettingsOpen(false);
-    setError(null);
+    notifyAgentSettingsChanged();
   }
 
   function handleClose(): void {
     dictation.stop();
-    setModelModalOpen(false);
     onClose();
   }
 
-  function openSettings(): void {
-    dictation.stop();
-    setSettingsOpen((value) => !value);
-  }
-
-  function openModelModal(): void {
-    dictation.stop();
-    const current = modelInput.trim() || DEFAULT_MODEL;
-    if (modelList.some((m) => m.id === current)) {
-      setListDraft(current);
-      setCustomDraft("");
-    } else {
-      setListDraft(modelList[0]?.id ?? DEFAULT_MODEL);
-      setCustomDraft(current);
-    }
-    setModelSearch("");
-    setModelModalOpen(true);
-  }
-
-  function confirmModelModal(): void {
-    const effective = customDraft.trim() || listDraft.trim() || DEFAULT_MODEL;
-    setModelInput(effective);
-    setModelModalOpen(false);
-  }
-
-  useEffect(() => {
-    if (modelModalOpen) window.setTimeout(() => modelSearchRef.current?.focus(), 60);
-  }, [modelModalOpen]);
+  const modelOptions = modelList.some((m) => m.id === settings.model)
+    ? modelList
+    : [...modelList, { id: settings.model, label: shortModelName(settings.model), desc: "Custom model from Settings" }];
 
   function startDictation(): void {
     const textarea = textareaRef.current;
@@ -390,8 +336,6 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     setMessages([]);
     setInput("");
     setError(null);
-    setSettingsOpen(false);
-    setModelModalOpen(false);
   }
 
   async function handleSend(customPrompt?: string) {
@@ -399,8 +343,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     if (!promptToSend || loadingRef.current || dictation.isActive) return;
 
     if (!settings.apiKey) {
-      setSettingsOpen(true);
-      setError("Please provide an OpenRouter API key to use the free AI agent.");
+      setError("Add your OpenRouter API key in Settings to use the assistant.");
       return;
     }
 
@@ -757,65 +700,28 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         </div>
       )}
 
-      {settingsOpen && (
-        <div className="agent-settings-panel">
-          <h4>OpenRouter Settings</h4>
-          <p className="settings-desc">
-            Add your OpenRouter key and choose the model used by the assistant.
-          </p>
+      <div className="agent-model-row">
+        <label htmlFor="prior-agent-model">Model</label>
+        <select
+          id="prior-agent-model"
+          value={settings.model}
+          onChange={(event) => handleModelChange(event.target.value)}
+          aria-label="Assistant model"
+        >
+          {modelOptions.map((m) => (
+            <option key={m.id} value={m.id} title={m.desc}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
-          <div className="settings-search-toggle">
-            <input id="prior-web-search" type="checkbox" checked={webSearchInput} onChange={(event) => setWebSearchInput(event.target.checked)} />
-            <label htmlFor="prior-web-search">
-              <strong>Web search when needed</strong>
-              <small>Use it for current or niche information. Search provider costs may apply.</small>
-            </label>
-          </div>
-
-          <label className="settings-field">
-            <span>OpenRouter API Key</span>
-            <div className="field">
-              <Icon name="lock" />
-              <input
-                type={showApiKey ? "text" : "password"}
-                placeholder="sk-or-v1-..."
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-              />
-              <button
-                type="button"
-                className="show-key-btn"
-                onClick={() => setShowApiKey(!showApiKey)}
-                tabIndex={-1}
-              >
-                {showApiKey ? "Hide" : "Show"}
-              </button>
-            </div>
-            <small className="settings-help">
-              Get a key at{" "}
-              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">
-                openrouter.ai/keys
-              </a>
-            </small>
-          </label>
-
-          <div className="settings-field">
-            <span>Model</span>
-            <button type="button" className="model-picker-trigger" onClick={openModelModal} aria-haspopup="dialog">
-              <span className="model-picker-name">{shortModelName(modelInput.trim() || DEFAULT_MODEL)}</span>
-              <span className="model-picker-id">{modelInput.trim() || DEFAULT_MODEL}</span>
-              <Icon name="chevron-down" />
-            </button>
-          </div>
-
-          <div className="settings-footer">
-            <button type="button" className="secondary-button" onClick={() => setSettingsOpen(false)}>
-              Cancel
-            </button>
-            <button type="button" className="primary-button" onClick={handleSaveSettings}>
-              Save
-            </button>
-          </div>
+      {!settings.apiKey && (
+        <div className="agent-key-notice" role="note">
+          <span>Add your OpenRouter key to enable the assistant.</span>
+          <button type="button" className="secondary-button" onClick={() => { dictation.stop(); onOpenSettings(); }}>
+            Open Settings
+          </button>
         </div>
       )}
 
@@ -853,18 +759,6 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           />
           <div className="agent-input-actions">
             <div className="agent-input-tools">
-              <button
-                type="button"
-                className={`agent-settings-trigger ${!settings.apiKey ? "needs-key" : ""}`}
-                title="AI settings"
-                aria-label="AI settings"
-                aria-expanded={settingsOpen}
-                onClick={openSettings}
-              >
-                <Icon name="gear" />
-                <span>{shortModelName(settings.model)}</span>
-                {!settings.apiKey && <span className="settings-alert-dot" />}
-              </button>
               {messages.length > 0 && (
                 <button type="button" className="clear-chat-btn" title="Clear conversation" onClick={startNewChat} disabled={dictation.isActive}>
                   Clear
@@ -887,83 +781,6 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           </div>
         </form>
       </footer>
-
-      {modelModalOpen && (
-        <div className="model-modal-layer">
-          <div className="model-modal-backdrop" aria-hidden="true" onMouseDown={() => setModelModalOpen(false)} />
-          <dialog className="model-modal" aria-labelledby="prior-model-modal-title" open>
-            <header className="model-modal-header">
-              <h4 id="prior-model-modal-title">Choose a model</h4>
-              <button type="button" className="icon-button" aria-label="Close model picker" onClick={() => setModelModalOpen(false)}>
-                <Icon name="close" />
-              </button>
-            </header>
-            <div className="model-modal-search">
-              <Icon name="search" />
-              <input
-                ref={modelSearchRef}
-                type="search"
-                value={modelSearch}
-                aria-label="Search models"
-                placeholder="Search free models…"
-                onChange={(event) => setModelSearch(event.target.value)}
-              />
-            </div>
-            <div className="model-modal-list" role="radiogroup" aria-label="Available models">
-              {modelList
-                .filter((m) => {
-                  const query = modelSearch.trim().toLowerCase();
-                  if (!query) return true;
-                  return `${m.label} ${m.id}`.toLowerCase().includes(query);
-                })
-                .map((m) => {
-                  const selected = !customDraft.trim() && listDraft === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      className={`model-option ${selected ? "selected" : ""}`}
-                      onClick={() => { setListDraft(m.id); setCustomDraft(""); }}
-                    >
-                      <span className="model-radio" aria-hidden="true" />
-                      <span className="model-option-copy">
-                        <strong>{m.label}</strong>
-                        <small>{m.id}</small>
-                        <small className="model-option-desc">{m.desc}</small>
-                      </span>
-                    </button>
-                  );
-                })}
-              {!modelList.filter((m) => {
-                const query = modelSearch.trim().toLowerCase();
-                if (!query) return true;
-                return `${m.label} ${m.id}`.toLowerCase().includes(query);
-              }).length && <span className="agent-history-note">No models match “{modelSearch.trim()}”. Enter a custom ID below.</span>}
-            </div>
-            <label className="model-custom-field">
-              <span>Or enter a custom model ID</span>
-              <div className="field">
-                <input
-                  type="text"
-                  placeholder="provider/model-name"
-                  value={customDraft}
-                  onChange={(event) => setCustomDraft(event.target.value)}
-                />
-              </div>
-            </label>
-            <div className="settings-footer">
-              <button type="button" className="secondary-button" onClick={() => setModelModalOpen(false)}>
-                Cancel
-              </button>
-              <button type="button" className="primary-button" onClick={confirmModelModal}>
-                {modelConfirmLabel(customDraft, listDraft)}
-              </button>
-            </div>
-          </dialog>
-        </div>
-      )}
       </dialog>
     </>
   );

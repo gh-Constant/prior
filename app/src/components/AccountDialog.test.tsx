@@ -1,15 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { AuthModal } from "./AuthModal";
+import { AccountDialog } from "./AccountDialog";
 import { signInWithPassword } from "../lib/auth";
-
-vi.mock("../lib/updater", () => ({
-  supportsDesktopUpdates: () => false,
-  checkForUpdate: vi.fn(),
-  getAppVersion: vi.fn(),
-  installAvailableUpdate: vi.fn(),
-}));
 
 vi.mock("../lib/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/auth")>();
@@ -31,11 +24,12 @@ const baseProps = {
   onAuthenticated: () => undefined,
   onGoogle: () => undefined,
   onLogout: async () => undefined,
+  onSettings: () => undefined,
 };
 
-describe("AuthModal", () => {
-  it("switches between sign in and account creation", () => {
-    render(<AuthModal {...baseProps} />);
+describe("AccountDialog", () => {
+  it("shows the login screen when signed out", () => {
+    render(<AccountDialog {...baseProps} />);
     expect(screen.getByText("Sign in", { selector: "h2" })).toBeDefined();
     fireEvent.click(screen.getByText("Create account", { selector: "button[role='tab']" }));
     expect(screen.getByText("Create account", { selector: "h2" })).toBeDefined();
@@ -44,7 +38,7 @@ describe("AuthModal", () => {
 
   it("signs in and reports the authenticated user", async () => {
     const onAuthenticated = vi.fn();
-    render(<AuthModal {...baseProps} onAuthenticated={onAuthenticated} />);
+    render(<AccountDialog {...baseProps} onAuthenticated={onAuthenticated} />);
     fireEvent.change(screen.getByPlaceholderText("you@example.com"), { target: { value: "a@b.c" } });
     fireEvent.change(screen.getByPlaceholderText("At least 8 characters"), { target: { value: "password1" } });
     fireEvent.click(screen.getByText("Sign in", { selector: "button.auth-submit" }));
@@ -54,10 +48,13 @@ describe("AuthModal", () => {
     expect(onAuthenticated).toHaveBeenCalledWith({ id: "u1", email: "a@b.c", displayName: "Ada" });
   });
 
-  it("shows the account panel with logout for signed-in users", () => {
+  it("offers settings or logout when signed in", () => {
+    const onSettings = vi.fn();
     const onLogout = vi.fn(async () => undefined);
-    render(<AuthModal {...baseProps} user={{ id: "u1", email: "a@b.c", displayName: "Ada" }} onLogout={onLogout} />);
+    render(<AccountDialog {...baseProps} user={{ id: "u1", email: "a@b.c", displayName: "Ada" }} onSettings={onSettings} onLogout={onLogout} />);
     expect(screen.getByText("Account", { selector: "h2" })).toBeDefined();
+    fireEvent.click(screen.getByText("Settings"));
+    expect(onSettings).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText("Log out"));
     expect(onLogout).toHaveBeenCalledTimes(1);
   });

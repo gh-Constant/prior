@@ -1,0 +1,27 @@
+.settings-page { width: 100%; max-width: var(--content-width); margin: 0 auto; }
+.settings-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; width: min(100%, 420px); margin-bottom: 16px; padding: 3px; border-radius: 9px; background: #f3f2ef; border: 1px solid var(--line); }
+.settings-tabs button { min-height: 38px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #817b73; font-size: 12.5px; font-weight: 600; }
+.settings-tabs button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 4px #2725220a; }
+.settings-card { min-width: 0; max-width: 640px; padding: 20px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow-card); }
+.settings-card .update-card { margin-top: 16px; }
+.settings-version-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: #faf9f7; color: #736d65; font-size: 12.5px; font-weight: 600; }
+.settings-version-row strong { color: var(--ink); }
+.settings-general .update-card { margin-top: 12px; }
+.settings-page-field { display: flex; flex-direction: column; gap: 7px; color: #736d65; font-size: 12px; }
+.settings-page-field .field { min-height: 44px; background: #faf9f7; }
+.settings-page-field .field input { font-size: 14px; }
+.settings-page-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.settings-saved { color: #2b7a4b; font-size: 12px; font-weight: 700; }
+.settings-search-toggle { display: flex; gap: 10px; margin-top: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #faf9f7; cursor: pointer; }
+.settings-search-toggle input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
+.settings-search-toggle span { display: flex; flex-direction: column; gap: 3px; }
+.settings-search-toggle strong { font-size: 12.5px; }
+.settings-search-toggle small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.settings-hint { margin: 14px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+.settings-assistant .settings-help { font-size: 11px; color: var(--muted); }
+.settings-assistant .settings-help a { color: var(--accent-dark); }
+@media (max-width: 760px) {
+  .settings-card { padding: 16px; }
+  .settings-tabs { width: 100%; }
+  .settings-tabs button { min-height: 44px; }
+}
