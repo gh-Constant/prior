@@ -37,6 +37,8 @@ Android requires JDK 17, Android SDK Platform 36, Build Tools 35, NDK 27.1.12297
 
 Email/password accounts are available directly in the app. Passwords are stored as bcrypt hashes and sessions are returned as bearer tokens. Google OAuth remains optional: create a Google Cloud OAuth client for a web application, add the exact redirect URI from `GOOGLE_REDIRECT_URL`, configure the consent screen with the verified `prior.constantsuchet.fr` domain, and keep the client secret only in the API environment. Prior requests only `openid email profile`. See [specs/AUTH.md](specs/AUTH.md).
 
+Voice transcription is handled by the API. Set `OPENAI_API_KEY` in the server or Coolify environment; the key is never sent to the browser, Tauri app, or Android WebView. The authenticated client uploads a short `webm`/`mp4` recording to `POST /transcribe`, which forwards it to OpenAI's `gpt-4o-mini-transcribe` model.
+
 ## Coolify
 
 Create a private PostgreSQL resource and three Docker applications pointed at this repository: `server/Dockerfile` on port `8080` for the API, `app/Dockerfile` on port `80` with build arg `VITE_API_URL=https://api.prior.constantsuchet.fr` for the browser client, and `site/Dockerfile` on port `80` for the public/legal site. Use `/health` for each health check, keep PostgreSQL private, and enable scheduled backups. Configure API variables from `.env.example`. See [specs/RELEASES.md](specs/RELEASES.md).

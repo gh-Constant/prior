@@ -2,15 +2,19 @@ package httpapi
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"html/template"
+	"io"
 	"log/slog"
+	"mime/multipart"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,17 +30,28 @@ import (
 )
 
 type Server struct {
-	cfg     config.Config
-	pool    *pgxpool.Pool
-	store   *store.Store
-	auth    *auth.Manager
-	hub     *hub
-	limiter *rateLimiter
+	cfg                    config.Config
+	pool                   *pgxpool.Pool
+	store                  *store.Store
+	auth                   *auth.Manager
+	hub                    *hub
+	limiter                *rateLimiter
+	openAIClient           *http.Client
+	openAITranscriptionURL string
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 	database := store.New(pool)
-	return &Server{cfg: cfg, pool: pool, store: database, auth: auth.NewManager(cfg, database), hub: newHub(), limiter: newRateLimiter(20, 10*time.Minute)}
+	return &Server{
+		cfg:                    cfg,
+		pool:                   pool,
+		store:                  database,
+		auth:                   auth.NewManager(cfg, database),
+		hub:                    newHub(),
+		limiter:                newRateLimiter(20, 10*time.Minute),
+		openAIClient:           &http.Client{Timeout: 2 * time.Minute},
+		openAITranscriptionURL: "https://api.openai.com/v1/audio/transcriptions",
+	}
 }
 
 func (s *Server) CleanupLoop(ctx context.Context) {
@@ -64,6 +79,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/google/native", s.googleNative)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/me", s.me)
+	mux.HandleFunc("PATCH /v1/me", s.updateMe)
+	mux.HandleFunc("POST /transcribe", s.transcribe)
 	mux.HandleFunc("GET /v1/settings", s.getSettings)
 	mux.HandleFunc("POST /v1/settings", s.saveSettings)
 	mux.HandleFunc("GET /v1/agent/chats", s.listAgentChats)
@@ -537,6 +554,140 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, user)
 }
 
+func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return
+	}
+	var body struct {
+		DisplayName string `json:"displayName"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid profile request"))
+		return
+	}
+	displayName := strings.TrimSpace(body.DisplayName)
+	if displayName == "" || len(displayName) > 80 {
+		writeError(w, http.StatusBadRequest, errors.New("username must be between 1 and 80 characters"))
+		return
+	}
+	updated, err := s.store.UpdateUserProfile(r.Context(), user.ID, displayName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errors.New("unable to update profile"))
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
+const maxTranscriptionBytes int64 = 25 << 20
+
+func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return
+	}
+	if strings.TrimSpace(s.cfg.OpenAIAPIKey) == "" {
+		writeError(w, http.StatusServiceUnavailable, errors.New("voice transcription is not configured"))
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		if strings.Contains(err.Error(), "request body too large") {
+			writeError(w, http.StatusRequestEntityTooLarge, errors.New("audio file is too large"))
+			return
+		}
+		writeError(w, http.StatusBadRequest, errors.New("audio file is required"))
+		return
+	}
+	defer file.Close()
+	if header.Size <= 0 {
+		writeError(w, http.StatusBadRequest, errors.New("audio file is empty"))
+		return
+	}
+	if header.Size > maxTranscriptionBytes {
+		writeError(w, http.StatusRequestEntityTooLarge, errors.New("audio file is too large"))
+		return
+	}
+
+	payload, err := transcriptionMultipart(file, header)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid audio upload"))
+		return
+	}
+	transcriptionURL := s.openAITranscriptionURL
+	if transcriptionURL == "" {
+		transcriptionURL = "https://api.openai.com/v1/audio/transcriptions"
+	}
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, transcriptionURL, payload.body)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errors.New("unable to prepare transcription"))
+		return
+	}
+	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(s.cfg.OpenAIAPIKey))
+	request.Header.Set("Content-Type", payload.contentType)
+	client := s.openAIClient
+	if client == nil {
+		client = &http.Client{Timeout: 2 * time.Minute}
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		slog.Warn("OpenAI transcription request failed", "user_id", user.ID, "error", err)
+		writeError(w, http.StatusBadGateway, errors.New("transcription service is unavailable"))
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		slog.Warn("OpenAI transcription request rejected", "user_id", user.ID, "status", response.StatusCode)
+		writeError(w, http.StatusBadGateway, errors.New("transcription service rejected the audio"))
+		return
+	}
+	var result struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result); err != nil {
+		writeError(w, http.StatusBadGateway, errors.New("transcription service returned an invalid response"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"text": strings.TrimSpace(result.Text)})
+}
+
+type transcriptionUpload struct {
+	body        io.Reader
+	contentType string
+}
+
+func transcriptionMultipart(file multipart.File, header *multipart.FileHeader) (transcriptionUpload, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	filename := filepath.Base(strings.ReplaceAll(header.Filename, `\`, "/"))
+	if filename == "" || filename == "." {
+		filename = "recording.webm"
+	}
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return transcriptionUpload{}, err
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		return transcriptionUpload{}, err
+	}
+	if err := writer.WriteField("model", "gpt-4o-mini-transcribe"); err != nil {
+		return transcriptionUpload{}, err
+	}
+	if err := writer.WriteField("response_format", "json"); err != nil {
+		return transcriptionUpload{}, err
+	}
+	if err := writer.Close(); err != nil {
+		return transcriptionUpload{}, err
+	}
+	return transcriptionUpload{body: &body, contentType: writer.FormDataContentType()}, nil
+}
+
 func (s *Server) listAgentChats(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
@@ -753,14 +904,18 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		if origin := r.Header.Get("Origin"); allowedOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
 			w.Header().Set("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		limited := http.MaxBytesReader(w, r.Body, 1<<20)
+		maxBodyBytes := int64(1 << 20)
+		if r.URL.Path == "/transcribe" {
+			maxBodyBytes = maxTranscriptionBytes
+		}
+		limited := http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		r = r.WithContext(context.WithValue(r.Context(), requestIDKey{}, requestID))
 		r.Body = limited
 		recorded := &statusWriter{ResponseWriter: w}

@@ -19,6 +19,9 @@ type Config struct {
 	// Android sign-in (Credential Manager). Defaults to GoogleClientID.
 	GoogleNativeAudiences []string
 	SessionTTL            time.Duration
+	// Server-side OpenAI key used only by the authenticated audio transcription
+	// endpoint. It must never be sent to the client.
+	OpenAIAPIKey string
 	// Hex-encoded 32-byte key used to seal per-user assistant secrets
 	// (OpenRouter API key) at rest with AES-256-GCM. Empty disables
 	// at-rest sealing; access is still restricted to the owning user.
@@ -41,6 +44,7 @@ func Load() Config {
 		AllowedReturnOrigins:  split(getenv("ALLOWED_AUTH_RETURN_ORIGINS", "prior://auth/callback,http://localhost:1420/auth/callback")),
 		GoogleNativeAudiences: split(os.Getenv("GOOGLE_NATIVE_AUDIENCES")),
 		SettingsEncryptionKey: os.Getenv("SETTINGS_ENCRYPTION_KEY"),
+		OpenAIAPIKey:          os.Getenv("OPENAI_API_KEY"),
 		SessionTTL:            ttl,
 	}
 }

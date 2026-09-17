@@ -9,20 +9,20 @@ describe("DictationControls", () => {
   it("starts dictation when idle", () => {
     const onStart = vi.fn();
     render(<DictationControls status="idle" onStart={onStart} onStop={() => undefined} />);
-    fireEvent.click(screen.getByLabelText("Start dictation"));
+    fireEvent.click(screen.getByLabelText("Start voice input"));
     expect(onStart).toHaveBeenCalledTimes(1);
   });
 
   it("stops dictation when listening", () => {
     const onStop = vi.fn();
     render(<DictationControls status="listening" onStart={() => undefined} onStop={onStop} />);
-    fireEvent.click(screen.getByLabelText("Stop dictation"));
+    fireEvent.click(screen.getByLabelText("Stop recording"));
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 
   it("disables the button when unavailable", () => {
     render(<DictationControls status="unavailable" onStart={() => undefined} onStop={() => undefined} />);
-    expect(screen.getByLabelText("Start dictation")).toBeDisabled();
+    expect(screen.getByLabelText("Start voice input")).toBeDisabled();
   });
 });
 
@@ -30,7 +30,7 @@ describe("DictationStatusBar", () => {
   it("shows listening state with cancel", () => {
     const onCancel = vi.fn();
     render(<DictationStatusBar status="listening" error={null} onCancel={onCancel} onDismissError={() => undefined} />);
-    expect(screen.getByText("Listening… tap stop to insert")).toBeDefined();
+    expect(screen.getByText("Recording… tap stop to transcribe")).toBeDefined();
     fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });

@@ -102,7 +102,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [chatHistory, setChatHistory] = useState<AgentChatSummary[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(() => typeof window === "undefined" || !window.matchMedia("(max-width: 760px)").matches);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -790,6 +790,8 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
               status={dictation.status}
               onStart={startDictation}
               onStop={dictation.stop}
+              disabled={!user}
+              disabledTitle="Sign in to use voice input"
             />
             <button
               type="submit"

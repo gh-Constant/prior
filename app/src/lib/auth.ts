@@ -28,6 +28,10 @@ export function getUser(): SessionUser | null {
   try { return JSON.parse(value) as SessionUser; } catch { localStorage.removeItem(USER_KEY); return null; }
 }
 
+export function saveUser(user: SessionUser): void {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
 export async function clearSession(): Promise<void> {
   let failure: unknown;
   try {
@@ -48,7 +52,7 @@ async function saveSession(result: { token: string; user: SessionUser }): Promis
   await setSecret("session_token", result.token);
   cachedToken = result.token;
   tokenRead = null;
-  localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+  saveUser(result.user);
   return result.user;
 }
 

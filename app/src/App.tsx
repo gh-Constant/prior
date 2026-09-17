@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { api } from "./lib/api";
-import { clearSession, getToken, getUser, isAndroidTauri, listenForAuth, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
+import { clearSession, getToken, getUser, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
@@ -72,6 +72,8 @@ function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcu
 
 type WorkspaceContentProps = {
   readonly activeView: WorkspaceView;
+  readonly user: SessionUser | null;
+  readonly onUserUpdated: (user: SessionUser) => void;
   readonly layout: Layout;
   readonly grouped: Record<string, Task[]>;
   readonly tasks: Task[];
@@ -95,8 +97,8 @@ type WorkspaceContentProps = {
   readonly onWorkspaceChange: () => void;
 };
 
-function WorkspaceContent({ activeView, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange }: WorkspaceContentProps) {
-  if (activeView === "settings") return <SettingsPage />;
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange }: WorkspaceContentProps) {
+  if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (["today", "inbox", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} />;
   if (activeView === "habits") {
@@ -554,6 +556,11 @@ export function App() {
     void pullAssistantSettings();
   }
 
+  function handleUserUpdated(nextUser: SessionUser): void {
+    saveUser(nextUser);
+    setUser(nextUser);
+  }
+
   function openProject(projectId: string): void {
     if (!projectId) {
       setSelectedProjectId(null);
@@ -645,6 +652,8 @@ export function App() {
         <CompletionExitProvider deadlines={completionExitDeadlines}>
           <WorkspaceContent
             activeView={activeView}
+            user={user}
+            onUserUpdated={handleUserUpdated}
             layout={layout}
             grouped={grouped}
             tasks={tasks}

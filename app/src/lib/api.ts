@@ -37,6 +37,7 @@ type ExchangeResponse = { token: string; user: { id: string; email: string; disp
 type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }> };
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number };
 export type ServerSettings = { openrouterApiKey: string; webSearch: boolean };
+export type ProfileUser = { id: string; email: string; displayName: string; avatarUrl?: string };
 
 async function requestOnce<T>(url: string, path: string, init: RequestInit, token: string | undefined, timeoutMs: number): Promise<T> {
   const controller = new AbortController();
@@ -49,10 +50,15 @@ async function requestOnce<T>(url: string, path: string, init: RequestInit, toke
   }
 
   try {
+    const headers = new Headers(init.headers);
+    if (!headers.has("Content-Type") && !(typeof FormData !== "undefined" && init.body instanceof FormData)) {
+      headers.set("Content-Type", "application/json");
+    }
+    if (token) headers.set("Authorization", `Bearer ${token}`);
     const response = await fetch(`${url}${path}`, {
       ...init,
       signal: controller.signal,
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
+      headers,
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { error?: string };
@@ -109,6 +115,14 @@ export const api = {
   },
   googleNative(idToken: string): Promise<ExchangeResponse> {
     return request<ExchangeResponse>("/v1/auth/google/native", { method: "POST", body: JSON.stringify({ id_token: idToken, device: "Prior", platform: "android" }) });
+  },
+  updateProfile(displayName: string, token: string): Promise<ProfileUser> {
+    return request<ProfileUser>("/v1/me", { method: "PATCH", body: JSON.stringify({ displayName }) }, token);
+  },
+  transcribe(audio: Blob, filename: string, token: string, signal?: AbortSignal): Promise<{ text: string }> {
+    const form = new FormData();
+    form.append("file", audio, filename);
+    return request<{ text: string }>("/transcribe", { method: "POST", body: form, signal }, token, 120_000);
   },
   push(mutations: Mutation[], token: string): Promise<PushResponse> {
     return request<PushResponse>("/v1/sync/push", { method: "POST", body: JSON.stringify({ mutations }) }, token);

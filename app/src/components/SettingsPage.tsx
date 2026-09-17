@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
-import { getToken } from "../lib/auth";
+import { getToken, type SessionUser } from "../lib/auth";
+import { api } from "../lib/api";
 import { pullAssistantSettings, pushAssistantSettings } from "../lib/settingsSync";
 import { getAndroidAppVersion, supportsAndroidUpdates } from "../lib/androidUpdater";
 import { getAppVersion, supportsDesktopUpdates } from "../lib/updater";
@@ -8,7 +9,12 @@ import { UpdateCards } from "./UpdateCards";
 import { Icon } from "./Icon";
 import "./SettingsPage.css";
 
-type SettingsTab = "general" | "assistant";
+type SettingsTab = "general" | "profile" | "assistant";
+
+type SettingsPageProps = {
+  readonly user: SessionUser | null;
+  readonly onUserUpdated: (user: SessionUser) => void;
+};
 
 const LATEST_RELEASE_URL = "https://api.github.com/repos/gh-Constant/prior/releases/latest";
 
@@ -59,6 +65,81 @@ function GeneralSettings() {
       </div>
       <UpdateCards />
     </div>
+  );
+}
+
+function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
+  const [username, setUsername] = useState(user?.displayName ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setUsername(user?.displayName ?? "");
+    setError(null);
+  }, [user]);
+
+  async function handleSave(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextUsername = username.trim();
+    if (!user || !nextUsername || saving) return;
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Sign in again to update your profile.");
+      const updated = await api.updateProfile(nextUsername, token);
+      onUserUpdated(updated);
+      setUsername(updated.displayName);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2500);
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Unable to update your profile.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!user) {
+    return <p className="settings-hint">Sign in to update your profile.</p>;
+  }
+
+  return (
+    <form className="settings-profile" onSubmit={(event) => void handleSave(event)}>
+      <div className="settings-profile-summary">
+        <div className="settings-profile-avatar">
+          {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}
+        </div>
+        <div>
+          <strong>{user.displayName || "Prior account"}</strong>
+          <span>{user.email}</span>
+        </div>
+      </div>
+      <label className="settings-page-field">
+        <span>Username</span>
+        <div className="field">
+          <Icon name="user" />
+          <input
+            value={username}
+            onChange={(event) => { setUsername(event.target.value); setSaved(false); setError(null); }}
+            minLength={1}
+            maxLength={80}
+            required
+            autoComplete="nickname"
+            placeholder="Your username"
+          />
+        </div>
+        <small className="settings-help">This is the name shown throughout Prior.</small>
+      </label>
+      <div className="settings-page-row">
+        <button type="submit" className="primary-button" disabled={saving || !username.trim()}>
+          {saving ? "Saving…" : "Save profile"}
+        </button>
+        {saved && <span className="settings-saved" role="status">Saved</span>}
+      </div>
+      {error && <p className="settings-error" role="alert">{error}</p>}
+    </form>
   );
 }
 
@@ -148,7 +229,7 @@ function AssistantSettings() {
   );
 }
 
-export function SettingsPage() {
+export function SettingsPage({ user, onUserUpdated }: SettingsPageProps) {
   const [tab, setTab] = useState<SettingsTab>("general");
   return (
     <section className="settings-page" aria-label="Settings">
@@ -172,6 +253,15 @@ export function SettingsPage() {
         <button
           type="button"
           role="tab"
+          aria-selected={tab === "profile"}
+          className={tab === "profile" ? "active" : ""}
+          onClick={() => setTab("profile")}
+        >
+          Profile
+        </button>
+        <button
+          type="button"
+          role="tab"
           aria-selected={tab === "assistant"}
           className={tab === "assistant" ? "active" : ""}
           onClick={() => setTab("assistant")}
@@ -179,8 +269,8 @@ export function SettingsPage() {
           Assistant
         </button>
       </div>
-      <section className="settings-card" aria-label={tab === "general" ? "General" : "Assistant"}>
-        {tab === "general" ? <GeneralSettings /> : <AssistantSettings />}
+      <section className="settings-card" aria-label={tab === "general" ? "General" : tab === "profile" ? "Profile" : "Assistant"}>
+        {tab === "general" ? <GeneralSettings /> : tab === "profile" ? <ProfileSettings user={user} onUserUpdated={onUserUpdated} /> : <AssistantSettings />}
       </section>
     </section>
   );

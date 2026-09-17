@@ -51,4 +51,19 @@ describe("OAuth code exchange", () => {
     expect(signal?.aborted).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("uploads recordings as multipart data without overriding the boundary", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ text: "hello" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.transcribe(new Blob(["audio"], { type: "audio/webm" }), "recording.webm", "session-token")).resolves.toEqual({ text: "hello" });
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(request.method).toBe("POST");
+    expect(new Headers(request.headers).get("content-type")).toBeNull();
+    expect(request.body).toBeInstanceOf(FormData);
+    expect((request.body as FormData).get("file")).toBeInstanceOf(File);
+    expect((request.body as FormData).get("file")).toHaveProperty("name", "recording.webm");
+    expect(new Headers(request.headers).get("authorization")).toBe("Bearer session-token");
+  });
 });

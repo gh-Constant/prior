@@ -155,6 +155,19 @@ func (s *Store) TouchLogin(ctx context.Context, userID uuid.UUID) error {
 	return err
 }
 
+func (s *Store) UpdateUserProfile(ctx context.Context, userID uuid.UUID, displayName string) (User, error) {
+	var user User
+	err := s.pool.QueryRow(ctx, `
+		UPDATE users SET display_name = $1, updated_at = now()
+		WHERE id = $2
+		RETURNING id, email, email_verified, display_name, avatar_url`, displayName, userID).
+		Scan(&user.ID, &user.Email, &user.EmailVerified, &user.DisplayName, &user.AvatarURL)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	return user, err
+}
+
 func (s *Store) CreateSession(ctx context.Context, userID uuid.UUID, token, device, platform string, ttl time.Duration) error {
 	hash := sha256.Sum256([]byte(token))
 	_, err := s.pool.Exec(ctx, `INSERT INTO sessions (user_id, token_hash, device_name, platform, expires_at) VALUES ($1, $2, $3, $4, $5)`, userID, hash[:], device, platform, time.Now().UTC().Add(ttl))
