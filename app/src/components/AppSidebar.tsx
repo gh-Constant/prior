@@ -61,6 +61,7 @@ export function AppSidebar({ activeView, user, collapsed, inert, onViewChange, o
         <button className="account-trigger" type="button" aria-label="Account" title="Account" onClick={onAccount}>
           <span className="account-trigger-avatar">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}</span>
           <span className="account-trigger-label">{user?.displayName || "Account"}</span>
+          <span className="account-trigger-label-mobile" aria-hidden="true">Account</span>
         </button>
       </div>
     </aside>

@@ -304,15 +304,19 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
 }
 @media (max-width: 760px) {
   .app-shell { display: block; }
-  .sidebar { position: fixed; inset: auto 0 0; z-index: 10; width: 100%; height: auto; flex-direction: row; align-items: center; gap: 8px; padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); border-top: 1px solid #ffffff12; }
+  .sidebar { position: fixed; inset: auto 0 0; z-index: 10; width: 100%; height: auto; flex-direction: row; align-items: stretch; gap: 6px; padding: 8px max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); border-top: 1px solid #ffffff12; }
   .sidebar-brand { display: none; }
-  .sidebar-nav { flex: 1; flex-direction: row; gap: 6px; }
-  .nav-item { flex: 1; justify-content: center; min-height: 46px; padding: 0 8px; gap: 8px; font-size: 11px; }
-  .nav-item.active::before { inset: auto 25% -3px; width: auto; height: 2px; }
-  .nav-item svg { width: 17px; height: 17px; }
-  .sidebar-bottom { margin: 0; padding: 0 0 0 8px; border-top: 0; border-left: 1px solid #ffffff14; }
-  .account-trigger { min-height: 46px; width: 46px; padding: 0; justify-content: center; }
+  .sidebar-nav { flex: 1 1 auto; min-width: 0; flex-direction: row; gap: 4px; }
+  .nav-item { flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 54px; padding: 6px 4px; font-size: 10px; font-weight: 600; line-height: 1.2; letter-spacing: .01em; }
+  .nav-item svg { width: 20px; height: 20px; margin: 0; }
+  .nav-item span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+  .nav-item.active::before { left: 24%; right: 24%; top: auto; bottom: 3px; width: auto; height: 3px; }
+  .sidebar-bottom { display: flex; align-items: stretch; flex: 0 0 auto; margin: 0; padding: 0 0 0 6px; border-top: 0; border-left: 1px solid #ffffff14; }
+  .account-trigger { flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 56px; min-height: 54px; padding: 6px 4px; }
+  .account-trigger-avatar { width: 24px; height: 24px; }
+  .account-trigger-avatar svg { width: 14px; height: 14px; }
   .account-trigger-label { display: none; }
+  .account-trigger-label-mobile { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 10px; font-weight: 600; line-height: 1.2; }
   .workspace { padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(110px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   .workspace-header { gap: 12px; margin-bottom: 14px; }
   .workspace-header h1 { flex-basis: 100%; font-size: 26px; white-space: normal; }
