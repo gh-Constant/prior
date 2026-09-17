@@ -37,7 +37,19 @@ export type IconName =
   | "stop"
   | "file-text"
   | "folder"
-  | "file";
+  | "file"
+  | "heading"
+  | "list-ordered"
+  | "list-todo"
+  | "quote"
+  | "code"
+  | "divider"
+  | "link"
+  | "tag"
+  | "pencil"
+  | "folder-plus"
+  | "file-plus"
+  | "palette";
 
 const calendarCheckPath = Array.isArray(faCalendarCheck.icon[4])
   ? faCalendarCheck.icon[4].join(" ")
@@ -82,6 +94,18 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconN
     "file-text": <><path d="M6 3.5h8l4 4V20.5H6z" /><path d="M14 3.5v4h4M9 12h6M9 16h6" /></>,
     folder: <path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h5l2 2.5h7A1.5 1.5 0 0 1 20.5 9v8.5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17.5Z" />,
     file: <><path d="M6.5 3.5h7l4 4v13h-11Z" /><path d="M13.5 3.5v4h4" /></>,
+    heading: <><path d="M6 4v16M18 4v16M6 12h12" /></>,
+    "list-ordered": <><path d="M10.5 6H20M10.5 12H20M10.5 18H20" /><path d="M4.5 5.2 5.6 6v2.6M4 12.4h2.6M4.6 12.4v-.2M4 18.4h2.6" /></>,
+    "list-todo": <><rect x="3.5" y="3.5" width="6" height="6" rx="1.5" /><path d="m5.4 6.5 1.2 1.2 2.2-2.4" /><path d="M13 6.5H20M4.5 13.5H20M4.5 18.5H20" /></>,
+    quote: <><path d="M10 7H6v5a4 4 0 0 0 4 4V7ZM20 7h-4v5a4 4 0 0 0 4 4V7Z" /></>,
+    code: <><path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4" /></>,
+    divider: <path d="M4 12h16" />,
+    link: <><path d="M10 14a4 4 0 0 0 6 0l2.5-2.5a4 4 0 0 0-5.6-5.6L11.5 7.3" /><path d="M14 10a4 4 0 0 0-6 0l-2.5 2.5a4 4 0 0 0 5.6 5.6l1.4-1.4" /></>,
+    tag: <><path d="M4 4h7l9 9-7 7-9-9Z" /><circle cx="9" cy="9" r="1.3" /></>,
+    pencil: <><path d="M4 20l1-4.5L16.5 4a2.12 2.12 0 0 1 3 3L8 18.5Z" /><path d="m14.5 6 3 3" /></>,
+    "folder-plus": <><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h5l2 2.5h7A1.5 1.5 0 0 1 20.5 9v8.5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17.5Z" /><path d="M12 11v5M9.5 13.5h5" /></>,
+    "file-plus": <><path d="M6.5 3.5h7l4 4v13h-11Z" /><path d="M13.5 3.5v4h4" /><path d="M12 11.5v5M9.5 14h5" /></>,
+    palette: <><path d="M12 4a8 8 0 1 0 .5 15.97c1.4.12 2-.9 1.4-2-.7-1.2-.1-2.6 1.5-2.6h1.7a3.9 3.9 0 0 0 3.9-3.9C21 6.9 17 4 12 4Z" /><circle cx="8.3" cy="10.2" r=".9" /><circle cx="12" cy="7.6" r=".9" /><circle cx="15.7" cy="9.4" r=".9" /></>,
   };
   return <svg aria-hidden="true" {...common}>{paths[name]}</svg>;
 }

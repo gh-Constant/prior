@@ -1,7 +1,10 @@
+import type { IconName } from "../components/Icon";
+
 export type SlashCommand = {
   id: string;
   label: string;
   hint: string;
+  icon: IconName;
   keywords: string;
   snippet: string;
   /** Number of characters from the end of the snippet where the caret should land. */
@@ -9,18 +12,18 @@ export type SlashCommand = {
 };
 
 export const SLASH_COMMANDS: SlashCommand[] = [
-  { id: "h1", label: "Heading 1", hint: "# Large section heading", keywords: "h1 heading title header", snippet: "# " },
-  { id: "h2", label: "Heading 2", hint: "## Medium section heading", keywords: "h2 heading title header subtitle", snippet: "## " },
-  { id: "h3", label: "Heading 3", hint: "### Small section heading", keywords: "h3 heading title header subtitle", snippet: "### " },
-  { id: "bullet", label: "Bullet list", hint: "- Simple bulleted list", keywords: "ul bullet list point", snippet: "- " },
-  { id: "ordered", label: "Numbered list", hint: "1. Ordered list", keywords: "ol ordered numbered list number", snippet: "1. " },
-  { id: "task", label: "Task list", hint: "Checkable to-do item", keywords: "todo task checklist checkbox done", snippet: "- [ ] " },
-  { id: "quote", label: "Quote", hint: "> Highlighted quote", keywords: "quote cite callout", snippet: "> " },
-  { id: "code", label: "Code block", hint: "Fenced code block", keywords: "code block pre snippet", snippet: "```\n\n```", cursorBack: 4 },
-  { id: "divider", label: "Divider", hint: "Horizontal rule", keywords: "divider hr rule line separator", snippet: "---\n" },
-  { id: "link", label: "Link to note", hint: "[[ Connect another note", keywords: "link note wikilink bracket reference", snippet: "[[]]", cursorBack: 2 },
-  { id: "math", label: "Math", hint: "$$ Inline math", keywords: "math latex formula katex equation", snippet: "$$  $$", cursorBack: 3 },
-  { id: "tag", label: "Tag", hint: "# Organize with a tag", keywords: "tag hash label", snippet: "#" },
+  { id: "h1", label: "Heading 1", icon: "heading", hint: "# Large section heading", keywords: "h1 heading title header", snippet: "# " },
+  { id: "h2", label: "Heading 2", icon: "heading", hint: "## Medium section heading", keywords: "h2 heading title header subtitle", snippet: "## " },
+  { id: "h3", label: "Heading 3", icon: "heading", hint: "### Small section heading", keywords: "h3 heading title header subtitle", snippet: "### " },
+  { id: "bullet", label: "Bullet list", icon: "list", hint: "- Simple bulleted list", keywords: "ul bullet list point", snippet: "- " },
+  { id: "ordered", label: "Numbered list", icon: "list-ordered", hint: "1. Ordered list", keywords: "ol ordered numbered list number", snippet: "1. " },
+  { id: "task", label: "Task list", icon: "list-todo", hint: "Checkable to-do item", keywords: "todo task checklist checkbox done", snippet: "- [ ] " },
+  { id: "quote", label: "Quote", icon: "quote", hint: "> Highlighted quote", keywords: "quote cite callout", snippet: "> " },
+  { id: "code", label: "Code block", icon: "code", hint: "Fenced code block", keywords: "code block pre snippet", snippet: "```\n\n```", cursorBack: 4 },
+  { id: "divider", label: "Divider", icon: "divider", hint: "Horizontal rule", keywords: "divider hr rule line separator", snippet: "---\n" },
+  { id: "link", label: "Link to note", icon: "link", hint: "[[ Connect another note", keywords: "link note wikilink bracket reference", snippet: "[[]]", cursorBack: 2 },
+  { id: "math", label: "Math", icon: "sparkles", hint: "$$ Inline math", keywords: "math latex formula katex equation", snippet: "$$  $$", cursorBack: 3 },
+  { id: "tag", label: "Tag", icon: "tag", hint: "# Organize with a tag", keywords: "tag hash label", snippet: "#" },
 ];
 
 export type SlashToken = { query: string; start: number };

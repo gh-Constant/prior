@@ -28,4 +28,25 @@ describe("notesStore", () => {
     notesStore.restore(note.id);
     expect(notesStore.list().find((item) => item.id === note.id)?.body).toBe("# Kept");
   });
+
+  it("stores folder colors and normalizes legacy folders", () => {
+    const plain = notesStore.createFolder("Plain");
+    expect(plain.color).toBeNull();
+    expect(notesStore.listFolders().find((folder) => folder.id === plain.id)?.color).toBeNull();
+    notesStore.setFolderColor(plain.id, "#5b84a8");
+    expect(notesStore.listFolders().find((folder) => folder.id === plain.id)?.color).toBe("#5b84a8");
+    notesStore.setFolderColor(plain.id, null);
+    expect(notesStore.listFolders().find((folder) => folder.id === plain.id)?.color).toBeNull();
+  });
+
+  it("deletes a folder while keeping its notes and subfolders", () => {
+    const projects = notesStore.createFolder("Projects");
+    const research = notesStore.createFolder("Research", projects.id);
+    const note = notesStore.create("Experiment", research.id);
+    notesStore.deleteFolder(research.id);
+    expect(notesStore.listFolders().some((folder) => folder.id === research.id)).toBe(false);
+    expect(notesStore.list().find((item) => item.id === note.id)?.folderId).toBe(projects.id);
+    notesStore.deleteFolder(projects.id);
+    expect(notesStore.list().find((item) => item.id === note.id)?.folderId).toBeNull();
+  });
 });

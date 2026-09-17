@@ -2,6 +2,7 @@ export type NoteFolder = {
   id: string;
   name: string;
   parentId: string | null;
+  color: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -24,6 +25,17 @@ export type NoteAttachment = {
   type: string;
   size: number;
 };
+
+export const NOTE_FOLDER_COLORS = [
+  { name: "Clay", value: "#c05b4d" },
+  { name: "Amber", value: "#cf8347" },
+  { name: "Honey", value: "#c9a227" },
+  { name: "Sage", value: "#6f9a6b" },
+  { name: "Ocean", value: "#5b84a8" },
+  { name: "Plum", value: "#8a6faf" },
+  { name: "Rose", value: "#c07b9a" },
+  { name: "Stone", value: "#8a8580" },
+];
 
 const NOTES_KEY = "prior.notes.v1";
 const FOLDERS_KEY = "prior.note-folders.v1";
@@ -48,16 +60,23 @@ function write<T>(key: string, value: T): void {
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
 }
 
+function normalizeFolder(folder: NoteFolder): NoteFolder {
+  return { ...folder, parentId: folder.parentId ?? null, color: folder.color ?? null, deletedAt: folder.deletedAt ?? null };
+}
+
 function ensureSeed(): void {
-  if (localStorage.getItem(NOTES_KEY) !== null) return;
-  const timestamp = now();
-  const welcome: Note = {
-    id: uid(), title: "Welcome to Notes", folderId: null, favorite: true,
-    body: "# Welcome to Prior Notes\n\nA calm space for your ideas. Start writing in **Markdown**.\n\n- Use `[[Note title]]` to link notes.\n- Add a `#tag` to organize thoughts.\n- Try `$E = mc^2$` for inline math.\n\n```mermaid\ngraph LR\n  Ideas --> Notes\n  Notes --> Action\n```\n",
-    createdAt: timestamp, updatedAt: timestamp, deletedAt: null,
-  };
-  localStorage.setItem(NOTES_KEY, JSON.stringify([welcome]));
-  localStorage.setItem(FOLDERS_KEY, JSON.stringify([]));
+  if (localStorage.getItem(NOTES_KEY) === null) {
+    const timestamp = now();
+    const welcome: Note = {
+      id: uid(), title: "Welcome to Notes", folderId: null, favorite: true,
+      body: "# Welcome to Prior Notes\n\nA calm space for your ideas. Start writing in **Markdown**.\n\n- Use `[[Note title]]` to link notes.\n- Add a `#tag` to organize thoughts.\n- Try `$E = mc^2$` for inline math.\n\n```mermaid\ngraph LR\n  Ideas --> Notes\n  Notes --> Action\n```\n",
+      createdAt: timestamp, updatedAt: timestamp, deletedAt: null,
+    };
+    localStorage.setItem(NOTES_KEY, JSON.stringify([welcome]));
+  }
+  if (localStorage.getItem(FOLDERS_KEY) === null) {
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify([]));
+  }
 }
 
 export const notesStore = {
@@ -68,7 +87,7 @@ export const notesStore = {
   listTrash(): Note[] { return read<Note[]>(NOTES_KEY, []).filter((note) => Boolean(note.deletedAt)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); },
   listFolders(): NoteFolder[] {
     ensureSeed();
-    return read<NoteFolder[]>(FOLDERS_KEY, []).filter((folder) => !folder.deletedAt).sort((a, b) => a.name.localeCompare(b.name));
+    return read<NoteFolder[]>(FOLDERS_KEY, []).filter((folder) => !folder.deletedAt).map(normalizeFolder).sort((a, b) => a.name.localeCompare(b.name));
   },
   create(title = "Untitled note", folderId: string | null = null): Note {
     const timestamp = now();
@@ -86,14 +105,30 @@ export const notesStore = {
     write(NOTES_KEY, read<Note[]>(NOTES_KEY, []).map((note) => note.id === noteId ? { ...note, deletedAt: timestamp, updatedAt: timestamp } : note));
   },
   restore(noteId: string): void { write(NOTES_KEY, read<Note[]>(NOTES_KEY, []).map((note) => note.id === noteId ? { ...note, deletedAt: null, updatedAt: now() } : note)); },
-  createFolder(name: string, parentId: string | null = null): NoteFolder {
+  createFolder(name: string, parentId: string | null = null, color: string | null = null): NoteFolder {
     const timestamp = now();
-    const folder: NoteFolder = { id: uid(), name: name.trim() || "New folder", parentId, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
+    const folder: NoteFolder = { id: uid(), name: name.trim() || "New folder", parentId, color, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
     write(FOLDERS_KEY, [...read<NoteFolder[]>(FOLDERS_KEY, []), folder]);
     return folder;
   },
   renameFolder(folderId: string, name: string): void {
     write(FOLDERS_KEY, read<NoteFolder[]>(FOLDERS_KEY, []).map((folder) => folder.id === folderId ? { ...folder, name: name.trim() || folder.name, updatedAt: now() } : folder));
+  },
+  setFolderColor(folderId: string, color: string | null): void {
+    write(FOLDERS_KEY, read<NoteFolder[]>(FOLDERS_KEY, []).map((folder) => folder.id === folderId ? { ...folder, color, updatedAt: now() } : folder));
+  },
+  deleteFolder(folderId: string): void {
+    const timestamp = now();
+    const folders = read<NoteFolder[]>(FOLDERS_KEY, []);
+    const target = folders.find((folder) => folder.id === folderId);
+    if (!target || target.deletedAt) return;
+    const newParentId = target.parentId ?? null;
+    write(NOTES_KEY, read<Note[]>(NOTES_KEY, []).map((note) => note.folderId === folderId ? { ...note, folderId: newParentId, updatedAt: timestamp } : note));
+    write(FOLDERS_KEY, folders.map((folder) => {
+      if (folder.id === folderId) return { ...folder, deletedAt: timestamp, updatedAt: timestamp };
+      if (folder.parentId === folderId) return { ...folder, parentId: newParentId, updatedAt: timestamp };
+      return folder;
+    }));
   },
   move(noteId: string, folderId: string | null): void {
     write(NOTES_KEY, read<Note[]>(NOTES_KEY, []).map((note) => note.id === noteId ? { ...note, folderId, updatedAt: now() } : note));
