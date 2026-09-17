@@ -1,4 +1,5 @@
 import type { Area, Project, ProjectStatus } from "../types";
+import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import { notesStore } from "./notes";
 
 const AREAS_KEY = "prior.areas.v1";
@@ -17,13 +18,13 @@ function now(): string { return new Date().toISOString(); }
 
 function read<T>(key: string, fallback: T): T {
   try {
-    const value = localStorage.getItem(key);
+    const value = readScopedStorage(key);
     return value ? JSON.parse(value) as T : fallback;
   } catch { return fallback; }
 }
 
 function write<T>(key: string, value: T): void {
-  localStorage.setItem(key, JSON.stringify(value));
+  writeScopedStorage(key, JSON.stringify(value));
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
 }
 

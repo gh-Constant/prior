@@ -2,6 +2,7 @@ import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { invoke } from "@tauri-apps/api/core";
 import { API_URL, api } from "./api";
 import { clearAgentSettings } from "./ai";
+import { emitAccountScopeChange, migrateLegacyStorageForAccount } from "./accountScope";
 import { openExternalUrl } from "./browser";
 import { getSecret, removeSecret, setSecret } from "./secureStore";
 
@@ -46,6 +47,7 @@ export async function clearSession(): Promise<void> {
     tokenRead = null;
     localStorage.removeItem(USER_KEY);
     clearAgentSettings();
+    emitAccountScopeChange();
   }
   if (failure) throw failure;
 }
@@ -55,6 +57,8 @@ async function saveSession(result: { token: string; user: SessionUser }): Promis
   cachedToken = result.token;
   tokenRead = null;
   saveUser(result.user);
+  migrateLegacyStorageForAccount(result.user.id);
+  emitAccountScopeChange();
   return result.user;
 }
 

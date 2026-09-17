@@ -1,3 +1,5 @@
+import { readScopedStorage, writeScopedStorage } from "./accountScope";
+
 export type NoteFolder = {
   id: string;
   name: string;
@@ -56,13 +58,13 @@ function now(): string { return new Date().toISOString(); }
 
 function read<T>(key: string, fallback: T): T {
   try {
-    const value = localStorage.getItem(key);
+    const value = readScopedStorage(key);
     return value ? JSON.parse(value) as T : fallback;
   } catch { return fallback; }
 }
 
 function write<T>(key: string, value: T): void {
-  localStorage.setItem(key, JSON.stringify(value));
+  writeScopedStorage(key, JSON.stringify(value));
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
 }
 
@@ -116,17 +118,17 @@ export function getFolderPath(folderId: string | null, folders: NoteFolder[]): s
 }
 
 function ensureSeed(): void {
-  if (localStorage.getItem(NOTES_KEY) === null) {
+  if (readScopedStorage(NOTES_KEY) === null) {
     const timestamp = now();
     const welcome: Note = {
       id: uid(), title: "Welcome to Notes", folderId: null, projectId: null, favorite: true,
       body: "# Welcome to Prior Notes\n\nA calm space for your ideas. Start writing in **Markdown**.\n\n- Use `[[Note title]]` to link notes.\n- Add a `#tag` to organize thoughts.\n- Try `$E = mc^2$` for inline math.\n\n```mermaid\ngraph LR\n  Ideas --> Notes\n  Notes --> Action\n```\n",
       createdAt: timestamp, updatedAt: timestamp, deletedAt: null,
     };
-    localStorage.setItem(NOTES_KEY, JSON.stringify([welcome]));
+    writeScopedStorage(NOTES_KEY, JSON.stringify([welcome]));
   }
-  if (localStorage.getItem(FOLDERS_KEY) === null) {
-    localStorage.setItem(FOLDERS_KEY, JSON.stringify([]));
+  if (readScopedStorage(FOLDERS_KEY) === null) {
+    writeScopedStorage(FOLDERS_KEY, JSON.stringify([]));
   }
 }
 

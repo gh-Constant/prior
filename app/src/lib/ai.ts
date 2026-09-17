@@ -17,6 +17,7 @@ import type {
   TaskStatus,
 } from "../types";
 import { runCodex } from "./codex";
+import { readScopedStorage, removeScopedStorage, writeScopedStorage } from "./accountScope";
 import type { Note, NoteFolder } from "./notes";
 
 export const DEFAULT_MODEL = "openrouter/free";
@@ -39,7 +40,7 @@ const SETTINGS_KEY = "prior.ai.settings.v1";
 export function getAgentSettings(): AgentSettings {
   try {
     if (typeof localStorage !== "undefined") {
-      const raw = localStorage.getItem(SETTINGS_KEY);
+      const raw = readScopedStorage(SETTINGS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<AgentSettings>;
         return {
@@ -61,7 +62,7 @@ export function getAgentSettings(): AgentSettings {
 export function saveAgentSettings(settings: AgentSettings): void {
   try {
     if (typeof localStorage !== "undefined") {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      writeScopedStorage(SETTINGS_KEY, JSON.stringify(settings));
     }
   } catch {
     // ignore
@@ -70,7 +71,13 @@ export function saveAgentSettings(settings: AgentSettings): void {
 
 export function clearAgentSettings(): void {
   try {
-    if (typeof localStorage !== "undefined") localStorage.removeItem(SETTINGS_KEY);
+    if (typeof localStorage !== "undefined") {
+      removeScopedStorage(SETTINGS_KEY);
+      // Remove the pre-v0.3.50 unscoped secret as a final safety net. It is
+      // migrated while an account is active, but must never be offered to a
+      // different account after sign-out.
+      localStorage.removeItem(SETTINGS_KEY);
+    }
   } catch {
     // ignore
   }

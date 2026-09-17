@@ -272,6 +272,10 @@ export function App() {
         await localStore.applyRemoteTasks(pulled.tasks);
         await localStore.applyRemoteHabits(pulled.habits ?? []);
         await workspaceSync.sync(token, () => generation === sessionGeneration.current);
+        // A remote merge may not write anything when the local copy is already
+        // current. Refresh explicitly so a newly authenticated account cannot
+        // keep rendering the previous account's in-memory workspace.
+        refreshWorkspace();
         const finalRevision = Math.max(pulled.revision, highestPushedRevision);
         await localStore.setSyncRevision(finalRevision);
         await refresh();
@@ -319,6 +323,8 @@ export function App() {
       setUser(nextUser);
       setAuthError("");
       setAuthOpen(false);
+      refreshWorkspace();
+      void refresh().catch((error) => console.warn("Prior could not refresh after sign-in:", error));
       void attachRealtime().catch(() => undefined);
       void syncNow();
       void pullAssistantSettings();
@@ -579,6 +585,8 @@ export function App() {
     await localStore.resetSyncRevision().catch((error) => console.warn("Prior could not reset sync state:", error));
     setUser(null);
     setAuthOpen(false);
+    refreshWorkspace();
+    await refresh().catch((error) => console.warn("Prior could not refresh after sign-out:", error));
     if (token) void api.logout(token).catch(() => undefined);
   }
 
@@ -594,6 +602,8 @@ export function App() {
     setUser(nextUser);
     setAuthError("");
     setAuthOpen(false);
+    refreshWorkspace();
+    void refresh().catch((error) => console.warn("Prior could not refresh after sign-in:", error));
     void attachRealtime().catch(() => undefined);
     void syncNow();
     void pullAssistantSettings();

@@ -1,4 +1,5 @@
 import type { Habit, HabitMutation, HabitUnit, Mutation, SyncState, Task, TaskDraft, TaskMutation, TaskPriority, TaskStatus } from "../types";
+import { getAccountId, readScopedStorage, writeScopedStorage } from "./accountScope";
 import { dateKey } from "./habits";
 
 const TASKS_KEY = "prior.tasks.v1";
@@ -13,6 +14,8 @@ type SqlDatabase = {
 };
 
 let sqlDatabase: SqlDatabase | null = null;
+let preparedAccountId: string | null = null;
+let accountPreparation: Promise<void> | null = null;
 
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -24,12 +27,42 @@ async function getSqlDatabase(): Promise<SqlDatabase | null> {
     const module = await import("@tauri-apps/plugin-sql");
     sqlDatabase = (await module.default.load("sqlite:prior.db")) as unknown as SqlDatabase;
   }
+  await prepareDatabaseAccount(sqlDatabase, getAccountId());
   return sqlDatabase;
+}
+
+async function prepareDatabaseAccount(db: SqlDatabase, accountId: string): Promise<void> {
+  while (preparedAccountId !== accountId) {
+    if (accountPreparation) {
+      await accountPreparation;
+      continue;
+    }
+    const preparation = (async () => {
+      if (accountId !== "anonymous") {
+        // Rows created by versions before v0.3.50 have the temporary legacy
+        // scope. Claim them only for the account that is currently signed in.
+        await db.execute("UPDATE tasks SET account_id = ? WHERE account_id = 'legacy'", [accountId]);
+        await db.execute("UPDATE habits SET account_id = ? WHERE account_id = 'legacy'", [accountId]);
+        await db.execute("UPDATE outbox SET account_id = ? WHERE account_id = 'legacy'", [accountId]);
+        await db.execute(
+          "INSERT OR IGNORE INTO sync_state (account_id, last_server_revision) SELECT ?, last_server_revision FROM sync_state WHERE account_id = 'legacy'",
+          [accountId],
+        );
+      }
+    })();
+    accountPreparation = preparation;
+    try {
+      await preparation;
+      preparedAccountId = accountId;
+    } finally {
+      if (accountPreparation === preparation) accountPreparation = null;
+    }
+  }
 }
 
 function read<T>(key: string, fallback: T): T {
   try {
-    const value = localStorage.getItem(key);
+    const value = readScopedStorage(key);
     return value ? (JSON.parse(value) as T) : fallback;
   } catch {
     return fallback;
@@ -37,7 +70,7 @@ function read<T>(key: string, fallback: T): T {
 }
 
 function write<T>(key: string, value: T): void {
-  localStorage.setItem(key, JSON.stringify(value));
+  writeScopedStorage(key, JSON.stringify(value));
 }
 
 function now(): string {
@@ -109,13 +142,14 @@ function isRemoteStale(remoteRevision: number | undefined, localRevision: number
 }
 
 async function mergeRemoteTasksIntoDb(db: SqlDatabase, pendingIds: Set<string>, tasks: Task[]): Promise<void> {
+  const accountId = getAccountId();
   for (const task of tasks) {
     if (pendingIds.has(task.id)) continue;
-    const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM tasks WHERE id = ?", [task.id]);
+    const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM tasks WHERE id = ? AND account_id = ?", [task.id, accountId]);
     if (isRemoteStale(task.serverRevision, current[0]?.server_revision ?? undefined)) continue;
     await db.execute(
-      "INSERT INTO tasks (id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
-      [task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.assigneeName ?? "", task.followUpDate ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
+      "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+      [accountId, task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.assigneeName ?? "", task.followUpDate ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
     );
   }
 }
@@ -131,13 +165,14 @@ function mergeRemoteTasksLocally(pendingIds: Set<string>, tasks: Task[]): void {
 }
 
 async function mergeRemoteHabitsIntoDb(db: SqlDatabase, pendingIds: Set<string>, habits: Habit[]): Promise<void> {
+  const accountId = getAccountId();
   for (const habit of habits) {
     if (pendingIds.has(habit.id)) continue;
-    const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM habits WHERE id = ?", [habit.id]);
+    const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM habits WHERE id = ? AND account_id = ?", [habit.id, accountId]);
     if (isRemoteStale(habit.serverRevision, current[0]?.server_revision ?? undefined)) continue;
     await db.execute(
-      "INSERT INTO habits (id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
-      [habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
+      "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
+      [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
     );
   }
 }
@@ -156,8 +191,10 @@ export const localStore = {
   async listAllTasks(): Promise<Task[]> {
     const db = await getSqlDatabase();
     if (db) {
+      const accountId = getAccountId();
       const rows = await db.select<Task>(
-        "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks ORDER BY updated_at DESC",
+        "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? ORDER BY updated_at DESC",
+        [accountId],
       );
       return rows.map(normalizeTask);
     }
@@ -167,8 +204,10 @@ export const localStore = {
   async listTasks(): Promise<Task[]> {
     const db = await getSqlDatabase();
     if (db) {
+      const accountId = getAccountId();
       const rows = await db.select<Task>(
-      "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
+      "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? AND deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
+      [accountId],
       );
       return rows.map(normalizeTask);
     }
@@ -178,8 +217,10 @@ export const localStore = {
   async listAllHabits(): Promise<Habit[]> {
     const db = await getSqlDatabase();
     if (db) {
+      const accountId = getAccountId();
       const rows = await db.select<Omit<Habit, "startDate" | "endDate" | "daysOfWeek" | "completedDates"> & { start_date: string; end_date: string | null; days_of_week: string; completed_dates: string }>(
-        "SELECT id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits ORDER BY updated_at DESC",
+        "SELECT id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE account_id = ? ORDER BY updated_at DESC",
+        [accountId],
       );
       return rows.map((row) => {
         let completedDates: string[] = [];
@@ -224,9 +265,10 @@ export const localStore = {
     });
     const db = await getSqlDatabase();
     if (db) {
+      const accountId = getAccountId();
       await db.execute(
-        "INSERT INTO tasks (id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL",
-        [task.id, task.title, task.description, task.dueDate, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.assigneeName, task.followUpDate, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
+        "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+        [accountId, task.id, task.title, task.description, task.dueDate, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.assigneeName, task.followUpDate, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
       );
     } else {
       const tasks = read<Task[]>(TASKS_KEY, []).filter((item) => item.id !== task.id);
@@ -245,7 +287,7 @@ export const localStore = {
     const tombstone = { ...task, deletedAt, updatedAt: deletedAt };
     const db = await getSqlDatabase();
     if (db) {
-      await db.execute("UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ?", [deletedAt, deletedAt, task.id]);
+      await db.execute("UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND account_id = ?", [deletedAt, deletedAt, task.id, getAccountId()]);
     } else {
       const tasks = read<Task[]>(TASKS_KEY, []).map((item) => (item.id === task.id ? tombstone : item));
       write(TASKS_KEY, tasks);
@@ -256,8 +298,10 @@ export const localStore = {
   async listHabits(): Promise<Habit[]> {
     const db = await getSqlDatabase();
     if (db) {
+      const accountId = getAccountId();
       const rows = await db.select<Omit<Habit, "startDate" | "endDate" | "daysOfWeek" | "completedDates"> & { start_date: string; end_date: string | null; days_of_week: string; completed_dates: string }>(
-        "SELECT id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE deleted_at IS NULL ORDER BY updated_at DESC",
+        "SELECT id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE account_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC",
+        [accountId],
       );
       return rows.map((row) => {
         let completedDates: string[] = [];
@@ -302,9 +346,10 @@ export const localStore = {
     });
     const db = await getSqlDatabase();
     if (db) {
+      const accountId = getAccountId();
       await db.execute(
-        "INSERT INTO habits (id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision",
-        [habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates), habit.createdAt, habit.updatedAt, null, habit.serverRevision ?? null],
+        "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
+        [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, null, habit.serverRevision ?? null],
       );
     } else {
       write(HABITS_KEY, [...read<Habit[]>(HABITS_KEY, []).filter((item) => item.id !== habit.id), habit]);
@@ -322,7 +367,7 @@ export const localStore = {
     const tombstone = { ...habit, deletedAt, updatedAt: deletedAt };
     const db = await getSqlDatabase();
     if (db) {
-      await db.execute("UPDATE habits SET deleted_at = ?, updated_at = ? WHERE id = ?", [deletedAt, deletedAt, habit.id]);
+      await db.execute("UPDATE habits SET deleted_at = ?, updated_at = ? WHERE id = ? AND account_id = ?", [deletedAt, deletedAt, habit.id, getAccountId()]);
     } else {
       write(HABITS_KEY, read<Habit[]>(HABITS_KEY, []).map((item) => item.id === habit.id ? tombstone : item));
     }
@@ -333,8 +378,8 @@ export const localStore = {
     const db = await getSqlDatabase();
     if (db) {
       await db.execute(
-        "INSERT INTO outbox (id, entity, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)",
-        [mutation.id, mutation.entity ?? "task", mutation.kind, JSON.stringify("habit" in mutation ? mutation.habit : mutation.task), mutation.createdAt],
+        "INSERT INTO outbox (account_id, id, entity, kind, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        [getAccountId(), mutation.id, mutation.entity ?? "task", mutation.kind, JSON.stringify("habit" in mutation ? mutation.habit : mutation.task), mutation.createdAt],
       );
       return;
     }
@@ -369,8 +414,10 @@ export const localStore = {
 
   async pendingMutations(): Promise<Mutation[]> {    const db = await getSqlDatabase();
     if (db) {
+      const accountId = getAccountId();
       const rows = await db.select<{ id: string; entity: "task" | "habit"; kind: Mutation["kind"]; payload: string; created_at: string }>(
-        "SELECT id, entity, kind, payload, created_at FROM outbox ORDER BY created_at ASC",
+        "SELECT id, entity, kind, payload, created_at FROM outbox WHERE account_id = ? ORDER BY created_at ASC",
+        [accountId],
       );
       return rows.map((row) => row.entity === "habit"
         ? { id: row.id, entity: "habit", kind: row.kind, habit: JSON.parse(row.payload) as Habit, createdAt: row.created_at }
@@ -386,7 +433,7 @@ export const localStore = {
   async removeMutations(ids: string[]): Promise<void> {
     const db = await getSqlDatabase();
     if (db) {
-      for (const id of ids) await db.execute("DELETE FROM outbox WHERE id = ?", [id]);
+      for (const id of ids) await db.execute("DELETE FROM outbox WHERE id = ? AND account_id = ?", [id, getAccountId()]);
       return;
     }
     write(OUTBOX_KEY, read<Mutation[]>(OUTBOX_KEY, []).filter((item) => !ids.includes(item.id)));
@@ -395,8 +442,9 @@ export const localStore = {
   async getSyncState(): Promise<SyncState> {
     const db = await getSqlDatabase();
     if (db) {
-      const rows = await db.select<{ last_server_revision: number }>("SELECT last_server_revision FROM sync_state WHERE id = 1");
-      const pending = await db.select<{ count: number }>("SELECT COUNT(*) as count FROM outbox");
+      const accountId = getAccountId();
+      const rows = await db.select<{ last_server_revision: number }>("SELECT last_server_revision FROM sync_state WHERE account_id = ?", [accountId]);
+      const pending = await db.select<{ count: number }>("SELECT COUNT(*) as count FROM outbox WHERE account_id = ?", [accountId]);
       return { lastServerRevision: rows[0]?.last_server_revision ?? 0, pendingCount: pending[0]?.count ?? 0 };
     }
     return { ...read<SyncState>(SYNC_KEY, { lastServerRevision: 0, pendingCount: 0 }), pendingCount: read<Mutation[]>(OUTBOX_KEY, []).length };
@@ -405,7 +453,10 @@ export const localStore = {
   async setSyncRevision(revision: number): Promise<void> {
     const db = await getSqlDatabase();
     if (db) {
-      await db.execute("UPDATE sync_state SET last_server_revision = ? WHERE id = 1", [revision]);
+      await db.execute(
+        "INSERT INTO sync_state (account_id, last_server_revision) VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET last_server_revision = excluded.last_server_revision",
+        [getAccountId(), revision],
+      );
       return;
     }
     const current = await this.getSyncState();
@@ -437,7 +488,7 @@ export const localStore = {
   async resetSyncRevision(): Promise<void> {
     const db = await getSqlDatabase();
     if (db) {
-      await db.execute("UPDATE sync_state SET last_server_revision = 0 WHERE id = 1");
+      await db.execute("INSERT INTO sync_state (account_id, last_server_revision) VALUES (?, 0) ON CONFLICT(account_id) DO UPDATE SET last_server_revision = 0", [getAccountId()]);
       return;
     }
     const current = await this.getSyncState();

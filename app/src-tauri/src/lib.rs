@@ -202,6 +202,12 @@ pub fn run() {
             sql: include_str!("../migrations/005_habit_schedule.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 6,
+            description: "account-scoped local data",
+            sql: include_str!("../migrations/006_account_scoped_local_data.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();
