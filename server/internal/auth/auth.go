@@ -231,6 +231,67 @@ func (m *Manager) Exchange(ctx context.Context, code string, device, platform st
 	return token, value.user, nil
 }
 
+// VerifyNativeIDToken authenticates a Google ID token obtained natively on
+// device (Android Credential Manager) and mints a Prior session directly.
+// Unlike Callback there is no OAuth state/nonce round trip: trust comes from
+// the token signature plus strict audience and verified-email checks.
+func (m *Manager) VerifyNativeIDToken(ctx context.Context, rawIDToken, device, platform string) (string, store.User, error) {
+	if m.cfg.GoogleClientID == "" {
+		return "", store.User{}, errors.New("Google OAuth is not configured")
+	}
+	if rawIDToken == "" {
+		return "", store.User{}, errors.New("Google ID token is required")
+	}
+	// Verify signature/issuer/expiry without pinning the audience yet: native
+	// tokens may target the server client or a platform OAuth client.
+	provider, err := oidc.NewProvider(ctx, "https://accounts.google.com")
+	if err != nil {
+		return "", store.User{}, fmt.Errorf("load Google OpenID configuration: %w", err)
+	}
+	verifier := provider.Verifier(&oidc.Config{SkipClientIDCheck: true})
+	idToken, err := verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		return "", store.User{}, fmt.Errorf("verify Google identity: %w", err)
+	}
+	if !m.validNativeAudience(idToken.Audience) {
+		return "", store.User{}, errors.New("Google identity is not intended for Prior")
+	}
+	var claims struct {
+		Subject       string `json:"sub"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+		Name          string `json:"name"`
+		Picture       string `json:"picture"`
+	}
+	if err := idToken.Claims(&claims); err != nil {
+		return "", store.User{}, fmt.Errorf("read Google identity: %w", err)
+	}
+	if claims.Subject == "" || claims.Email == "" || !claims.EmailVerified {
+		return "", store.User{}, errors.New("Google account has no verified email")
+	}
+	user, err := m.store.UpsertUser(ctx, claims.Subject, claims.Email, claims.EmailVerified, claims.Name, claims.Picture)
+	if err != nil {
+		return "", store.User{}, fmt.Errorf("save Prior user: %w", err)
+	}
+	token, err := m.createSession(ctx, user, device, platform)
+	return token, user, err
+}
+
+func (m *Manager) validNativeAudience(audience []string) bool {
+	allowed := m.cfg.GoogleNativeAudiences
+	if len(allowed) == 0 {
+		allowed = []string{m.cfg.GoogleClientID}
+	}
+	for _, aud := range audience {
+		for _, want := range allowed {
+			if aud != "" && aud == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (m *Manager) oidc(ctx context.Context) (*oidc.Provider, *oidc.IDTokenVerifier, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

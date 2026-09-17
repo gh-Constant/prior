@@ -23,6 +23,11 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+        // Google Web client ID used as `aud` for native sign-in tokens.
+        // Empty at build time is fine: the system picker then targets the
+        // Android OAuth client and the server allowlists that audience via
+        // GOOGLE_NATIVE_AUDIENCES instead.
+        buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"${System.getenv("GOOGLE_SERVER_CLIENT_ID") ?: ""}\"")
     }
     buildTypes {
         getByName("debug") {
@@ -74,6 +79,9 @@ dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")

@@ -39,6 +39,15 @@
 
             </intent-filter>
             <!-- DEEP LINK PLUGIN. AUTO-GENERATED. DO NOT REMOVE. -->
+            <!-- PRIOR CUSTOM SCHEME (not generated): return path for the OAuth
+                 interstitial page (prior://auth/callback). Keep when
+                 regenerating the Android project. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="prior" android:host="auth" android:pathPrefix="/callback" />
+            </intent-filter>
         </activity>
 
         <provider

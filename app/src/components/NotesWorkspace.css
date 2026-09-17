@@ -16,6 +16,11 @@
 .notes-rail { display: none; }
 .notes-workspace.library-collapsed .notes-rail { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 12px; background: #fbfaf8; border-right: 1px solid var(--line); }
 .notes-explorer { min-width: 0; display: flex; flex-direction: column; background: #fbfaf8; border-right: 1px solid var(--line); }
+.notes-explorer-scrim { display: none; }
+/* Touch devices have no hover: folder actions must always be visible. */
+@media (hover: none) {
+  .note-folder-row button { display: grid; }
+}
 .notes-explorer-header { display: flex; align-items: center; justify-content: space-between; padding: 22px 18px 16px; }
 .notes-explorer-header-actions { display: flex; align-items: center; gap: 6px; }
 .notes-eyebrow, .notes-inspector-label { display: block; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; }
@@ -196,17 +201,28 @@
   .notes-workspace { display: block; min-height: calc(100dvh - 84px); border: 0; border-radius: 0; box-shadow: none; }
   .notes-workspace.library-collapsed { display: block; }
   .notes-workspace.library-collapsed .notes-rail { display: none; }
-  .notes-explorer { position: fixed; z-index: 5; inset: 0 20% 0 0; display: none; box-shadow: 10px 0 30px #0002; }
+  /* Drawer floats above the bottom tab bar (z-index 10) with tappable scrim. */
+  .notes-explorer-scrim { display: block; position: fixed; z-index: 29; inset: 0; border: 0; background: #1d1b1955; cursor: pointer; }
+  .notes-explorer { position: fixed; z-index: 30; inset: 0 20% calc(84px + env(safe-area-inset-bottom)) 0; display: none; padding-bottom: env(safe-area-inset-bottom); box-shadow: 10px 0 30px #0002; }
   .notes-explorer.mobile-open { display: flex; }
+  .notes-explorer-header { padding-top: max(22px, env(safe-area-inset-top)); }
+  .notes-icon-button, .notes-tab-add { width: 40px; height: 40px; }
+  .note-folder-row { min-height: 40px; }
+  .note-file-row { min-height: 40px; }
   .notes-main { min-height: calc(100dvh - 84px); }
-  .notes-tabs { min-height: 42px; }
-  .notes-toolbar { padding: 10px 14px 4px; }
+  .notes-tabs { min-height: 42px; padding-top: env(safe-area-inset-top); }
+  .notes-tab { min-width: 72px; }
+  .notes-toolbar { padding: 10px max(14px, env(safe-area-inset-right)) 4px max(14px, env(safe-area-inset-left)); }
   .notes-breadcrumb span, .notes-breadcrumb strong { font-size: 10px; }
+  .notes-files-toggle { min-height: 40px; padding: 5px 12px; }
   .notes-toolbar-actions { justify-content: flex-start; }
-  .notes-toolbar-actions button { min-width: 30px; padding: 0 6px; }
+  .notes-toolbar-actions button { min-width: 40px; min-height: 40px; padding: 0 6px; }
   .notes-toolbar-actions button svg { display: block; }
-  .notes-title-row { padding: 8px 14px 12px; }
-  .notes-editor-layout { padding: 0 14px; }
-  .notes-editor-pane textarea { min-height: calc(100dvh - 260px); padding-bottom: 80px; font-size: 13px; }
+  .notes-title-row { padding: 8px max(14px, env(safe-area-inset-right)) 12px max(14px, env(safe-area-inset-left)); }
+  .notes-editor-layout { padding: 0 max(14px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(14px, env(safe-area-inset-left)); }
+  .notes-search input { font-size: 16px; }
+  .note-modal input[type="text"], .note-modal input:not([type]) { font-size: 16px; }
+  .note-move-list label { min-height: 44px; font-size: 16px; }
+  .notes-editor-pane textarea { min-height: calc(100dvh - 260px); padding-bottom: 80px; font-size: 16px; }
   .notes-inspector { display: none; }
 }

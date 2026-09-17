@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { invoke } from "@tauri-apps/api/core";
 import { api } from "./api";
-import { clearSession, getToken, listenForAuth } from "./auth";
+import { clearSession, getToken, listenForAuth, startNativeGoogleLogin } from "./auth";
 import { getSecret, setSecret } from "./secureStore";
 
 vi.mock("@tauri-apps/plugin-deep-link", () => ({ getCurrent: vi.fn(), onOpenUrl: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
-vi.mock("./api", () => ({ API_URL: "https://api.prior.constantsuchet.fr", api: { exchange: vi.fn() } }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./api", () => ({ API_URL: "https://api.prior.constantsuchet.fr", api: { exchange: vi.fn(), googleNative: vi.fn() } }));
 vi.mock("./secureStore", () => ({ getSecret: vi.fn(), setSecret: vi.fn(), removeSecret: vi.fn() }));
 
 const user = { id: "user-1", email: "test@example.com", displayName: "Test" };
@@ -158,5 +160,42 @@ describe("OAuth return", () => {
     vi.mocked(onOpenUrl).mockRejectedValueOnce(new Error("Listener unavailable"));
     dispose = listenForAuth(onAuthenticated, onError);
     await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(expect.any(Error)));
+  });
+});
+
+describe("Native Google sign-in", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    const storageMap = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storageMap.get(key) ?? null,
+        setItem: (key: string, value: string) => { storageMap.set(key, value); },
+        removeItem: (key: string) => { storageMap.delete(key); },
+      },
+    });
+    vi.mocked(setSecret).mockResolvedValue(undefined);
+    vi.mocked(api.googleNative).mockResolvedValue({ token: "session-token", user });
+  });
+
+  it("exchanges the native ID token for a session", async () => {
+    vi.mocked(invoke).mockResolvedValue({ idToken: "native-id-token" });
+    await expect(startNativeGoogleLogin()).resolves.toEqual(user);
+    expect(invoke).toHaveBeenCalledWith("google_sign_in");
+    expect(api.googleNative).toHaveBeenCalledWith("native-id-token");
+    expect(setSecret).toHaveBeenCalledWith("session_token", "session-token");
+  });
+
+  it("returns null without contacting the API when the picker is dismissed", async () => {
+    vi.mocked(invoke).mockResolvedValue({ idToken: null });
+    await expect(startNativeGoogleLogin()).resolves.toBeNull();
+    expect(api.googleNative).not.toHaveBeenCalled();
+  });
+
+  it("propagates native failures so the caller can fall back to the browser", async () => {
+    vi.mocked(invoke).mockRejectedValue(new Error("No Google accounts on device"));
+    await expect(startNativeGoogleLogin()).rejects.toThrow("No Google accounts on device");
+    expect(api.googleNative).not.toHaveBeenCalled();
   });
 });

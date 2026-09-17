@@ -24,3 +24,5 @@
 -keep class fr.constantsuchet.prior.PriorWidget { *; }
 -keep class fr.constantsuchet.prior.PriorWidgetReceiver { *; }
 -keep class fr.constantsuchet.prior.PriorSessionStore { *; }
+-keep class androidx.credentials.** { *; }
+-keep class com.google.android.libraries.identity.googleid.** { *; }

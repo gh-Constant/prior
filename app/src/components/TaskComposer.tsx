@@ -16,7 +16,12 @@ export function TaskComposer({ task, onSave, onCancel }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useModalDialog(dialogRef);
 
-  useEffect(() => inputRef.current?.focus(), []);
+  // Don't steal focus on touch devices: it pops the keyboard, shrinks the
+  // visual viewport, and can push the sheet footer out of view.
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia?.("(hover: none)")?.matches) return;
+    inputRef.current?.focus();
+  }, []);
 
   async function submit() {
     const clean = title.trim();

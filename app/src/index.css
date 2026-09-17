@@ -25,7 +25,7 @@ html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
 body { min-height: 100dvh; }
 button, input, select { font: inherit; }
 button { color: inherit; cursor: pointer; }
-button, a, input, select { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 button:disabled { cursor: default; opacity: .45; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 button, a { transition: background .16s, color .16s, border-color .16s, box-shadow .16s; }
@@ -97,8 +97,8 @@ svg { display: block; flex-shrink: 0; }
 .filter-toggle svg:last-child { width: 13px; height: 13px; opacity: .7; transition: transform .16s ease; }
 .filter-toggle.active svg:last-child { transform: rotate(180deg); }
 .filter-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; }
-.filter-sort { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: #55514b; font-size: 12.5px; font-weight: 600; }
-.filter-sort-label { color: var(--muted); font-weight: 600; }
+.filter-sort { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 40px; padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: #55514b; font-size: 12.5px; font-weight: 600; }
+.filter-sort-label { flex: 0 0 auto; color: var(--muted); font-weight: 600; }
 .filter-sort select { min-height: 36px; max-width: 168px; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .filters-panel { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .filter-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -220,18 +220,18 @@ svg { display: block; flex-shrink: 0; }
 .task-card .task-actions { position: absolute; right: 12px; bottom: 10px; }
 .task-card .task-action { opacity: 1; }
 .task-card .task-title { font-size: 14px; }
-.modal-backdrop { position: fixed; z-index: 50; inset: 0; display: block; padding: 0; border: 0; background: #15141266; backdrop-filter: blur(8px); animation: fade-in .16s ease-out; cursor: pointer; }
+.modal-backdrop { position: fixed; z-index: 50; inset: 0; padding: 0; border: 0; background: #15141266; backdrop-filter: blur(8px); animation: fade-in .16s ease-out; cursor: pointer; }
 /* Native modal dialogs render in the top layer (author styles win over UA styles
    except where UA uses higher-specificity :modal rules, which is what centers them). */
 :where(dialog.modal) { padding: 0; }
 dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
-.modal { width: min(100%, 460px); max-height: 100%; overflow-y: auto; border: 1px solid #ffffff90; border-radius: 18px; background: var(--panel); box-shadow: 0 24px 100px #12111033, 0 2px 6px #12111010; animation: modal-in .2s ease-out; }
+.modal { width: min(100%, 460px); max-height: 100%; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border: 1px solid #ffffff90; border-radius: 18px; background: var(--panel); box-shadow: 0 24px 100px #12111033, 0 2px 6px #12111010; animation: modal-in .2s ease-out; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 23px 24px 20px; }
 .modal-header h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.04em; }
 .icon-button { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 7px; background: transparent; color: #99958c; }
 .icon-button:hover { background: #f3f1ed; color: var(--ink); }
 .icon-button svg { width: 17px; height: 17px; }
-.composer-modal, .auth-modal { padding-bottom: 24px; }
+.composer-modal, .auth-modal { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 .task-composer-modal { width: min(100%, 560px); }
 .composer-input-row { display: flex; align-items: center; gap: 10px; margin: 0 24px; padding: 15px 12px; border: 1px solid var(--line); border-radius: 9px; background: #faf9f7; }
 .composer-input-row:focus-within, .field:focus-within { border-color: #f29985; box-shadow: 0 0 0 3px #fa654a0b; }
@@ -271,7 +271,7 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
 .account-panel .account-avatar { width: 56px; height: 56px; margin: 0 auto 16px; background: #fff0e9; color: #ad533e; }
 .account-panel .account-avatar svg { width: 24px; height: 24px; }
 .account-panel-name { margin: 0; font-size: 15px; font-weight: 600; }
-.account-panel-email { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.account-panel-email { margin: 5px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .update-card { margin-top: 24px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; text-align: left; }
 .update-card-heading { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 12px; }
 .update-card-heading small { color: var(--muted); font-size: 11px; }
@@ -304,29 +304,32 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
 }
 @media (max-width: 760px) {
   .app-shell { display: block; }
-  .sidebar { position: fixed; inset: auto 0 0; z-index: 10; width: 100%; height: auto; flex-direction: row; align-items: stretch; gap: 6px; padding: 8px max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); border-top: 1px solid #ffffff12; }
+  .sidebar { position: fixed; inset: auto 0 0; z-index: 10; width: 100%; height: auto; flex-direction: row; align-items: stretch; gap: 4px; padding: 8px max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); border-top: 1px solid #ffffff12; }
   .sidebar-brand { display: none; }
-  .sidebar-nav { flex: 1 1 auto; min-width: 0; flex-direction: row; gap: 4px; }
+  /* 4 nav tabs (flex 4) + account tab (flex 1) = 5 exactly equal tabs. */
+  .sidebar-nav { flex: 4 1 0; min-width: 0; flex-direction: row; gap: 4px; }
   .nav-item { flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 54px; padding: 6px 4px; font-size: 10px; font-weight: 600; line-height: 1.2; letter-spacing: .01em; }
   .nav-item svg { width: 20px; height: 20px; margin: 0; }
   .nav-item span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
-  .nav-item.active::before { left: 24%; right: 24%; top: auto; bottom: 3px; width: auto; height: 3px; }
-  .sidebar-bottom { display: flex; align-items: stretch; flex: 0 0 auto; margin: 0; padding: 0 0 0 6px; border-top: 0; border-left: 1px solid #ffffff14; }
-  .account-trigger { flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 56px; min-height: 54px; padding: 6px 4px; }
-  .account-trigger-avatar { width: 24px; height: 24px; }
-  .account-trigger-avatar svg { width: 14px; height: 14px; }
+  .nav-item.active::before { left: 24%; right: 24%; top: auto; bottom: 4px; width: auto; height: 3px; }
+  .sidebar-bottom { display: flex; align-items: stretch; flex: 1 1 0; min-width: 0; margin: 0; padding: 0; border-top: 0; }
+  .account-trigger { flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 100%; min-width: 0; min-height: 54px; padding: 6px 4px; border-radius: 8px; }
+  .account-trigger-avatar { width: 20px; height: 20px; }
+  .account-trigger-avatar svg { width: 15px; height: 15px; }
   .account-trigger-label { display: none; }
   .account-trigger-label-mobile { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 10px; font-weight: 600; line-height: 1.2; }
   .workspace { padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(110px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
-  .workspace-header { gap: 12px; margin-bottom: 14px; }
-  .workspace-header h1 { flex-basis: 100%; font-size: 26px; white-space: normal; }
+  .workspace-header { flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+  .workspace-header h1 { flex: 1 1 100%; font-size: 26px; white-space: normal; }
   .workspace-actions { width: 100%; justify-content: stretch; gap: 8px; }
   .workspace-actions .layout-switch { flex: 0 0 auto; }
-  .workspace-actions .ai-toggle-button { flex: 1 1 auto; justify-content: center; }
+  .workspace-actions .ai-toggle-button { flex: 1 1 auto; justify-content: center; min-height: 44px; }
   .workspace-actions .new-task-button { flex: 0 0 auto; }
   .ai-toggle-button span, .ai-toggle-button kbd { display: none; }
   .ai-toggle-button { padding: 0 12px; }
-  .new-task-button { width: 40px; min-width: 40px; padding: 0; }
+  .layout-switch button { position: relative; }
+  .layout-switch button::before { content: ""; position: absolute; inset: -8px -5px; }
+  .new-task-button { width: 44px; min-width: 44px; min-height: 44px; padding: 0; }
   .new-task-button span, .new-task-button kbd { display: none; }
   .new-task-button svg { width: 19px; height: 19px; }
   .task-filters { padding: 8px; border-radius: 12px; }
@@ -336,7 +339,7 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
   .filters-toolbar-actions { width: 100%; }
   .filter-toggle { flex: 1 1 auto; justify-content: center; min-height: 44px; }
   .filter-sort { flex: 1 1 auto; justify-content: space-between; min-height: 44px; }
-  .filter-sort select { max-width: none; flex: 1; font-size: 16px; }
+  .filter-sort select { max-width: none; flex: 1; min-width: 0; font-size: 16px; }
   .filters-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filter-field select { min-height: 44px; font-size: 16px; }
   .quadrant-grid { grid-template-columns: 1fr; gap: 14px; }
@@ -350,23 +353,30 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
   .complete-control { min-width: 32px; min-height: 36px; }
   .complete-button { position: relative; }
   .complete-button::before { content: ""; position: absolute; inset: -11px; }
-  .modal-backdrop { align-items: end; padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-  .modal { max-height: calc(100dvh - 48px); border-radius: 20px; }
-  dialog.modal { width: 100%; max-width: 100%; margin: auto auto 0; border-radius: 20px 20px 0 0; }
-  .field input, .edit-input { font-size: 16px; }
+  .modal { max-height: calc(92vh - env(safe-area-inset-bottom)); max-height: calc(100dvh - 48px - env(safe-area-inset-bottom)); border-radius: 20px; }
+  dialog.modal { width: 100%; max-width: 100%; margin: auto auto 0; border-radius: 20px 20px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  .field input, .edit-input, .composer-description { font-size: 16px; }
   .modal-footer button { min-height: 44px; }
   .completion-celebration { right: 16px; bottom: calc(92px + env(safe-area-inset-bottom)); left: 16px; }
   .habit-card { align-items: flex-start; padding: 14px 12px; }
-  .habit-check-wrap { margin-top: 2px; }
+  .habit-check-wrap { position: relative; margin-top: 2px; }
+  .habit-check-wrap::before { content: ""; position: absolute; inset: -10px; }
   .habit-card-actions { margin-left: auto; }
-  .habit-card-actions .task-action { width: 29px; }
-  .habit-card-actions .task-action.flag-toggle { width: 36px; height: 36px; }
   .habit-period-tabs { overflow-x: auto; }
-  .habit-period-tabs button { min-width: 88px; }
+  .habit-period-tabs button { min-width: 88px; min-height: 44px; }
+  .active-pill { min-height: 36px; }
+  .active-pill button { position: relative; }
+  .active-pill button::before { content: ""; position: absolute; inset: -10px; }
+  .pills-clear { min-height: 36px; }
+  .agent-send-btn { width: 44px; min-height: 44px; }
+  .profile-tabs button, .auth-tabs button { min-height: 44px; }
+  .account-panel .danger-button { min-height: 44px; }
 }
 @media (max-width: 480px) {
   .task-columns { columns: 1; }
   .filters-panel { grid-template-columns: minmax(0, 1fr); }
+  .habit-schedule-fields { grid-template-columns: minmax(0, 1fr); }
+  .download-grid { grid-template-columns: minmax(0, 1fr); }
   .list-view .task-actions { margin-left: 42px; }
   .list-view .task-title { flex-basis: calc(100% - 52px); }
 }
@@ -834,8 +844,10 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 6px;
 }
+.proposed-task-meta > * { min-width: 0; }
 .quadrant-chip {
   font-size: 10px;
   font-weight: 600;

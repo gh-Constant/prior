@@ -9,17 +9,25 @@ import { useEffect, type RefObject } from "react";
 export function useModalDialog(ref: RefObject<HTMLDialogElement | null>) {
   useEffect(() => {
     const dialog = ref.current;
-    if (!dialog || dialog.open) return undefined;
-    if (typeof dialog.showModal === "function") {
-      try {
-        dialog.showModal();
-      } catch {
+    if (!dialog) return undefined;
+    // Lock background scroll while a modal is open. Without this, touch
+    // swipes chain through to the page behind the sheet and the modal
+    // itself appears unscrollable on phones.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    if (!dialog.open) {
+      if (typeof dialog.showModal === "function") {
+        try {
+          dialog.showModal();
+        } catch {
+          dialog.setAttribute("open", "");
+        }
+      } else {
         dialog.setAttribute("open", "");
       }
-    } else {
-      dialog.setAttribute("open", "");
     }
     return () => {
+      document.body.style.overflow = previousOverflow;
       if (dialog.open && typeof dialog.close === "function") dialog.close();
     };
   }, [ref]);

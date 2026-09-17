@@ -143,6 +143,24 @@ async fn widget_set_items<R: Runtime>(app: AppHandle<R>, items: Vec<String>) -> 
     run_android_plugin(app, "setWidgetItems", serde_json::json!({ "items": items })).await
 }
 
+#[cfg(target_os = "android")]
+#[derive(serde::Deserialize)]
+struct AndroidGoogleSignInResult {
+    #[serde(rename = "idToken")]
+    id_token: Option<String>,
+}
+
+// Returns the Google ID token from the system account picker, or None when
+// the user dismisses it. Failures (no Play Services, no accounts, old OS)
+// propagate as errors so the frontend can fall back to the browser flow.
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn google_sign_in<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>, String> {
+    let result: AndroidGoogleSignInResult =
+        run_android_plugin(app, "googleSignIn", serde_json::json!({})).await?;
+    Ok(result.id_token)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -206,7 +224,9 @@ pub fn run() {
             session_set,
             session_clear,
             #[cfg(target_os = "android")]
-            widget_set_items
+            widget_set_items,
+            #[cfg(target_os = "android")]
+            google_sign_in
         ])
         .setup(|_app| {
             #[cfg(desktop)]

@@ -106,6 +106,9 @@ export const api = {
   logout(token: string): Promise<void> {
     return request<void>("/v1/auth/logout", { method: "POST" }, token, 5_000);
   },
+  googleNative(idToken: string): Promise<ExchangeResponse> {
+    return request<ExchangeResponse>("/v1/auth/google/native", { method: "POST", body: JSON.stringify({ id_token: idToken, device: "Prior", platform: "android" }) });
+  },
   push(mutations: Mutation[], token: string): Promise<PushResponse> {
     return request<PushResponse>("/v1/sync/push", { method: "POST", body: JSON.stringify({ mutations }) }, token);
   },

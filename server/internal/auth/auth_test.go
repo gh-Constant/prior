@@ -39,3 +39,26 @@ func TestValidatePassword(t *testing.T) {
 		t.Fatalf("valid password rejected: %v", err)
 	}
 }
+
+func TestValidNativeAudience(t *testing.T) {
+	fallback := NewManager(config.Config{GoogleClientID: "server-client.apps.googleusercontent.com"}, nil)
+	if !fallback.validNativeAudience([]string{"server-client.apps.googleusercontent.com"}) {
+		t.Fatal("server client audience rejected by default")
+	}
+	if fallback.validNativeAudience([]string{"android-client.apps.googleusercontent.com"}) {
+		t.Fatal("foreign audience accepted by default")
+	}
+	custom := NewManager(config.Config{
+		GoogleClientID:        "server-client.apps.googleusercontent.com",
+		GoogleNativeAudiences: []string{"android-client.apps.googleusercontent.com"},
+	}, nil)
+	if !custom.validNativeAudience([]string{"other", "android-client.apps.googleusercontent.com"}) {
+		t.Fatal("allowlisted Android audience rejected")
+	}
+	if custom.validNativeAudience([]string{"server-client.apps.googleusercontent.com"}) {
+		t.Fatal("server client audience accepted when custom allowlist is set")
+	}
+	if custom.validNativeAudience(nil) || custom.validNativeAudience([]string{""}) {
+		t.Fatal("empty audience accepted")
+	}
+}

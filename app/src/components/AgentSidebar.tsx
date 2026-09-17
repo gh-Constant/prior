@@ -13,6 +13,7 @@ import { useDictation } from "../hooks/useDictation";
 
 type Props = {
   readonly open: boolean;
+  readonly inert?: boolean;
   readonly onClose: () => void;
   readonly tasks: Task[];
   readonly habits: Habit[];
@@ -56,7 +57,7 @@ function modelConfirmLabel(customDraft: string, listDraft: string): string {
   return `Use ${shortModelName(effective)}`;
 }
 
-export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders }: Props) {
+export function AgentSidebar({ open, inert, onClose, tasks, habits, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders }: Props) {
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(settings.apiKey);
@@ -543,7 +544,7 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
   return (
     <>
       {isOverlay && <div className="agent-overlay-backdrop" aria-hidden="true" onMouseDown={handleClose} />}
-      <dialog ref={panelRef} id="prior-ai-assistant" open className={`agent-sidebar ${isOverlay ? "overlay" : "docked"}`} aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
+      <dialog ref={panelRef} id="prior-ai-assistant" open inert={inert} className={`agent-sidebar ${isOverlay ? "overlay" : "docked"}`} aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
       <header className="agent-header">
         <div className="agent-title-row">
           <AgentIdentity size="small" />

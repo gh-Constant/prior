@@ -30,16 +30,22 @@
 }
 
 .sidebar-collapse-button svg { width: 15px; height: 15px; }
-.sidebar.is-collapsed { padding-right: 10px; padding-left: 10px; }
-.sidebar.is-collapsed .sidebar-top { justify-content: center; margin-right: 0; margin-left: 0; flex-direction: column; gap: 13px; }
-.sidebar.is-collapsed .brand-title,
-.sidebar.is-collapsed .nav-item span,
-.sidebar.is-collapsed .account-trigger-label { display: none; }
-.sidebar.is-collapsed .sidebar-brand { display: block; }
-.sidebar.is-collapsed .sidebar-top .brand-lockup { gap: 0; }
-.sidebar.is-collapsed .nav-item { justify-content: center; padding: 0; }
-.sidebar.is-collapsed .nav-item.active::before { left: 0; }
-.sidebar.is-collapsed .account-trigger { justify-content: center; padding: 4px; }
+
+/* Collapsed rail is a desktop-only concept. The collapse toggle lives in
+   .sidebar-top, which is hidden on phones, so these rules must never leak
+   into the mobile bottom bar (min-width gate keeps them desktop-only). */
+@media (min-width: 761px) {
+  .sidebar.is-collapsed { padding-right: 10px; padding-left: 10px; }
+  .sidebar.is-collapsed .sidebar-top { justify-content: center; margin-right: 0; margin-left: 0; flex-direction: column; gap: 13px; }
+  .sidebar.is-collapsed .brand-title,
+  .sidebar.is-collapsed .nav-item span,
+  .sidebar.is-collapsed .account-trigger-label { display: none; }
+  .sidebar.is-collapsed .sidebar-brand { display: block; }
+  .sidebar.is-collapsed .sidebar-top .brand-lockup { gap: 0; }
+  .sidebar.is-collapsed .nav-item { justify-content: center; padding: 0; }
+  .sidebar.is-collapsed .nav-item.active::before { left: 0; }
+  .sidebar.is-collapsed .account-trigger { justify-content: center; padding: 4px; }
+}
 
 .account-trigger-label-mobile { display: none; }
 
@@ -50,29 +56,17 @@
 .ai-toggle-button .agent-symbol-aura { filter: blur(6px); }
 
 @media (max-width: 760px) {
+  /* Collapse toggle is hidden on phones: collapsed state is a no-op here by
+     construction (desktop-only rules above), so the 5-tab bar always renders. */
   .sidebar-top { display: none; }
-  .sidebar.is-collapsed { padding: 8px max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
-  /* The collapse toggle lives in .sidebar-top (hidden on phone), so a desktop
-     collapsed state must not stick on mobile: keep the 5-tab bottom bar. */
   .sidebar.is-collapsed .sidebar-brand { display: none; }
-  .sidebar.is-collapsed .nav-item { flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 4px; }
-  .sidebar.is-collapsed .brand-title { display: none; }
-  .sidebar.is-collapsed .nav-item span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
-  .sidebar.is-collapsed .nav-item.active::before { left: 24%; right: 24%; top: auto; bottom: 3px; width: auto; height: 3px; }
-  .sidebar.is-collapsed .account-trigger { flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 56px; padding: 6px 4px; }
-  .sidebar.is-collapsed .account-trigger-label { display: none; }
-  .sidebar.is-collapsed .account-trigger-label-mobile { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
-  .app-shell.sidebar-collapsed,
-  .app-shell.sidebar-collapsed.agent-open { display: block; }
 }
 
 @media (max-width: 380px) {
-  .sidebar { gap: 4px; padding-right: max(8px, env(safe-area-inset-right)); padding-left: max(8px, env(safe-area-inset-left)); }
+  .sidebar { gap: 2px; padding-right: max(8px, env(safe-area-inset-right)); padding-left: max(8px, env(safe-area-inset-left)); }
   .sidebar-nav { gap: 2px; }
   .nav-item,
   .account-trigger { padding-right: 2px; padding-left: 2px; }
   .nav-item,
   .account-trigger-label-mobile { font-size: 9.5px; }
-  .account-trigger { width: 50px; }
-  .sidebar.is-collapsed .account-trigger { width: 50px; }
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { api } from "./lib/api";
-import { clearSession, getToken, getUser, listenForAuth, startGoogleLogin, type SessionUser } from "./lib/auth";
+import { clearSession, getToken, getUser, isAndroidTauri, listenForAuth, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
@@ -452,6 +452,21 @@ export function App() {
   async function googleLogin() {
     setAuthError("");
     try {
+      // On Android, prefer the system account picker; fall back to the
+      // browser OAuth flow when native sign-in is unavailable.
+      if (isAndroidTauri()) {
+        try {
+          const nativeUser = await startNativeGoogleLogin();
+          if (nativeUser) {
+            handleAuthenticated(nativeUser);
+            return;
+          }
+          // Dismissed picker: stay on the account screen, no error.
+          if (nativeUser === null) return;
+        } catch {
+          console.warn("Prior native Google sign-in unavailable, falling back to browser.");
+        }
+      }
       await startGoogleLogin();
       setAuthOpen(false);
     } catch {
@@ -509,6 +524,7 @@ export function App() {
 
       <AgentSidebar
         open={agentOpen}
+        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}
         onClose={() => setAgentOpen(false)}
         tasks={tasks}
         habits={habits}

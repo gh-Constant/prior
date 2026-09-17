@@ -1,5 +1,6 @@
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { invoke } from "@tauri-apps/api/core";
 import { API_URL, api } from "./api";
 import { getSecret, removeSecret, setSecret } from "./secureStore";
 
@@ -65,6 +66,23 @@ export async function startGoogleLogin(): Promise<void> {
   const url = `${API_URL}/auth/google/start?return_to=${returnTo}`;
   if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) await openUrl(url);
   else window.location.href = url;
+}
+
+export function isAndroidTauri(): boolean {
+  return typeof window !== "undefined" &&
+    "__TAURI_INTERNALS__" in window &&
+    navigator.userAgent.toLowerCase().includes("android");
+}
+
+// Native Android sign-in via the system account picker. Returns the
+// authenticated user, null when the user dismisses the picker, and throws
+// when native sign-in is unavailable so the caller can fall back to the
+// browser OAuth flow.
+export async function startNativeGoogleLogin(): Promise<SessionUser | null> {
+  const raw = await invoke<unknown>("google_sign_in");
+  const idToken = typeof raw === "string" ? raw : (raw as { idToken?: unknown } | null)?.idToken;
+  if (typeof idToken !== "string" || !idToken) return null;
+  return saveSession(await api.googleNative(idToken));
 }
 
 async function finish(url: string, handledCodes: Set<string>): Promise<SessionUser | null> {

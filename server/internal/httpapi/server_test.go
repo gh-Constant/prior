@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAuthExchangePreflight(t *testing.T) {
@@ -92,4 +93,16 @@ func TestRenderAuthCallbackPage(t *testing.T) {
 			t.Fatalf("body missing error message: %s", body)
 		}
 	})
+}
+
+func TestGoogleNativeRequiresToken(t *testing.T) {
+	server := &Server{limiter: newRateLimiter(20, time.Minute)}
+	for _, body := range []string{`{}`, `{"id_token":""}`, `not-json`} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/auth/google/native", strings.NewReader(body))
+		response := httptest.NewRecorder()
+		server.googleNative(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("body %q: expected status 400, got %d", body, response.Code)
+		}
+	}
 }

@@ -61,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/register", s.register)
 	mux.HandleFunc("POST /v1/auth/login", s.login)
 	mux.HandleFunc("POST /v1/auth/exchange", s.exchange)
+	mux.HandleFunc("POST /v1/auth/google/native", s.googleNative)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/me", s.me)
 	mux.HandleFunc("GET /v1/agent/chats", s.listAgentChats)
@@ -484,6 +485,28 @@ func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, user, err := s.auth.Exchange(r.Context(), body.Code, body.Device, body.Platform)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
+}
+
+func (s *Server) googleNative(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(clientKey(r)) {
+		writeError(w, http.StatusTooManyRequests, errors.New("too many authentication attempts"))
+		return
+	}
+	var body struct {
+		IDToken  string `json:"id_token"`
+		Device   string `json:"device"`
+		Platform string `json:"platform"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.IDToken == "" {
+		writeError(w, http.StatusBadRequest, errors.New("Google ID token is required"))
+		return
+	}
+	token, user, err := s.auth.VerifyNativeIDToken(r.Context(), body.IDToken, body.Device, body.Platform)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, err)
 		return
