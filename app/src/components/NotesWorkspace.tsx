@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { notesStore, type Note, type NoteAttachment, type NoteFolder } from "../lib/notes";
+import { applySlashInsert, filterSlashCommands, matchSlashToken, type SlashCommand } from "../lib/noteSlash";
 import "./NotesWorkspace.css";
 import "katex/dist/katex.min.css";
 
@@ -95,15 +96,40 @@ function renderMarkdown(source: string, attachments: Record<string, string>, att
 
 function folderChildren(folders: NoteFolder[], parentId: string | null): NoteFolder[] { return folders.filter((folder) => folder.parentId === parentId); }
 
+function caretMenuPosition(textarea: HTMLTextAreaElement, pos: number): { top: number; left: number } {
+  const mirror = document.createElement("div");
+  const style = window.getComputedStyle(textarea);
+  for (const property of ["fontFamily", "fontSize", "fontWeight", "letterSpacing", "lineHeight", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "whiteSpace", "wordWrap", "overflowWrap", "tabSize"] as const) {
+    mirror.style[property] = style[property];
+  }
+  mirror.style.position = "absolute";
+  mirror.style.visibility = "hidden";
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.wordWrap = "break-word";
+  mirror.style.width = `${textarea.clientWidth}px`;
+  mirror.textContent = textarea.value.slice(0, pos);
+  const marker = document.createElement("span");
+  marker.textContent = "​";
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+  const lineHeight = Number.parseFloat(style.lineHeight) || 24;
+  const position = {
+    top: Math.min(marker.offsetTop - textarea.scrollTop + lineHeight + 4, textarea.clientHeight - 40),
+    left: Math.min(marker.offsetLeft - textarea.scrollLeft + Number.parseFloat(style.borderLeftWidth || "0"), textarea.clientWidth - 272),
+  };
+  document.body.removeChild(mirror);
+  return { top: Math.max(0, position.top), left: Math.max(0, position.left) };
+}
+
 function FolderTree({ folders, notes, parentId, selectedId, onSelect, onNewFolder, onRenameFolder }: { folders: NoteFolder[]; notes: Note[]; parentId: string | null; selectedId: string | null; onSelect: (note: Note) => void; onNewFolder: (parentId: string | null) => void; onRenameFolder: (folder: NoteFolder) => void }) {
   const children = folderChildren(folders, parentId);
   const notesInFolder = notes.filter((note) => note.folderId === parentId);
   return <>
     {children.map((folder) => <div className="note-folder-group" key={folder.id}>
-      <div className="note-folder-row" onDoubleClick={() => onRenameFolder(folder)}><Icon name="chevron-down" /><span>▱</span><strong>{folder.name}</strong><button type="button" aria-label={`New subfolder in ${folder.name}`} title="New subfolder" onClick={() => onNewFolder(folder.id)}><Icon name="plus" /></button></div>
+      <div className="note-folder-row" onDoubleClick={() => onRenameFolder(folder)}><Icon name="chevron-down" /><Icon name="folder" /><strong>{folder.name}</strong><button type="button" aria-label={`New subfolder in ${folder.name}`} title="New subfolder" onClick={() => onNewFolder(folder.id)}><Icon name="plus" /></button></div>
       <FolderTree folders={folders} notes={notes} parentId={folder.id} selectedId={selectedId} onSelect={onSelect} onNewFolder={onNewFolder} onRenameFolder={onRenameFolder} />
     </div>)}
-    {notesInFolder.map((note) => <button type="button" className={`note-file-row ${selectedId === note.id ? "active" : ""}`} key={note.id} onClick={() => onSelect(note)}><span className="note-file-icon">{note.favorite ? "★" : "·"}</span><span>{note.title}</span></button>)}
+    {notesInFolder.map((note) => <button type="button" className={`note-file-row ${selectedId === note.id ? "active" : ""}`} key={note.id} onClick={() => onSelect(note)}><span className="note-file-icon">{note.favorite ? <Icon name="star" /> : <Icon name="file" />}</span><span>{note.title}</span></button>)}
   </>;
 }
 
@@ -144,10 +170,11 @@ export function NotesWorkspace({ onOpenNote }: NotesWorkspaceProps) {
   const [explorerOpen, setExplorerOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState("Saved locally");
+  const [slash, setSlash] = useState<{ query: string; start: number } | null>(null);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [slashPos, setSlashPos] = useState({ top: 0, left: 0 });
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const renderedRef = useRef<HTMLDivElement>(null);
-  const importRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const selected = notes.find((note) => note.id === selectedId) ?? null;
 
@@ -212,12 +239,35 @@ export function NotesWorkspace({ onOpenNote }: NotesWorkspaceProps) {
   function trashSelected(): void { if (!selected || !window.confirm(`Move “${selected.title}” to Trash?`)) return; notesStore.trash(selected.id); setOpenIds((current) => current.filter((id) => id !== selected.id)); setSelectedId(notes[0]?.id ?? null); setNotes(notesStore.list()); }
   function updateBody(body: string): void {
     if (!selected) return;
-    setStatus("Saving…");
     setNotes((current) => current.map((note) => note.id === selected.id ? { ...note, body, updatedAt: new Date().toISOString() } : note));
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => { const latest = notesStore.list().find((note) => note.id === selected.id); if (latest) notesStore.update({ ...latest, body }); setStatus("Saved locally"); }, 450);
+    saveTimer.current = window.setTimeout(() => { const latest = notesStore.list().find((note) => note.id === selected.id); if (latest) notesStore.update({ ...latest, body }); }, 450);
   }
   function closeTab(id: string): void { setOpenIds((current) => current.filter((item) => item !== id)); if (selectedId === id) setSelectedId(openIds.find((item) => item !== id) ?? visibleNotes[0]?.id ?? null); }
+  const slashOptions = useMemo(() => (slash ? filterSlashCommands(slash.query) : []), [slash]);
+  function refreshSlash(body: string, caret: number): void {
+    if (mode === "reading") { setSlash(null); return; }
+    const token = matchSlashToken(body, caret);
+    if (!token) { setSlash(null); return; }
+    setSlash(token);
+    setSlashIndex(0);
+    if (editorRef.current) setSlashPos(caretMenuPosition(editorRef.current, token.start));
+  }
+  function chooseSlashCommand(command: SlashCommand): void {
+    if (!selected || !slash || !editorRef.current) return;
+    const caret = editorRef.current.selectionStart ?? selected.body.length;
+    const next = applySlashInsert(selected.body, caret, slash.start, command);
+    setSlash(null);
+    updateBody(next.body);
+    requestAnimationFrame(() => { editorRef.current?.focus(); editorRef.current?.setSelectionRange(next.caret, next.caret); });
+  }
+  function onEditorKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    if (!slash || slashOptions.length === 0) return;
+    if (event.key === "ArrowDown") { event.preventDefault(); setSlashIndex((index) => (index + 1) % slashOptions.length); }
+    else if (event.key === "ArrowUp") { event.preventDefault(); setSlashIndex((index) => (index - 1 + slashOptions.length) % slashOptions.length); }
+    else if (event.key === "Enter" || event.key === "Tab") { event.preventDefault(); chooseSlashCommand(slashOptions[slashIndex] ?? slashOptions[0]); }
+    else if (event.key === "Escape") { event.preventDefault(); setSlash(null); }
+  }
   async function addFiles(files: FileList | null): Promise<void> {
     if (!files?.length || !selected) return;
     let inserted = selected.body;
@@ -225,7 +275,7 @@ export function NotesWorkspace({ onOpenNote }: NotesWorkspaceProps) {
       const id = `att-${typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : Date.now()}`;
       const meta: NoteAttachment = { id, name: file.name, type: file.type || "application/octet-stream", size: file.size };
       try { await notesStore.saveAttachment(meta, file); const url = URL.createObjectURL(file); setAttachmentUrls((current) => ({ ...current, [id]: url })); inserted += `\n![${file.name}](attachment://${id})\n`; }
-      catch { setStatus("Could not save attachment"); }
+      catch { /* attachment unavailable - the note text still saves */ }
     }
     if (inserted !== selected.body) updateBody(inserted);
   }
@@ -233,23 +283,22 @@ export function NotesWorkspace({ onOpenNote }: NotesWorkspaceProps) {
     if (!selected) return;
     const blob = new Blob([selected.body], { type: "text/markdown;charset=utf-8" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${selected.title.replace(/[^\w\- ]/g, "").trim() || "note"}.md`; link.click(); URL.revokeObjectURL(url);
   }
-  async function importNote(file: File | undefined): Promise<void> { if (!file) return; const body = await file.text(); const note = notesStore.create(file.name.replace(/\.md$/i, ""), folderFilter && folderFilter !== "favorites" ? folderFilter : null); notesStore.update({ ...note, body }); setNotes(notesStore.list()); selectNote({ ...note, body }); }
   function onRenderedClick(event: React.MouseEvent<HTMLDivElement>): void { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-note]"); if (!target) return; const linked = notes.find((note) => note.title.toLowerCase() === target.dataset.note?.toLowerCase()); if (linked) selectNote(linked); else { const created = notesStore.create(target.dataset.note ?? "Untitled note", selected?.folderId ?? null); setNotes(notesStore.list()); selectNote(created); } }
 
   return <section className={`notes-workspace ${libraryOpen ? "" : "library-collapsed"}`} aria-label="Notes">
     <aside className={`notes-explorer ${explorerOpen ? "mobile-open" : ""}`}>
-      <div className="notes-explorer-header"><div><span className="notes-eyebrow">YOUR LIBRARY</span><h2>Notes</h2></div><div className="notes-explorer-header-actions"><button type="button" className="notes-icon-button" title="New note" aria-label="New note" onClick={newNote}><Icon name="plus" /></button><button type="button" className="notes-icon-button notes-mobile-close" title="Close library" aria-label="Close library" onClick={() => setExplorerOpen(false)}><Icon name="close" /></button></div></div>
+      <div className="notes-explorer-header"><div><span className="notes-eyebrow">YOUR LIBRARY</span><h2>Notes</h2></div><div className="notes-explorer-header-actions"><button type="button" className="notes-icon-button" title="Collapse library" aria-label="Collapse library" onClick={() => { setLibraryOpen(false); setExplorerOpen(false); }}><Icon name="chevron-left" /></button><button type="button" className="notes-icon-button" title="New note" aria-label="New note" onClick={newNote}><Icon name="plus" /></button><button type="button" className="notes-icon-button notes-mobile-close" title="Close library" aria-label="Close library" onClick={() => setExplorerOpen(false)}><Icon name="close" /></button></div></div>
       <div className="notes-search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes" aria-label="Search notes" /></div>
       <div className="notes-explorer-actions"><button type="button" onClick={() => setFolderFilter(null)} className={!folderFilter ? "active" : ""}>All notes</button><button type="button" onClick={() => setFolderFilter("favorites")} className={folderFilter === "favorites" ? "active" : ""}>Favorites</button></div>
-      <div className="notes-tree" role="tree"><div className="note-folder-row root"><span>⌄</span><span>▱</span><strong>Library</strong><button type="button" aria-label="New folder" title="New folder" onClick={() => newFolder(null)}><Icon name="plus" /></button></div>{folderFilter === "favorites" ? notes.filter((note) => note.favorite).map((note) => <button type="button" className={`note-file-row ${selectedId === note.id ? "active" : ""}`} key={note.id} onClick={() => selectNote(note)}><span className="note-file-icon">★</span><span>{note.title}</span></button>) : <FolderTree folders={folders} notes={visibleNotes} parentId={null} selectedId={selectedId} onSelect={selectNote} onNewFolder={newFolder} onRenameFolder={renameFolder} />}</div>
-      <div className="notes-explorer-footer"><button type="button" onClick={() => importRef.current?.click()}><Icon name="download" />Import Markdown</button><button type="button" onClick={() => { const trash = notesStore.listTrash(); if (!trash.length) { window.alert("Trash is empty"); return; } const note = trash[0]; if (window.confirm(`Restore “${note.title}”?`)) { notesStore.restore(note.id); setNotes(notesStore.list()); } }}>Trash</button><input ref={importRef} type="file" accept=".md,.markdown,text/markdown" hidden onChange={(event) => { void importNote(event.target.files?.[0]); event.currentTarget.value = ""; }} /></div>
+      <div className="notes-tree" role="tree"><div className="note-folder-row root"><Icon name="chevron-down" /><Icon name="folder" /><strong>Library</strong><button type="button" aria-label="New folder" title="New folder" onClick={() => newFolder(null)}><Icon name="plus" /></button></div>{folderFilter === "favorites" ? notes.filter((note) => note.favorite).map((note) => <button type="button" className={`note-file-row ${selectedId === note.id ? "active" : ""}`} key={note.id} onClick={() => selectNote(note)}><span className="note-file-icon"><Icon name="star" /></span><span>{note.title}</span></button>) : <FolderTree folders={folders} notes={visibleNotes} parentId={null} selectedId={selectedId} onSelect={selectNote} onNewFolder={newFolder} onRenameFolder={renameFolder} />}</div>
     </aside>
+    {!libraryOpen && <aside className="notes-rail" aria-label="Library collapsed"><button type="button" className="notes-icon-button" title="Expand library" aria-label="Expand library" onClick={() => setLibraryOpen(true)}><Icon name="chevron-right" /></button><button type="button" className="notes-icon-button" title="New note" aria-label="New note" onClick={newNote}><Icon name="plus" /></button></aside>}
       <div className="notes-main">
-      <div className="notes-tabs" role="tablist">{openIds.map((id) => { const note = notes.find((item) => item.id === id); if (!note) return null; return <button type="button" role="tab" aria-selected={selectedId === note.id} className={`notes-tab ${selectedId === note.id ? "active" : ""}`} key={id} onClick={() => setSelectedId(id)}><span>{note.favorite ? "★" : "·"}</span>{note.title}<span className="notes-tab-close" onClick={(event) => { event.stopPropagation(); closeTab(id); }}>×</span></button>; })}<button type="button" className="notes-tab-add" aria-label="New note" onClick={newNote}><Icon name="plus" /></button></div>
-      {selected ? <><div className="notes-toolbar"><div className="notes-breadcrumb"><button type="button" className="notes-files-toggle" aria-label="Toggle Library" aria-expanded={libraryOpen} onClick={() => { setLibraryOpen((open) => { const next = !open; setExplorerOpen(next); return next; }); }}>Library</button><span>{folders.find((folder) => folder.id === selected.folderId)?.name ?? "Library"}</span><span>/</span><strong>{selected.title}</strong></div><div className="notes-toolbar-actions"><button type="button" className={mode === "live" ? "active" : ""} onClick={() => setMode("live")}>Live</button><button type="button" className={mode === "source" ? "active" : ""} onClick={() => setMode("source")}>Source</button><button type="button" className={mode === "reading" ? "active" : ""} onClick={() => setMode("reading")}>Read</button><span className="notes-toolbar-separator" /><button type="button" title="Move note" onClick={moveSelected}>Move</button><button type="button" title="Attach image or video" aria-label="Attach image or video" onClick={() => document.getElementById("notes-attachment-input")?.click()}>＋</button><input id="notes-attachment-input" type="file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = ""; }} /><button type="button" title="Export Markdown" aria-label="Export Markdown" onClick={exportNote}><Icon name="download" /></button><button type="button" title="Move note to Trash" aria-label="Move note to Trash" onClick={trashSelected}><Icon name="trash" /></button><button type="button" title="Open linked note graph" aria-label="Open linked note graph" onClick={() => setGraphOpen(true)}><Icon name="grid" /></button><button type="button" title="Toggle inspector" aria-label="Toggle inspector" className={inspectorOpen ? "active" : ""} onClick={() => setInspectorOpen((open) => !open)}><Icon name="columns" /></button></div></div><div className="notes-title-row"><input value={selected.title} aria-label="Note title" onChange={(event) => { const title = event.target.value; setNotes((current) => current.map((note) => note.id === selected.id ? { ...note, title } : note)); }} onBlur={() => { const latest = notes.find((note) => note.id === selected.id); if (latest) notesStore.update(latest); }} /><button type="button" className={`note-favorite ${selected.favorite ? "active" : ""}`} aria-label="Favorite note" onClick={() => { const saved = notesStore.update({ ...selected, favorite: !selected.favorite }); setNotes(notesStore.list()); setSelectedId(saved.id); }}><Icon name="star" /></button></div><div className={`notes-editor-layout ${inspectorOpen ? "with-inspector" : ""}`}>
-        {mode === "reading" ? <div ref={renderedRef} className="notes-reading" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(selected.body, currentAttachments, currentAttachmentTypes) }} /> : <div className={`notes-editor-pair ${mode === "source" ? "source-only" : ""}`}><div className="notes-editor-pane"><textarea ref={editorRef} value={selected.body} onChange={(event) => updateBody(event.target.value)} spellCheck aria-label="Markdown editor" placeholder="Start writing…" /></div>{mode === "live" && <div ref={renderedRef} className="notes-preview-pane" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(selected.body, currentAttachments, currentAttachmentTypes) }} />}</div>}
+      <div className="notes-tabs" role="tablist">{openIds.map((id) => { const note = notes.find((item) => item.id === id); if (!note) return null; return <button type="button" role="tab" aria-selected={selectedId === note.id} className={`notes-tab ${selectedId === note.id ? "active" : ""}`} key={id} onClick={() => setSelectedId(id)}><span className="notes-tab-icon">{note.favorite ? <Icon name="star" /> : <Icon name="file" />}</span><span className="notes-tab-title">{note.title}</span><span className="notes-tab-close" onClick={(event) => { event.stopPropagation(); closeTab(id); }}>×</span></button>; })}<button type="button" className="notes-tab-add" aria-label="New note" onClick={newNote}><Icon name="plus" /></button></div>
+      {selected ? <><div className="notes-toolbar"><div className="notes-breadcrumb"><button type="button" className="notes-files-toggle" aria-label="Toggle Library" aria-expanded={libraryOpen} onClick={() => { setLibraryOpen((open) => { const next = !open; setExplorerOpen(next); return next; }); }}>Library</button><span>{folders.find((folder) => folder.id === selected.folderId)?.name ?? "Library"}</span><span>/</span><strong>{selected.title}</strong></div><div className="notes-toolbar-actions"><button type="button" className={mode === "live" ? "active" : ""} onClick={() => setMode("live")}>Live</button><button type="button" className={mode === "source" ? "active" : ""} onClick={() => setMode("source")}>Source</button><button type="button" className={mode === "reading" ? "active" : ""} onClick={() => setMode("reading")}>Read</button><span className="notes-toolbar-separator" /><button type="button" title="Move note" onClick={moveSelected}>Move</button><button type="button" title="Attach image or video" aria-label="Attach image or video" onClick={() => document.getElementById("notes-attachment-input")?.click()}><Icon name="plus" /></button><input id="notes-attachment-input" type="file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = ""; }} /><button type="button" title="Export Markdown" aria-label="Export Markdown" onClick={exportNote}><Icon name="download" /></button><button type="button" title="Move note to Trash" aria-label="Move note to Trash" onClick={trashSelected}><Icon name="trash" /></button><button type="button" title="Open linked note graph" aria-label="Open linked note graph" onClick={() => setGraphOpen(true)}><Icon name="grid" /></button><button type="button" title="Toggle inspector" aria-label="Toggle inspector" className={inspectorOpen ? "active" : ""} onClick={() => setInspectorOpen((open) => !open)}><Icon name="columns" /></button></div></div><div className="notes-title-row"><input value={selected.title} aria-label="Note title" onChange={(event) => { const title = event.target.value; setNotes((current) => current.map((note) => note.id === selected.id ? { ...note, title } : note)); }} onBlur={() => { const latest = notes.find((note) => note.id === selected.id); if (latest) notesStore.update(latest); }} /><button type="button" className={`note-favorite ${selected.favorite ? "active" : ""}`} aria-label="Favorite note" onClick={() => { const saved = notesStore.update({ ...selected, favorite: !selected.favorite }); setNotes(notesStore.list()); setSelectedId(saved.id); }}><Icon name="star" /></button></div><div className={`notes-editor-layout ${inspectorOpen ? "with-inspector" : ""}`}>
+        {mode === "reading" ? <div ref={renderedRef} className="notes-reading" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(selected.body, currentAttachments, currentAttachmentTypes) }} /> : <div className={`notes-editor-pair ${mode === "source" ? "source-only" : ""}`}><div className="notes-editor-pane"><textarea ref={editorRef} value={selected.body} onChange={(event) => { updateBody(event.target.value); refreshSlash(event.target.value, event.target.selectionStart ?? event.target.value.length); }} onKeyDown={onEditorKeyDown} onClick={(event) => refreshSlash(event.currentTarget.value, event.currentTarget.selectionStart ?? 0)} onKeyUp={(event) => { if (!["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) refreshSlash(event.currentTarget.value, event.currentTarget.selectionStart ?? 0); }} spellCheck aria-label="Markdown editor" placeholder="Start writing… Type / for blocks" />{slash && slashOptions.length > 0 && <div className="notes-slash-menu" role="listbox" aria-label="Insert block" style={{ top: slashPos.top, left: slashPos.left }}>{slashOptions.map((command, index) => <button key={command.id} type="button" role="option" aria-selected={index === slashIndex} className={index === slashIndex ? "active" : ""} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseSlashCommand(command)} onMouseEnter={() => setSlashIndex(index)}><strong>{command.label}</strong><small>{command.hint}</small></button>)}</div>}</div>{mode === "live" && <div ref={renderedRef} className="notes-preview-pane" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(selected.body, currentAttachments, currentAttachmentTypes) }} />}</div>}
         {inspectorOpen && <aside className="notes-inspector"><div><span className="notes-inspector-label">OUTLINE</span>{headings.length ? headings.map((heading) => <button type="button" key={heading}>{heading}</button>) : <p>No headings yet</p>}</div><div><span className="notes-inspector-label">BACKLINKS</span>{backlinks.length ? backlinks.map((note) => <button type="button" key={note.id} onClick={() => selectNote(note)}>{note.title}</button>) : <p>No backlinks</p>}</div><div><span className="notes-inspector-label">DETAILS</span><p>{selected.body.trim().split(/\s+/).filter(Boolean).length} words</p><p>Edited {new Date(selected.updatedAt).toLocaleDateString()}</p></div></aside>}
-      </div><div className="notes-status"><span className="notes-status-dot" />{status}<span>Markdown</span></div>{graphOpen && <NoteGraph notes={notes} selected={selected} onSelect={(note) => { selectNote(note); setGraphOpen(false); }} onClose={() => setGraphOpen(false)} />}</> : <div className="notes-empty"><div className="notes-empty-mark">✦</div><h2>Your thinking space</h2><p>Create a note to capture an idea, plan a project, or connect a thought.</p><button type="button" className="primary-button" onClick={newNote}><Icon name="plus" />New note</button></div>}
+      </div>{graphOpen && <NoteGraph notes={notes} selected={selected} onSelect={(note) => { selectNote(note); setGraphOpen(false); }} onClose={() => setGraphOpen(false)} />}</> : <div className="notes-empty"><div className="notes-empty-mark"><Icon name="file-text" /></div><h2>Your thinking space</h2><p>Create a note to capture an idea, plan a project, or connect a thought.</p><button type="button" className="primary-button" onClick={newNote}><Icon name="plus" />New note</button></div>}
     </div>
   </section>;
 }

@@ -35,7 +35,9 @@ export type IconName =
   | "chevron-down"
   | "microphone"
   | "stop"
-  | "file-text";
+  | "file-text"
+  | "folder"
+  | "file";
 
 const calendarCheckPath = Array.isArray(faCalendarCheck.icon[4])
   ? faCalendarCheck.icon[4].join(" ")
@@ -78,6 +80,8 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconN
     microphone: <><rect x="8" y="3" width="8" height="12" rx="4" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" /></>,
     stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
     "file-text": <><path d="M6 3.5h8l4 4V20.5H6z" /><path d="M14 3.5v4h4M9 12h6M9 16h6" /></>,
+    folder: <path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h5l2 2.5h7A1.5 1.5 0 0 1 20.5 9v8.5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17.5Z" />,
+    file: <><path d="M6.5 3.5h7l4 4v13h-11Z" /><path d="M13.5 3.5v4h4" /></>,
   };
   return <svg aria-hidden="true" {...common}>{paths[name]}</svg>;
 }
