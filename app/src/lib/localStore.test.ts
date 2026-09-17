@@ -49,6 +49,12 @@ describe("localStore browser fallback", () => {
     expect(typeof tasks[0].urgent).toBe("boolean");
   });
 
+  it("persists work-hub context and waiting details with a task", async () => {
+    const task = await localStore.saveTask({ title: "Send the brief", areaId: "area-1", projectId: "project-1", status: "waiting", assigneeName: "Alex", followUpDate: "2026-09-22", important: true, urgent: false });
+    expect(task).toMatchObject({ areaId: "area-1", projectId: "project-1", status: "waiting", assigneeName: "Alex", followUpDate: "2026-09-22" });
+    expect((await localStore.listTasks())[0]).toMatchObject({ projectId: "project-1", status: "waiting" });
+  });
+
   it("resets sync revision back to 0", async () => {
     await localStore.setSyncRevision(42);
     expect((await localStore.getSyncState()).lastServerRevision).toBe(42);

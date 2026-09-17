@@ -145,6 +145,8 @@ svg { display: block; flex-shrink: 0; }
 .task-description { margin: 2px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 .task-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px; min-height: 18px; color: var(--muted); font-size: 10px; }
 .task-priority, .task-due-date { display: inline-flex; align-items: center; gap: 4px; min-height: 18px; padding: 0 6px; border-radius: 5px; background: #f2f0ec; color: #716b62; font-weight: 650; }
+.task-status-meta, .task-assignee-meta { display: inline-flex; align-items: center; min-height: 18px; max-width: 150px; overflow: hidden; padding: 0 6px; border-radius: 5px; background: #eef1f5; color: #687588; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.task-assignee-meta { background: #f1eee9; color: #796b5d; }
 .task-priority.priority-1 { background: #ffe8e3; color: #b43f2c; }
 .task-priority.priority-2 { background: #fff1df; color: #996122; }
 .task-priority.priority-3 { background: #edf3e8; color: #53714d; }
@@ -255,6 +257,15 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
 .composer-mark { color: var(--accent); }
 .composer-mark svg { width: 18px; height: 18px; }
 .composer-input-row input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 16px; }
+.task-destination-fields { display: grid; grid-template-columns: 1fr 1.35fr; gap: 10px; margin: 14px 24px 0; }
+.task-destination-fields .field, .task-advanced-grid .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 42px; padding: 0 11px; border: 1px solid var(--line); border-radius: 9px; background: #faf9f7; }
+.task-destination-fields .field > span, .task-advanced-grid .field > span { padding-top: 7px; color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.task-destination-fields select, .task-advanced-grid select, .task-advanced-grid input { width: 100%; min-width: 0; min-height: 25px; padding: 0 0 6px; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 12px; }
+.task-advanced-options { margin: 14px 24px 0; border-top: 1px solid var(--line); color: var(--muted); }
+.task-advanced-options summary { padding: 12px 0 3px; cursor: pointer; font-size: 11px; font-weight: 650; list-style-position: inside; }
+.task-advanced-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 7px 0 1px; }
+.task-advanced-grid .field { padding-left: 9px; padding-right: 9px; }
+@media (max-width: 560px) { .task-destination-fields, .task-advanced-grid { grid-template-columns: 1fr; } }
 .composer-description { display: block; width: calc(100% - 48px); min-height: 74px; margin: 12px 24px 0; padding: 12px; resize: vertical; border: 1px solid var(--line); border-radius: 9px; outline: 0; background: #faf9f7; color: var(--ink); font-size: 13px; line-height: 1.5; }
 .composer-description:focus { border-color: #f29985; box-shadow: 0 0 0 3px #fa654a0b; }
 .composer-description::placeholder { color: #a39d94; }
@@ -323,8 +334,9 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
   .app-shell { display: block; }
   .sidebar { position: fixed; inset: auto 0 0; z-index: 10; width: 100%; height: auto; flex-direction: row; align-items: stretch; gap: 4px; padding: 8px max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); border-top: 1px solid #ffffff12; }
   .sidebar-brand { display: none; }
-  /* 4 nav tabs (flex 4) + account tab (flex 1) = 5 exactly equal tabs. */
-  .sidebar-nav { flex: 4 1 0; min-width: 0; flex-direction: row; gap: 4px; }
+  /* Keep the mobile bar focused: Today, Inbox, Projects, Habits, Notes + account. */
+  .sidebar-nav { flex: 5 1 0; min-width: 0; flex-direction: row; gap: 4px; }
+  .sidebar-nav .nav-item[data-view="all"], .sidebar-nav .nav-item[data-view="waiting"], .sidebar-nav .nav-item[data-view="eisenhower"] { display: none; }
   .nav-item { flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 54px; padding: 6px 4px; font-size: 10px; font-weight: 600; line-height: 1.2; letter-spacing: .01em; }
   .nav-item svg { width: 20px; height: 20px; margin: 0; }
   .nav-item span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }

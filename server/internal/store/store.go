@@ -666,6 +666,22 @@ func normalizeTaskDueDate(task *tasks.Task) error {
 	return nil
 }
 
+func normalizeOptionalTaskDate(value **string, field string) error {
+	if *value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(**value)
+	if trimmed == "" {
+		*value = nil
+		return nil
+	}
+	if _, err := time.Parse(isoDateLayout, trimmed); err != nil {
+		return fmt.Errorf("invalid task %s", field)
+	}
+	*value = &trimmed
+	return nil
+}
+
 func validateTask(task *tasks.Task) error {
 	if len(task.Title) == 0 || len(task.Title) > 400 {
 		return fmt.Errorf("task title must be between 1 and 400 characters")
@@ -675,6 +691,21 @@ func validateTask(task *tasks.Task) error {
 	}
 	if err := normalizeTaskDueDate(task); err != nil {
 		return err
+	}
+	if err := normalizeOptionalTaskDate(&task.ScheduledDate, "scheduled date"); err != nil {
+		return err
+	}
+	if err := normalizeOptionalTaskDate(&task.FollowUpDate, "follow-up date"); err != nil {
+		return err
+	}
+	if task.Status == "" {
+		task.Status = "inbox"
+	}
+	if task.Status != "inbox" && task.Status != "next" && task.Status != "in_progress" && task.Status != "waiting" && task.Status != "done" {
+		return errors.New("invalid task status")
+	}
+	if task.Completed {
+		task.Status = "done"
 	}
 	if task.Priority == 0 {
 		task.Priority = 4
@@ -701,17 +732,19 @@ func applyTaskMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutatio
 
 func insertTaskRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, createdAt, updatedAt time.Time) error {
 	_, err := mc.tx.Exec(mc.ctx, `
-			INSERT INTO tasks (id, user_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			INSERT INTO tasks (id, user_id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, revision)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date,
-			 priority = EXCLUDED.priority, completed = EXCLUDED.completed, important = EXCLUDED.important, urgent = EXCLUDED.urgent,
+			 priority = EXCLUDED.priority, area_id = EXCLUDED.area_id, project_id = EXCLUDED.project_id, status = EXCLUDED.status,
+			 scheduled_date = EXCLUDED.scheduled_date, assignee_name = EXCLUDED.assignee_name, follow_up_date = EXCLUDED.follow_up_date,
+			 completed = EXCLUDED.completed, important = EXCLUDED.important, urgent = EXCLUDED.urgent,
 			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
-			WHERE tasks.user_id = EXCLUDED.user_id`, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision)
+			WHERE tasks.user_id = EXCLUDED.user_id`, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.AssigneeName, task.FollowUpDate, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision)
 	return err
 }
 
 func insertTaskChangeRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, createdAt, updatedAt time.Time) error {
-	_, err := mc.tx.Exec(mc.ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, mc.revision, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt)
+	_, err := mc.tx.Exec(mc.ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`, mc.revision, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.AssigneeName, task.FollowUpDate, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt)
 	return err
 }
 
@@ -759,7 +792,7 @@ func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) ([]task
 
 func pullTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, since int64) ([]tasks.Task, int64, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT id::text, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		SELECT id::text, title, description, due_date, priority, area_id::text, project_id::text, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, revision
 		FROM tasks WHERE user_id = $1 AND revision > $2 ORDER BY revision ASC, id`, userID, since)
 	if err != nil {
 		return nil, since, err
@@ -769,7 +802,7 @@ func pullTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, since 
 	var latest int64 = since
 	for rows.Next() {
 		var task tasks.Task
-		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.Priority, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
+		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.AssigneeName, &task.FollowUpDate, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
 			return nil, since, err
 		}
 		if task.ServerRevision > latest {

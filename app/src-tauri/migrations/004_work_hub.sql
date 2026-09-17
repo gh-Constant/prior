@@ -1,0 +1,6 @@
+ALTER TABLE tasks ADD COLUMN area_id TEXT;
+ALTER TABLE tasks ADD COLUMN project_id TEXT;
+ALTER TABLE tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'inbox';
+ALTER TABLE tasks ADD COLUMN scheduled_date TEXT;
+ALTER TABLE tasks ADD COLUMN assignee_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN follow_up_date TEXT;

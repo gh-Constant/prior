@@ -3,7 +3,7 @@ import { BrandMark } from "./BrandMark";
 import { Icon } from "./Icon";
 import "./AppSidebar.css";
 
-export type WorkspaceView = "eisenhower" | "all" | "habits" | "notes";
+export type WorkspaceView = "today" | "inbox" | "projects" | "project" | "all" | "waiting" | "eisenhower" | "habits" | "notes";
 
 type AppSidebarProps = {
   readonly activeView: WorkspaceView;
@@ -15,11 +15,10 @@ type AppSidebarProps = {
   readonly onToggle: () => void;
 };
 
-const NAV_ITEMS: Array<{ view: WorkspaceView; label: string; icon: "inbox" | "grid" | "calendar-check" | "file-text" }> = [
-  { view: "all", label: "All tasks", icon: "inbox" },
-  { view: "eisenhower", label: "Eisenhower", icon: "grid" },
-  { view: "habits", label: "Habits", icon: "calendar-check" },
-  { view: "notes", label: "Notes", icon: "file-text" },
+const NAV_GROUPS: Array<{ label: string; items: Array<{ view: WorkspaceView; label: string; icon: "inbox" | "grid" | "calendar-check" | "file-text" | "folder" | "focus" | "later" }> }> = [
+  { label: "Focus", items: [{ view: "today", label: "Today", icon: "focus" }, { view: "inbox", label: "Inbox", icon: "inbox" }] },
+  { label: "Organize", items: [{ view: "projects", label: "Projects", icon: "folder" }, { view: "all", label: "All tasks", icon: "inbox" }] },
+  { label: "Review", items: [{ view: "waiting", label: "Waiting", icon: "later" }, { view: "eisenhower", label: "Priority lens", icon: "grid" }, { view: "habits", label: "Habits", icon: "calendar-check" }, { view: "notes", label: "Notes", icon: "file-text" }] },
 ];
 
 export function AppSidebar({ activeView, user, collapsed, inert, onViewChange, onAccount, onToggle }: AppSidebarProps) {
@@ -42,19 +41,11 @@ export function AppSidebar({ activeView, user, collapsed, inert, onViewChange, o
       </div>
 
       <nav className="sidebar-nav" aria-label="Workspace views">
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item.view}
-            type="button"
-            className={`nav-item ${activeView === item.view ? "active" : ""}`}
-            aria-current={activeView === item.view ? "page" : undefined}
-            title={item.label}
-            onClick={() => onViewChange(item.view)}
-          >
-            <Icon name={item.icon} />
-            <span>{item.label}</span>
+        {NAV_GROUPS.map((group) => <div className="sidebar-nav-group" key={group.label}><span className="sidebar-nav-label">{group.label}</span>{group.items.map((item) => (
+          <button key={item.view} type="button" className={`nav-item ${activeView === item.view ? "active" : ""}`} data-view={item.view} aria-current={activeView === item.view ? "page" : undefined} title={item.label} onClick={() => onViewChange(item.view)}>
+            <Icon name={item.icon} /><span>{item.label}</span>
           </button>
-        ))}
+        ))}</div>)}
       </nav>
 
       <div className="sidebar-bottom">

@@ -1,4 +1,4 @@
-import type { Habit, HabitMutation, HabitUnit, Mutation, SyncState, Task, TaskDraft, TaskMutation, TaskPriority } from "../types";
+import type { Habit, HabitMutation, HabitUnit, Mutation, SyncState, Task, TaskDraft, TaskMutation, TaskPriority, TaskStatus } from "../types";
 import { dateKey } from "./habits";
 
 const TASKS_KEY = "prior.tasks.v1";
@@ -51,6 +51,11 @@ function normalizePriority(value: unknown): TaskPriority {
   return value === 1 || value === 2 || value === 3 || value === 4 ? value : 4;
 }
 
+function normalizeStatus(value: unknown, completed = false): TaskStatus {
+  if (completed) return "done";
+  return value === "inbox" || value === "next" || value === "in_progress" || value === "waiting" ? value : "inbox";
+}
+
 function normalizeDueDate(value: unknown): string | null {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? value.trim() : null;
 }
@@ -61,6 +66,12 @@ function normalizeTask(task: Task): Task {
     description: typeof task.description === "string" ? task.description : "",
     dueDate: normalizeDueDate(task.dueDate),
     priority: normalizePriority(task.priority),
+    areaId: task.areaId ?? null,
+    projectId: task.projectId ?? null,
+    status: normalizeStatus(task.status, Boolean(task.completed)),
+    scheduledDate: normalizeDueDate(task.scheduledDate),
+    assigneeName: typeof task.assigneeName === "string" ? task.assigneeName : "",
+    followUpDate: normalizeDueDate(task.followUpDate),
     completed: Boolean(task.completed),
     important: Boolean(task.important),
     urgent: Boolean(task.urgent),
@@ -95,8 +106,8 @@ async function mergeRemoteTasksIntoDb(db: SqlDatabase, pendingIds: Set<string>, 
     const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM tasks WHERE id = ?", [task.id]);
     if (isRemoteStale(task.serverRevision, current[0]?.server_revision ?? undefined)) continue;
     await db.execute(
-      "INSERT INTO tasks (id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
-      [task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
+      "INSERT INTO tasks (id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision",
+      [task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.assigneeName ?? "", task.followUpDate ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
     );
   }
 }
@@ -138,7 +149,7 @@ export const localStore = {
     const db = await getSqlDatabase();
     if (db) {
       const rows = await db.select<Task>(
-        "SELECT id, title, description, due_date as dueDate, priority, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
+      "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
       );
       return rows.map(normalizeTask);
     }
@@ -155,6 +166,12 @@ export const localStore = {
       description: input.description?.trim() ?? previous?.description ?? "",
       dueDate: normalizeDueDate(input.dueDate ?? previous?.dueDate),
       priority: normalizePriority(input.priority ?? previous?.priority),
+      areaId: input.areaId ?? previous?.areaId ?? null,
+      projectId: input.projectId ?? previous?.projectId ?? null,
+      status: normalizeStatus(input.status ?? previous?.status, Boolean(input.completed ?? previous?.completed ?? false)),
+      scheduledDate: normalizeDueDate(input.scheduledDate ?? previous?.scheduledDate),
+      assigneeName: input.assigneeName?.trim() ?? previous?.assigneeName ?? "",
+      followUpDate: normalizeDueDate(input.followUpDate ?? previous?.followUpDate),
       completed: Boolean(input.completed ?? previous?.completed ?? false),
       important: Boolean(input.important),
       urgent: Boolean(input.urgent),
@@ -166,8 +183,8 @@ export const localStore = {
     const db = await getSqlDatabase();
     if (db) {
       await db.execute(
-        "INSERT INTO tasks (id, title, description, due_date, priority, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL",
-        [task.id, task.title, task.description, task.dueDate, task.priority, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
+        "INSERT INTO tasks (id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL",
+        [task.id, task.title, task.description, task.dueDate, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.assigneeName, task.followUpDate, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
       );
     } else {
       const tasks = read<Task[]>(TASKS_KEY, []).filter((item) => item.id !== task.id);

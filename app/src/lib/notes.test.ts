@@ -39,6 +39,11 @@ describe("notesStore", () => {
     expect(notesStore.listFolders().find((folder) => folder.id === plain.id)?.color).toBeNull();
   });
 
+  it("links notes to a project without requiring a note folder", () => {
+    const note = notesStore.create("Launch brief", null, "project-1");
+    expect(notesStore.list().find((item) => item.id === note.id)?.projectId).toBe("project-1");
+  });
+
   it("deletes a folder while keeping its notes and subfolders", () => {
     const projects = notesStore.createFolder("Projects");
     const research = notesStore.createFolder("Research", projects.id);

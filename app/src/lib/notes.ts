@@ -13,6 +13,7 @@ export type Note = {
   title: string;
   body: string;
   folderId: string | null;
+  projectId?: string | null;
   favorite: boolean;
   createdAt: string;
   updatedAt: string;
@@ -64,11 +65,15 @@ function normalizeFolder(folder: NoteFolder): NoteFolder {
   return { ...folder, parentId: folder.parentId ?? null, color: folder.color ?? null, deletedAt: folder.deletedAt ?? null };
 }
 
+function normalizeNote(note: Note): Note {
+  return { ...note, folderId: note.folderId ?? null, projectId: note.projectId ?? null, favorite: Boolean(note.favorite), deletedAt: note.deletedAt ?? null };
+}
+
 function ensureSeed(): void {
   if (localStorage.getItem(NOTES_KEY) === null) {
     const timestamp = now();
     const welcome: Note = {
-      id: uid(), title: "Welcome to Notes", folderId: null, favorite: true,
+      id: uid(), title: "Welcome to Notes", folderId: null, projectId: null, favorite: true,
       body: "# Welcome to Prior Notes\n\nA calm space for your ideas. Start writing in **Markdown**.\n\n- Use `[[Note title]]` to link notes.\n- Add a `#tag` to organize thoughts.\n- Try `$E = mc^2$` for inline math.\n\n```mermaid\ngraph LR\n  Ideas --> Notes\n  Notes --> Action\n```\n",
       createdAt: timestamp, updatedAt: timestamp, deletedAt: null,
     };
@@ -82,16 +87,16 @@ function ensureSeed(): void {
 export const notesStore = {
   list(): Note[] {
     ensureSeed();
-    return read<Note[]>(NOTES_KEY, []).filter((note) => !note.deletedAt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return read<Note[]>(NOTES_KEY, []).filter((note) => !note.deletedAt).map(normalizeNote).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   },
-  listTrash(): Note[] { return read<Note[]>(NOTES_KEY, []).filter((note) => Boolean(note.deletedAt)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); },
+  listTrash(): Note[] { return read<Note[]>(NOTES_KEY, []).filter((note) => Boolean(note.deletedAt)).map(normalizeNote).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); },
   listFolders(): NoteFolder[] {
     ensureSeed();
     return read<NoteFolder[]>(FOLDERS_KEY, []).filter((folder) => !folder.deletedAt).map(normalizeFolder).sort((a, b) => a.name.localeCompare(b.name));
   },
-  create(title = "Untitled note", folderId: string | null = null): Note {
+  create(title = "Untitled note", folderId: string | null = null, projectId: string | null = null): Note {
     const timestamp = now();
-    const note: Note = { id: uid(), title: title.trim() || "Untitled note", body: "", folderId, favorite: false, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
+    const note: Note = { id: uid(), title: title.trim() || "Untitled note", body: "", folderId, projectId, favorite: false, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
     write(NOTES_KEY, [...read<Note[]>(NOTES_KEY, []), note]);
     return note;
   },

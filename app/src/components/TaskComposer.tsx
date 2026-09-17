@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import type { Task, TaskDraft, TaskPriority } from "../types";
+import type { Area, Project, Task, TaskDraft, TaskPriority, TaskStatus } from "../types";
 import { useModalDialog } from "../hooks/useModalDialog";
 import { Icon } from "./Icon";
 
-type Props = { readonly task?: Task; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
+type Props = { readonly task?: Task; readonly areas?: Area[]; readonly projects?: Project[]; readonly initialContext?: Pick<TaskDraft, "areaId" | "projectId" | "status">; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
 
-export function TaskComposer({ task, onSave, onCancel }: Props) {
+export function TaskComposer({ task, areas = [], projects = [], initialContext, onSave, onCancel }: Props) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 4);
   const [important, setImportant] = useState(task?.important ?? false);
   const [urgent, setUrgent] = useState(task?.urgent ?? false);
+  const [areaId, setAreaId] = useState(task?.areaId ?? initialContext?.areaId ?? null);
+  const [projectId, setProjectId] = useState(task?.projectId ?? initialContext?.projectId ?? null);
+  const [status, setStatus] = useState<TaskStatus>(task?.status ?? initialContext?.status ?? "inbox");
+  const [assigneeName, setAssigneeName] = useState(task?.assigneeName ?? "");
+  const [followUpDate, setFollowUpDate] = useState(task?.followUpDate ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   useModalDialog(dialogRef);
@@ -26,7 +31,7 @@ export function TaskComposer({ task, onSave, onCancel }: Props) {
   async function submit() {
     const clean = title.trim();
     if (!clean) return;
-    await onSave({ title: clean, description: description.trim(), dueDate: dueDate || null, priority, important, urgent });
+    await onSave({ title: clean, description: description.trim(), dueDate: dueDate || null, priority, important, urgent, areaId, projectId, status, assigneeName: assigneeName.trim(), followUpDate: followUpDate || null });
     if (!task) {
       setTitle("");
       setDescription("");
@@ -34,6 +39,11 @@ export function TaskComposer({ task, onSave, onCancel }: Props) {
       setPriority(4);
       setImportant(false);
       setUrgent(false);
+      setAreaId(null);
+      setProjectId(null);
+      setStatus("inbox");
+      setAssigneeName("");
+      setFollowUpDate("");
     }
   }
 
@@ -56,6 +66,10 @@ export function TaskComposer({ task, onSave, onCancel }: Props) {
           <input ref={inputRef} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Task name" aria-label="Task title" />
         </div>
         <textarea className="composer-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Description" aria-label="Task description" rows={3} />
+        <div className="task-destination-fields">
+          <label className="field"><span>Area</span><select value={areaId ?? ""} onChange={(event) => { setAreaId(event.target.value || null); if (projectId && projects.find((project) => project.id === projectId)?.areaId !== (event.target.value || null)) setProjectId(null); }}><option value="">No area</option>{areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>
+          <label className="field"><span>Project</span><select value={projectId ?? ""} onChange={(event) => { const next = projects.find((project) => project.id === event.target.value); setProjectId(event.target.value || null); if (next?.areaId) setAreaId(next.areaId); }}><option value="">No project</option>{projects.filter((project) => !areaId || project.areaId === areaId).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+        </div>
         <div className="composer-options task-composer-options">
           <label className="option-button due-date-option">
             <Icon name="calendar-check" />
@@ -75,6 +89,7 @@ export function TaskComposer({ task, onSave, onCancel }: Props) {
           <button type="button" className={`option-button flag-toggle ${important ? "selected important" : ""}`} aria-pressed={important} onClick={() => setImportant((value) => !value)}><Icon name="star" /> Important</button>
           <button type="button" className={`option-button flag-toggle ${urgent ? "selected urgent" : ""}`} aria-pressed={urgent} onClick={() => setUrgent((value) => !value)}><Icon name="bolt" /> Urgent</button>
         </div>
+        <details className="task-advanced-options"><summary>More details</summary><div className="task-advanced-grid"><label className="field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value as TaskStatus)}><option value="inbox">Inbox</option><option value="next">Next</option><option value="in_progress">In progress</option><option value="waiting">Waiting / delegated</option></select></label><label className="field"><span>Assignee</span><input value={assigneeName} onChange={(event) => setAssigneeName(event.target.value)} placeholder="Optional" /></label><label className="field"><span>Follow up</span><input type="date" value={followUpDate} onChange={(event) => setFollowUpDate(event.target.value)} /></label></div></details>
         <div className="modal-footer">
           <button type="button" className="secondary-button" onClick={onCancel}>Cancel</button>
           <button className="primary-button" type="submit" disabled={!title.trim()}>{task ? "Save task" : "Create task"}</button>

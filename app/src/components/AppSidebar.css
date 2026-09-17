@@ -10,6 +10,10 @@
 .sidebar-top .brand-lockup { min-width: 0; }
 .sidebar-top .brand-title { overflow: hidden; }
 
+.sidebar-nav-group { display: flex; flex-direction: column; gap: 5px; }
+.sidebar-nav-group + .sidebar-nav-group { margin-top: 18px; }
+.sidebar-nav-label { margin: 0 14px 3px; color: #77746f; font-size: 9px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+
 .sidebar-collapse-button {
   display: grid;
   place-items: center;
@@ -39,6 +43,7 @@
   .sidebar.is-collapsed .sidebar-top { justify-content: center; margin-right: 0; margin-left: 0; flex-direction: column; gap: 13px; }
   .sidebar.is-collapsed .brand-title,
   .sidebar.is-collapsed .nav-item span,
+  .sidebar.is-collapsed .sidebar-nav-label,
   .sidebar.is-collapsed .account-trigger-label { display: none; }
   .sidebar.is-collapsed .sidebar-brand { display: block; }
   .sidebar.is-collapsed .sidebar-top .brand-lockup { gap: 0; }
@@ -60,6 +65,9 @@
      construction (desktop-only rules above), so the 5-tab bar always renders. */
   .sidebar-top { display: none; }
   .sidebar.is-collapsed .sidebar-brand { display: none; }
+  .sidebar-nav-group { display: contents; }
+  .sidebar-nav-group + .sidebar-nav-group { margin-top: 0; }
+  .sidebar-nav-label { display: none; }
 }
 
 @media (max-width: 380px) {

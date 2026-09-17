@@ -1,11 +1,41 @@
 export type TaskPriority = 1 | 2 | 3 | 4;
 
+export type TaskStatus = "inbox" | "next" | "in_progress" | "waiting" | "done";
+
+export type Area = {
+  id: string;
+  name: string;
+  color: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+};
+
+export type ProjectStatus = "planned" | "active" | "paused" | "completed";
+
+export type Project = {
+  id: string;
+  areaId: string | null;
+  name: string;
+  description: string;
+  status: ProjectStatus;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+};
+
 export type Task = {
   id: string;
   title: string;
   description: string;
   dueDate: string | null;
   priority: TaskPriority;
+  areaId?: string | null;
+  projectId?: string | null;
+  status?: TaskStatus;
+  scheduledDate?: string | null;
+  assigneeName?: string;
+  followUpDate?: string | null;
   completed: boolean;
   important: boolean;
   urgent: boolean;
@@ -15,7 +45,7 @@ export type Task = {
   serverRevision?: number;
 };
 
-export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "priority">>;
+export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "assigneeName" | "followUpDate">>;
 
 export type HabitUnit = "day" | "week" | "month" | "year";
 

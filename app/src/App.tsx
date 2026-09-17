@@ -4,7 +4,7 @@ import { clearSession, getToken, getUser, isAndroidTauri, listenForAuth, startGo
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
-import type { Habit, NoteDraft, NoteFolderDraft, Task, TaskDraft } from "./types";
+import type { Area, Habit, NoteDraft, NoteFolderDraft, Project, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
@@ -23,10 +23,17 @@ import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
 import { AgentIdentity } from "./components/AgentIdentity";
 import { NotesWorkspace } from "./components/NotesWorkspace";
 import { notesStore } from "./lib/notes";
+import { workspaceStore } from "./lib/workspaceStore";
+import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
 
 type Layout = "list" | "board";
 
 function viewTitle(view: WorkspaceView): string {
+  if (view === "today") return "Today";
+  if (view === "inbox") return "Inbox";
+  if (view === "projects") return "Projects";
+  if (view === "project") return "Project";
+  if (view === "waiting") return "Waiting";
   if (view === "eisenhower") return "Eisenhower";
   if (view === "habits") return "Habits";
   if (view === "notes") return "Notes";
@@ -46,7 +53,7 @@ type WorkspaceHeaderProps = {
 };
 
 function WorkspaceHeader({ activeView, layout, onLayoutChange, agentOpen, onToggleAgent, aiShortcut, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
-  if (activeView === "notes") return null;
+  if (["today", "inbox", "projects", "project", "waiting", "notes"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? "New habit" : "New task";
   return (
@@ -80,6 +87,7 @@ type WorkspaceContentProps = {
   readonly activeView: WorkspaceView;
   readonly layout: Layout;
   readonly grouped: Record<string, Task[]>;
+  readonly tasks: Task[];
   readonly visibleTasks: Task[];
   readonly habits: Habit[];
   readonly onHabitAdd: () => void;
@@ -89,10 +97,20 @@ type WorkspaceContentProps = {
   readonly onTaskChange: (task: Task) => Promise<void>;
   readonly onTaskDelete: (task: Task) => Promise<void>;
   readonly onTaskEdit: (task: Task) => void;
+  readonly areas: Area[];
+  readonly projects: Project[];
+  readonly selectedProjectId: string | null;
+  readonly notesProjectId: string | null;
+  readonly onOpenProject: (projectId: string) => void;
+  readonly onOpenNotes: (projectId?: string) => void;
+  readonly onOpenWaiting: () => void;
+  readonly onNewTask: (context?: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void;
+  readonly onWorkspaceChange: () => void;
 };
 
-function WorkspaceContent({ activeView, layout, grouped, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onTaskChange, onTaskDelete, onTaskEdit }: WorkspaceContentProps) {
-  if (activeView === "notes") return <NotesWorkspace />;
+function WorkspaceContent({ activeView, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange }: WorkspaceContentProps) {
+  if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
+  if (["today", "inbox", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} />;
   }
@@ -116,13 +134,18 @@ function WorkspaceContent({ activeView, layout, grouped, visibleTasks, habits, o
 export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [areas, setAreas] = useState<Area[]>(() => workspaceStore.listAreas());
+  const [projects, setProjects] = useState<Project[]>(() => workspaceStore.listProjects());
   const [composerOpen, setComposerOpen] = useState(false);
+  const [newTaskContext, setNewTaskContext] = useState<Pick<TaskDraft, "areaId" | "projectId" | "status"> | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [habitComposerOpen, setHabitComposerOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
-  const [activeView, setActiveView] = useState<WorkspaceView>("all");
+  const [activeView, setActiveView] = useState<WorkspaceView>("today");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [notesProjectId, setNotesProjectId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem("prior.sidebar.collapsed") === "true";
@@ -151,6 +174,11 @@ export function App() {
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
   const aiShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ J" : "Ctrl J";
+
+  const refreshWorkspace = useCallback(() => {
+    setAreas(workspaceStore.listAreas());
+    setProjects(workspaceStore.listProjects());
+  }, []);
 
   useEffect(() => {
     let timeout: number | undefined;
@@ -260,6 +288,7 @@ export function App() {
 
   useEffect(() => {
     void refresh().catch((error) => console.warn("Prior local store failed:", error));
+    refreshWorkspace();
     void syncNow();
     void attachRealtime().catch(() => undefined);
     const dispose = listenForAuth((nextUser) => {
@@ -280,14 +309,16 @@ export function App() {
       realtimeClose.current = undefined;
       void close?.();
     };
-  }, [attachRealtime, refresh, syncNow]);
+  }, [attachRealtime, refresh, refreshWorkspace, syncNow]);
+
+  useEffect(() => workspaceStore.subscribe(refreshWorkspace), [refreshWorkspace]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
         if (activeView === "notes") window.dispatchEvent(new Event("prior-notes-new"));
-        else if (activeView === "habits") setHabitComposerOpen(true); else setComposerOpen(true);
+        else if (activeView === "habits") setHabitComposerOpen(true); else openNewTask();
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
         event.preventDefault();
@@ -306,9 +337,15 @@ export function App() {
     return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("online", syncNow); };
   }, [activeView, syncNow]);
 
+  function openNewTask(context?: Pick<TaskDraft, "areaId" | "projectId" | "status">): void {
+    setNewTaskContext(context);
+    setComposerOpen(true);
+  }
+
   async function saveTask(input: TaskDraft) {
-    await localStore.saveTask(input);
+    await localStore.saveTask({ ...newTaskContext, ...input });
     setComposerOpen(false);
+    setNewTaskContext(undefined);
     await refresh();
     void syncNow();
   }
@@ -449,6 +486,31 @@ export function App() {
     void syncNow();
   }
 
+  function openProject(projectId: string): void {
+    if (!projectId) {
+      setSelectedProjectId(null);
+      setActiveView("projects");
+      return;
+    }
+    setSelectedProjectId(projectId);
+    setActiveView("project");
+  }
+
+  function openNotes(projectId?: string): void {
+    setNotesProjectId(projectId ?? null);
+    setActiveView("notes");
+  }
+
+  function openWaiting(): void {
+    setActiveView("waiting");
+  }
+
+  function changeView(view: WorkspaceView): void {
+    if (view !== "project") setSelectedProjectId(null);
+    if (view === "notes") setNotesProjectId(null);
+    setActiveView(view);
+  }
+
   async function googleLogin() {
     setAuthError("");
     try {
@@ -483,7 +545,7 @@ export function App() {
         user={user}
         collapsed={sidebarCollapsed}
         inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}
-        onViewChange={setActiveView}
+        onViewChange={changeView}
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
@@ -498,7 +560,7 @@ export function App() {
           aiShortcut={aiShortcut}
           shortcut={shortcut}
           shortcutKey={shortcutKey}
-          onNewTask={() => activeView === "habits" ? setHabitComposerOpen(true) : setComposerOpen(true)}
+          onNewTask={() => activeView === "habits" ? setHabitComposerOpen(true) : openNewTask()}
         />
 
         {(activeView === "all" || activeView === "eisenhower") && <TaskFilters value={taskFilters} onChange={setTaskFilters} />}
@@ -508,6 +570,7 @@ export function App() {
             activeView={activeView}
             layout={layout}
             grouped={grouped}
+            tasks={tasks}
             visibleTasks={visibleTasks}
             habits={habits}
             onHabitAdd={() => setHabitComposerOpen(true)}
@@ -517,6 +580,15 @@ export function App() {
             onTaskChange={changeTask}
             onTaskDelete={deleteTask}
             onTaskEdit={(task) => setEditingTask(task)}
+            areas={areas}
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            notesProjectId={notesProjectId}
+            onOpenProject={openProject}
+            onOpenNotes={openNotes}
+            onOpenWaiting={openWaiting}
+            onNewTask={openNewTask}
+            onWorkspaceChange={refreshWorkspace}
           />
         </CompletionExitProvider>
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => setComposerOpen(true)}><Icon name="plus" /> New task</button>}
@@ -535,7 +607,7 @@ export function App() {
         onAddFolders={addAgentFolders}
       />
 
-      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); }} />}
+      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); }} />}
       {habitComposerOpen && <HabitComposer onSave={saveHabit} onCancel={() => setHabitComposerOpen(false)} />}
       {authOpen && <AuthModal user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}

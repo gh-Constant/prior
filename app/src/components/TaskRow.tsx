@@ -11,6 +11,13 @@ function formatDueDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
+function statusLabel(value: string | undefined): string | null {
+  if (value === "next") return "Next";
+  if (value === "in_progress") return "In progress";
+  if (value === "waiting") return "Waiting";
+  return null;
+}
+
 export function CompletionExitProvider({ deadlines, children }: { readonly deadlines: CompletionExitDeadlines; readonly children: ReactNode }) {
   return <CompletionExitContext.Provider value={deadlines}>{children}</CompletionExitContext.Provider>;
 }
@@ -89,6 +96,8 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false }:
         <div className="task-meta" aria-label="Task details">
           <span className={`task-priority priority-${task.priority ?? 4}`}>P{task.priority ?? 4}</span>
           {task.dueDate && <span className="task-due-date"><Icon name="calendar-check" /> {formatDueDate(task.dueDate)}</span>}
+          {statusLabel(task.status) && <span className="task-status-meta">{statusLabel(task.status)}</span>}
+          {task.assigneeName && <span className="task-assignee-meta">{task.assigneeName}</span>}
         </div>
       </div>
       <div className="task-actions">
