@@ -94,7 +94,7 @@ export function DictationPreview({ finalText, interimText, warning }: PreviewPro
   if (!finalText && !interimText && !warning) return null;
   return (
     <div className="dictation-preview" aria-label="Dictation preview">
-      {(finalText || interimText) && <span className="dictation-preview-label">Live preview</span>}
+      {(finalText || interimText) && <span className="dictation-preview-label">Transcription</span>}
       <span>{finalText}</span><span className="dictation-interim">{interimText}</span>
       {warning && <span className="dictation-warning">{warning}</span>}
     </div>
