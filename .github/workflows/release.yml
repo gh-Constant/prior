@@ -235,7 +235,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-output
-          find app/src-tauri/target -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' -o -name '*.app.tar.gz' -o -name '*.sig' \) -exec cp {} release-output/ \;
+          find app/src-tauri/target -path '*/release/bundle/*' -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.msi' -o -name '*-setup.exe' -o -name '*.app.tar.gz' -o -name '*.sig' \) -exec cp {} release-output/ \;
           test -n "$(find release-output -type f -print -quit)"
       - uses: actions/upload-artifact@v4
         with:
@@ -360,8 +360,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          mkdir -p reused-artifacts new-artifacts
-          find reused-artifacts new-artifacts -type f -print0 2>/dev/null | xargs -0 -r gh release upload "$GITHUB_REF_NAME" --clobber
+          mkdir -p reused-artifacts new-artifacts release-assets
+          # Keep unchanged files, then let newly-built files replace same-name
+          # assets (notably the Android APK) before uploading the merged set.
+          cp -a reused-artifacts/. release-assets/ 2>/dev/null || true
+          cp -af new-artifacts/. release-assets/ 2>/dev/null || true
+          find release-assets -type f ! -name 'latest.json' -print0 | xargs -0 -r gh release upload "$GITHUB_REF_NAME" --clobber
           gh release upload "$GITHUB_REF_NAME" release-assets/latest.json --clobber
       - name: Publish release
         uses: actions/github-script@v7
