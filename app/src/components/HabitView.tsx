@@ -490,7 +490,7 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
     <article className={`habit-card habit-${status} ${isSettling ? "is-completing" : ""}`}>
       <span className="habit-check-wrap">
         <button className={`complete-button habit-check ${checkVisible ? "checked" : ""}`} type="button" aria-label={checkAccessibilityLabel(habit.title, isSaving, checkVisible)} onClick={() => void complete()} disabled={disabled || !completionDate}>
-          {checkVisible && <Icon name="check" />}
+          <Icon name="check" aria-hidden="true" />
         </button>
         <CompletionBurst trigger={burst} />
       </span>

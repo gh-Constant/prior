@@ -79,7 +79,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false }:
     <div className={`task-row ${task.completed ? "completed" : ""} ${isExiting ? "completion-exiting" : ""}`}>
       <span className="complete-control">
         <button className={`complete-button ${task.completed ? "checked" : ""}`} type="button" aria-label={task.completed ? `Mark ${task.title} incomplete` : `Mark ${task.title} complete`} onClick={() => void toggleCompletion()} disabled={completionPending}>
-          {task.completed && <Icon name="check" />}
+          <Icon name="check" aria-hidden="true" />
         </button>
         <CompletionBurst trigger={completionBurstKey} />
       </span>

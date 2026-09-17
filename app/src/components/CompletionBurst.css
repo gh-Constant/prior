@@ -1,6 +1,6 @@
 .complete-control { position: relative; width: 21px; height: 21px; flex: 0 0 auto; display: grid; place-items: center; }
 
-.task-row.completion-exiting { animation: task-row-completion-exit .6s cubic-bezier(.2, .8, .3, 1) both; }
+.task-row.completion-exiting { animation: task-row-completion-exit 400ms var(--ease-out) both; }
 
 @keyframes task-row-completion-exit {
   0% { opacity: 1; transform: translateY(0); }

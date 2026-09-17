@@ -56,7 +56,7 @@ const calendarCheckPath = Array.isArray(faCalendarCheck.icon[4])
   : faCalendarCheck.icon[4];
 
 export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconName }) {
-  const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, ...props };
+  const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, ...props };
   const paths: Record<IconName, ReactElement> = {
     plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
     check: <path d="m5 12 4.5 4.5L19 7" />,

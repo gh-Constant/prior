@@ -85,7 +85,7 @@
 
 .habit-card {
   border-color: var(--habit-border);
-  transition: border-color .18s, box-shadow .18s, transform .18s, opacity .6s;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), translate var(--t-fast) var(--ease), opacity 400ms var(--ease-out);
 }
 
 .habit-card:hover { border-color: #dacfc7; }
@@ -94,7 +94,7 @@
   z-index: 1;
   border-color: #f2b2a1;
   box-shadow: 0 8px 26px #d86b4b18;
-  animation: habit-completion-exit .6s cubic-bezier(.2, .8, .3, 1) both;
+  animation: habit-completion-exit 400ms var(--ease-out) both;
 }
 
 .habit-card-content { overflow: hidden; }

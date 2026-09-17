@@ -130,8 +130,8 @@
   text-align: left;
 }
 
-.agent-history-toggle svg { width: 15px; height: 15px; transition: transform .16s ease; }
-.agent-history-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.agent-history-toggle svg { width: 15px; height: 15px; transition: rotate var(--t-fast) var(--ease); }
+.agent-history-toggle[aria-expanded="true"] svg { rotate: 180deg; }
 
 .agent-new-chat svg {
   width: 17px;
