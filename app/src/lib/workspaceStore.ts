@@ -36,6 +36,15 @@ function normalizeProject(project: Project): Project {
   return { ...project, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || DEFAULT_PROJECT_ICON, status, deletedAt: project.deletedAt ?? null };
 }
 
+function mergeByUpdatedAt<T extends { id: string; updatedAt: string }>(local: T[], remote: T[]): T[] {
+  const merged = new Map(local.map((item) => [item.id, item]));
+  for (const item of remote) {
+    const current = merged.get(item.id);
+    if (!current || Date.parse(item.updatedAt) >= Date.parse(current.updatedAt)) merged.set(item.id, item);
+  }
+  return [...merged.values()];
+}
+
 function ensureAreaNotes(area: Area): void {
   notesStore.ensureWorkspaceFolder("area", area.id, area.name, null, area.color, area.icon || DEFAULT_AREA_ICON);
 }
@@ -48,6 +57,12 @@ function ensureProjectNotes(project: Project, areas: Area[] = workspaceStore.lis
 }
 
 export const workspaceStore = {
+  exportAll(): { areas: Area[]; projects: Project[] } {
+    return {
+      areas: read<Area[]>(AREAS_KEY, []).map(normalizeArea),
+      projects: read<Project[]>(PROJECTS_KEY, []).map(normalizeProject),
+    };
+  },
   listAreas(): Area[] {
     return read<Area[]>(AREAS_KEY, []).filter((area) => !area.deletedAt).map(normalizeArea).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   },
@@ -93,6 +108,13 @@ export const workspaceStore = {
   removeProject(project: Project): void {
     const timestamp = now();
     write(PROJECTS_KEY, read<Project[]>(PROJECTS_KEY, []).map((item) => item.id === project.id ? { ...item, deletedAt: timestamp, updatedAt: timestamp } : item));
+  },
+  mergeRemote(snapshot: { areas: Area[]; projects: Project[] }): void {
+    const current = this.exportAll();
+    const areas = mergeByUpdatedAt(current.areas, snapshot.areas.map(normalizeArea));
+    const projects = mergeByUpdatedAt(current.projects, snapshot.projects.map(normalizeProject));
+    if (JSON.stringify(areas) !== JSON.stringify(current.areas)) write(AREAS_KEY, areas);
+    if (JSON.stringify(projects) !== JSON.stringify(current.projects)) write(PROJECTS_KEY, projects);
   },
   syncNoteCategories(): void {
     const areas = this.listAreas();

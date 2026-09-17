@@ -102,4 +102,15 @@ describe("notesStore", () => {
     expect(notesStore.moveFolder(childA.id, null)).toBe(true);
     expect(notesStore.listFolders().find((f) => f.id === childA.id)?.parentId).toBeNull();
   });
+
+  it("exports tombstones and merges the newest remote note version", () => {
+    const note = notesStore.create("Local note");
+    const exported = notesStore.exportAll();
+    notesStore.mergeRemote({
+      folders: [],
+      notes: [{ ...note, body: "Remote body", updatedAt: "2999-01-01T00:00:00.000Z" }],
+    });
+    expect(notesStore.exportAll().notes.find((item) => item.id === note.id)?.body).toBe("Remote body");
+    expect(exported.notes.find((item) => item.id === note.id)?.body).toBe("");
+  });
 });

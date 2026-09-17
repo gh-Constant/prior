@@ -61,4 +61,14 @@ describe("localStore browser fallback", () => {
     await localStore.resetSyncRevision();
     expect((await localStore.getSyncState()).lastServerRevision).toBe(0);
   });
+
+  it("offers legacy local data for the first account sync only", async () => {
+    const task = await localStore.saveTask({ title: "Legacy task", important: false, urgent: false });
+    const mutations = await localStore.legacyMutations("account-1", new Set(), new Set());
+    expect(mutations).toHaveLength(1);
+    expect(mutations[0]).toMatchObject({ entity: "task", task: { id: task.id } });
+    expect(localStore.needsLegacySync("account-1")).toBe(true);
+    localStore.markLegacySyncComplete("account-1");
+    expect(await localStore.legacyMutations("account-1", new Set(), new Set())).toEqual([]);
+  });
 });

@@ -5,6 +5,7 @@ const TASKS_KEY = "prior.tasks.v1";
 const HABITS_KEY = "prior.habits.v1";
 const OUTBOX_KEY = "prior.outbox.v1";
 const SYNC_KEY = "prior.sync.v1";
+const LEGACY_SYNC_KEY = "prior.legacy-sync.v1";
 
 type SqlDatabase = {
   select<T>(query: string, bindValues?: unknown[]): Promise<T[]>;
@@ -152,6 +153,17 @@ function mergeRemoteHabitsLocally(pendingIds: Set<string>, habits: Habit[]): voi
 }
 
 export const localStore = {
+  async listAllTasks(): Promise<Task[]> {
+    const db = await getSqlDatabase();
+    if (db) {
+      const rows = await db.select<Task>(
+        "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks ORDER BY updated_at DESC",
+      );
+      return rows.map(normalizeTask);
+    }
+    return read<Task[]>(TASKS_KEY, []).map(normalizeTask);
+  },
+
   async listTasks(): Promise<Task[]> {
     const db = await getSqlDatabase();
     if (db) {
@@ -161,6 +173,29 @@ export const localStore = {
       return rows.map(normalizeTask);
     }
     return read<Task[]>(TASKS_KEY, []).filter((task) => !task.deletedAt).map(normalizeTask);
+  },
+
+  async listAllHabits(): Promise<Habit[]> {
+    const db = await getSqlDatabase();
+    if (db) {
+      const rows = await db.select<Omit<Habit, "startDate" | "endDate" | "daysOfWeek" | "completedDates"> & { start_date: string; end_date: string | null; days_of_week: string; completed_dates: string }>(
+        "SELECT id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits ORDER BY updated_at DESC",
+      );
+      return rows.map((row) => {
+        let completedDates: string[] = [];
+        try {
+          const parsed = JSON.parse(row.completed_dates || "[]");
+          if (Array.isArray(parsed)) completedDates = parsed;
+        } catch { /* normalize to an empty history */ }
+        let daysOfWeek: number[] = [];
+        try {
+          const parsed = JSON.parse(row.days_of_week || "[]");
+          daysOfWeek = normalizeWeekdays(parsed);
+        } catch { /* normalize to an empty schedule */ }
+        return normalizeHabit({ ...row, startDate: row.start_date, endDate: row.end_date, daysOfWeek, completedDates });
+      });
+    }
+    return read<Habit[]>(HABITS_KEY, []).map(normalizeHabit);
   },
 
   async saveTask(input: TaskDraft & Partial<Pick<Task, "id" | "completed" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>): Promise<Task> {
@@ -304,6 +339,32 @@ export const localStore = {
       return;
     }
     write(OUTBOX_KEY, [...read<Mutation[]>(OUTBOX_KEY, []), mutation]);
+  },
+
+  async legacyMutations(accountId: string, serverTaskIds: Set<string>, serverHabitIds: Set<string>): Promise<Mutation[]> {
+    if (read<Record<string, boolean>>(LEGACY_SYNC_KEY, {})[accountId]) return [];
+    const [tasks, habits] = await Promise.all([this.listAllTasks(), this.listAllHabits()]);
+    const mutations: Mutation[] = [];
+    for (const task of tasks) {
+      if (task.serverRevision === undefined && !serverTaskIds.has(task.id)) {
+        mutations.push({ id: uuid(), task, kind: task.deletedAt ? "delete" : "upsert", entity: "task", createdAt: task.updatedAt });
+      }
+    }
+    for (const habit of habits) {
+      if (habit.serverRevision === undefined && !serverHabitIds.has(habit.id)) {
+        mutations.push({ id: uuid(), habit, kind: habit.deletedAt ? "delete" : "upsert", entity: "habit", createdAt: habit.updatedAt });
+      }
+    }
+    return mutations;
+  },
+
+  needsLegacySync(accountId: string): boolean {
+    return !Boolean(read<Record<string, boolean>>(LEGACY_SYNC_KEY, {})[accountId]);
+  },
+
+  markLegacySyncComplete(accountId: string): void {
+    const current = read<Record<string, boolean>>(LEGACY_SYNC_KEY, {});
+    write(LEGACY_SYNC_KEY, { ...current, [accountId]: true });
   },
 
   async pendingMutations(): Promise<Mutation[]> {    const db = await getSqlDatabase();

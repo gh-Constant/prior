@@ -74,6 +74,15 @@ function normalizeNote(note: Note): Note {
   return { ...note, folderId: note.folderId ?? null, projectId: note.projectId ?? null, favorite: Boolean(note.favorite), deletedAt: note.deletedAt ?? null };
 }
 
+function mergeByUpdatedAt<T extends { id: string; updatedAt: string }>(local: T[], remote: T[]): T[] {
+  const merged = new Map(local.map((item) => [item.id, item]));
+  for (const item of remote) {
+    const current = merged.get(item.id);
+    if (!current || Date.parse(item.updatedAt) >= Date.parse(current.updatedAt)) merged.set(item.id, item);
+  }
+  return [...merged.values()];
+}
+
 export function getFolderDescendants(folderId: string, folders: NoteFolder[]): Set<string> {
   const result = new Set<string>();
   const queue = [folderId];
@@ -122,6 +131,13 @@ function ensureSeed(): void {
 }
 
 export const notesStore = {
+  exportAll(): { notes: Note[]; folders: NoteFolder[] } {
+    ensureSeed();
+    return {
+      notes: read<Note[]>(NOTES_KEY, []).map(normalizeNote),
+      folders: read<NoteFolder[]>(FOLDERS_KEY, []).map(normalizeFolder),
+    };
+  },
   list(): Note[] {
     ensureSeed();
     return read<Note[]>(NOTES_KEY, []).filter((note) => !note.deletedAt).map(normalizeNote).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -233,6 +249,13 @@ export const notesStore = {
       )
     );
     return true;
+  },
+  mergeRemote(snapshot: { notes: Note[]; folders: NoteFolder[] }): void {
+    const current = this.exportAll();
+    const notes = mergeByUpdatedAt(current.notes, snapshot.notes.map(normalizeNote));
+    const folders = mergeByUpdatedAt(current.folders, snapshot.folders.map(normalizeFolder));
+    if (JSON.stringify(notes) !== JSON.stringify(current.notes)) write(NOTES_KEY, notes);
+    if (JSON.stringify(folders) !== JSON.stringify(current.folders)) write(FOLDERS_KEY, folders);
   },
   attachmentMeta(): NoteAttachment[] { return read<NoteAttachment[]>(ATTACHMENTS_KEY, []); },
   saveAttachment(file: NoteAttachment, blob: Blob): Promise<void> {

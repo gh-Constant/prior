@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gh-Constant/prior/server/internal/tasks"
+	"github.com/gh-Constant/prior/server/internal/workspace"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -59,6 +60,247 @@ type AppliedMutation struct {
 type Store struct{ pool *pgxpool.Pool }
 
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+
+func (s *Store) SyncWorkspace(ctx context.Context, userID uuid.UUID, incoming workspace.Snapshot) (workspace.Snapshot, error) {
+	if err := incoming.Validate(); err != nil {
+		return workspace.Snapshot{}, err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return workspace.Snapshot{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err := syncAreas(ctx, tx, userID, incoming.Areas); err != nil {
+		return workspace.Snapshot{}, err
+	}
+	if err := syncProjects(ctx, tx, userID, incoming.Projects); err != nil {
+		return workspace.Snapshot{}, err
+	}
+	if err := syncFolders(ctx, tx, userID, incoming.Folders); err != nil {
+		return workspace.Snapshot{}, err
+	}
+	if err := syncNotes(ctx, tx, userID, incoming.Notes); err != nil {
+		return workspace.Snapshot{}, err
+	}
+	merged, err := loadWorkspace(ctx, tx, userID)
+	if err != nil {
+		return workspace.Snapshot{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return workspace.Snapshot{}, err
+	}
+	return merged, nil
+}
+
+func workspaceUpdatedAt(ctx context.Context, tx pgx.Tx, table string, userID uuid.UUID) (map[string]time.Time, error) {
+	rows, err := tx.Query(ctx, fmt.Sprintf("SELECT id::text, updated_at FROM %s WHERE user_id = $1", table), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]time.Time)
+	for rows.Next() {
+		var id string
+		var updatedAt time.Time
+		if err := rows.Scan(&id, &updatedAt); err != nil {
+			return nil, err
+		}
+		result[id] = updatedAt
+	}
+	return result, rows.Err()
+}
+
+func applyIfNewer(incoming time.Time, current map[string]time.Time, id string) bool {
+	updatedAt, exists := current[id]
+	return !exists || !incoming.Before(updatedAt)
+}
+
+func syncAreas(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []workspace.Area) error {
+	current, err := workspaceUpdatedAt(ctx, tx, "areas", userID)
+	if err != nil {
+		return err
+	}
+	for _, area := range incoming {
+		if !applyIfNewer(area.UpdatedAt, current, area.ID) {
+			continue
+		}
+		createdAt := area.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = area.UpdatedAt
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO areas (id, user_id, name, color, icon, created_at, updated_at, deleted_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, color = EXCLUDED.color, icon = EXCLUDED.icon,
+			updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at
+			WHERE areas.user_id = EXCLUDED.user_id AND EXCLUDED.updated_at >= areas.updated_at`,
+			area.ID, userID, area.Name, area.Color, area.Icon, createdAt, area.UpdatedAt, area.DeletedAt)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func syncProjects(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []workspace.Project) error {
+	current, err := workspaceUpdatedAt(ctx, tx, "projects", userID)
+	if err != nil {
+		return err
+	}
+	for _, project := range incoming {
+		if !applyIfNewer(project.UpdatedAt, current, project.ID) {
+			continue
+		}
+		createdAt := project.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = project.UpdatedAt
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO projects (id, user_id, area_id, name, description, icon, status, created_at, updated_at, deleted_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT (id) DO UPDATE SET area_id = EXCLUDED.area_id, name = EXCLUDED.name,
+			description = EXCLUDED.description, icon = EXCLUDED.icon, status = EXCLUDED.status,
+			updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at
+			WHERE projects.user_id = EXCLUDED.user_id AND EXCLUDED.updated_at >= projects.updated_at`,
+			project.ID, userID, project.AreaID, project.Name, project.Description, project.Icon, project.Status, createdAt, project.UpdatedAt, project.DeletedAt)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func syncFolders(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []workspace.NoteFolder) error {
+	current, err := workspaceUpdatedAt(ctx, tx, "note_folders", userID)
+	if err != nil {
+		return err
+	}
+	for _, folder := range incoming {
+		if !applyIfNewer(folder.UpdatedAt, current, folder.ID) {
+			continue
+		}
+		createdAt := folder.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = folder.UpdatedAt
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO note_folders (id, user_id, name, parent_id, color, workspace_kind, workspace_id, icon, created_at, updated_at, deleted_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, parent_id = EXCLUDED.parent_id,
+			color = EXCLUDED.color, workspace_kind = EXCLUDED.workspace_kind, workspace_id = EXCLUDED.workspace_id,
+			icon = EXCLUDED.icon, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at
+			WHERE note_folders.user_id = EXCLUDED.user_id AND EXCLUDED.updated_at >= note_folders.updated_at`,
+			folder.ID, userID, folder.Name, folder.ParentID, folder.Color, folder.WorkspaceKind, folder.WorkspaceID, folder.Icon, createdAt, folder.UpdatedAt, folder.DeletedAt)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func syncNotes(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []workspace.Note) error {
+	current, err := workspaceUpdatedAt(ctx, tx, "notes", userID)
+	if err != nil {
+		return err
+	}
+	for _, note := range incoming {
+		if !applyIfNewer(note.UpdatedAt, current, note.ID) {
+			continue
+		}
+		createdAt := note.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = note.UpdatedAt
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO notes (id, user_id, title, body, folder_id, project_id, favorite, created_at, updated_at, deleted_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body, folder_id = EXCLUDED.folder_id,
+			project_id = EXCLUDED.project_id, favorite = EXCLUDED.favorite, updated_at = EXCLUDED.updated_at,
+			deleted_at = EXCLUDED.deleted_at
+			WHERE notes.user_id = EXCLUDED.user_id AND EXCLUDED.updated_at >= notes.updated_at`,
+			note.ID, userID, note.Title, note.Body, note.FolderID, note.ProjectID, note.Favorite, createdAt, note.UpdatedAt, note.DeletedAt)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func loadWorkspace(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (workspace.Snapshot, error) {
+	result := workspace.EmptySnapshot()
+	areaRows, err := tx.Query(ctx, `SELECT id::text, name, color, icon, created_at, updated_at, deleted_at FROM areas WHERE user_id = $1 ORDER BY id`, userID)
+	if err != nil {
+		return workspace.Snapshot{}, err
+	}
+	for areaRows.Next() {
+		var area workspace.Area
+		if err := areaRows.Scan(&area.ID, &area.Name, &area.Color, &area.Icon, &area.CreatedAt, &area.UpdatedAt, &area.DeletedAt); err != nil {
+			areaRows.Close()
+			return workspace.Snapshot{}, err
+		}
+		result.Areas = append(result.Areas, area)
+	}
+	if err := areaRows.Err(); err != nil {
+		areaRows.Close()
+		return workspace.Snapshot{}, err
+	}
+	areaRows.Close()
+
+	projectRows, err := tx.Query(ctx, `SELECT id::text, area_id::text, name, description, icon, status, created_at, updated_at, deleted_at FROM projects WHERE user_id = $1 ORDER BY id`, userID)
+	if err != nil {
+		return workspace.Snapshot{}, err
+	}
+	for projectRows.Next() {
+		var project workspace.Project
+		if err := projectRows.Scan(&project.ID, &project.AreaID, &project.Name, &project.Description, &project.Icon, &project.Status, &project.CreatedAt, &project.UpdatedAt, &project.DeletedAt); err != nil {
+			projectRows.Close()
+			return workspace.Snapshot{}, err
+		}
+		result.Projects = append(result.Projects, project)
+	}
+	if err := projectRows.Err(); err != nil {
+		projectRows.Close()
+		return workspace.Snapshot{}, err
+	}
+	projectRows.Close()
+
+	folderRows, err := tx.Query(ctx, `SELECT id::text, name, parent_id::text, color, workspace_kind, workspace_id::text, icon, created_at, updated_at, deleted_at FROM note_folders WHERE user_id = $1 ORDER BY id`, userID)
+	if err != nil {
+		return workspace.Snapshot{}, err
+	}
+	for folderRows.Next() {
+		var folder workspace.NoteFolder
+		if err := folderRows.Scan(&folder.ID, &folder.Name, &folder.ParentID, &folder.Color, &folder.WorkspaceKind, &folder.WorkspaceID, &folder.Icon, &folder.CreatedAt, &folder.UpdatedAt, &folder.DeletedAt); err != nil {
+			folderRows.Close()
+			return workspace.Snapshot{}, err
+		}
+		result.Folders = append(result.Folders, folder)
+	}
+	if err := folderRows.Err(); err != nil {
+		folderRows.Close()
+		return workspace.Snapshot{}, err
+	}
+	folderRows.Close()
+
+	noteRows, err := tx.Query(ctx, `SELECT id::text, title, body, folder_id::text, project_id::text, favorite, created_at, updated_at, deleted_at FROM notes WHERE user_id = $1 ORDER BY id`, userID)
+	if err != nil {
+		return workspace.Snapshot{}, err
+	}
+	for noteRows.Next() {
+		var note workspace.Note
+		if err := noteRows.Scan(&note.ID, &note.Title, &note.Body, &note.FolderID, &note.ProjectID, &note.Favorite, &note.CreatedAt, &note.UpdatedAt, &note.DeletedAt); err != nil {
+			noteRows.Close()
+			return workspace.Snapshot{}, err
+		}
+		result.Notes = append(result.Notes, note)
+	}
+	if err := noteRows.Err(); err != nil {
+		noteRows.Close()
+		return workspace.Snapshot{}, err
+	}
+	noteRows.Close()
+	return result, nil
+}
 
 // isoDateLayout is the YYYY-MM-DD layout used for habit and task dates.
 const isoDateLayout = "2006-01-02"

@@ -1,4 +1,12 @@
-import type { AgentChat, AgentMessage, AgentChatSummary, Habit, Mutation, Task } from "../types";
+import type { AgentChat, AgentMessage, AgentChatSummary, Area, Habit, Mutation, Project, Task } from "../types";
+import type { Note, NoteFolder } from "./notes";
+
+export type WorkspaceSnapshot = {
+  areas: Area[];
+  projects: Project[];
+  folders: NoteFolder[];
+  notes: Note[];
+};
 
 const isNativeApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const productionApiUrl = "https://api.prior.constantsuchet.fr";
@@ -129,6 +137,9 @@ export const api = {
   },
   pull(since: number, token: string): Promise<PullResponse> {
     return request<PullResponse>(`/v1/sync/pull?since=${encodeURIComponent(since)}`, {}, token);
+  },
+  syncWorkspace(snapshot: WorkspaceSnapshot, token: string): Promise<WorkspaceSnapshot> {
+    return request<WorkspaceSnapshot>("/v1/workspace/sync", { method: "POST", body: JSON.stringify(snapshot) }, token, 30_000);
   },
   listAgentChats(token: string): Promise<AgentChatSummary[]> {
     return request<AgentChatSummary[]>("/v1/agent/chats", {}, token);

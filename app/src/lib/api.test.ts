@@ -66,4 +66,17 @@ describe("OAuth code exchange", () => {
     expect((request.body as FormData).get("file")).toHaveProperty("name", "recording.webm");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer session-token");
   });
+
+  it("syncs the structured workspace through the authenticated endpoint", async () => {
+    const snapshot = { areas: [], projects: [], folders: [], notes: [] };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => snapshot });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.syncWorkspace(snapshot, "session-token")).resolves.toEqual(snapshot);
+    const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/v1/workspace/sync");
+    expect(request.method).toBe("POST");
+    expect(new Headers(request.headers).get("authorization")).toBe("Bearer session-token");
+    expect(JSON.parse(request.body as string)).toEqual(snapshot);
+  });
 });

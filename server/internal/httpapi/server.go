@@ -25,6 +25,7 @@ import (
 	"github.com/gh-Constant/prior/server/internal/config"
 	"github.com/gh-Constant/prior/server/internal/store"
 	"github.com/gh-Constant/prior/server/internal/tasks"
+	"github.com/gh-Constant/prior/server/internal/workspace"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -89,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/agent/chats/{chatID}/messages", s.saveAgentChatMessage)
 	mux.HandleFunc("POST /v1/sync/push", s.push)
 	mux.HandleFunc("GET /v1/sync/pull", s.pull)
+	mux.HandleFunc("POST /v1/workspace/sync", s.syncWorkspace)
 	mux.HandleFunc("GET /v1/realtime", s.realtime)
 	return s.middleware(mux)
 }
@@ -848,6 +850,25 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"applied": response})
 }
 
+func (s *Server) syncWorkspace(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, err)
+		return
+	}
+	var snapshot workspace.Snapshot
+	if err := decodeJSON(r, &snapshot); err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid workspace snapshot"))
+		return
+	}
+	merged, err := s.store.SyncWorkspace(r.Context(), user.ID, snapshot)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, merged)
+}
+
 func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
@@ -929,6 +950,8 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		maxBodyBytes := int64(1 << 20)
 		if r.URL.Path == "/transcribe" {
 			maxBodyBytes = maxTranscriptionBytes
+		} else if r.URL.Path == "/v1/workspace/sync" {
+			maxBodyBytes = 8 << 20
 		}
 		limited := http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		r = r.WithContext(context.WithValue(r.Context(), requestIDKey{}, requestID))

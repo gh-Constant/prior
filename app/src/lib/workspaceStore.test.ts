@@ -34,4 +34,16 @@ describe("workspaceStore", () => {
     const updated = workspaceStore.updateProject({ ...project, status: "paused" });
     expect(updated).toMatchObject({ id: project.id, name: "Exam prep", status: "paused" });
   });
+
+  it("merges remote workspace items without losing newer local edits", () => {
+    const area = workspaceStore.createArea("Local area");
+    const project = workspaceStore.createProject("Local project", area.id);
+    const local = workspaceStore.exportAll();
+    workspaceStore.mergeRemote({
+      areas: [{ ...area, name: "Older remote name", updatedAt: "2020-01-01T00:00:00.000Z" }],
+      projects: [{ ...project, name: "Remote project", updatedAt: "2999-01-01T00:00:00.000Z" }],
+    });
+    expect(workspaceStore.exportAll().areas.find((item) => item.id === area.id)?.name).toBe(local.areas.find((item) => item.id === area.id)?.name);
+    expect(workspaceStore.exportAll().projects.find((item) => item.id === project.id)?.name).toBe("Remote project");
+  });
 });

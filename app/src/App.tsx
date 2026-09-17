@@ -25,6 +25,7 @@ import { pullAssistantSettings } from "./lib/settingsSync";
 import { SettingsPage } from "./components/SettingsPage";
 import { NotesWorkspace } from "./components/NotesWorkspace";
 import { notesStore } from "./lib/notes";
+import { workspaceSync } from "./lib/workspaceSync";
 import { workspaceStore } from "./lib/workspaceStore";
 import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
 
@@ -152,6 +153,7 @@ export function App() {
   const celebrationKey = useRef(0);
   const syncInFlight = useRef<Promise<void> | null>(null);
   const syncQueued = useRef(false);
+  const workspaceSyncTimer = useRef<number | undefined>(undefined);
   const sessionGeneration = useRef(0);
   const realtimeClose = useRef<(() => Promise<void>) | undefined>(undefined);
   const realtimeGeneration = useRef(0);
@@ -248,10 +250,28 @@ export function App() {
           await localStore.removeMutations(pushed.applied.map((item) => item.mutationId));
           highestPushedRevision = pushed.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
         }
-        const pulled = await api.pull(state.lastServerRevision, token);
+        let pulled = await api.pull(state.lastServerRevision, token);
         if (generation !== sessionGeneration.current) return;
+        const accountId = getUser()?.id;
+        if (accountId && localStore.needsLegacySync(accountId)) {
+          const fullHistory = state.lastServerRevision === 0 ? pulled : await api.pull(0, token);
+          const legacy = await localStore.legacyMutations(
+            accountId,
+            new Set(fullHistory.tasks.map((task) => task.id)),
+            new Set((fullHistory.habits ?? []).map((habit) => habit.id)),
+          );
+          for (let offset = 0; offset < legacy.length; offset += 100) {
+            const pushedLegacy = await api.push(legacy.slice(offset, offset + 100), token);
+            if (generation !== sessionGeneration.current) return;
+            await localStore.removeMutations(pushedLegacy.applied.map((item) => item.mutationId));
+            highestPushedRevision = pushedLegacy.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
+          }
+          localStore.markLegacySyncComplete(accountId);
+          if (legacy.length) pulled = await api.pull(state.lastServerRevision, token);
+        }
         await localStore.applyRemoteTasks(pulled.tasks);
         await localStore.applyRemoteHabits(pulled.habits ?? []);
+        await workspaceSync.sync(token, () => generation === sessionGeneration.current);
         const finalRevision = Math.max(pulled.revision, highestPushedRevision);
         await localStore.setSyncRevision(finalRevision);
         await refresh();
@@ -270,6 +290,15 @@ export function App() {
     }).catch(() => undefined);
     return run;
   }, [refresh]);
+
+  const scheduleWorkspaceSync = useCallback(() => {
+    if (workspaceSync.isApplyingRemote()) return;
+    if (workspaceSyncTimer.current !== undefined) window.clearTimeout(workspaceSyncTimer.current);
+    workspaceSyncTimer.current = window.setTimeout(() => {
+      workspaceSyncTimer.current = undefined;
+      void syncNow();
+    }, 700);
+  }, [syncNow]);
 
   const attachRealtime = useCallback(async () => {
     const generation = ++realtimeGeneration.current;
@@ -306,7 +335,16 @@ export function App() {
     };
   }, [attachRealtime, refresh, refreshWorkspace, syncNow]);
 
-  useEffect(() => workspaceStore.subscribe(refreshWorkspace), [refreshWorkspace]);
+  useEffect(() => workspaceStore.subscribe(() => {
+    refreshWorkspace();
+    scheduleWorkspaceSync();
+  }), [refreshWorkspace, scheduleWorkspaceSync]);
+
+  useEffect(() => notesStore.subscribe(scheduleWorkspaceSync), [scheduleWorkspaceSync]);
+
+  useEffect(() => () => {
+    if (workspaceSyncTimer.current !== undefined) window.clearTimeout(workspaceSyncTimer.current);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -330,7 +368,8 @@ export function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("online", syncNow);
-    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("online", syncNow); };
+    window.addEventListener("focus", syncNow);
+    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("online", syncNow); window.removeEventListener("focus", syncNow); };
   }, [activeView, syncNow]);
 
   function openNewTask(context?: Pick<TaskDraft, "areaId" | "projectId" | "status">): void {
