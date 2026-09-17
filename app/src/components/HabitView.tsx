@@ -23,6 +23,7 @@ type Props = {
   readonly onComplete: (habit: Habit, date: string) => Promise<void>;
   readonly onChange: (habit: Habit) => Promise<void>;
   readonly onDelete: (habit: Habit) => Promise<void>;
+  readonly onEdit: (habit: Habit) => void;
 };
 
 type CompletionSnapshot = {
@@ -43,6 +44,7 @@ type HabitCardProps = {
   readonly onComplete: Props["onComplete"];
   readonly onChange: Props["onChange"];
   readonly onDelete: Props["onDelete"];
+  readonly onEdit: Props["onEdit"];
   readonly onVisualCompletionStart: (habit: Habit, date: string, order: number) => void;
   readonly onVisualCompletionFailure: (habitId: string) => void;
   readonly order: number;
@@ -106,7 +108,8 @@ function statusRank(status: HabitStatus): number {
   if (status === "overdue") return 0;
   if (status === "due") return 1;
   if (status === "upcoming") return 2;
-  return 3;
+  if (status === "complete") return 3;
+  return 4;
 }
 
 function compareHabits(left: Habit, right: Habit, reference: Date): number {
@@ -164,7 +167,7 @@ function periodSummary(period: HabitPeriod, dueCount: number, habitCount: number
   return `${progress.completed}/${progress.scheduled} done`;
 }
 
-export function HabitView({ habits, onAdd, onComplete, onChange, onDelete }: Props) {
+export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdit }: Props) {
   const [period, setPeriod] = useState<HabitPeriod>("today");
   const reference = new Date();
   const [from, to] = rangeFor(period, reference);
@@ -293,6 +296,7 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete }: Pro
                     onComplete={onComplete}
                     onChange={onChange}
                     onDelete={onDelete}
+                    onEdit={onEdit}
                     onVisualCompletionStart={holdVisualCompletion}
                     onVisualCompletionFailure={clearVisualCompletion}
                   />
@@ -396,13 +400,15 @@ type HabitCardActionsProps = {
   readonly onToggleImportant: () => void;
   readonly onToggleUrgent: () => void;
   readonly onDelete: () => void;
+  readonly onEdit: () => void;
 };
 
-function HabitCardActions({ habit, disabled, onToggleImportant, onToggleUrgent, onDelete }: HabitCardActionsProps) {
+function HabitCardActions({ habit, disabled, onToggleImportant, onToggleUrgent, onDelete, onEdit }: HabitCardActionsProps) {
   return (
     <div className="habit-card-actions">
       <button className={`task-action flag-toggle ${habit.important ? "active important" : ""}`} type="button" aria-label={`${habit.important ? "Remove" : "Mark"} important`} title={`${habit.important ? "Remove" : "Mark"} important`} aria-pressed={habit.important} onClick={onToggleImportant} disabled={disabled}><Icon name="star" /></button>
       <button className={`task-action flag-toggle ${habit.urgent ? "active urgent" : ""}`} type="button" aria-label={`${habit.urgent ? "Remove" : "Mark"} urgent`} title={`${habit.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={habit.urgent} onClick={onToggleUrgent} disabled={disabled}><Icon name="bolt" /></button>
+      <button className="task-action" type="button" aria-label={`Edit ${habit.title}`} title={`Edit ${habit.title}`} onClick={onEdit} disabled={disabled}><Icon name="pencil" /></button>
       <button className="task-action danger" type="button" aria-label={`Delete ${habit.title}`} title={`Delete ${habit.title}`} onClick={onDelete} disabled={disabled}><Icon name="trash" /></button>
     </div>
   );
@@ -416,7 +422,7 @@ async function runGuarded(action: () => Promise<void>, onError: (message: string
   }
 }
 
-function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, onChange, onDelete, onVisualCompletionStart, onVisualCompletionFailure, order }: HabitCardProps) {
+function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, onChange, onDelete, onEdit, onVisualCompletionStart, onVisualCompletionFailure, order }: HabitCardProps) {
   const status = habitStatus(habit, reference);
   const today = dateKey(reference);
   const completedDates = new Set(habit.completedDates ?? []);
@@ -501,6 +507,7 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
         </div>
         <div className="habit-meta">
           <span className="habit-schedule-label">{habitScheduleLabel(habit)}</span>
+          {habit.endDate && <span className="habit-end-date">Until {habit.endDate}</span>}
           {habit.important && <span className="habit-flag important"><Icon name="star" /> Important</span>}
           {habit.urgent && <span className="habit-flag urgent"><Icon name="bolt" /> Urgent</span>}
         </div>
@@ -510,6 +517,7 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
       <HabitCardActions
         habit={habit}
         disabled={disabled}
+        onEdit={() => onEdit(habit)}
         onToggleImportant={() => void changeHabit({ ...habit, important: !habit.important })}
         onToggleUrgent={() => void changeHabit({ ...habit, urgent: !habit.urgent })}
         onDelete={() => void deleteHabit()}

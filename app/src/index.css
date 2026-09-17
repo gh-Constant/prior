@@ -215,6 +215,20 @@ svg { display: block; flex-shrink: 0; }
 .habit-schedule-fields .field { justify-content: space-between; min-height: 42px; background: #faf9f7; color: #736d65; font-size: 11px; }
 .habit-schedule-fields .field input, .habit-schedule-fields .field select { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 13px; }
 .habit-schedule-fields .field input { max-width: 60px; }
+.habit-weekday-picker, .habit-date-fields { margin: 12px 24px 0; }
+.habit-weekday-picker { padding: 11px 12px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fffdfb; }
+.habit-field-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 9px; color: #736d65; font-size: 10px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+.habit-field-label small { color: #a39d94; font-size: 10px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.habit-weekday-options { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.habit-weekday-options button { min-width: 0; min-height: 33px; padding: 0 2px; border: 1px solid #e8e1dc; border-radius: 7px; background: #faf9f7; color: #827970; font-size: 10px; font-weight: 700; cursor: pointer; }
+.habit-weekday-options button:hover { border-color: #d7aaa0; }
+.habit-weekday-options button.selected { border-color: #e47b63; background: #fff0eb; color: #b84d36; box-shadow: 0 0 0 2px #fa654a0d; }
+.habit-date-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.habit-date-fields .field { display: flex; flex-direction: column; align-items: stretch; gap: 5px; min-height: 52px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: #faf9f7; }
+.habit-date-fields .field > span { color: #736d65; font-size: 9px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.habit-date-fields .field > span em { color: #aaa198; font-size: 9px; font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.habit-date-fields input { min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 12px; }
+.habit-form-error { margin: 10px 24px 0; color: #b43b25; font-size: 11px; line-height: 1.4; }
 .habit-schedule-preview { margin: 10px 24px 0; color: var(--muted); font-size: 11px; }
 .empty-add { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; max-width: var(--content-width); min-height: 180px; margin: 0 auto; border: 1px dashed #dedbd4; border-radius: 12px; background: #ffffff70; color: #78716a; font-size: 13px; }
 .empty-add:hover { color: var(--accent-dark); border-color: #efa28f; background: #fffaf7; }
@@ -394,7 +408,8 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
 @media (max-width: 480px) {
   .task-columns { columns: 1; }
   .filters-panel { grid-template-columns: minmax(0, 1fr); }
-  .habit-schedule-fields { grid-template-columns: minmax(0, 1fr); }
+  .habit-schedule-fields, .habit-date-fields { grid-template-columns: minmax(0, 1fr); }
+  .habit-weekday-options button { min-height: 40px; }
   .download-grid { grid-template-columns: minmax(0, 1fr); }
   .list-view .task-actions { margin-left: 42px; }
   .list-view .task-title { flex-basis: calc(100% - 52px); }

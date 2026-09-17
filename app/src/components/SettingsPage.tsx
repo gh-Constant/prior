@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
+import { getCodexAccount, logoutCodex, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
+import type { AgentProvider } from "../types";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
 import { pullAssistantSettings, pushAssistantSettings } from "../lib/settingsSync";
@@ -147,6 +149,7 @@ function AssistantSettings() {
   const [apiKey, setApiKey] = useState(() => getAgentSettings().apiKey);
   const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => getAgentSettings().transcriptionApiKey);
   const [webSearch, setWebSearch] = useState(() => getAgentSettings().webSearch !== false);
+  const [provider, setProvider] = useState<AgentProvider>(() => getAgentSettings().provider ?? "openrouter");
   const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
   const [showTranscriptionKey, setShowTranscriptionKey] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -171,6 +174,7 @@ function AssistantSettings() {
           setApiKey(current.apiKey);
           setTranscriptionApiKey(current.transcriptionApiKey);
           setWebSearch(current.webSearch !== false);
+          setProvider(current.provider ?? "openrouter");
           setSynced(true);
         }
       });
@@ -200,8 +204,17 @@ function AssistantSettings() {
     void pushAssistantSettings();
   }
 
+  function handleProviderChange(next: AgentProvider) {
+    const current = getAgentSettings();
+    const updated = { ...current, provider: next };
+    setProvider(next);
+    saveAgentSettings(updated);
+    notifyAgentSettingsChanged();
+  }
+
   return (
     <div className="settings-assistant">
+      {supportsCodexDesktop() && <CodexSettings provider={provider} onProviderChange={handleProviderChange} />}
       <label className="settings-page-field">
         <span>OpenRouter API key</span>
         <div className="field">
@@ -265,6 +278,114 @@ function AssistantSettings() {
       </label>
       <p className="settings-hint">Choose the model directly in the Prior Agent sidebar — no dialog needed.{synced ? " Key synced with your account." : ""}</p>
     </div>
+  );
+}
+
+type CodexSettingsProps = {
+  readonly provider: AgentProvider;
+  readonly onProviderChange: (provider: AgentProvider) => void;
+};
+
+function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
+  const [account, setAccount] = useState<CodexAccount | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void getCodexAccount()
+      .then((next) => {
+        if (!live) return;
+        setAccount(next);
+        setError(next.available ? null : next.error);
+      })
+      .catch((error_) => {
+        if (live) setError(error_ instanceof Error ? error_.message : "Codex is not available.");
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => { live = false; };
+  }, []);
+
+  async function handleConnect() {
+    if (connecting) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      const login = await startCodexLogin();
+      const next = await waitForCodexLogin(login.loginId);
+      setAccount(next);
+      onProviderChange("codex");
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Unable to connect Codex.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (connecting) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      const next = await logoutCodex();
+      setAccount(next);
+      onProviderChange("openrouter");
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Unable to disconnect Codex.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  const chatGptConnected = account?.authMode === "chatgpt";
+  const accountLabel = account?.planType ? `${account.planType[0].toUpperCase()}${account.planType.slice(1)} plan` : "ChatGPT account";
+
+  return (
+    <section className="settings-codex" aria-label="Codex beta">
+      <div className="settings-codex-heading">
+        <div className="settings-codex-icon"><Icon name="sparkles" /></div>
+        <div>
+          <div className="settings-codex-title"><strong>Codex provider</strong><span>Beta</span></div>
+          <p>Use the Codex app-server locally with your ChatGPT subscription. Prior never receives or stores your Codex tokens.</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="settings-codex-status">Checking for Codex…</p>
+      ) : !account?.available ? (
+        <div className="settings-codex-unavailable">
+          <p>{error || "Codex CLI is not available on this desktop."}</p>
+          <small>Install Codex and make the <code>codex</code> command available, then reopen Settings.</small>
+        </div>
+      ) : (
+        <>
+          <div className={`settings-codex-connection ${chatGptConnected ? "connected" : ""}`}>
+            <span className="settings-codex-dot" aria-hidden="true" />
+            <div>
+              <strong>{chatGptConnected ? `Connected · ${accountLabel}` : "Not connected with ChatGPT"}</strong>
+              <small>{chatGptConnected ? (account.email || "Uses the local Codex ChatGPT session") : account.authMode === "apikey" ? "Codex is using an API key. Connect with ChatGPT to use subscription quota." : "Sign in with ChatGPT to enable this provider."}</small>
+            </div>
+          </div>
+          {chatGptConnected ? (
+            <div className="settings-codex-actions">
+              <label className="settings-codex-use">
+                <input type="checkbox" checked={provider === "codex"} onChange={(event) => onProviderChange(event.target.checked ? "codex" : "openrouter")} />
+                <span><strong>Use Codex for Prior Agent</strong><small>Runs locally and uses your ChatGPT/Codex allowance.</small></span>
+              </label>
+              <button type="button" className="text-button settings-codex-disconnect" onClick={() => void handleDisconnect()} disabled={connecting}>Disconnect</button>
+            </div>
+          ) : (
+            <button type="button" className="secondary-button settings-codex-connect" onClick={() => void handleConnect()} disabled={connecting}>
+              {connecting ? "Waiting for ChatGPT…" : "Connect with ChatGPT"}
+            </button>
+          )}
+        </>
+      )}
+      {error && account?.available && <p className="settings-error" role="alert">{error}</p>}
+    </section>
   );
 }
 

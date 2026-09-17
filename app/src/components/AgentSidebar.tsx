@@ -5,6 +5,7 @@ import type {
   AgentSettings,
   Area,
   Habit,
+  HabitDraft,
   NoteDraft,
   NoteFolderDraft,
   Project,
@@ -60,7 +61,7 @@ type Props = {
   readonly projects: Project[];
   readonly user: SessionUser | null;
   readonly onAddTasks: (tasks: Array<TaskDraft & { areaName?: string | null; projectName?: string | null }>) => Promise<void>;
-  readonly onAddHabits: (habits: Array<Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">>) => Promise<void>;
+  readonly onAddHabits: (habits: HabitDraft[]) => Promise<void>;
   readonly onAddNotes: (notes: NoteDraft[]) => Promise<void>;
   readonly onAddFolders: (folders: NoteFolderDraft[]) => Promise<void>;
   readonly onAddAreas?: (areas: Array<{ name: string }>) => Promise<void>;
@@ -107,6 +108,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   const [chatHistory, setChatHistory] = useState<AgentChatSummary[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [codexThreadId, setCodexThreadId] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
@@ -168,7 +170,11 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     // The API key and web search live in Settings now: reload whenever the
     // sidebar opens or Settings saves new values.
     if (open) setSettings(getAgentSettings());
-    const reload = () => setSettings(getAgentSettings());
+    const reload = () => {
+      const next = getAgentSettings();
+      setSettings(next);
+      if (next.provider !== "codex") setCodexThreadId(null);
+    };
     window.addEventListener(AGENT_SETTINGS_EVENT, reload);
     window.addEventListener("storage", reload);
     return () => {
@@ -184,6 +190,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         setSessionToken(null);
         setChatHistory([]);
         setActiveChatId(null);
+        setCodexThreadId(null);
         setMessages([]);
       }
       return () => { cancelled = true; };
@@ -367,6 +374,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     try {
       const chat = await api.getAgentChat(chatId, sessionToken);
       setActiveChatId(chat.id);
+      setCodexThreadId(null);
       setMessages(chat.messages ?? []);
       setInput("");
       if (window.matchMedia("(max-width: 760px)").matches) setHistoryOpen(false);
@@ -380,6 +388,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   function startNewChat() {
     if (loading || chatLoading || dictation.isActive) return;
     setActiveChatId(null);
+    setCodexThreadId(null);
     setMessages([]);
     setInput("");
     setError(null);
@@ -389,7 +398,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     const promptToSend = (customPrompt ?? input).trim();
     if (!promptToSend || loadingRef.current || dictation.isActive) return;
 
-    if (!settings.apiKey) {
+    if (settings.provider !== "codex" && !settings.apiKey) {
       setError("Add your OpenRouter API key in Settings to use the assistant.");
       return;
     }
@@ -415,7 +424,8 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       setMessages(nextMessages);
       if (chatId && token) await persistMessage(chatId, userMsg, token);
 
-      const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings, notesStore.list(), notesStore.listFolders(), areas, projects);
+      const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings, notesStore.list(), notesStore.listFolders(), areas, projects, codexThreadId);
+      if (response.codexThreadId) setCodexThreadId(response.codexThreadId);
       const assistantMsg: AgentMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -747,7 +757,12 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         </div>
       )}
 
-      <div className="agent-model-row">
+      {settings.provider === "codex" ? (
+        <div className="agent-codex-provider" role="status">
+          <Icon name="sparkles" />
+          <span><strong>Codex · ChatGPT subscription</strong><small>Model selection and quota are managed by your Codex login.</small></span>
+        </div>
+      ) : <div className="agent-model-row">
         <label id="prior-agent-model-label">Model</label>
         <div className="agent-model-picker" ref={modelPickerRef}>
           <button
@@ -799,9 +814,9 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
-      {!settings.apiKey && (
+      {settings.provider !== "codex" && !settings.apiKey && (
         <div className="agent-key-notice" role="note">
           <span>Add your OpenRouter key to enable the assistant.</span>
           <button type="button" className="secondary-button" onClick={() => { dictation.stop(); onOpenSettings(); }}>

@@ -175,6 +175,8 @@ describe("proposal updaters", () => {
       urgent: false,
       interval: 1,
       unit: "day",
+      endDate: null,
+      daysOfWeek: [],
     });
     expect(noteDraftOf(makeNote())).toEqual({
       title: "Sprint review",

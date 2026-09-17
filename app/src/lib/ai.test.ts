@@ -165,6 +165,14 @@ describe("ai engine", () => {
     expect(parsed.habits[0]).toMatchObject({ title: "Walk", interval: 2, unit: "week" });
   });
 
+  it("parses habit end dates and named weekdays", () => {
+    const parsed = parseAiResponse(JSON.stringify({
+      reply: "Prepared.",
+      habits: [{ title: "Research", unit: "week", daysOfWeek: ["Saturday"], endDate: "2026-10-10" }],
+    }));
+    expect(parsed.habits[0]).toMatchObject({ title: "Research", unit: "week", daysOfWeek: [6], endDate: "2026-10-10" });
+  });
+
   it("extracts JSON enclosed in markdown code fences", () => {
     const raw = `Sure thing! Here is what you should do:
 \`\`\`json

@@ -1,6 +1,6 @@
 import type {
   AgentMessage,
-  Habit,
+  HabitDraft,
   NoteDraft,
   NoteFolderDraft,
   ProjectStatus,
@@ -171,8 +171,8 @@ export function taskDraftOf(task: ProposedTask): TaskDraft & { areaName?: string
   };
 }
 
-export function habitDraftOf(habit: ProposedHabit): Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> {
-  return { title: habit.title, important: habit.important, urgent: habit.urgent, interval: habit.interval, unit: habit.unit };
+export function habitDraftOf(habit: ProposedHabit): HabitDraft {
+  return { title: habit.title, important: habit.important, urgent: habit.urgent, interval: habit.interval, unit: habit.unit, endDate: habit.endDate ?? null, daysOfWeek: habit.daysOfWeek ?? [] };
 }
 
 export function noteDraftOf(note: ProposedNote): NoteDraft {
@@ -573,7 +573,7 @@ export function ProposedHabitCard({ messageId, habit, adding, onUpdate, onAdd }:
       </div>
       <div className="proposed-task-meta">
         <span className={`quadrant-chip quadrant-chip-${badge.key}`}>
-          {habitScheduleLabel(habit)} · {badge.label}
+          {habitScheduleLabel(habit)}{habit.endDate ? ` · ends ${habit.endDate}` : ""} · {badge.label}
         </span>
         <FlagToggles
           important={habit.important}
@@ -870,7 +870,7 @@ export function AssistantMessage({ message: msg, handlers }: AssistantMessagePro
       <div className="agent-message-bubble">
         <div className="agent-message-text chat-markdown" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(msg.content) }} />
         {msg.actualModel && (
-          <div className="agent-model-info" title={`Resolved via OpenRouter: ${msg.actualModel}`}>
+          <div className="agent-model-info" title={`Resolved via ${msg.actualModel}`}>
             <span className="routed-dot" />
             <span>Model: <strong>{msg.actualModel}</strong></span>
           </div>

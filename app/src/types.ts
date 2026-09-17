@@ -59,12 +59,18 @@ export type Habit = {
   interval: number;
   unit: HabitUnit;
   startDate: string;
+  /** Optional for backwards compatibility with habits created before schedules were expanded. */
+  endDate?: string | null;
+  /** JavaScript weekday values (0 = Sunday, 6 = Saturday), used for weekly habits. */
+  daysOfWeek?: number[];
   completedDates: string[];
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
   serverRevision?: number;
 };
+
+export type HabitDraft = Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> & Partial<Pick<Habit, "id" | "startDate" | "endDate" | "daysOfWeek" | "completedDates" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>;
 
 export type TaskMutation = {
   id: string;
@@ -136,6 +142,8 @@ export type ProposedHabit = {
   urgent: boolean;
   interval: number;
   unit: HabitUnit;
+  endDate?: string | null;
+  daysOfWeek?: number[];
   reasoning: string;
   selected: boolean;
   added?: boolean;
@@ -189,6 +197,8 @@ export type AgentMessage = {
   createdAt: string;
 };
 
+export type AgentProvider = "openrouter" | "codex";
+
 export type AgentChatSummary = {
   id: string;
   title: string;
@@ -206,4 +216,5 @@ export type AgentSettings = {
   transcriptionApiKey: string;
   model: string;
   webSearch: boolean;
+  provider?: AgentProvider;
 };

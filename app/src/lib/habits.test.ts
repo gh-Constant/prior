@@ -32,4 +32,15 @@ describe("habit recurrence", () => {
     const habit = makeHabit({ startDate: "2026-01-31", unit: "month" });
     expect(habitOccurrenceDates(habit, new Date("2026-01-01"), new Date("2026-05-31"))).toEqual(["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30", "2026-05-31"]);
   });
+
+  it("supports selected weekly weekdays and an end date", () => {
+    const habit = makeHabit({ unit: "week", daysOfWeek: [6], endDate: "2026-09-26", completedDates: ["2026-09-12", "2026-09-19", "2026-09-26"] });
+    expect(habitOccurrenceDates(habit, new Date("2026-09-10"), new Date("2026-10-10"))).toEqual(["2026-09-12", "2026-09-19", "2026-09-26"]);
+    expect(habitStatus(habit, new Date("2026-09-27T12:00:00"))).toBe("ended");
+  });
+
+  it("supports every other selected weekday", () => {
+    const habit = makeHabit({ unit: "week", interval: 2, daysOfWeek: [1, 6], startDate: "2026-09-07" });
+    expect(habitOccurrenceDates(habit, new Date("2026-09-07"), new Date("2026-09-30"))).toEqual(["2026-09-07", "2026-09-12", "2026-09-21", "2026-09-26"]);
+  });
 });

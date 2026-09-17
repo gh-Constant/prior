@@ -1,6 +1,6 @@
 import type { Habit, HabitUnit } from "../types";
 
-export type HabitStatus = "complete" | "due" | "overdue" | "upcoming";
+export type HabitStatus = "complete" | "due" | "overdue" | "upcoming" | "ended";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -72,11 +72,52 @@ function startOfDay(value: Date): Date {
   return result;
 }
 
+function endDateFor(habit: Pick<Habit, "endDate">): Date | null {
+  if (!habit.endDate) return null;
+  const parsed = new Date(`${habit.endDate.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : startOfDay(parsed);
+}
+
+function mondayOf(value: Date): Date {
+  const result = startOfDay(value);
+  result.setDate(result.getDate() - ((result.getDay() + 6) % 7));
+  return result;
+}
+
+function selectedWeekdays(habit: Pick<Habit, "daysOfWeek">): number[] {
+  return [...new Set((habit.daysOfWeek ?? []).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((left, right) => left - right);
+}
+
+function weeklyOccurrenceDates(habit: Habit, from: Date, to: Date): string[] {
+  const selected = selectedWeekdays(habit);
+  if (!selected.length) return [];
+  const start = validDate(habit.startDate);
+  const first = startOfDay(from < start ? start : from);
+  const end = startOfDay(to);
+  if (end < first) return [];
+  const scheduleEnd = endDateFor(habit);
+  const boundedEnd = scheduleEnd && scheduleEnd < end ? scheduleEnd : end;
+  if (boundedEnd < first) return [];
+  const anchorWeek = mondayOf(start);
+  const interval = intervalFor(habit);
+  const result: string[] = [];
+  for (let cursor = first; cursor <= boundedEnd && result.length < 4000; cursor = new Date(cursor.getTime() + DAY_MS)) {
+    if (!selected.includes(cursor.getDay())) continue;
+    const weekIndex = Math.floor((calendarDayNumber(mondayOf(cursor)) - calendarDayNumber(anchorWeek)) / 7);
+    if (weekIndex >= 0 && weekIndex % interval === 0) result.push(dateKey(cursor));
+  }
+  return result;
+}
+
 /** Returns all scheduled occurrence dates in the inclusive range. */
 export function habitOccurrenceDates(habit: Habit, from: Date, to: Date): string[] {
+  if (habit.unit === "week" && selectedWeekdays(habit).length) return weeklyOccurrenceDates(habit, from, to);
   const start = startOfDay(from);
-  const end = startOfDay(to);
+  const scheduleEnd = endDateFor(habit);
+  const rawEnd = startOfDay(to);
+  const end = scheduleEnd && scheduleEnd < rawEnd ? scheduleEnd : rawEnd;
   if (end < start) return [];
+  if (end < validDate(habit.startDate)) return [];
   const result: string[] = [];
   let index = firstIndexAtOrAfter(habit, start);
   let occurrence = occurrenceAt(habit, index);
@@ -105,6 +146,8 @@ export function habitStatus(habit: Habit, reference = new Date()): HabitStatus {
   const hasPastPending = pending.some((date) => date < key);
   if (todayIsDue && completed.has(key)) return hasPastPending ? "overdue" : "complete";
   if (pending.length > 0) return hasPastPending ? "overdue" : "due";
+  const end = endDateFor(habit);
+  if (end && today >= end) return "ended";
   return "upcoming";
 }
 
@@ -122,8 +165,14 @@ export function habitIsScheduledInRange(habit: Habit, from: Date, to: Date): boo
   return habitOccurrenceDates(habit, from, to).length > 0;
 }
 
-export function habitScheduleLabel(habit: Pick<Habit, "interval" | "unit">): string {
+export function habitScheduleLabel(habit: Pick<Habit, "interval" | "unit" | "daysOfWeek">): string {
   const interval = intervalFor(habit);
+  const selected = selectedWeekdays(habit);
+  if (habit.unit === "week" && selected.length) {
+    const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const weekdayLabel = selected.map((day) => names[day]).join(", ");
+    return interval === 1 ? `Every ${weekdayLabel}` : `Every ${interval} weeks · ${weekdayLabel}`;
+  }
   const names: Record<HabitUnit, [string, string]> = {
     day: ["day", "days"], week: ["week", "weeks"], month: ["month", "months"], year: ["year", "years"],
   };
@@ -136,6 +185,7 @@ export function habitStatusLabel(habit: Habit, reference = new Date()): string {
   if (status === "complete") return "Done today";
   if (status === "due") return "Due today";
   if (status === "overdue") return "Overdue";
+  if (status === "ended") return "Ended";
   const next = habitOccurrenceDates(habit, startOfDay(reference), new Date(startOfDay(reference).getTime() + 370 * DAY_MS))[0];
   return next ? `Next · ${next}` : "Upcoming";
 }

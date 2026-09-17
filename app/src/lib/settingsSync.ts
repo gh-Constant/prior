@@ -8,13 +8,15 @@ import { getToken } from "./auth";
 // Merge rule: when the server holds a key it wins (shared copy); otherwise
 // a local key seeds the server on next push.
 export function mergeServerSettings(local: AgentSettings, server: ServerSettings): { merged: AgentSettings; shouldPush: boolean } {
+  const merged: AgentSettings = {
+    apiKey: server.openrouterApiKey || local.apiKey,
+    transcriptionApiKey: server.openaiApiKey || local.transcriptionApiKey,
+    model: local.model,
+    webSearch: server.webSearch,
+  };
+  if (local.provider) merged.provider = local.provider;
   return {
-    merged: {
-      apiKey: server.openrouterApiKey || local.apiKey,
-      transcriptionApiKey: server.openaiApiKey || local.transcriptionApiKey,
-      model: local.model,
-      webSearch: server.webSearch,
-    },
+    merged,
     shouldPush: (!server.openrouterApiKey && local.apiKey !== "") || (!server.openaiApiKey && local.transcriptionApiKey !== ""),
   };
 }

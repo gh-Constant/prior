@@ -31,6 +31,8 @@ type Habit struct {
 	Interval       int        `json:"interval"`
 	Unit           string     `json:"unit"`
 	StartDate      string     `json:"startDate"`
+	EndDate        *string    `json:"endDate,omitempty"`
+	DaysOfWeek     []int      `json:"daysOfWeek"`
 	CompletedDates []string   `json:"completedDates"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`

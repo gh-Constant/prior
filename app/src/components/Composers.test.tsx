@@ -63,4 +63,17 @@ describe("HabitComposer", () => {
     expect(screen.getByText("Create habit")).toBeDisabled();
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it("captures a weekly weekday and an optional end date", async () => {
+    const onSave = vi.fn(async (_input: Record<string, unknown>) => undefined);
+    render(<HabitComposer onSave={onSave} onCancel={() => undefined} />);
+
+    fireEvent.change(screen.getByLabelText("Habit title"), { target: { value: "Clean shower" } });
+    fireEvent.change(screen.getByText("Period").closest("label")?.querySelector("select") as HTMLSelectElement, { target: { value: "week" } });
+    fireEvent.click(screen.getByRole("button", { name: "Saturday" }));
+    fireEvent.change(screen.getByLabelText("Ends optional"), { target: { value: "2026-10-10" } });
+    fireEvent.click(screen.getByText("Create habit"));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: "Clean shower", unit: "week", daysOfWeek: [6], endDate: "2026-10-10" }));
+  });
 });

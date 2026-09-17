@@ -4,7 +4,7 @@ import { clearSession, getToken, getUser, isAndroidTauri, listenForAuth, saveUse
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
-import type { Area, Habit, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
+import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
@@ -83,6 +83,7 @@ type WorkspaceContentProps = {
   readonly onHabitComplete: (habit: Habit, date: string) => Promise<void>;
   readonly onHabitChange: (habit: Habit) => Promise<void>;
   readonly onHabitDelete: (habit: Habit) => Promise<void>;
+  readonly onHabitEdit: (habit: Habit) => void;
   readonly onTaskChange: (task: Task) => Promise<void>;
   readonly onTaskDelete: (task: Task) => Promise<void>;
   readonly onTaskEdit: (task: Task) => void;
@@ -97,12 +98,12 @@ type WorkspaceContentProps = {
   readonly onWorkspaceChange: () => void;
 };
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange }: WorkspaceContentProps) {
   if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (["today", "inbox", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} />;
   if (activeView === "habits") {
-    return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} />;
+    return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
   }
   if (activeView === "eisenhower") {
     return (
@@ -130,6 +131,7 @@ export function App() {
   const [newTaskContext, setNewTaskContext] = useState<Pick<TaskDraft, "areaId" | "projectId" | "status"> | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [habitComposerOpen, setHabitComposerOpen] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
@@ -431,7 +433,7 @@ export function App() {
     void syncNow();
   }
 
-  async function addAgentHabits(batch: Array<Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">>) {
+  async function addAgentHabits(batch: HabitDraft[]) {
     for (const item of batch) {
       await localStore.saveHabit(item);
     }
@@ -501,9 +503,10 @@ export function App() {
     void syncNow();
   }
 
-  async function saveHabit(input: Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">) {
+  async function saveHabit(input: HabitDraft) {
     await localStore.saveHabit(input);
     setHabitComposerOpen(false);
+    setEditingHabit(null);
     await refresh();
     void syncNow();
   }
@@ -664,6 +667,7 @@ export function App() {
             onHabitComplete={completeHabit}
             onHabitChange={changeHabit}
             onHabitDelete={deleteHabit}
+            onHabitEdit={(habit) => { setEditingHabit(habit); setHabitComposerOpen(true); }}
             onTaskChange={changeTask}
             onTaskDelete={deleteTask}
             onTaskEdit={(task) => setEditingTask(task)}
@@ -700,7 +704,7 @@ export function App() {
       />
 
       {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); }} />}
-      {habitComposerOpen && <HabitComposer onSave={saveHabit} onCancel={() => setHabitComposerOpen(false)} />}
+      {habitComposerOpen && <HabitComposer habit={editingHabit ?? undefined} onSave={saveHabit} onCancel={() => { setHabitComposerOpen(false); setEditingHabit(null); }} />}
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}
     </div>

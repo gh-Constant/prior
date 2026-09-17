@@ -32,8 +32,8 @@ describe("localStore browser fallback", () => {
   });
 
   it("persists a recurring habit and keeps its completion history in the habit mutation", async () => {
-    const habit = await localStore.saveHabit({ title: "Stretch", important: false, urgent: true, interval: 2, unit: "week" });
-    expect((await localStore.listHabits())[0]).toMatchObject({ id: habit.id, interval: 2, unit: "week", completedDates: [] });
+    const habit = await localStore.saveHabit({ title: "Stretch", important: false, urgent: true, interval: 2, unit: "week", endDate: "2026-10-01", daysOfWeek: [6] });
+    expect((await localStore.listHabits())[0]).toMatchObject({ id: habit.id, interval: 2, unit: "week", endDate: "2026-10-01", daysOfWeek: [6], completedDates: [] });
     const updated = await localStore.updateHabit({ ...habit, completedDates: ["2026-09-15"] });
     expect(updated.completedDates).toEqual(["2026-09-15"]);
     expect((await localStore.pendingMutations()).at(-1)).toMatchObject({ entity: "habit", habit: { id: habit.id, completedDates: ["2026-09-15"] } });

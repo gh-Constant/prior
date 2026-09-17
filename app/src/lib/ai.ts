@@ -16,6 +16,7 @@ import type {
   TaskPriority,
   TaskStatus,
 } from "../types";
+import { runCodex } from "./codex";
 import type { Note, NoteFolder } from "./notes";
 
 export const DEFAULT_MODEL = "openrouter/free";
@@ -46,13 +47,14 @@ export function getAgentSettings(): AgentSettings {
           transcriptionApiKey: parsed.transcriptionApiKey || "",
           model: parsed.model || DEFAULT_MODEL,
           webSearch: parsed.webSearch ?? true,
+          provider: parsed.provider === "codex" ? "codex" : "openrouter",
         };
       }
     }
   } catch {
     // fallback below
   }
-  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, webSearch: true };
+  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, webSearch: true, provider: "openrouter" };
 }
 
 export function saveAgentSettings(settings: AgentSettings): void {
@@ -122,7 +124,9 @@ function describeTaskForPrompt(task: Task, areas: Area[] = [], projects: Project
 function describeHabitForPrompt(habit: Habit): string {
   const importance = flagLabel(habit.important, "Important", "Not important");
   const urgency = flagLabel(habit.urgent, "Urgent", "Not urgent");
-  return `- "${habit.title}" (every ${habit.interval} ${habit.unit}, ${importance}, ${urgency})`;
+  const days = habit.unit === "week" && habit.daysOfWeek?.length ? ` on weekdays ${habit.daysOfWeek.join(",")}` : "";
+  const end = habit.endDate ? `, ends ${habit.endDate}` : "";
+  return `- "${habit.title}" (every ${habit.interval} ${habit.unit}${days}, ${importance}, ${urgency}${end})`;
 }
 
 function folderPathForPrompt(folder: NoteFolder, all: NoteFolder[]): string {
@@ -219,7 +223,7 @@ PRIOR CAPABILITIES (use these exact names when the user asks what tools you have
 - create_area: prepare one or more high-level Areas (e.g. Work, Personal, Health, Finance). The app shows them as an approval card; they are saved when the user clicks Add.
 - create_project: prepare one or more outcome-oriented Projects optionally tied to an Area. The app shows them as an approval card; they are saved when the user clicks Add.
 - create_task: prepare one or more one-off tasks with optional area, project, status, scheduled date, assignee, and follow-up date. The app shows them as an approval card; they are saved when the user clicks Add.
-- create_habit: prepare one or more recurring habits with a repeat interval (day, week, month, or year). The app shows them as an approval card; they are saved when the user clicks Add.
+- create_habit: prepare one or more recurring habits with a repeat interval (day, week, month, or year), an optional endDate (YYYY-MM-DD), and optional daysOfWeek (0 = Sunday through 6 = Saturday; use for weekly habits such as every Saturday). The app shows them as an approval card; they are saved when the user clicks Add.
 - create_note: prepare one or more Markdown notes with an optional folder and project. The app shows them as an approval card; they are saved when the user clicks Add.
 - create_folder: prepare one or more note folders with an optional parent. The app shows them as an approval card; they are saved when the user clicks Add.
 - prioritize_tasks: classify tasks by importance and urgency and explain the trade-off.
@@ -265,7 +269,7 @@ CAPABILITY BOUNDARIES:
 - You cannot edit or delete existing notes directly. You only propose new notes and folders; the user reviews and saves them. Never claim an item was saved before the user confirms the card.
 - Tasks support an optional description, due date, priority 1–4, importance, urgency, areaName, projectName, status, scheduledDate, assigneeName, and followUpDate. When a user gives a date such as "tomorrow", resolve it to YYYY-MM-DD using the current date and put it in dueDate.
 - Priority is a separate Todoist-style scale: P1 is highest and P4 is lowest. Do not confuse priority with importance; use important and urgent for the Eisenhower matrix.
-- Prior habits support only title, importance, urgency, interval, unit, and starting today. Do not invent reminders, streak goals, tags, notifications, or calendar events.
+- Habits support title, importance, urgency, interval, unit, optional endDate, and optional daysOfWeek. Use endDate for time-limited routines (for example a research sprint); use daysOfWeek for weekly routines such as every Saturday. New habits start today. Do not invent reminders, streak goals, tags, notifications, or calendar events.
 - You cannot send emails, edit an external calendar, modify files, or control other accounts. Say so only when relevant, after listing the capabilities you do have.
 
 WHEN THE USER ASKS ABOUT YOUR TOOLS:
@@ -376,6 +380,8 @@ OUTPUT CONTRACT:
       "urgent": false,
       "interval": 1,
       "unit": "day",
+      "endDate": null,
+      "daysOfWeek": [],
       "reasoning": "Short reason for this classification"
     }
   ],
@@ -508,12 +514,36 @@ async function requestOpenRouter(init: RequestInit, timeoutMs: number): Promise<
   }
 }
 
-function habitRecurrence(item: RawAction): { interval: number; unit: HabitUnit } {
+function habitDaysOfWeek(value: unknown): number[] {
+  const names: Record<string, number> = {
+    sunday: 0, sun: 0, dimanche: 0,
+    monday: 1, mon: 1, lundi: 1,
+    tuesday: 2, tue: 2, mardi: 2,
+    wednesday: 3, wed: 3, mercredi: 3,
+    thursday: 4, thu: 4, thurs: 4, jeudi: 4,
+    friday: 5, fri: 5, vendredi: 5,
+    saturday: 6, sat: 6, samedi: 6,
+  };
+  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[,.\s]+/) : [];
+  return [...new Set(values.flatMap((entry) => {
+    if (typeof entry === "number" && Number.isInteger(entry) && entry >= 0 && entry <= 6) return [entry];
+    if (typeof entry === "string") {
+      const normalized = entry.trim().toLowerCase();
+      if (/^[0-6]$/.test(normalized)) return [Number(normalized)];
+      if (normalized in names) return [names[normalized]];
+    }
+    return [];
+  }))].sort((left, right) => left - right);
+}
+
+function habitRecurrence(item: RawAction): { interval: number; unit: HabitUnit; endDate: string | null; daysOfWeek: number[] } {
   const recurrence = item.recurrence ?? item.repeat ?? item.schedule;
   const recurrenceObject = recurrence && typeof recurrence === "object" ? recurrence as RawAction : undefined;
   const intervalValue = item.interval ?? item.every ?? item.frequency ?? recurrenceObject?.interval ?? recurrenceObject?.every;
   const unitValue = item.unit ?? item.period ?? item.frequencyUnit ?? recurrenceObject?.unit ?? recurrenceObject?.period ?? recurrence;
-  return { interval: habitInterval(intervalValue), unit: habitUnit(unitValue) };
+  const endDate = taskDueDate(item.endDate ?? item.end_date ?? recurrenceObject?.endDate ?? recurrenceObject?.end_date);
+  const daysOfWeek = habitDaysOfWeek(item.daysOfWeek ?? item.days_of_week ?? item.weekdays ?? recurrenceObject?.daysOfWeek ?? recurrenceObject?.days_of_week ?? recurrenceObject?.weekdays);
+  return { interval: habitInterval(intervalValue), unit: habitUnit(unitValue), endDate, daysOfWeek };
 }
 
 function stripFenceLanguageTag(inner: string): string {
@@ -705,6 +735,8 @@ function buildProposedHabit(item: Record<string, unknown>): ProposedHabit {
     urgent: booleanValue(item.urgent),
     interval: recurrence.interval,
     unit: recurrence.unit,
+    endDate: recurrence.endDate,
+    daysOfWeek: recurrence.unit === "week" ? recurrence.daysOfWeek : [],
     reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
     selected: true,
     added: false,
@@ -750,6 +782,7 @@ export type AgentResult = {
   notes: ProposedNote[];
   folders: ProposedFolder[];
   actualModel?: string;
+  codexThreadId?: string;
 };
 
 export function parseAiResponse(raw: string): {
@@ -845,7 +878,22 @@ export async function askAgent(
   existingFolders: NoteFolder[] = [],
   existingAreas: Area[] = [],
   existingProjects: Project[] = [],
+  codexThreadId: string | null = null,
 ): Promise<AgentResult> {
+  if (settings.provider === "codex") {
+    const result = await runCodex({
+      prompt,
+      history: history.slice(-8).map((message) => ({ role: message.role, content: message.content })),
+      systemPrompt: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
+      threadId: codexThreadId,
+    });
+    return {
+      ...parseAiResponse(result.text),
+      actualModel: result.actualModel ?? "Codex · ChatGPT subscription",
+      codexThreadId: result.threadId,
+    };
+  }
+
   if (!settings.apiKey) {
     throw new Error("Missing OpenRouter API Key. Please add your key in the settings tab.");
   }

@@ -1,6 +1,8 @@
 #[cfg(all(not(desktop), not(target_os = "android")))]
 use std::sync::Mutex;
 #[cfg(desktop)]
+mod codex;
+#[cfg(desktop)]
 use tauri::Emitter;
 #[cfg(any(desktop, target_os = "android"))]
 use tauri::Manager;
@@ -11,6 +13,11 @@ use tauri::{AppHandle, Runtime};
 
 #[cfg(desktop)]
 struct SessionState;
+
+#[cfg(desktop)]
+use codex::{
+    codex_account_read, codex_login_start, codex_login_wait, codex_logout, codex_run, CodexState,
+};
 
 #[cfg(all(not(desktop), not(target_os = "android")))]
 struct SessionState(Mutex<Option<String>>);
@@ -182,12 +189,26 @@ pub fn run() {
             sql: include_str!("../migrations/003_task_details.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 4,
+            description: "areas, projects, and task workflow",
+            sql: include_str!("../migrations/004_work_hub.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
+        tauri_plugin_sql::Migration {
+            version: 5,
+            description: "habit end dates and weekdays",
+            sql: include_str!("../migrations/005_habit_schedule.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();
 
     #[cfg(desktop)]
     let builder = builder.manage(SessionState);
+    #[cfg(desktop)]
+    let builder = builder.manage(CodexState::default());
     #[cfg(all(not(desktop), not(target_os = "android")))]
     let builder = builder.manage(SessionState(Mutex::new(None)));
 
@@ -223,6 +244,16 @@ pub fn run() {
             session_get,
             session_set,
             session_clear,
+            #[cfg(desktop)]
+            codex_account_read,
+            #[cfg(desktop)]
+            codex_login_start,
+            #[cfg(desktop)]
+            codex_login_wait,
+            #[cfg(desktop)]
+            codex_logout,
+            #[cfg(desktop)]
+            codex_run,
             #[cfg(target_os = "android")]
             widget_set_items,
             #[cfg(target_os = "android")]

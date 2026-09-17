@@ -583,9 +583,32 @@ func validateHabitSchedule(interval int, unit string) error {
 	return nil
 }
 
-func validateHabitDates(startDate string, completedDates []string) error {
-	if _, err := time.Parse(isoDateLayout, startDate); err != nil {
+func validateHabitDates(startDate string, endDate *string, daysOfWeek []int, completedDates []string) error {
+	start, err := time.Parse(isoDateLayout, startDate)
+	if err != nil {
 		return errors.New("invalid habit start date")
+	}
+	if endDate != nil {
+		end, parseErr := time.Parse(isoDateLayout, strings.TrimSpace(*endDate))
+		if parseErr != nil {
+			return errors.New("invalid habit end date")
+		}
+		if end.Before(start) {
+			return errors.New("habit end date must be on or after the start date")
+		}
+	}
+	if len(daysOfWeek) > 7 {
+		return errors.New("invalid habit weekdays")
+	}
+	seenDays := make(map[int]struct{}, len(daysOfWeek))
+	for _, day := range daysOfWeek {
+		if day < 0 || day > 6 {
+			return errors.New("invalid habit weekday")
+		}
+		if _, exists := seenDays[day]; exists {
+			return errors.New("habit weekdays must be unique")
+		}
+		seenDays[day] = struct{}{}
 	}
 	if len(completedDates) > 10000 {
 		return errors.New("habit completion history is too large")
@@ -605,7 +628,10 @@ func validateHabit(habit tasks.Habit) error {
 	if err := validateHabitSchedule(habit.Interval, habit.Unit); err != nil {
 		return err
 	}
-	return validateHabitDates(habit.StartDate, habit.CompletedDates)
+	if len(habit.DaysOfWeek) > 0 && habit.Unit != "week" {
+		return errors.New("habit weekdays require a weekly schedule")
+	}
+	return validateHabitDates(habit.StartDate, habit.EndDate, habit.DaysOfWeek, habit.CompletedDates)
 }
 
 func applyHabitMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutation tasks.Mutation, mutationID uuid.UUID) (AppliedMutation, error) {
@@ -623,12 +649,20 @@ func applyHabitMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutati
 }
 
 func insertHabitRow(mc mutationContext, habit tasks.Habit, habitID uuid.UUID, completedJSON []byte, createdAt, updatedAt time.Time) error {
-	_, err := mc.tx.Exec(mc.ctx, `INSERT INTO habits (id, user_id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, important = EXCLUDED.important, urgent = EXCLUDED.urgent, interval = EXCLUDED.interval, unit = EXCLUDED.unit, start_date = EXCLUDED.start_date, completed_dates = EXCLUDED.completed_dates, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision WHERE habits.user_id = EXCLUDED.user_id`, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, completedJSON, createdAt, updatedAt, habit.DeletedAt, mc.revision)
+	daysJSON, err := json.Marshal(habit.DaysOfWeek)
+	if err != nil {
+		return err
+	}
+	_, err = mc.tx.Exec(mc.ctx, `INSERT INTO habits (id, user_id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, important = EXCLUDED.important, urgent = EXCLUDED.urgent, interval = EXCLUDED.interval, unit = EXCLUDED.unit, start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, days_of_week = EXCLUDED.days_of_week, completed_dates = EXCLUDED.completed_dates, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision WHERE habits.user_id = EXCLUDED.user_id`, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, habit.EndDate, daysJSON, completedJSON, createdAt, updatedAt, habit.DeletedAt, mc.revision)
 	return err
 }
 
 func insertHabitChangeRow(mc mutationContext, habit tasks.Habit, habitID uuid.UUID, completedJSON []byte, createdAt, updatedAt time.Time) error {
-	_, err := mc.tx.Exec(mc.ctx, `INSERT INTO habit_changes (revision, habit_id, user_id, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, mc.revision, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, completedJSON, createdAt, updatedAt, habit.DeletedAt)
+	daysJSON, err := json.Marshal(habit.DaysOfWeek)
+	if err != nil {
+		return err
+	}
+	_, err = mc.tx.Exec(mc.ctx, `INSERT INTO habit_changes (revision, habit_id, user_id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`, mc.revision, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, habit.EndDate, daysJSON, completedJSON, createdAt, updatedAt, habit.DeletedAt)
 	return err
 }
 
@@ -831,7 +865,7 @@ func pullTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, since 
 
 func pullHabits(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, since int64) ([]tasks.Habit, int64, error) {
 	habitRows, err := pool.Query(ctx, `
-		SELECT id::text, title, important, urgent, interval, unit, start_date, completed_dates, created_at, updated_at, deleted_at, revision
+		SELECT id::text, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, revision
 		FROM habits WHERE user_id = $1 AND revision > $2 ORDER BY revision ASC, id`, userID, since)
 	if err != nil {
 		return nil, since, err
@@ -857,9 +891,16 @@ func pullHabits(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, since
 
 func scanHabitRow(habitRows pgx.Rows) (tasks.Habit, error) {
 	var habit tasks.Habit
+	var daysJSON []byte
 	var completedJSON []byte
-	if err := habitRows.Scan(&habit.ID, &habit.Title, &habit.Important, &habit.Urgent, &habit.Interval, &habit.Unit, &habit.StartDate, &completedJSON, &habit.CreatedAt, &habit.UpdatedAt, &habit.DeletedAt, &habit.ServerRevision); err != nil {
+	if err := habitRows.Scan(&habit.ID, &habit.Title, &habit.Important, &habit.Urgent, &habit.Interval, &habit.Unit, &habit.StartDate, &habit.EndDate, &daysJSON, &completedJSON, &habit.CreatedAt, &habit.UpdatedAt, &habit.DeletedAt, &habit.ServerRevision); err != nil {
 		return tasks.Habit{}, err
+	}
+	if err := json.Unmarshal(daysJSON, &habit.DaysOfWeek); err != nil {
+		return tasks.Habit{}, err
+	}
+	if habit.DaysOfWeek == nil {
+		habit.DaysOfWeek = []int{}
 	}
 	if err := json.Unmarshal(completedJSON, &habit.CompletedDates); err != nil {
 		return tasks.Habit{}, err
