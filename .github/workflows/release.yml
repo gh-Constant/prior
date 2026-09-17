@@ -342,11 +342,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PREVIOUS_TAG: ${{ needs.plan.outputs.previous_tag }}
+          BUILD_DESKTOP: ${{ needs.plan.outputs.build_desktop }}
+          BUILD_ANDROID: ${{ needs.plan.outputs.build_android }}
         run: |
           set -euo pipefail
           mkdir -p reused-artifacts
           gh release download "$PREVIOUS_TAG" --dir reused-artifacts
           rm -f reused-artifacts/latest.json
+          # Reuse only platforms that were not rebuilt. This avoids uploading
+          # stale large installers when a fresh platform artifact is available.
+          if [ "$BUILD_DESKTOP" = "true" ]; then
+            find reused-artifacts -type f ! -name 'app-universal-release.apk' -delete
+          fi
+          if [ "$BUILD_ANDROID" = "true" ]; then
+            rm -f reused-artifacts/app-universal-release.apk
+          fi
       - name: Generate updater metadata for newly built platforms
         run: |
           mkdir -p new-artifacts release-assets
