@@ -18,7 +18,6 @@
 .notes-explorer { min-width: 0; display: flex; flex-direction: column; background: #fbfaf8; border-right: 1px solid var(--line); }
 .notes-explorer-header { display: flex; align-items: center; justify-content: space-between; padding: 22px 18px 16px; }
 .notes-explorer-header-actions { display: flex; align-items: center; gap: 6px; }
-.notes-mobile-close { display: none; }
 .notes-eyebrow, .notes-inspector-label { display: block; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; }
 .notes-explorer h2 { margin: 4px 0 0; font-size: 21px; letter-spacing: -.05em; }
 .notes-icon-button, .notes-tab-add { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); }
@@ -206,7 +205,6 @@
   .notes-toolbar-actions { justify-content: flex-start; }
   .notes-toolbar-actions button { min-width: 30px; padding: 0 6px; }
   .notes-toolbar-actions button svg { display: block; }
-  .notes-mobile-close { display: grid; }
   .notes-title-row { padding: 8px 14px 12px; }
   .notes-editor-layout { padding: 0 14px; }
   .notes-editor-pane textarea { min-height: calc(100dvh - 260px); padding-bottom: 80px; font-size: 13px; }
