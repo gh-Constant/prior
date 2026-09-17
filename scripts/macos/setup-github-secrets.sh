@@ -203,7 +203,16 @@ elif [ "$skip_notarization" = "0" ]; then
   printf '%s' "$apple_id" | set_secret APPLE_ID
   printf '%s' "$apple_password" | set_secret APPLE_PASSWORD
 else
-  warn "notarization secrets not set: the release will be signed but macOS still shows a warning until APPLE_ID/APPLE_PASSWORD exist"
+  warn "notarization secrets left untouched by this run"
 fi
 
-info "done. The next 'v*.*.*' tag will produce a signed and notarized macOS build."
+existing="$(gh secret list --repo "$repo" | awk '{print $1}')"
+has() { printf '%s\n' "$existing" | grep -qx "$1"; }
+if has APPLE_CERTIFICATE && has APPLE_CERTIFICATE_PASSWORD \
+   && { { has APPLE_API_KEY && has APPLE_API_ISSUER && has APPLE_API_KEY_BASE64; } || { has APPLE_ID && has APPLE_PASSWORD; }; }; then
+  info "done. The next 'v*.*.*' tag will produce a signed and notarized macOS build."
+else
+  warn "done, but the repo is still missing secrets for a warning-free macOS release:"
+  for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD; do has "$name" || warn "  $name"; done
+  has APPLE_API_KEY || has APPLE_ID || warn "  notarization (APPLE_API_KEY/APPLE_API_ISSUER/APPLE_API_KEY_BASE64 or APPLE_ID/APPLE_PASSWORD)"
+fi
