@@ -606,7 +606,7 @@ fn build_turn_input(request: &CodexRunRequest) -> String {
     if !request.history.is_empty() {
         input.push_str("\n\nRECENT CONVERSATION:\n");
         for message in request.history.iter().rev().take(8).rev() {
-            input.push_str("\n");
+            input.push('\n');
             input.push_str(if message.role == "assistant" {
                 "ASSISTANT: "
             } else {
