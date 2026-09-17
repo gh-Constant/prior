@@ -44,6 +44,7 @@ jobs:
     needs: prepare
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - platform: ubuntu-22.04
@@ -191,7 +192,7 @@ jobs:
           done
 
   android:
-    needs: prepare
+    needs: [prepare, desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
