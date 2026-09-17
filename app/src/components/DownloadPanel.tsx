@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent } from "react";
 import { faAndroid, faApple, faLinux, faWindows, type IconDefinition } from "@fortawesome/free-brands-svg-icons";
 import { Icon } from "./Icon";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl } from "../lib/browser";
 
 export const RELEASES_URL = "https://github.com/gh-Constant/prior/releases/latest";
 const RELEASE_API_URL = "https://api.github.com/repos/gh-Constant/prior/releases/latest";
@@ -41,7 +41,7 @@ function resolveDownloadUrls(assets: ReleaseAsset[]): Record<string, string> {
 function openDownload(event: MouseEvent<HTMLAnchorElement>, href: string) {
   if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
     event.preventDefault();
-    void openUrl(href);
+    void openExternalUrl(href);
   }
 }
 

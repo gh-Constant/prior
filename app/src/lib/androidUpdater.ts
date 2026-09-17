@@ -99,6 +99,6 @@ export async function checkForAndroidUpdate(fetchImpl: typeof fetch = fetch): Pr
 }
 
 export async function openAndroidUpdate(downloadUrl: string): Promise<void> {
-  const { openUrl } = await import("@tauri-apps/plugin-opener");
-  await openUrl(downloadUrl);
+  const { openExternalUrl } = await import("./browser");
+  await openExternalUrl(downloadUrl);
 }

@@ -1,7 +1,7 @@
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
 import { API_URL, api } from "./api";
+import { openExternalUrl } from "./browser";
 import { getSecret, removeSecret, setSecret } from "./secureStore";
 
 const USER_KEY = "prior.session.user";
@@ -64,7 +64,7 @@ export async function startGoogleLogin(): Promise<void> {
   const returnTarget = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? "prior://auth/callback" : `${window.location.origin}/auth/callback`;
   const returnTo = encodeURIComponent(returnTarget);
   const url = `${API_URL}/auth/google/start?return_to=${returnTo}`;
-  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) await openUrl(url);
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) await openExternalUrl(url);
   else window.location.href = url;
 }
 
