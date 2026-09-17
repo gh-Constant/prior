@@ -162,13 +162,3 @@
   .notes-inspector { display: none; }
   .notes-status { padding: 0 14px; }
 }
-@media (prefers-color-scheme: dark) {
-  .notes-workspace { --panel: #1f1e1c; --ink: #f1ede7; --muted: #aaa39b; --line: #3a3733; }
-  .notes-explorer, .notes-tabs { background: #242321; }
-  .note-file-row:hover, .note-folder-row:hover, .notes-explorer-actions button.active, .notes-explorer-actions button:hover, .notes-toolbar-actions button:hover, .notes-toolbar-actions button.active { background: #302d2a; }
-  .notes-workspace, .notes-main { background: #1f1e1c; }
-  .notes-preview-pane, .notes-reading { color: #d4d0c9; }
-  .notes-code, .note-diagram pre { background: #292725; color: #d4d0c9; }
-  .note-diagram { background: #2d2522; }
-  .notes-preview-pane code, .notes-reading code, .note-math, .note-attachment-pending { background: #302a27; }
-}
