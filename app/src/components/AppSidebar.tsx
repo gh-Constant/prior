@@ -3,7 +3,7 @@ import { BrandMark } from "./BrandMark";
 import { Icon } from "./Icon";
 import "./AppSidebar.css";
 
-export type WorkspaceView = "eisenhower" | "all" | "habits";
+export type WorkspaceView = "eisenhower" | "all" | "habits" | "notes";
 
 type AppSidebarProps = {
   readonly activeView: WorkspaceView;
@@ -15,10 +15,11 @@ type AppSidebarProps = {
   readonly onToggle: () => void;
 };
 
-const NAV_ITEMS: Array<{ view: WorkspaceView; label: string; icon: "inbox" | "grid" | "calendar-check" }> = [
+const NAV_ITEMS: Array<{ view: WorkspaceView; label: string; icon: "inbox" | "grid" | "calendar-check" | "file-text" }> = [
   { view: "all", label: "All tasks", icon: "inbox" },
   { view: "eisenhower", label: "Eisenhower", icon: "grid" },
   { view: "habits", label: "Habits", icon: "calendar-check" },
+  { view: "notes", label: "Notes", icon: "file-text" },
 ];
 
 export function AppSidebar({ activeView, user, collapsed, inert, onViewChange, onAccount, onToggle }: AppSidebarProps) {
@@ -40,7 +41,7 @@ export function AppSidebar({ activeView, user, collapsed, inert, onViewChange, o
         </button>
       </div>
 
-      <nav className="sidebar-nav" aria-label="Task views">
+      <nav className="sidebar-nav" aria-label="Workspace views">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.view}

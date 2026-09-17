@@ -21,12 +21,14 @@ import { CompletionBurst } from "./components/CompletionBurst";
 import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/completionExit";
 import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
 import { AgentIdentity } from "./components/AgentIdentity";
+import { NotesWorkspace } from "./components/NotesWorkspace";
 
 type Layout = "list" | "board";
 
 function viewTitle(view: WorkspaceView): string {
   if (view === "eisenhower") return "Eisenhower";
   if (view === "habits") return "Habits";
+  if (view === "notes") return "Notes";
   return "All tasks";
 }
 
@@ -43,6 +45,7 @@ type WorkspaceHeaderProps = {
 };
 
 function WorkspaceHeader({ activeView, layout, onLayoutChange, agentOpen, onToggleAgent, aiShortcut, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
+  if (activeView === "notes") return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? "New habit" : "New task";
   return (
@@ -88,6 +91,7 @@ type WorkspaceContentProps = {
 };
 
 function WorkspaceContent({ activeView, layout, grouped, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onTaskChange, onTaskDelete, onTaskEdit }: WorkspaceContentProps) {
+  if (activeView === "notes") return <NotesWorkspace />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} />;
   }
@@ -281,7 +285,8 @@ export function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        if (activeView === "habits") setHabitComposerOpen(true); else setComposerOpen(true);
+        if (activeView === "notes") window.dispatchEvent(new Event("prior-notes-new"));
+        else if (activeView === "habits") setHabitComposerOpen(true); else setComposerOpen(true);
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
         event.preventDefault();
@@ -431,7 +436,7 @@ export function App() {
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
 
-      <main className="workspace" inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}>
+      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}>
         <WorkspaceHeader
           activeView={activeView}
           layout={layout}
@@ -444,7 +449,7 @@ export function App() {
           onNewTask={() => activeView === "habits" ? setHabitComposerOpen(true) : setComposerOpen(true)}
         />
 
-        {activeView !== "habits" && <TaskFilters value={taskFilters} onChange={setTaskFilters} />}
+        {(activeView === "all" || activeView === "eisenhower") && <TaskFilters value={taskFilters} onChange={setTaskFilters} />}
 
         <CompletionExitProvider deadlines={completionExitDeadlines}>
           <WorkspaceContent
