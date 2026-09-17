@@ -84,12 +84,46 @@ export type ProposedHabit = {
   added?: boolean;
 };
 
+export type ProposedNote = {
+  id: string;
+  title: string;
+  folderName: string | null;
+  bodyMarkdown: string;
+  favorite: boolean;
+  reasoning: string;
+  selected: boolean;
+  added?: boolean;
+};
+
+export type ProposedFolder = {
+  id: string;
+  name: string;
+  parentName: string | null;
+  reasoning: string;
+  selected: boolean;
+  added?: boolean;
+};
+
+export type NoteDraft = {
+  title: string;
+  folderName: string | null;
+  bodyMarkdown: string;
+  favorite: boolean;
+};
+
+export type NoteFolderDraft = {
+  name: string;
+  parentName: string | null;
+};
+
 export type AgentMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   proposedTasks?: ProposedTask[];
   proposedHabits?: ProposedHabit[];
+  proposedNotes?: ProposedNote[];
+  proposedFolders?: ProposedFolder[];
   actualModel?: string;
   createdAt: string;
 };

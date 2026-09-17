@@ -1,4 +1,4 @@
-import type { AgentMessage, Habit, ProposedHabit, ProposedTask, QuadrantKey, Task, TaskDraft } from "../types";
+import type { AgentMessage, Habit, NoteDraft, NoteFolderDraft, ProposedFolder, ProposedHabit, ProposedNote, ProposedTask, QuadrantKey, Task, TaskDraft } from "../types";
 import { quadrantFor } from "../lib/priority";
 import { habitScheduleLabel } from "../lib/habits";
 import { AgentIdentity } from "./AgentIdentity";
@@ -50,12 +50,60 @@ export function markHabitsAdded(messages: AgentMessage[], messageId: string, ids
   });
 }
 
+export function updateNoteProposal(messages: AgentMessage[], messageId: string, noteId: string, update: Partial<ProposedNote>): AgentMessage[] {
+  return messages.map((message) => {
+    if (message.id !== messageId || !message.proposedNotes) return message;
+    return { ...message, proposedNotes: message.proposedNotes.map((note) => note.id === noteId ? { ...note, ...update } : note) };
+  });
+}
+
+export function markNotesAdded(messages: AgentMessage[], messageId: string, ids: ReadonlySet<string>): AgentMessage[] {
+  return messages.map((message) => {
+    if (message.id !== messageId || !message.proposedNotes) return message;
+    return { ...message, proposedNotes: message.proposedNotes.map((note) => ids.has(note.id) ? { ...note, added: true } : note) };
+  });
+}
+
+export function updateFolderProposal(messages: AgentMessage[], messageId: string, folderId: string, update: Partial<ProposedFolder>): AgentMessage[] {
+  return messages.map((message) => {
+    if (message.id !== messageId || !message.proposedFolders) return message;
+    return { ...message, proposedFolders: message.proposedFolders.map((folder) => folder.id === folderId ? { ...folder, ...update } : folder) };
+  });
+}
+
+export function markFoldersAdded(messages: AgentMessage[], messageId: string, ids: ReadonlySet<string>): AgentMessage[] {
+  return messages.map((message) => {
+    if (message.id !== messageId || !message.proposedFolders) return message;
+    return { ...message, proposedFolders: message.proposedFolders.map((folder) => ids.has(folder.id) ? { ...folder, added: true } : folder) };
+  });
+}
+
 export function taskDraftOf(task: ProposedTask): TaskDraft {
   return { title: task.title, description: task.description, dueDate: task.dueDate, priority: task.priority, important: task.important, urgent: task.urgent };
 }
 
 export function habitDraftOf(habit: ProposedHabit): Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> {
   return { title: habit.title, important: habit.important, urgent: habit.urgent, interval: habit.interval, unit: habit.unit };
+}
+
+export function noteDraftOf(note: ProposedNote): NoteDraft {
+  return { title: note.title, folderName: note.folderName, bodyMarkdown: note.bodyMarkdown, favorite: note.favorite };
+}
+
+export function folderDraftOf(folder: ProposedFolder): NoteFolderDraft {
+  return { name: folder.name, parentName: folder.parentName };
+}
+
+function detectNoteFeatures(body: string): string[] {
+  const features: string[] = [];
+  if (/(^|\n)\s*[-*+]\s+\[[ xX]\]/.test(body)) features.push("Task list");
+  if (/(^|\n)\s*\|[^|\n]+\|/.test(body)) features.push("Table");
+  if (/\$\$[^$]+\$\$|\$[^$\n]+\$/.test(body)) features.push("Math");
+  if (/\[\[[^\]]+\]\]/.test(body)) features.push("Links");
+  if (/(^|\s)#[A-Za-z][\w-]*/.test(body)) features.push("Tags");
+  if (/^> \[!(note|tip|warning|info)\]/im.test(body)) features.push("Callout");
+  if (/^```/m.test(body)) features.push("Code");
+  return features.slice(0, 4);
 }
 
 type FlagTogglesProps = {
@@ -309,7 +357,206 @@ export type AssistantMessageHandlers = {
   readonly onUpdateHabit: (messageId: string, habitId: string, update: Partial<ProposedHabit>) => void;
   readonly onAddSingleHabit: (messageId: string, habit: ProposedHabit) => void;
   readonly onAddAllHabits: (messageId: string, habits: ProposedHabit[]) => void;
+  readonly onUpdateNote: (messageId: string, noteId: string, update: Partial<ProposedNote>) => void;
+  readonly onAddSingleNote: (messageId: string, note: ProposedNote) => void;
+  readonly onAddAllNotes: (messageId: string, notes: ProposedNote[]) => void;
+  readonly onUpdateFolder: (messageId: string, folderId: string, update: Partial<ProposedFolder>) => void;
+  readonly onAddSingleFolder: (messageId: string, folder: ProposedFolder) => void;
+  readonly onAddAllFolders: (messageId: string, folders: ProposedFolder[]) => void;
 };
+
+type ProposedNoteCardProps = {
+  readonly messageId: string;
+  readonly note: ProposedNote;
+  readonly adding: boolean;
+  readonly onUpdate: (messageId: string, noteId: string, update: Partial<ProposedNote>) => void;
+  readonly onAdd: (messageId: string, note: ProposedNote) => void;
+};
+
+export function ProposedNoteCard({ messageId, note, adding, onUpdate, onAdd }: ProposedNoteCardProps) {
+  const features = detectNoteFeatures(note.bodyMarkdown);
+  const preview = note.bodyMarkdown.length > 420 ? `${note.bodyMarkdown.slice(0, 417).trimEnd()}…` : note.bodyMarkdown;
+  const wordCount = note.bodyMarkdown.trim() ? note.bodyMarkdown.trim().split(/\s+/).length : 0;
+  return (
+    <div className={`proposed-task-item proposed-note-item ${note.added ? "is-added" : ""}`}>
+      <div className="proposed-task-top">
+        <label className="proposed-checkbox-label">
+          <input
+            type="checkbox"
+            checked={note.selected}
+            disabled={note.added}
+            onChange={() => onUpdate(messageId, note.id, { selected: !note.selected })}
+          />
+          <span className="proposed-task-title">{note.title}</span>
+        </label>
+        {note.added ? (
+          <span className="task-added-badge">
+            <Icon name="check" /> Added
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="add-single-btn"
+            disabled={adding}
+            onClick={() => onAdd(messageId, note)}
+            title="Add note to Prior"
+          >
+            <Icon name="plus" />
+          </button>
+        )}
+      </div>
+      <div className="proposed-task-meta">
+        <span className="proposed-due-date">{note.folderName ?? "Library"}</span>
+        {note.favorite && <span className="proposed-priority proposed-priority-2">Favorite</span>}
+        <span className="proposed-count">{wordCount} words</span>
+        {!note.added && (
+          <button
+            type="button"
+            className={`task-action flag-toggle ${note.favorite ? "active important" : ""}`}
+            aria-label={note.favorite ? "Remove favorite" : "Mark as favorite"}
+            aria-pressed={note.favorite}
+            title={note.favorite ? "Remove favorite" : "Mark as favorite"}
+            onClick={() => onUpdate(messageId, note.id, { favorite: !note.favorite })}
+          >
+            <Icon name="star" />
+          </button>
+        )}
+      </div>
+      {features.length > 0 && (
+        <div className="proposed-task-meta">
+          {features.map((feature) => (
+            <span key={feature} className="quadrant-chip quadrant-chip-plan">{feature}</span>
+          ))}
+        </div>
+      )}
+      {preview && <pre className="proposed-description proposed-note-preview">{preview}</pre>}
+      {note.reasoning && <p className="proposed-reasoning">{note.reasoning}</p>}
+    </div>
+  );
+}
+
+type NoteProposalBoxProps = {
+  readonly messageId: string;
+  readonly notes: readonly ProposedNote[];
+  readonly addingIds: Readonly<Record<string, boolean>>;
+  readonly onUpdate: (messageId: string, noteId: string, update: Partial<ProposedNote>) => void;
+  readonly onAddSingle: (messageId: string, note: ProposedNote) => void;
+  readonly onAddAll: (messageId: string, notes: ProposedNote[]) => void;
+};
+
+export function NoteProposalBox({ messageId, notes, addingIds, onUpdate, onAddSingle, onAddAll }: NoteProposalBoxProps) {
+  if (notes.length === 0) return null;
+  const addedCount = notes.filter((note) => note.added).length;
+  return (
+    <div className="proposed-tasks-box proposed-notes-box">
+      <div className="proposed-tasks-header">
+        <span className="proposed-count">{addedCount}/{notes.length} notes added</span>
+        {notes.some((note) => !note.added) && (
+          <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll(messageId, [...notes])}>
+            <Icon name="plus" />
+            <span>Add notes to Prior</span>
+          </button>
+        )}
+      </div>
+      <div className="proposed-task-list">
+        {notes.map((note) => (
+          <ProposedNoteCard
+            key={note.id}
+            messageId={messageId}
+            note={note}
+            adding={addingIds[note.id] ?? false}
+            onUpdate={onUpdate}
+            onAdd={onAddSingle}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type ProposedFolderCardProps = {
+  readonly messageId: string;
+  readonly folder: ProposedFolder;
+  readonly adding: boolean;
+  readonly onUpdate: (messageId: string, folderId: string, update: Partial<ProposedFolder>) => void;
+  readonly onAdd: (messageId: string, folder: ProposedFolder) => void;
+};
+
+export function ProposedFolderCard({ messageId, folder, adding, onUpdate, onAdd }: ProposedFolderCardProps) {
+  return (
+    <div className={`proposed-task-item ${folder.added ? "is-added" : ""}`}>
+      <div className="proposed-task-top">
+        <label className="proposed-checkbox-label">
+          <input
+            type="checkbox"
+            checked={folder.selected}
+            disabled={folder.added}
+            onChange={() => onUpdate(messageId, folder.id, { selected: !folder.selected })}
+          />
+          <span className="proposed-task-title">{folder.name}</span>
+        </label>
+        {folder.added ? (
+          <span className="task-added-badge">
+            <Icon name="check" /> Added
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="add-single-btn"
+            disabled={adding}
+            onClick={() => onAdd(messageId, folder)}
+            title="Add folder to Prior"
+          >
+            <Icon name="plus" />
+          </button>
+        )}
+      </div>
+      <div className="proposed-task-meta">
+        <span className="proposed-due-date">{folder.parentName ? `Inside ${folder.parentName}` : "Top level"}</span>
+      </div>
+      {folder.reasoning && <p className="proposed-reasoning">{folder.reasoning}</p>}
+    </div>
+  );
+}
+
+type FolderProposalBoxProps = {
+  readonly messageId: string;
+  readonly folders: readonly ProposedFolder[];
+  readonly addingIds: Readonly<Record<string, boolean>>;
+  readonly onUpdate: (messageId: string, folderId: string, update: Partial<ProposedFolder>) => void;
+  readonly onAddSingle: (messageId: string, folder: ProposedFolder) => void;
+  readonly onAddAll: (messageId: string, folders: ProposedFolder[]) => void;
+};
+
+export function FolderProposalBox({ messageId, folders, addingIds, onUpdate, onAddSingle, onAddAll }: FolderProposalBoxProps) {
+  if (folders.length === 0) return null;
+  const addedCount = folders.filter((folder) => folder.added).length;
+  return (
+    <div className="proposed-tasks-box proposed-folders-box">
+      <div className="proposed-tasks-header">
+        <span className="proposed-count">{addedCount}/{folders.length} folders added</span>
+        {folders.some((folder) => !folder.added) && (
+          <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll(messageId, [...folders])}>
+            <Icon name="plus" />
+            <span>Add folders to Prior</span>
+          </button>
+        )}
+      </div>
+      <div className="proposed-task-list">
+        {folders.map((folder) => (
+          <ProposedFolderCard
+            key={folder.id}
+            messageId={messageId}
+            folder={folder}
+            adding={addingIds[folder.id] ?? false}
+            onUpdate={onUpdate}
+            onAdd={onAddSingle}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 type AssistantMessageProps = {
   readonly message: AgentMessage;
@@ -359,6 +606,26 @@ export function AssistantMessage({ message: msg, handlers }: AssistantMessagePro
             onUpdate={handlers.onUpdateHabit}
             onAddSingle={handlers.onAddSingleHabit}
             onAddAll={handlers.onAddAllHabits}
+          />
+        )}
+        {msg.proposedFolders && (
+          <FolderProposalBox
+            messageId={msg.id}
+            folders={msg.proposedFolders}
+            addingIds={handlers.addingIds}
+            onUpdate={handlers.onUpdateFolder}
+            onAddSingle={handlers.onAddSingleFolder}
+            onAddAll={handlers.onAddAllFolders}
+          />
+        )}
+        {msg.proposedNotes && (
+          <NoteProposalBox
+            messageId={msg.id}
+            notes={msg.proposedNotes}
+            addingIds={handlers.addingIds}
+            onUpdate={handlers.onUpdateNote}
+            onAddSingle={handlers.onAddSingleNote}
+            onAddAll={handlers.onAddAllNotes}
           />
         )}
       </div>

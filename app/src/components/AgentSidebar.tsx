@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentChatSummary, AgentMessage, AgentSettings, Habit, ProposedHabit, ProposedTask, Task, TaskDraft } from "../types";
+import type { AgentChatSummary, AgentMessage, AgentSettings, Habit, NoteDraft, NoteFolderDraft, ProposedFolder, ProposedHabit, ProposedNote, ProposedTask, Task, TaskDraft } from "../types";
 import { askAgent, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
-import { AssistantMessage, habitDraftOf, markHabitsAdded, markTasksAdded, taskDraftOf, updateHabitProposal, updateTaskProposal, type AssistantMessageHandlers } from "./AgentMessageView";
+import { AssistantMessage, folderDraftOf, habitDraftOf, markFoldersAdded, markHabitsAdded, markNotesAdded, markTasksAdded, noteDraftOf, taskDraftOf, updateFolderProposal, updateHabitProposal, updateNoteProposal, updateTaskProposal, type AssistantMessageHandlers } from "./AgentMessageView";
+import { notesStore } from "../lib/notes";
 import { Icon } from "./Icon";
 import { DictationControls, DictationPreview, DictationStatusBar } from "./DictationControls";
 import { useDictation } from "../hooks/useDictation";
@@ -18,12 +19,15 @@ type Props = {
   readonly user: SessionUser | null;
   readonly onAddTasks: (tasks: TaskDraft[]) => Promise<void>;
   readonly onAddHabits: (habits: Array<Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">>) => Promise<void>;
+  readonly onAddNotes: (notes: NoteDraft[]) => Promise<void>;
+  readonly onAddFolders: (folders: NoteFolderDraft[]) => Promise<void>;
 };
 
 const STARTER_PROMPTS = [
   { icon: "bolt" as const, title: "Plan today's priorities", prompt: "Help me prioritize today. I need to focus on high-impact work and handle urgent deadlines first." },
   { icon: "inbox" as const, title: "Triage a brain dump", prompt: "Here is a brain dump of things on my mind: " },
   { icon: "plan" as const, title: "Break down a project", prompt: "Break down this project into atomic, actionable Eisenhower tasks with clear urgency and importance: " },
+  { icon: "file-text" as const, title: "Turn into a note", prompt: "Turn the following into a well-structured Markdown note with headings, a task list, and a table where useful: " },
   { icon: "sparkles" as const, title: "Organize my inbox", prompt: "Review my current task list and suggest what to tackle first, what to schedule, and what to defer." },
 ];
 
@@ -52,7 +56,7 @@ function modelConfirmLabel(customDraft: string, listDraft: string): string {
   return `Use ${shortModelName(effective)}`;
 }
 
-export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, onAddHabits }: Props) {
+export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders }: Props) {
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(settings.apiKey);
@@ -377,13 +381,15 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
       setMessages(nextMessages);
       if (chatId && token) await persistMessage(chatId, userMsg, token);
 
-      const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings);
+      const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings, notesStore.list(), notesStore.listFolders());
       const assistantMsg: AgentMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: response.reply,
         proposedTasks: response.tasks,
         proposedHabits: response.habits,
+        proposedNotes: response.notes,
+        proposedFolders: response.folders,
         actualModel: response.actualModel,
         createdAt: new Date().toISOString(),
       };
@@ -460,6 +466,60 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
     }
   }
 
+  function updateProposedNote(messageId: string, noteId: string, update: Partial<ProposedNote>) {
+    setMessages((prev) => updateNoteProposal(prev, messageId, noteId, update));
+  }
+
+  async function handleAddSingleNote(messageId: string, note: ProposedNote) {
+    setAddingIds((prev) => ({ ...prev, [note.id]: true }));
+    try {
+      await onAddNotes([noteDraftOf(note)]);
+      setMessages((prev) => markNotesAdded(prev, messageId, new Set([note.id])));
+    } finally {
+      setAddingIds((prev) => ({ ...prev, [note.id]: false }));
+    }
+  }
+
+  async function handleAddAllNotes(messageId: string, proposed: ProposedNote[]) {
+    const toAdd = proposed.filter((note) => note.selected && !note.added);
+    if (!toAdd.length) return;
+    const ids = new Set(toAdd.map((note) => note.id));
+    toAdd.forEach((note) => setAddingIds((prev) => ({ ...prev, [note.id]: true })));
+    try {
+      await onAddNotes(toAdd.map(noteDraftOf));
+      setMessages((prev) => markNotesAdded(prev, messageId, ids));
+    } finally {
+      toAdd.forEach((note) => setAddingIds((prev) => ({ ...prev, [note.id]: false })));
+    }
+  }
+
+  function updateProposedFolder(messageId: string, folderId: string, update: Partial<ProposedFolder>) {
+    setMessages((prev) => updateFolderProposal(prev, messageId, folderId, update));
+  }
+
+  async function handleAddSingleFolder(messageId: string, folder: ProposedFolder) {
+    setAddingIds((prev) => ({ ...prev, [folder.id]: true }));
+    try {
+      await onAddFolders([folderDraftOf(folder)]);
+      setMessages((prev) => markFoldersAdded(prev, messageId, new Set([folder.id])));
+    } finally {
+      setAddingIds((prev) => ({ ...prev, [folder.id]: false }));
+    }
+  }
+
+  async function handleAddAllFolders(messageId: string, proposed: ProposedFolder[]) {
+    const toAdd = proposed.filter((folder) => folder.selected && !folder.added);
+    if (!toAdd.length) return;
+    const ids = new Set(toAdd.map((folder) => folder.id));
+    toAdd.forEach((folder) => setAddingIds((prev) => ({ ...prev, [folder.id]: true })));
+    try {
+      await onAddFolders(toAdd.map(folderDraftOf));
+      setMessages((prev) => markFoldersAdded(prev, messageId, ids));
+    } finally {
+      toAdd.forEach((folder) => setAddingIds((prev) => ({ ...prev, [folder.id]: false })));
+    }
+  }
+
   const messageHandlers: AssistantMessageHandlers = {
     addingIds,
     onToggleTaskSelect: handleToggleSelect,
@@ -470,6 +530,12 @@ export function AgentSidebar({ open, onClose, tasks, habits, user, onAddTasks, o
     onUpdateHabit: updateProposedHabit,
     onAddSingleHabit: (messageId, habit) => void handleAddSingleHabit(messageId, habit),
     onAddAllHabits: (messageId, habits) => void handleAddAllHabits(messageId, habits),
+    onUpdateNote: updateProposedNote,
+    onAddSingleNote: (messageId, note) => void handleAddSingleNote(messageId, note),
+    onAddAllNotes: (messageId, notes) => void handleAddAllNotes(messageId, notes),
+    onUpdateFolder: updateProposedFolder,
+    onAddSingleFolder: (messageId, folder) => void handleAddSingleFolder(messageId, folder),
+    onAddAllFolders: (messageId, folders) => void handleAddAllFolders(messageId, folders),
   };
 
   if (!open) return null;

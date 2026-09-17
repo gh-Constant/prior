@@ -582,13 +582,15 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ID             string          `json:"id"`
-		Role           string          `json:"role"`
-		Content        string          `json:"content"`
-		ProposedTasks  json.RawMessage `json:"proposedTasks"`
-		ProposedHabits json.RawMessage `json:"proposedHabits"`
-		ActualModel    string          `json:"actualModel"`
-		CreatedAt      string          `json:"createdAt"`
+		ID              string          `json:"id"`
+		Role            string          `json:"role"`
+		Content         string          `json:"content"`
+		ProposedTasks   json.RawMessage `json:"proposedTasks"`
+		ProposedHabits  json.RawMessage `json:"proposedHabits"`
+		ProposedNotes   json.RawMessage `json:"proposedNotes"`
+		ProposedFolders json.RawMessage `json:"proposedFolders"`
+		ActualModel     string          `json:"actualModel"`
+		CreatedAt       string          `json:"createdAt"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid chat message request"))
@@ -600,14 +602,16 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	message, err := s.store.SaveAgentChatMessage(r.Context(), store.SaveAgentChatMessageParams{
-		UserID:         user.ID,
-		ChatID:         chatID,
-		MessageID:      messageID,
-		Role:           body.Role,
-		Content:        body.Content,
-		ProposedTasks:  body.ProposedTasks,
-		ProposedHabits: body.ProposedHabits,
-		ActualModel:    body.ActualModel,
+		UserID:          user.ID,
+		ChatID:          chatID,
+		MessageID:       messageID,
+		Role:            body.Role,
+		Content:         body.Content,
+		ProposedTasks:   body.ProposedTasks,
+		ProposedHabits:  body.ProposedHabits,
+		ProposedNotes:   body.ProposedNotes,
+		ProposedFolders: body.ProposedFolders,
+		ActualModel:     body.ActualModel,
 	})
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, err)

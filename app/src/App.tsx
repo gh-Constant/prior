@@ -4,7 +4,7 @@ import { clearSession, getToken, getUser, listenForAuth, startGoogleLogin, type 
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
-import type { Habit, Task, TaskDraft } from "./types";
+import type { Habit, NoteDraft, NoteFolderDraft, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
@@ -22,6 +22,7 @@ import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/com
 import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
 import { AgentIdentity } from "./components/AgentIdentity";
 import { NotesWorkspace } from "./components/NotesWorkspace";
+import { notesStore } from "./lib/notes";
 
 type Layout = "list" | "board";
 
@@ -336,6 +337,42 @@ export function App() {
     void syncNow();
   }
 
+  function resolveAgentFolderId(folderName: string | null): string | null {
+    if (!folderName) return null;
+    const wanted = folderName.trim().toLowerCase();
+    if (!wanted) return null;
+    const existing = notesStore.listFolders().find((folder) => folder.name.trim().toLowerCase() === wanted);
+    if (existing) return existing.id;
+    return notesStore.createFolder(folderName.trim()).id;
+  }
+
+  async function addAgentFolders(batch: NoteFolderDraft[]) {
+    for (const item of batch) {
+      const name = item.name.trim();
+      if (!name) continue;
+      const wanted = name.toLowerCase();
+      const parentWanted = item.parentName?.trim().toLowerCase() ?? null;
+      const duplicate = notesStore.listFolders().some((folder) => {
+        if (folder.name.trim().toLowerCase() !== wanted) return false;
+        if (!parentWanted) return folder.parentId === null;
+        const parent = notesStore.listFolders().find((candidate) => candidate.id === folder.parentId);
+        return parent?.name.trim().toLowerCase() === parentWanted;
+      });
+      if (duplicate) continue;
+      const parentId = item.parentName ? resolveAgentFolderId(item.parentName) : null;
+      notesStore.createFolder(name, parentId);
+    }
+  }
+
+  async function addAgentNotes(batch: NoteDraft[]) {
+    for (const item of batch) {
+      const title = item.title.trim() || "Untitled note";
+      const folderId = resolveAgentFolderId(item.folderName);
+      const created = notesStore.create(title, folderId);
+      notesStore.update({ ...created, body: item.bodyMarkdown, favorite: item.favorite });
+    }
+  }
+
   async function changeTask(task: Task) {
     const previous = tasks.find((item) => item.id === task.id);
     const savedTask = await localStore.updateTask(task);
@@ -478,6 +515,8 @@ export function App() {
         user={user}
         onAddTasks={addAgentTasks}
         onAddHabits={addAgentHabits}
+        onAddNotes={addAgentNotes}
+        onAddFolders={addAgentFolders}
       />
 
       {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); }} />}

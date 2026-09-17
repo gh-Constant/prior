@@ -1,13 +1,19 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import type { AgentMessage, ProposedHabit, ProposedTask } from "../types";
+import type { AgentMessage, ProposedFolder, ProposedHabit, ProposedNote, ProposedTask } from "../types";
 import {
   AssistantMessage,
+  folderDraftOf,
   getQuadrantBadge,
   habitDraftOf,
+  markFoldersAdded,
   markHabitsAdded,
+  markNotesAdded,
   markTasksAdded,
+  noteDraftOf,
   taskDraftOf,
+  updateFolderProposal,
   updateHabitProposal,
+  updateNoteProposal,
   updateTaskProposal,
 } from "./AgentMessageView";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
@@ -39,6 +45,32 @@ function makeHabit(overrides: Partial<ProposedHabit> = {}): ProposedHabit {
     interval: 1,
     unit: "day",
     reasoning: "",
+    selected: true,
+    added: false,
+    ...overrides,
+  };
+}
+
+function makeNote(overrides: Partial<ProposedNote> = {}): ProposedNote {
+  return {
+    id: "note-1",
+    title: "Sprint review",
+    folderName: "Projects",
+    bodyMarkdown: "## Decisions\n\n- [ ] Ship\n\n| A | B |\n| --- | --- |\n| 1 | 2 |",
+    favorite: false,
+    reasoning: "Captures the meeting",
+    selected: true,
+    added: false,
+    ...overrides,
+  };
+}
+
+function makeFolder(overrides: Partial<ProposedFolder> = {}): ProposedFolder {
+  return {
+    id: "folder-1",
+    name: "Projects",
+    parentName: null,
+    reasoning: "Groups work",
     selected: true,
     added: false,
     ...overrides,
@@ -85,6 +117,18 @@ describe("proposal updaters", () => {
     expect(marked[0].proposedHabits?.[0].added).toBe(true);
   });
 
+  it("updates and marks notes and folders", () => {
+    const withNotes = [makeMessage({ proposedNotes: [makeNote()], proposedFolders: [makeFolder()] })];
+    const updatedNote = updateNoteProposal(withNotes, "msg-1", "note-1", { favorite: true });
+    expect(updatedNote[0].proposedNotes?.[0].favorite).toBe(true);
+    const markedNote = markNotesAdded(withNotes, "msg-1", new Set(["note-1"]));
+    expect(markedNote[0].proposedNotes?.[0].added).toBe(true);
+    const updatedFolder = updateFolderProposal(withNotes, "msg-1", "folder-1", { selected: false });
+    expect(updatedFolder[0].proposedFolders?.[0].selected).toBe(false);
+    const markedFolder = markFoldersAdded(withNotes, "msg-1", new Set(["folder-1"]));
+    expect(markedFolder[0].proposedFolders?.[0].added).toBe(true);
+  });
+
   it("builds drafts with only persistable fields", () => {
     expect(taskDraftOf(makeTask())).toEqual({
       title: "Write report",
@@ -101,6 +145,13 @@ describe("proposal updaters", () => {
       interval: 1,
       unit: "day",
     });
+    expect(noteDraftOf(makeNote())).toEqual({
+      title: "Sprint review",
+      folderName: "Projects",
+      bodyMarkdown: "## Decisions\n\n- [ ] Ship\n\n| A | B |\n| --- | --- |\n| 1 | 2 |",
+      favorite: false,
+    });
+    expect(folderDraftOf(makeFolder())).toEqual({ name: "Projects", parentName: null });
   });
 
   it("maps importance/urgency to quadrants", () => {
@@ -122,6 +173,12 @@ describe("AssistantMessage", () => {
     onUpdateHabit: vi.fn(),
     onAddSingleHabit: vi.fn(),
     onAddAllHabits: vi.fn(),
+    onUpdateNote: vi.fn(),
+    onAddSingleNote: vi.fn(),
+    onAddAllNotes: vi.fn(),
+    onUpdateFolder: vi.fn(),
+    onAddSingleFolder: vi.fn(),
+    onAddAllFolders: vi.fn(),
   };
 
   it("renders user messages without proposals", () => {
@@ -161,6 +218,17 @@ describe("AssistantMessage", () => {
     expect(screen.getByText("Add habits to Prior")).toBeDefined();
     fireEvent.click(screen.getByTitle("Add habit to Prior"));
     expect(handlers.onAddSingleHabit).toHaveBeenCalledWith("msg-1", expect.objectContaining({ id: "habit-1" }));
+  });
+
+  it("renders note and folder proposals with add-all actions", () => {
+    render(<AssistantMessage message={makeMessage({ proposedNotes: [makeNote()], proposedFolders: [makeFolder()] })} handlers={handlers} />);
+    expect(screen.getByText("Sprint review")).toBeDefined();
+    expect(screen.getByText("Add notes to Prior")).toBeDefined();
+    expect(screen.getByText("Add folders to Prior")).toBeDefined();
+    fireEvent.click(screen.getByTitle("Add note to Prior"));
+    expect(handlers.onAddSingleNote).toHaveBeenCalledWith("msg-1", expect.objectContaining({ id: "note-1" }));
+    fireEvent.click(screen.getByTitle("Add folder to Prior"));
+    expect(handlers.onAddSingleFolder).toHaveBeenCalledWith("msg-1", expect.objectContaining({ id: "folder-1" }));
   });
 
   it("shows the resolved model when present", () => {
