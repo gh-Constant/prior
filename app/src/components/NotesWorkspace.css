@@ -165,6 +165,8 @@
 .note-color-swatch { aspect-ratio: 1; min-width: 0; padding: 0; border: 2px solid transparent; border-radius: 50%; background-clip: padding-box; cursor: pointer; }
 .note-color-swatch.none { border-style: dashed; border-color: #c6beb5; background: transparent; }
 .note-color-swatch.active { border-color: var(--panel); outline: 2px solid var(--accent); }
+.note-move-project-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: #f3eee8; color: var(--accent-dark, #c05b4d); font-size: 11px; font-weight: 650; margin-bottom: 6px; width: fit-content; }
+.note-move-project-badge svg { width: 13px; height: 13px; }
 .note-move-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto; }
 .note-move-list label { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: 8px; color: var(--ink); font-size: 13px; cursor: pointer; }
 .note-move-list label:hover { background: #f1ece8; }

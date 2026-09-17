@@ -679,6 +679,57 @@
 .proposed-priority-2 { background: #fff1df; color: #996122; }
 .proposed-priority-3 { background: #edf3e8; color: #53714d; }
 .proposed-due-date { background: #f4efeb; color: #8a6456; font-weight: 550; }
+.proposed-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #ede9e3;
+  color: #5c544c;
+}
+.proposed-status-inbox { background: #f0e6ff; color: #6b3ba6; }
+.proposed-status-next { background: #e3f2fd; color: #1e6091; }
+.proposed-status-in_progress { background: #fff4e5; color: #b26a00; }
+.proposed-status-waiting { background: #fbe9e7; color: #bf360c; }
+.proposed-status-done { background: #e8f5e9; color: #2e7d32; }
+.proposed-project-badge,
+.proposed-area-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: #f4efeb;
+  color: #7b584a;
+  font-size: 10px;
+  font-weight: 600;
+}
+.proposed-assignee-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: #fdf0ea;
+  color: #a84e32;
+  font-size: 10px;
+  font-weight: 600;
+}
+.proposed-scheduled-date,
+.proposed-followup-date {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: #f0f4f0;
+  color: #436946;
+  font-size: 10px;
+  font-weight: 550;
+}
 .add-single-btn { border-color: #eadbd5; }
 .add-single-btn:hover:not(:disabled) { background: #fff1eb; }
 .proposed-reasoning { color: #917f76; }

@@ -86,13 +86,5 @@
 .project-note-card strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .project-note-card small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .project-open-notes { display: block; margin: 16px auto 0; }
-.workhub-modal-backdrop { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: 16px; background: #15141266; backdrop-filter: blur(8px); }
-.workhub-modal { display: block; width: min(100%, 430px); margin: 0; }
-.workhub-modal form { padding: 0 24px 24px; }
-.workhub-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
-.workhub-field > span { color: var(--muted); font-size: 11px; font-weight: 700; }
-.workhub-field input { min-height: 42px; padding: 0 11px; border: 1px solid var(--line); border-radius: 9px; background: #faf9f7; color: var(--ink); font-size: 13px; outline: 0; }
-.workhub-field input:focus { border-color: #f29985; box-shadow: 0 0 0 3px #fa654a0b; }
-.workhub-modal .modal-footer { margin: 20px 0 0; padding: 0; }
 @media (max-width: 820px) { .today-grid { grid-template-columns: 1fr; } .project-detail-header, .workhub-intro { align-items: flex-start; flex-direction: column; } .project-detail-actions, .workhub-intro-actions { justify-content: flex-start; } }
 @media (max-width: 560px) { .workhub-project-card .project-status { display: none; } .workhub-intro h2, .project-detail-heading h2, .today-intro h2 { font-size: 26px; } .project-notes-heading { align-items: flex-start; flex-direction: column; } }

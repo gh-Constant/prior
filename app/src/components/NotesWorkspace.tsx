@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Icon, type IconName } from "./Icon";
-import { NOTE_FOLDER_COLORS, notesStore, type Note, type NoteAttachment, type NoteFolder } from "../lib/notes";
+import { NOTE_FOLDER_COLORS, getFolderDescendants, getFolderPath, notesStore, type Note, type NoteAttachment, type NoteFolder } from "../lib/notes";
 import { applySlashInsert, filterSlashCommands, matchSlashToken, type SlashCommand } from "../lib/noteSlash";
+import { Modal } from "./Modal";
 import "./NotesWorkspace.css";
 import "katex/dist/katex.min.css";
 
@@ -11,6 +12,7 @@ type NoteModalState =
   | { kind: "folder-name"; mode: "create"; parentId: string | null }
   | { kind: "folder-name"; mode: "rename"; folder: NoteFolder }
   | { kind: "move-note"; note: Note }
+  | { kind: "move-folder"; folder: NoteFolder }
   | { kind: "folder-color"; folder: NoteFolder }
   | { kind: "confirm-note-delete"; note: Note }
   | { kind: "confirm-folder-delete"; folder: NoteFolder }
@@ -130,87 +132,406 @@ function caretMenuPosition(textarea: HTMLTextAreaElement, pos: number): { top: n
   return { top: Math.max(0, position.top), left: Math.max(0, position.left) };
 }
 
-function FolderTree({ folders, notes, parentId, selectedId, collapsedIds, onSelect, onToggleCollapse, onRenameFolder, onOpenFolderMenu, onOpenNoteMenu }: { folders: NoteFolder[]; notes: Note[]; parentId: string | null; selectedId: string | null; collapsedIds: Set<string>; onSelect: (note: Note) => void; onToggleCollapse: (id: string) => void; onRenameFolder: (folder: NoteFolder) => void; onOpenFolderMenu: (event: React.MouseEvent, folder: NoteFolder) => void; onOpenNoteMenu: (event: React.MouseEvent, note: Note) => void }) {
+function FolderTree({
+  folders,
+  notes,
+  parentId,
+  selectedId,
+  collapsedIds,
+  onSelect,
+  onToggleCollapse,
+  onRenameFolder,
+  onOpenFolderMenu,
+  onOpenNoteMenu,
+  onOpenFolderEmptyMenu,
+}: {
+  folders: NoteFolder[];
+  notes: Note[];
+  parentId: string | null;
+  selectedId: string | null;
+  collapsedIds: Set<string>;
+  onSelect: (note: Note) => void;
+  onToggleCollapse: (id: string) => void;
+  onRenameFolder: (folder: NoteFolder) => void;
+  onOpenFolderMenu: (event: React.MouseEvent, folder: NoteFolder) => void;
+  onOpenNoteMenu: (event: React.MouseEvent, note: Note) => void;
+  onOpenFolderEmptyMenu: (event: React.MouseEvent, folderId: string | null) => void;
+}) {
   const children = folderChildren(folders, parentId);
   const notesInFolder = notes.filter((note) => note.folderId === parentId);
-  return <>
-    {children.map((folder) => {
-      const isCollapsed = collapsedIds.has(folder.id);
-      return <div className="note-folder-group" key={folder.id} style={folder.color ? ({ "--folder-color": folder.color } as CSSProperties) : undefined}>
-        <div className="note-folder-row" role="treeitem" aria-expanded={!isCollapsed} onClick={() => onToggleCollapse(folder.id)} onDoubleClick={() => onRenameFolder(folder)} onContextMenu={(event) => onOpenFolderMenu(event, folder)}>
-          <Icon name={isCollapsed ? "chevron-right" : "chevron-down"} />
-          <span className="note-folder-icon" style={folder.color ? { color: folder.color } : undefined}><Icon name="folder" /></span>
-          <strong>{folder.name}</strong>
-        </div>
-        {!isCollapsed && <div className="note-folder-children" data-folder-id={folder.id}>
-          <FolderTree folders={folders} notes={notes} parentId={folder.id} selectedId={selectedId} collapsedIds={collapsedIds} onSelect={onSelect} onToggleCollapse={onToggleCollapse} onRenameFolder={onRenameFolder} onOpenFolderMenu={onOpenFolderMenu} onOpenNoteMenu={onOpenNoteMenu} />
-        </div>}
-      </div>;
-    })}
-    {notesInFolder.map((note) => <button type="button" className={`note-file-row ${selectedId === note.id ? "active" : ""}`} key={note.id} onClick={() => onSelect(note)} onContextMenu={(event) => onOpenNoteMenu(event, note)}><span className="note-file-icon">{note.favorite ? <Icon name="star" /> : <Icon name="file" />}</span><span>{note.title}</span></button>)}
-  </>;
+  return (
+    <>
+      {children.map((folder) => {
+        const isCollapsed = collapsedIds.has(folder.id);
+        return (
+          <div
+            className="note-folder-group"
+            key={folder.id}
+            style={folder.color ? ({ "--folder-color": folder.color } as CSSProperties) : undefined}
+          >
+            <div
+              className="note-folder-row"
+              role="treeitem"
+              aria-expanded={!isCollapsed}
+              onClick={() => onToggleCollapse(folder.id)}
+              onDoubleClick={() => onRenameFolder(folder)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onOpenFolderMenu(event, folder);
+              }}
+            >
+              <Icon name={isCollapsed ? "chevron-right" : "chevron-down"} />
+              <span className="note-folder-icon" style={folder.color ? { color: folder.color } : undefined}>
+                <Icon name="folder" />
+              </span>
+              <strong>{folder.name}</strong>
+            </div>
+            {!isCollapsed && (
+              <div
+                className="note-folder-children"
+                data-folder-id={folder.id}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onOpenFolderEmptyMenu(event, folder.id);
+                }}
+              >
+                <FolderTree
+                  folders={folders}
+                  notes={notes}
+                  parentId={folder.id}
+                  selectedId={selectedId}
+                  collapsedIds={collapsedIds}
+                  onSelect={onSelect}
+                  onToggleCollapse={onToggleCollapse}
+                  onRenameFolder={onRenameFolder}
+                  onOpenFolderMenu={onOpenFolderMenu}
+                  onOpenNoteMenu={onOpenNoteMenu}
+                  onOpenFolderEmptyMenu={onOpenFolderEmptyMenu}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {notesInFolder.map((note) => (
+        <button
+          type="button"
+          className={`note-file-row ${selectedId === note.id ? "active" : ""}`}
+          key={note.id}
+          onClick={() => onSelect(note)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onOpenNoteMenu(event, note);
+          }}
+        >
+          <span className="note-file-icon">
+            {note.favorite ? <Icon name="star" /> : <Icon name="file" />}
+          </span>
+          <span>{note.title}</span>
+        </button>
+      ))}
+    </>
+  );
 }
 
 type ContextMenuItem = { icon: IconName; label: string; danger?: boolean; run: () => void };
 
-function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return <div className="note-modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="note-modal" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="note-modal-header"><h3>{title}</h3><button type="button" className="notes-icon-button" aria-label="Close dialog" onClick={onClose}><Icon name="close" /></button></div>
-      {children}
-    </div>
-  </div>;
-}
-
-function FolderNameModal({ title, initialName, initialColor, submitLabel, onSubmit, onClose }: { title: string; initialName: string; initialColor: string | null; submitLabel: string; onSubmit: (name: string, color: string | null) => void; onClose: () => void }) {
+function FolderNameModal({
+  title,
+  initialName,
+  initialColor,
+  submitLabel,
+  onSubmit,
+  onClose,
+}: {
+  title: string;
+  initialName: string;
+  initialColor: string | null;
+  submitLabel: string;
+  onSubmit: (name: string, color: string | null) => void;
+  onClose: () => void;
+}) {
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState<string | null>(initialColor);
-  return <ModalShell title={title} onClose={onClose}>
-    <form onSubmit={(event) => { event.preventDefault(); if (name.trim()) onSubmit(name.trim(), color); }}>
-      <label className="note-modal-label" htmlFor="note-folder-name">Name</label>
-      <input id="note-folder-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Folder name" autoFocus maxLength={60} />
-      <span className="note-modal-label">Color</span>
-      <div className="note-color-grid">
-        <button type="button" className={`note-color-swatch none ${color === null ? "active" : ""}`} aria-label="No color" title="No color" onClick={() => setColor(null)} />
-        {NOTE_FOLDER_COLORS.map((option) => <button key={option.value} type="button" className={`note-color-swatch ${color === option.value ? "active" : ""}`} style={{ background: option.value }} aria-label={option.name} title={option.name} onClick={() => setColor(option.value)} />)}
-      </div>
-      <div className="note-modal-actions"><button type="button" className="note-modal-secondary" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={!name.trim()}>{submitLabel}</button></div>
-    </form>
-  </ModalShell>;
+  const canSubmit = name.trim().length > 0;
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <form
+        className="prior-modal-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit) onSubmit(name.trim(), color);
+        }}
+      >
+        <label className="prior-modal-field">
+          <span>Name</span>
+          <input
+            className="prior-modal-input"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Folder name"
+            autoFocus
+            maxLength={60}
+          />
+        </label>
+        <div className="prior-modal-field">
+          <span>Color</span>
+          <div className="note-color-grid">
+            <button
+              type="button"
+              className={`note-color-swatch none ${color === null ? "active" : ""}`}
+              aria-label="No color"
+              title="No color"
+              onClick={() => setColor(null)}
+            />
+            {NOTE_FOLDER_COLORS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`note-color-swatch ${color === option.value ? "active" : ""}`}
+                style={{ background: option.value }}
+                aria-label={option.name}
+                title={option.name}
+                onClick={() => setColor(option.value)}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="prior-modal-actions">
+          <button type="button" className="prior-modal-button-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="prior-modal-button-primary" disabled={!canSubmit}>
+            {submitLabel}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
 
-function MoveNoteModal({ note, folders, onMove, onClose }: { note: Note; folders: NoteFolder[]; onMove: (folderId: string | null) => void; onClose: () => void }) {
+function MoveNoteModal({
+  note,
+  folders,
+  onMove,
+  onClose,
+}: {
+  note: Note;
+  folders: NoteFolder[];
+  onMove: (folderId: string | null) => void;
+  onClose: () => void;
+}) {
   const [target, setTarget] = useState<string | null>(note.folderId);
-  return <ModalShell title={`Move “${note.title}”`} onClose={onClose}>
-    <form onSubmit={(event) => { event.preventDefault(); onMove(target); }}>
-      <div className="note-move-list" role="radiogroup" aria-label="Destination folder">
-        <label className={target === null ? "active" : ""}><input type="radio" name="destination" checked={target === null} onChange={() => setTarget(null)} /><Icon name="folder" />Library</label>
-        {folders.map((folder) => <label key={folder.id} className={target === folder.id ? "active" : ""}><input type="radio" name="destination" checked={target === folder.id} onChange={() => setTarget(folder.id)} /><span className="note-folder-icon" style={folder.color ? { color: folder.color } : undefined}><Icon name="folder" /></span>{folder.name}</label>)}
+  const folderOptions = useMemo(() => {
+    return folders
+      .map((f) => ({ folder: f, path: getFolderPath(f.id, folders) }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }, [folders]);
+
+  return (
+    <Modal title={`Move “${note.title}”`} onClose={onClose}>
+      <form
+        className="prior-modal-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onMove(target);
+        }}
+      >
+        {note.projectId && (
+          <div className="note-move-project-badge">
+            <Icon name="folder" />
+            <span>Project note</span>
+          </div>
+        )}
+        <div className="note-move-list" role="radiogroup" aria-label="Destination folder">
+          <label className={target === null ? "active" : ""}>
+            <input
+              type="radio"
+              name="destination"
+              checked={target === null}
+              onChange={() => setTarget(null)}
+            />
+            <Icon name="folder" />
+            <span>Library</span>
+          </label>
+          {folderOptions.map(({ folder, path }) => (
+            <label key={folder.id} className={target === folder.id ? "active" : ""}>
+              <input
+                type="radio"
+                name="destination"
+                checked={target === folder.id}
+                onChange={() => setTarget(folder.id)}
+              />
+              <span
+                className="note-folder-icon"
+                style={folder.color ? { color: folder.color } : undefined}
+              >
+                <Icon name="folder" />
+              </span>
+              <span>{path}</span>
+            </label>
+          ))}
+        </div>
+        <div className="prior-modal-actions">
+          <button type="button" className="prior-modal-button-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="prior-modal-button-primary">
+            Move
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function MoveFolderModal({
+  folder,
+  folders,
+  onMove,
+  onClose,
+}: {
+  folder: NoteFolder;
+  folders: NoteFolder[];
+  onMove: (parentId: string | null) => void;
+  onClose: () => void;
+}) {
+  const [target, setTarget] = useState<string | null>(folder.parentId);
+  const descendants = useMemo(() => getFolderDescendants(folder.id, folders), [folder.id, folders]);
+
+  const validFolders = useMemo(() => {
+    return folders
+      .filter((f) => f.id !== folder.id && !descendants.has(f.id))
+      .map((f) => ({ folder: f, path: getFolderPath(f.id, folders) }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }, [folders, folder.id, descendants]);
+
+  return (
+    <Modal title={`Move folder “${folder.name}”`} onClose={onClose}>
+      <form
+        className="prior-modal-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onMove(target);
+        }}
+      >
+        <div className="note-move-list" role="radiogroup" aria-label="Destination folder">
+          <label className={target === null ? "active" : ""}>
+            <input
+              type="radio"
+              name="destination"
+              checked={target === null}
+              onChange={() => setTarget(null)}
+            />
+            <Icon name="folder" />
+            <span>Library (top level)</span>
+          </label>
+          {validFolders.map(({ folder: item, path }) => (
+            <label key={item.id} className={target === item.id ? "active" : ""}>
+              <input
+                type="radio"
+                name="destination"
+                checked={target === item.id}
+                onChange={() => setTarget(item.id)}
+              />
+              <span
+                className="note-folder-icon"
+                style={item.color ? { color: item.color } : undefined}
+              >
+                <Icon name="folder" />
+              </span>
+              <span>{path}</span>
+            </label>
+          ))}
+        </div>
+        <div className="prior-modal-actions">
+          <button type="button" className="prior-modal-button-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="prior-modal-button-primary">
+            Move folder
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ConfirmModal({
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="prior-modal-body">
+        <p className="note-modal-message" style={{ margin: "0 0 16px" }}>{message}</p>
+        <div className="prior-modal-actions">
+          <button type="button" className="prior-modal-button-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="note-modal-danger" onClick={onConfirm}>
+            {confirmLabel}
+          </button>
+        </div>
       </div>
-      <div className="note-modal-actions"><button type="button" className="note-modal-secondary" onClick={onClose}>Cancel</button><button type="submit" className="primary-button">Move</button></div>
-    </form>
-  </ModalShell>;
+    </Modal>
+  );
 }
 
-function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }: { title: string; message: string; confirmLabel: string; onConfirm: () => void; onClose: () => void }) {
-  return <ModalShell title={title} onClose={onClose}>
-    <p className="note-modal-message">{message}</p>
-    <div className="note-modal-actions"><button type="button" className="note-modal-secondary" onClick={onClose}>Cancel</button><button type="button" className="note-modal-danger" onClick={onConfirm}>{confirmLabel}</button></div>
-  </ModalShell>;
-}
-
-function FolderColorModal({ folder, onPick, onClose }: { folder: NoteFolder; onPick: (color: string | null) => void; onClose: () => void }) {
-  return <ModalShell title={`Color for “${folder.name}”`} onClose={onClose}>
-    <div className="note-color-grid large">
-      <button type="button" className={`note-color-swatch none ${folder.color === null ? "active" : ""}`} aria-label="No color" title="No color" onClick={() => { onPick(null); onClose(); }} />
-      {NOTE_FOLDER_COLORS.map((option) => <button key={option.value} type="button" className={`note-color-swatch ${folder.color === option.value ? "active" : ""}`} style={{ background: option.value }} aria-label={option.name} title={option.name} onClick={() => { onPick(option.value); onClose(); }} />)}
-    </div>
-  </ModalShell>;
+function FolderColorModal({
+  folder,
+  onPick,
+  onClose,
+}: {
+  folder: NoteFolder;
+  onPick: (color: string | null) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={`Color for “${folder.name}”`} onClose={onClose}>
+      <div className="prior-modal-body">
+        <div className="note-color-grid large">
+          <button
+            type="button"
+            className={`note-color-swatch none ${folder.color === null ? "active" : ""}`}
+            aria-label="No color"
+            title="No color"
+            onClick={() => {
+              onPick(null);
+              onClose();
+            }}
+          />
+          {NOTE_FOLDER_COLORS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`note-color-swatch ${folder.color === option.value ? "active" : ""}`}
+              style={{ background: option.value }}
+              aria-label={option.name}
+              title={option.name}
+              onClick={() => {
+                onPick(option.value);
+                onClose();
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 function NoteGraph({ notes, selected, onSelect, onClose }: { notes: Note[]; selected: Note | null; onSelect: (note: Note) => void; onClose: () => void }) {
@@ -351,14 +672,19 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   function openMenu(event: React.MouseEvent, items: ContextMenuItem[]): void {
     event.preventDefault();
     event.stopPropagation();
-    const width = 224;
-    const height = items.length * 34 + 12;
-    setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - width)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - height)), items });
+    const width = 230;
+    const height = items.length * 36 + 16;
+    setMenu({
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
+      items,
+    });
   }
   function openFolderMenu(event: React.MouseEvent, folder: NoteFolder): void {
     openMenu(event, [
-      { icon: "file-plus", label: "New note", run: () => createNoteIn(folder.id) },
-      { icon: "folder-plus", label: "New subfolder", run: () => newFolder(folder.id) },
+      { icon: "file-plus", label: "New note here", run: () => createNoteIn(folder.id) },
+      { icon: "folder-plus", label: "New subfolder here", run: () => newFolder(folder.id) },
+      { icon: "folder", label: "Move folder to…", run: () => setModal({ kind: "move-folder", folder }) },
       { icon: "pencil", label: "Rename", run: () => renameFolder(folder) },
       { icon: "palette", label: "Set color", run: () => setModal({ kind: "folder-color", folder }) },
       { icon: "trash", label: "Delete folder", danger: true, run: () => setModal({ kind: "confirm-folder-delete", folder }) },
@@ -372,14 +698,10 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
       { icon: "trash", label: "Delete note", danger: true, run: () => setModal({ kind: "confirm-note-delete", note }) },
     ]);
   }
-  function openBackgroundMenu(event: React.MouseEvent): void {
-    if ((event.target as HTMLElement).closest(".note-folder-row, .note-file-row, .note-context-menu")) return;
-    const container = (event.target as HTMLElement).closest<HTMLElement>("[data-folder-id]");
-    const raw = container?.dataset.folderId;
-    const folderId = raw ? raw : null;
+  function openFolderEmptyMenu(event: React.MouseEvent, folderId: string | null): void {
     openMenu(event, [
-      { icon: "file-plus", label: "New note", run: () => createNoteIn(folderId) },
-      { icon: "folder-plus", label: "New folder", run: () => newFolder(folderId) },
+      { icon: "file-plus", label: "New note here", run: () => createNoteIn(folderId) },
+      { icon: "folder-plus", label: "New folder here", run: () => newFolder(folderId) },
     ]);
   }
   function updateBody(body: string): void {
@@ -436,7 +758,86 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
       <div className="notes-explorer-header"><div><span className="notes-eyebrow">YOUR LIBRARY</span><h2>Notes</h2></div><div className="notes-explorer-header-actions"><button type="button" className="notes-icon-button" title="Collapse library" aria-label="Collapse library" onClick={() => { setLibraryOpen(false); setExplorerOpen(false); }}><Icon name="chevron-left" /></button><button type="button" className="notes-icon-button" title="New note" aria-label="New note" onClick={newNote}><Icon name="plus" /></button></div></div>
       <div className="notes-search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes" aria-label="Search notes" /></div>
       <div className="notes-explorer-actions"><button type="button" onClick={() => setFolderFilter(null)} className={!folderFilter ? "active" : ""}>All notes</button><button type="button" onClick={() => setFolderFilter("favorites")} className={folderFilter === "favorites" ? "active" : ""}>Favorites</button></div>
-      <div className="notes-tree" role="tree" onContextMenu={openBackgroundMenu}><div className="note-folder-row root" role="treeitem" aria-expanded={!collapsedIds.has(LIBRARY_ROOT_ID)} onClick={() => toggleCollapse(LIBRARY_ROOT_ID)}><Icon name={collapsedIds.has(LIBRARY_ROOT_ID) ? "chevron-right" : "chevron-down"} /><Icon name="folder" /><strong>Library</strong><button type="button" aria-label="New folder" title="New folder" onClick={(event) => { event.stopPropagation(); newFolder(null); }}><Icon name="plus" /></button></div>{!collapsedIds.has(LIBRARY_ROOT_ID) && <div className="note-folder-children root-children" data-folder-id="">{folderFilter === "favorites" ? notes.filter((note) => note.favorite).map((note) => <button type="button" className={`note-file-row ${selectedId === note.id ? "active" : ""}`} key={note.id} onClick={() => selectNote(note)} onContextMenu={(event) => openNoteMenu(event, note)}><span className="note-file-icon"><Icon name="star" /></span><span>{note.title}</span></button>) : <FolderTree folders={folders} notes={visibleNotes} parentId={null} selectedId={selectedId} collapsedIds={collapsedIds} onSelect={selectNote} onToggleCollapse={toggleCollapse} onRenameFolder={renameFolder} onOpenFolderMenu={openFolderMenu} onOpenNoteMenu={openNoteMenu} />}</div>}</div>
+      <div
+        className="notes-tree"
+        role="tree"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openFolderEmptyMenu(event, null);
+        }}
+      >
+        <div
+          className="note-folder-row root"
+          role="treeitem"
+          aria-expanded={!collapsedIds.has(LIBRARY_ROOT_ID)}
+          onClick={() => toggleCollapse(LIBRARY_ROOT_ID)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openFolderEmptyMenu(event, null);
+          }}
+        >
+          <Icon name={collapsedIds.has(LIBRARY_ROOT_ID) ? "chevron-right" : "chevron-down"} />
+          <Icon name="folder" />
+          <strong>Library</strong>
+          <button
+            type="button"
+            aria-label="New folder"
+            title="New folder"
+            onClick={(event) => {
+              event.stopPropagation();
+              newFolder(null);
+            }}
+          >
+            <Icon name="plus" />
+          </button>
+        </div>
+        {!collapsedIds.has(LIBRARY_ROOT_ID) && (
+          <div
+            className="note-folder-children root-children"
+            data-folder-id=""
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openFolderEmptyMenu(event, null);
+            }}
+          >
+            {folderFilter === "favorites" ? (
+              notes.filter((note) => note.favorite).map((note) => (
+                <button
+                  type="button"
+                  className={`note-file-row ${selectedId === note.id ? "active" : ""}`}
+                  key={note.id}
+                  onClick={() => selectNote(note)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openNoteMenu(event, note);
+                  }}
+                >
+                  <span className="note-file-icon"><Icon name="star" /></span>
+                  <span>{note.title}</span>
+                </button>
+              ))
+            ) : (
+              <FolderTree
+                folders={folders}
+                notes={visibleNotes}
+                parentId={null}
+                selectedId={selectedId}
+                collapsedIds={collapsedIds}
+                onSelect={selectNote}
+                onToggleCollapse={toggleCollapse}
+                onRenameFolder={renameFolder}
+                onOpenFolderMenu={openFolderMenu}
+                onOpenNoteMenu={openNoteMenu}
+                onOpenFolderEmptyMenu={openFolderEmptyMenu}
+              />
+            )}
+          </div>
+        )}
+      </div>
     </aside>
     {!libraryOpen && <aside className="notes-rail" aria-label="Library collapsed"><button type="button" className="notes-icon-button" title="Expand library" aria-label="Expand library" onClick={() => setLibraryOpen(true)}><Icon name="chevron-right" /></button><button type="button" className="notes-icon-button" title="New note" aria-label="New note" onClick={newNote}><Icon name="plus" /></button></aside>}
       <div className="notes-main">
@@ -449,6 +850,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
     {menu && <div className="note-context-overlay" onClick={() => setMenu(null)} onContextMenu={(event) => { event.preventDefault(); setMenu(null); }}><div className="note-context-menu" role="menu" style={{ top: menu.y, left: menu.x }} onClick={(event) => event.stopPropagation()}>{menu.items.map((item) => <button key={item.label} type="button" role="menuitem" className={item.danger ? "danger" : ""} onClick={() => { setMenu(null); item.run(); }}><Icon name={item.icon} /><span>{item.label}</span></button>)}</div></div>}
     {modal?.kind === "folder-name" && <FolderNameModal title={modal.mode === "create" ? "New folder" : `Rename folder`} initialName={modal.mode === "create" ? "" : modal.folder.name} initialColor={modal.mode === "create" ? null : modal.folder.color} submitLabel={modal.mode === "create" ? "Create folder" : "Rename"} onSubmit={(name, color) => submitFolderName(name, color, modal.mode === "create" ? { mode: "create", parentId: modal.parentId } : { mode: "rename", folder: modal.folder })} onClose={() => setModal(null)} />}
     {modal?.kind === "move-note" && <MoveNoteModal note={modal.note} folders={folders} onMove={(folderId) => { notesStore.move(modal.note.id, folderId); setNotes(notesStore.list()); setModal(null); }} onClose={() => setModal(null)} />}
+    {modal?.kind === "move-folder" && <MoveFolderModal folder={modal.folder} folders={folders} onMove={(parentId) => { notesStore.moveFolder(modal.folder.id, parentId); setFolders(notesStore.listFolders()); setModal(null); }} onClose={() => setModal(null)} />}
     {modal?.kind === "folder-color" && <FolderColorModal folder={modal.folder} onPick={(color) => { notesStore.setFolderColor(modal.folder.id, color); setFolders(notesStore.listFolders()); }} onClose={() => setModal(null)} />}
     {modal?.kind === "confirm-note-delete" && <ConfirmModal title="Delete note?" message={`“${modal.note.title}” will be moved to Trash.`} confirmLabel="Delete" onConfirm={() => doTrashNote(modal.note)} onClose={() => setModal(null)} />}
     {modal?.kind === "confirm-folder-delete" && <ConfirmModal title="Delete folder?" message={`“${modal.folder.name}” will be removed. Notes and subfolders inside move up one level.`} confirmLabel="Delete folder" onConfirm={() => doDeleteFolder(modal.folder)} onClose={() => setModal(null)} />}

@@ -1,4 +1,19 @@
-import type { AgentMessage, Habit, NoteDraft, NoteFolderDraft, ProposedFolder, ProposedHabit, ProposedNote, ProposedTask, QuadrantKey, Task, TaskDraft } from "../types";
+import type {
+  AgentMessage,
+  Habit,
+  NoteDraft,
+  NoteFolderDraft,
+  ProjectStatus,
+  ProposedArea,
+  ProposedFolder,
+  ProposedHabit,
+  ProposedNote,
+  ProposedProject,
+  ProposedTask,
+  QuadrantKey,
+  Task,
+  TaskDraft,
+} from "../types";
 import { quadrantFor } from "../lib/priority";
 import { habitScheduleLabel } from "../lib/habits";
 import { AgentIdentity } from "./AgentIdentity";
@@ -20,6 +35,65 @@ export function getQuadrantBadge(task: Pick<Task, "important" | "urgent">): { ke
 
 function formatDueDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+export function updateAreaProposal(
+  messages: AgentMessage[],
+  messageId: string,
+  areaId: string,
+  update: Partial<ProposedArea>,
+): AgentMessage[] {
+  return messages.map((msg) => {
+    if (msg.id !== messageId || !msg.proposedAreas) return msg;
+    return { ...msg, proposedAreas: msg.proposedAreas.map((area) => (area.id === areaId ? { ...area, ...update } : area)) };
+  });
+}
+
+export function markAreasAdded(
+  messages: AgentMessage[],
+  messageId: string,
+  ids: ReadonlySet<string>,
+): AgentMessage[] {
+  return messages.map((msg) => {
+    if (msg.id !== messageId || !msg.proposedAreas) return msg;
+    return { ...msg, proposedAreas: msg.proposedAreas.map((area) => (ids.has(area.id) ? { ...area, added: true } : area)) };
+  });
+}
+
+export function areaDraftOf(area: ProposedArea): { name: string } {
+  return { name: area.name };
+}
+
+export function updateProjectProposal(
+  messages: AgentMessage[],
+  messageId: string,
+  projectId: string,
+  update: Partial<ProposedProject>,
+): AgentMessage[] {
+  return messages.map((msg) => {
+    if (msg.id !== messageId || !msg.proposedProjects) return msg;
+    return { ...msg, proposedProjects: msg.proposedProjects.map((project) => (project.id === projectId ? { ...project, ...update } : project)) };
+  });
+}
+
+export function markProjectsAdded(
+  messages: AgentMessage[],
+  messageId: string,
+  ids: ReadonlySet<string>,
+): AgentMessage[] {
+  return messages.map((msg) => {
+    if (msg.id !== messageId || !msg.proposedProjects) return msg;
+    return { ...msg, proposedProjects: msg.proposedProjects.map((project) => (ids.has(project.id) ? { ...project, added: true } : project)) };
+  });
+}
+
+export function projectDraftOf(project: ProposedProject): { name: string; areaName?: string | null; description?: string; status?: ProjectStatus } {
+  return {
+    name: project.name,
+    areaName: project.areaName,
+    description: project.description,
+    status: project.status,
+  };
 }
 
 export function updateTaskProposal(messages: AgentMessage[], messageId: string, taskId: string, update: (task: ProposedTask) => ProposedTask): AgentMessage[] {
@@ -78,8 +152,21 @@ export function markFoldersAdded(messages: AgentMessage[], messageId: string, id
   });
 }
 
-export function taskDraftOf(task: ProposedTask): TaskDraft {
-  return { title: task.title, description: task.description, dueDate: task.dueDate, priority: task.priority, important: task.important, urgent: task.urgent };
+export function taskDraftOf(task: ProposedTask): TaskDraft & { areaName?: string | null; projectName?: string | null } {
+  return {
+    title: task.title,
+    description: task.description,
+    dueDate: task.dueDate,
+    priority: task.priority,
+    important: task.important,
+    urgent: task.urgent,
+    areaName: task.areaName,
+    projectName: task.projectName,
+    status: task.status,
+    scheduledDate: task.scheduledDate,
+    assigneeName: task.assigneeName,
+    followUpDate: task.followUpDate,
+  };
 }
 
 export function habitDraftOf(habit: ProposedHabit): Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> {
@@ -87,7 +174,13 @@ export function habitDraftOf(habit: ProposedHabit): Pick<Habit, "title" | "impor
 }
 
 export function noteDraftOf(note: ProposedNote): NoteDraft {
-  return { title: note.title, folderName: note.folderName, bodyMarkdown: note.bodyMarkdown, favorite: note.favorite };
+  return {
+    title: note.title,
+    folderName: note.folderName,
+    projectName: note.projectName,
+    bodyMarkdown: note.bodyMarkdown,
+    favorite: note.favorite,
+  };
 }
 
 export function folderDraftOf(folder: ProposedFolder): NoteFolderDraft {
@@ -145,6 +238,187 @@ function FlagToggles({ important, urgent, disabled, importantLabel, urgentLabel,
   );
 }
 
+function statusLabel(status: string | undefined): string | null {
+  switch (status) {
+    case "inbox": return "Inbox";
+    case "next": return "Next action";
+    case "in_progress": return "In progress";
+    case "waiting": return "Waiting";
+    case "done": return "Done";
+    default: return null;
+  }
+}
+
+type ProposedAreaCardProps = {
+  readonly messageId: string;
+  readonly area: ProposedArea;
+  readonly adding: boolean;
+  readonly onUpdate?: (messageId: string, areaId: string, update: Partial<ProposedArea>) => void;
+  readonly onAdd?: (messageId: string, area: ProposedArea) => void;
+};
+
+export function ProposedAreaCard({ messageId, area, adding, onUpdate, onAdd }: ProposedAreaCardProps) {
+  return (
+    <div className={`proposed-task-item proposed-area-item ${area.added ? "is-added" : ""}`}>
+      <div className="proposed-task-top">
+        <label className="proposed-checkbox-label">
+          <input
+            type="checkbox"
+            checked={area.selected}
+            disabled={area.added}
+            onChange={() => onUpdate?.(messageId, area.id, { selected: !area.selected })}
+          />
+          <span className="proposed-task-title">{area.name}</span>
+        </label>
+        {area.added ? (
+          <span className="task-added-badge">
+            <Icon name="check" /> Added
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="add-single-btn"
+            disabled={adding}
+            onClick={() => onAdd?.(messageId, area)}
+            title="Add area to Prior"
+          >
+            <Icon name="plus" />
+          </button>
+        )}
+      </div>
+      <div className="proposed-task-meta">
+        <span className="proposed-priority proposed-priority-2">Area of responsibility</span>
+      </div>
+      {area.reasoning && <p className="proposed-reasoning">{area.reasoning}</p>}
+    </div>
+  );
+}
+
+type AreaProposalBoxProps = {
+  readonly messageId: string;
+  readonly areas: readonly ProposedArea[];
+  readonly addingIds: Readonly<Record<string, boolean>>;
+  readonly onUpdate?: (messageId: string, areaId: string, update: Partial<ProposedArea>) => void;
+  readonly onAddSingle?: (messageId: string, area: ProposedArea) => void;
+  readonly onAddAll?: (messageId: string, areas: ProposedArea[]) => void;
+};
+
+export function AreaProposalBox({ messageId, areas, addingIds, onUpdate, onAddSingle, onAddAll }: AreaProposalBoxProps) {
+  if (areas.length === 0) return null;
+  const addedCount = areas.filter((a) => a.added).length;
+  return (
+    <div className="proposed-tasks-box proposed-areas-box">
+      <div className="proposed-tasks-header">
+        <span className="proposed-count">{addedCount}/{areas.length} areas added</span>
+        {areas.some((a) => !a.added) && (
+          <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll?.(messageId, [...areas])}>
+            <Icon name="plus" />
+            <span>Add areas to Prior</span>
+          </button>
+        )}
+      </div>
+      <div className="proposed-task-list">
+        {areas.map((area) => (
+          <ProposedAreaCard
+            key={area.id}
+            messageId={messageId}
+            area={area}
+            adding={addingIds[area.id] ?? false}
+            onUpdate={onUpdate}
+            onAdd={onAddSingle}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type ProposedProjectCardProps = {
+  readonly messageId: string;
+  readonly project: ProposedProject;
+  readonly adding: boolean;
+  readonly onUpdate?: (messageId: string, projectId: string, update: Partial<ProposedProject>) => void;
+  readonly onAdd?: (messageId: string, project: ProposedProject) => void;
+};
+
+export function ProposedProjectCard({ messageId, project, adding, onUpdate, onAdd }: ProposedProjectCardProps) {
+  return (
+    <div className={`proposed-task-item proposed-project-item ${project.added ? "is-added" : ""}`}>
+      <div className="proposed-task-top">
+        <label className="proposed-checkbox-label">
+          <input
+            type="checkbox"
+            checked={project.selected}
+            disabled={project.added}
+            onChange={() => onUpdate?.(messageId, project.id, { selected: !project.selected })}
+          />
+          <span className="proposed-task-title">{project.name}</span>
+        </label>
+        {project.added ? (
+          <span className="task-added-badge">
+            <Icon name="check" /> Added
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="add-single-btn"
+            disabled={adding}
+            onClick={() => onAdd?.(messageId, project)}
+            title="Add project to Prior"
+          >
+            <Icon name="plus" />
+          </button>
+        )}
+      </div>
+      {project.description && <p className="proposed-description">{project.description}</p>}
+      <div className="proposed-task-meta">
+        {project.areaName && <span className="proposed-area-badge">Area: {project.areaName}</span>}
+        {project.status && <span className="proposed-priority proposed-priority-3">{project.status}</span>}
+      </div>
+      {project.reasoning && <p className="proposed-reasoning">{project.reasoning}</p>}
+    </div>
+  );
+}
+
+type ProjectProposalBoxProps = {
+  readonly messageId: string;
+  readonly projects: readonly ProposedProject[];
+  readonly addingIds: Readonly<Record<string, boolean>>;
+  readonly onUpdate?: (messageId: string, projectId: string, update: Partial<ProposedProject>) => void;
+  readonly onAddSingle?: (messageId: string, project: ProposedProject) => void;
+  readonly onAddAll?: (messageId: string, projects: ProposedProject[]) => void;
+};
+
+export function ProjectProposalBox({ messageId, projects, addingIds, onUpdate, onAddSingle, onAddAll }: ProjectProposalBoxProps) {
+  if (projects.length === 0) return null;
+  const addedCount = projects.filter((p) => p.added).length;
+  return (
+    <div className="proposed-tasks-box proposed-projects-box">
+      <div className="proposed-tasks-header">
+        <span className="proposed-count">{addedCount}/{projects.length} projects added</span>
+        {projects.some((p) => !p.added) && (
+          <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll?.(messageId, [...projects])}>
+            <Icon name="plus" />
+            <span>Add projects to Prior</span>
+          </button>
+        )}
+      </div>
+      <div className="proposed-task-list">
+        {projects.map((project) => (
+          <ProposedProjectCard
+            key={project.id}
+            messageId={messageId}
+            project={project}
+            adding={addingIds[project.id] ?? false}
+            onUpdate={onUpdate}
+            onAdd={onAddSingle}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type ProposedTaskCardProps = {
   readonly messageId: string;
   readonly task: ProposedTask;
@@ -192,7 +466,13 @@ export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onTo
           {badge.label}
         </span>
         <span className={`proposed-priority proposed-priority-${priority}`}>P{priority}</span>
+        {task.status && <span className={`proposed-status-badge proposed-status-${task.status}`}>{statusLabel(task.status)}</span>}
+        {task.projectName && <span className="proposed-project-badge">{task.projectName}</span>}
+        {task.areaName && !task.projectName && <span className="proposed-area-badge">{task.areaName}</span>}
         {task.dueDate && <span className="proposed-due-date">Due {formatDueDate(task.dueDate)}</span>}
+        {task.scheduledDate && <span className="proposed-scheduled-date">Scheduled {formatDueDate(task.scheduledDate)}</span>}
+        {task.assigneeName && <span className="proposed-assignee-badge">Waiting on {task.assigneeName}</span>}
+        {task.followUpDate && <span className="proposed-followup-date">Follow-up {formatDueDate(task.followUpDate)}</span>}
         <FlagToggles
           important={task.important}
           urgent={task.urgent}
@@ -349,6 +629,12 @@ export function HabitProposalBox({ messageId, habits, addingIds, onUpdate, onAdd
 
 export type AssistantMessageHandlers = {
   readonly addingIds: Readonly<Record<string, boolean>>;
+  readonly onUpdateArea?: (messageId: string, areaId: string, update: Partial<ProposedArea>) => void;
+  readonly onAddSingleArea?: (messageId: string, area: ProposedArea) => void;
+  readonly onAddAllAreas?: (messageId: string, areas: ProposedArea[]) => void;
+  readonly onUpdateProject?: (messageId: string, projectId: string, update: Partial<ProposedProject>) => void;
+  readonly onAddSingleProject?: (messageId: string, project: ProposedProject) => void;
+  readonly onAddAllProjects?: (messageId: string, projects: ProposedProject[]) => void;
   readonly onToggleTaskSelect: (messageId: string, taskId: string) => void;
   readonly onToggleTaskImportant: (messageId: string, taskId: string) => void;
   readonly onToggleTaskUrgent: (messageId: string, taskId: string) => void;
@@ -407,6 +693,7 @@ export function ProposedNoteCard({ messageId, note, adding, onUpdate, onAdd }: P
       </div>
       <div className="proposed-task-meta">
         <span className="proposed-due-date">{note.folderName ?? "Library"}</span>
+        {note.projectName && <span className="proposed-project-badge">Project: {note.projectName}</span>}
         {note.favorite && <span className="proposed-priority proposed-priority-2">Favorite</span>}
         <span className="proposed-count">{wordCount} words</span>
         {!note.added && (
@@ -585,6 +872,26 @@ export function AssistantMessage({ message: msg, handlers }: AssistantMessagePro
             <span className="routed-dot" />
             <span>Model: <strong>{msg.actualModel}</strong></span>
           </div>
+        )}
+        {msg.proposedAreas && (
+          <AreaProposalBox
+            messageId={msg.id}
+            areas={msg.proposedAreas}
+            addingIds={handlers.addingIds}
+            onUpdate={handlers.onUpdateArea}
+            onAddSingle={handlers.onAddSingleArea}
+            onAddAll={handlers.onAddAllAreas}
+          />
+        )}
+        {msg.proposedProjects && (
+          <ProjectProposalBox
+            messageId={msg.id}
+            projects={msg.proposedProjects}
+            addingIds={handlers.addingIds}
+            onUpdate={handlers.onUpdateProject}
+            onAddSingle={handlers.onAddSingleProject}
+            onAddAll={handlers.onAddAllProjects}
+          />
         )}
         {msg.proposedTasks && (
           <TaskProposalBox

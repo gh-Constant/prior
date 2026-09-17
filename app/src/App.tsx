@@ -4,7 +4,7 @@ import { clearSession, getToken, getUser, isAndroidTauri, listenForAuth, startGo
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
-import type { Area, Habit, NoteDraft, NoteFolderDraft, Project, Task, TaskDraft } from "./types";
+import type { Area, Habit, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
 import { TaskComposer } from "./components/TaskComposer";
@@ -358,9 +358,80 @@ export function App() {
     void syncNow();
   }
 
-  async function addAgentTasks(batch: TaskDraft[]) {
+  function resolveAgentAreaId(areaName: string | null | undefined): string | null {
+    if (!areaName) return null;
+    const wanted = areaName.trim().toLowerCase();
+    if (!wanted) return null;
+    const existing = workspaceStore.listAreas().find((a) => a.name.trim().toLowerCase() === wanted);
+    if (existing) return existing.id;
+    const created = workspaceStore.createArea(areaName.trim());
+    setAreas(workspaceStore.listAreas());
+    return created.id;
+  }
+
+  function resolveAgentProjectId(projectName: string | null | undefined, areaId: string | null = null): string | null {
+    if (!projectName) return null;
+    const wanted = projectName.trim().toLowerCase();
+    if (!wanted) return null;
+    const existing = workspaceStore.listProjects().find((p) => p.name.trim().toLowerCase() === wanted);
+    if (existing) {
+      if (areaId && !existing.areaId) {
+        workspaceStore.updateProject({ ...existing, areaId });
+        setProjects(workspaceStore.listProjects());
+      }
+      return existing.id;
+    }
+    const created = workspaceStore.createProject(projectName.trim(), areaId);
+    setProjects(workspaceStore.listProjects());
+    return created.id;
+  }
+
+  async function addAgentAreas(batch: Array<{ name: string }>) {
     for (const item of batch) {
-      await localStore.saveTask(item);
+      const name = item.name.trim();
+      if (!name) continue;
+      const existing = workspaceStore.listAreas().find((a) => a.name.trim().toLowerCase() === name.toLowerCase());
+      if (!existing) {
+        workspaceStore.createArea(name);
+      }
+    }
+    setAreas(workspaceStore.listAreas());
+  }
+
+  async function addAgentProjects(batch: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus }>) {
+    for (const item of batch) {
+      const name = item.name.trim();
+      if (!name) continue;
+      const areaId = item.areaName ? resolveAgentAreaId(item.areaName) : null;
+      const existing = workspaceStore.listProjects().find((p) => p.name.trim().toLowerCase() === name.toLowerCase());
+      if (!existing) {
+        const created = workspaceStore.createProject(name, areaId, item.description ?? "");
+        if (item.status && item.status !== "active") {
+          workspaceStore.updateProject({ ...created, status: item.status });
+        }
+      } else if (areaId && !existing.areaId) {
+        workspaceStore.updateProject({ ...existing, areaId });
+      }
+    }
+    setAreas(workspaceStore.listAreas());
+    setProjects(workspaceStore.listProjects());
+  }
+
+  async function addAgentTasks(batch: Array<TaskDraft & { areaName?: string | null; projectName?: string | null }>) {
+    for (const item of batch) {
+      let areaId = item.areaId ?? null;
+      if (!areaId && item.areaName) {
+        areaId = resolveAgentAreaId(item.areaName);
+      }
+      let projectId = item.projectId ?? null;
+      if (!projectId && item.projectName) {
+        projectId = resolveAgentProjectId(item.projectName, areaId);
+      }
+      await localStore.saveTask({
+        ...item,
+        areaId,
+        projectId,
+      });
     }
     await refresh();
     void syncNow();
@@ -405,9 +476,14 @@ export function App() {
     for (const item of batch) {
       const title = item.title.trim() || "Untitled note";
       const folderId = resolveAgentFolderId(item.folderName);
-      const created = notesStore.create(title, folderId);
+      let projectId: string | null = null;
+      if (item.projectName) {
+        projectId = resolveAgentProjectId(item.projectName);
+      }
+      const created = notesStore.create(title, folderId, projectId);
       notesStore.update({ ...created, body: item.bodyMarkdown, favorite: item.favorite });
     }
+    setProjects(workspaceStore.listProjects());
   }
 
   async function changeTask(task: Task) {
@@ -600,11 +676,15 @@ export function App() {
         onClose={() => setAgentOpen(false)}
         tasks={tasks}
         habits={habits}
+        areas={areas}
+        projects={projects}
         user={user}
         onAddTasks={addAgentTasks}
         onAddHabits={addAgentHabits}
         onAddNotes={addAgentNotes}
         onAddFolders={addAgentFolders}
+        onAddAreas={addAgentAreas}
+        onAddProjects={addAgentProjects}
       />
 
       {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); }} />}

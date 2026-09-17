@@ -4,6 +4,7 @@ import { notesStore } from "../lib/notes";
 import { workspaceStore } from "../lib/workspaceStore";
 import { Icon } from "./Icon";
 import { TaskRow } from "./TaskRow";
+import { SimpleFormModal } from "./Modal";
 import "./WorkHubView.css";
 
 export type WorkHubViewKind = "today" | "inbox" | "projects" | "project" | "waiting";
@@ -61,16 +62,37 @@ function ProjectModalView({ modal, areas, onClose, onSave }: { modal: Exclude<Pr
   const [name, setName] = useState("");
   const [areaId, setAreaId] = useState(modal.kind === "project" ? modal.areaId ?? "" : "");
   const isProject = modal.kind === "project";
-  return <div className="workhub-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <dialog open className="modal workhub-modal" aria-labelledby="workhub-modal-title">
-      <div className="modal-header"><h2 id="workhub-modal-title">{isProject ? "New project" : "New area"}</h2><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><Icon name="close" /></button></div>
-      <form onSubmit={(event) => { event.preventDefault(); if (name.trim()) onSave(name.trim(), isProject ? areaId || null : null); }}>
-        <label className="field workhub-field"><span>Name</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={isProject ? "e.g. Launch the website" : "e.g. Work"} /></label>
-        {isProject && <label className="field workhub-field"><span>Area</span><select value={areaId} onChange={(event) => setAreaId(event.target.value)}><option value="">No area</option>{areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>}
-        <div className="modal-footer"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={!name.trim()}>{isProject ? "Create project" : "Create area"}</button></div>
-      </form>
-    </dialog>
-  </div>;
+
+  return (
+    <SimpleFormModal
+      title={isProject ? "New project" : "New area"}
+      submitLabel={isProject ? "Create project" : "Create area"}
+      name={name}
+      onNameChange={setName}
+      namePlaceholder={isProject ? "e.g. Launch website" : "e.g. Work"}
+      nameLabel="Name"
+      onClose={onClose}
+      onSubmit={() => onSave(name.trim(), isProject ? areaId || null : null)}
+    >
+      {isProject && (
+        <label className="prior-modal-field">
+          <span>Area</span>
+          <select
+            className="prior-modal-select"
+            value={areaId}
+            onChange={(event) => setAreaId(event.target.value)}
+          >
+            <option value="">No area</option>
+            {areas.map((area) => (
+              <option key={area.id} value={area.id}>
+                {area.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </SimpleFormModal>
+  );
 }
 
 function ProjectList({ areas, projects, query, onQueryChange, onOpenProject, onNewProject, onNewArea }: { areas: Area[]; projects: Project[]; query: string; onQueryChange: (value: string) => void; onOpenProject: (id: string) => void; onNewProject: (areaId?: string | null) => void; onNewArea: () => void }) {

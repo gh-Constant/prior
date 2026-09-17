@@ -89,6 +89,25 @@ export type SyncState = {
 
 export type QuadrantKey = "focus" | "plan" | "quick" | "later";
 
+export type ProposedArea = {
+  id: string;
+  name: string;
+  reasoning: string;
+  selected: boolean;
+  added?: boolean;
+};
+
+export type ProposedProject = {
+  id: string;
+  name: string;
+  areaName?: string | null;
+  description?: string;
+  status?: ProjectStatus;
+  reasoning: string;
+  selected: boolean;
+  added?: boolean;
+};
+
 export type ProposedTask = {
   id: string;
   title: string;
@@ -97,6 +116,12 @@ export type ProposedTask = {
   priority: TaskPriority;
   important: boolean;
   urgent: boolean;
+  areaName?: string | null;
+  projectName?: string | null;
+  status?: TaskStatus;
+  scheduledDate?: string | null;
+  assigneeName?: string;
+  followUpDate?: string | null;
   reasoning: string;
   selected: boolean;
   added?: boolean;
@@ -118,6 +143,7 @@ export type ProposedNote = {
   id: string;
   title: string;
   folderName: string | null;
+  projectName?: string | null;
   bodyMarkdown: string;
   favorite: boolean;
   reasoning: string;
@@ -137,6 +163,7 @@ export type ProposedFolder = {
 export type NoteDraft = {
   title: string;
   folderName: string | null;
+  projectName?: string | null;
   bodyMarkdown: string;
   favorite: boolean;
 };
@@ -150,6 +177,8 @@ export type AgentMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  proposedAreas?: ProposedArea[];
+  proposedProjects?: ProposedProject[];
   proposedTasks?: ProposedTask[];
   proposedHabits?: ProposedHabit[];
   proposedNotes?: ProposedNote[];

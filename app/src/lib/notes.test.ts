@@ -54,4 +54,45 @@ describe("notesStore", () => {
     notesStore.deleteFolder(projects.id);
     expect(notesStore.list().find((item) => item.id === note.id)?.folderId).toBeNull();
   });
+
+  it("moves notes between folders and preserves project scope", () => {
+    const folderA = notesStore.createFolder("Folder A");
+    const folderB = notesStore.createFolder("Folder B");
+    const note = notesStore.create("Scoped note", folderA.id, "project-xyz");
+
+    // Move to folder B
+    notesStore.move(note.id, folderB.id);
+    const moved = notesStore.list().find((item) => item.id === note.id);
+    expect(moved?.folderId).toBe(folderB.id);
+    expect(moved?.projectId).toBe("project-xyz");
+
+    // Move to Library (root)
+    notesStore.move(note.id, null);
+    const inRoot = notesStore.list().find((item) => item.id === note.id);
+    expect(inRoot?.folderId).toBeNull();
+    expect(inRoot?.projectId).toBe("project-xyz");
+  });
+
+  it("moves folders and protects against cyclic moves", () => {
+    const rootA = notesStore.createFolder("Root A");
+    const childA = notesStore.createFolder("Child A", rootA.id);
+    const grandChildA = notesStore.createFolder("Grandchild A", childA.id);
+    const rootB = notesStore.createFolder("Root B");
+
+    // Valid move: move childA to rootB
+    const valid = notesStore.moveFolder(childA.id, rootB.id);
+    expect(valid).toBe(true);
+    expect(notesStore.listFolders().find((f) => f.id === childA.id)?.parentId).toBe(rootB.id);
+
+    // Invalid move: move rootB into itself
+    expect(notesStore.moveFolder(rootB.id, rootB.id)).toBe(false);
+
+    // Invalid move: move rootB into its descendant childA or grandChildA
+    expect(notesStore.moveFolder(rootB.id, childA.id)).toBe(false);
+    expect(notesStore.moveFolder(rootB.id, grandChildA.id)).toBe(false);
+
+    // Valid move: move childA back to Library (null)
+    expect(notesStore.moveFolder(childA.id, null)).toBe(true);
+    expect(notesStore.listFolders().find((f) => f.id === childA.id)?.parentId).toBeNull();
+  });
 });

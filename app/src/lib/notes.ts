@@ -69,6 +69,38 @@ function normalizeNote(note: Note): Note {
   return { ...note, folderId: note.folderId ?? null, projectId: note.projectId ?? null, favorite: Boolean(note.favorite), deletedAt: note.deletedAt ?? null };
 }
 
+export function getFolderDescendants(folderId: string, folders: NoteFolder[]): Set<string> {
+  const result = new Set<string>();
+  const queue = [folderId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const folder of folders) {
+      if (folder.parentId === current && !folder.deletedAt && !result.has(folder.id)) {
+        result.add(folder.id);
+        queue.push(folder.id);
+      }
+    }
+  }
+  return result;
+}
+
+export function getFolderPath(folderId: string | null, folders: NoteFolder[]): string {
+  if (!folderId) return "Library";
+  const folder = folders.find((f) => f.id === folderId);
+  if (!folder) return "Library";
+  const names = [folder.name];
+  let parentId = folder.parentId;
+  let guard = 0;
+  while (parentId && guard < 12) {
+    const parent = folders.find((f) => f.id === parentId);
+    if (!parent) break;
+    names.unshift(parent.name);
+    parentId = parent.parentId;
+    guard++;
+  }
+  return names.join(" / ");
+}
+
 function ensureSeed(): void {
   if (localStorage.getItem(NOTES_KEY) === null) {
     const timestamp = now();
@@ -135,8 +167,39 @@ export const notesStore = {
       return folder;
     }));
   },
-  move(noteId: string, folderId: string | null): void {
-    write(NOTES_KEY, read<Note[]>(NOTES_KEY, []).map((note) => note.id === noteId ? { ...note, folderId, updatedAt: now() } : note));
+  move(noteId: string, folderId: string | null, projectId?: string | null): void {
+    const timestamp = now();
+    write(NOTES_KEY, read<Note[]>(NOTES_KEY, []).map((note) => {
+      if (note.id !== noteId) return note;
+      return {
+        ...note,
+        folderId,
+        ...(projectId !== undefined ? { projectId } : {}),
+        updatedAt: timestamp,
+      };
+    }));
+  },
+  moveFolder(folderId: string, newParentId: string | null): boolean {
+    if (folderId === newParentId) return false;
+    const folders = read<NoteFolder[]>(FOLDERS_KEY, []);
+    const target = folders.find((folder) => folder.id === folderId);
+    if (!target || target.deletedAt) return false;
+
+    if (newParentId !== null) {
+      const descendants = getFolderDescendants(folderId, folders);
+      if (descendants.has(newParentId)) return false;
+      const parent = folders.find((folder) => folder.id === newParentId);
+      if (!parent || parent.deletedAt) return false;
+    }
+
+    const timestamp = now();
+    write(
+      FOLDERS_KEY,
+      folders.map((folder) =>
+        folder.id === folderId ? { ...folder, parentId: newParentId, updatedAt: timestamp } : folder
+      )
+    );
+    return true;
   },
   attachmentMeta(): NoteAttachment[] { return read<NoteAttachment[]>(ATTACHMENTS_KEY, []); },
   saveAttachment(file: NoteAttachment, blob: Blob): Promise<void> {

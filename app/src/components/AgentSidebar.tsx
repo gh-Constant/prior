@@ -1,11 +1,50 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentChatSummary, AgentMessage, AgentSettings, Habit, NoteDraft, NoteFolderDraft, ProposedFolder, ProposedHabit, ProposedNote, ProposedTask, Task, TaskDraft } from "../types";
+import type {
+  AgentChatSummary,
+  AgentMessage,
+  AgentSettings,
+  Area,
+  Habit,
+  NoteDraft,
+  NoteFolderDraft,
+  Project,
+  ProjectStatus,
+  ProposedArea,
+  ProposedFolder,
+  ProposedHabit,
+  ProposedNote,
+  ProposedProject,
+  ProposedTask,
+  Task,
+  TaskDraft,
+} from "../types";
 import { askAgent, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
-import { AssistantMessage, folderDraftOf, habitDraftOf, markFoldersAdded, markHabitsAdded, markNotesAdded, markTasksAdded, noteDraftOf, taskDraftOf, updateFolderProposal, updateHabitProposal, updateNoteProposal, updateTaskProposal, type AssistantMessageHandlers } from "./AgentMessageView";
+import {
+  AssistantMessage,
+  areaDraftOf,
+  folderDraftOf,
+  habitDraftOf,
+  markAreasAdded,
+  markFoldersAdded,
+  markHabitsAdded,
+  markNotesAdded,
+  markProjectsAdded,
+  markTasksAdded,
+  noteDraftOf,
+  projectDraftOf,
+  taskDraftOf,
+  updateAreaProposal,
+  updateFolderProposal,
+  updateHabitProposal,
+  updateNoteProposal,
+  updateProjectProposal,
+  updateTaskProposal,
+  type AssistantMessageHandlers,
+} from "./AgentMessageView";
 import { notesStore } from "../lib/notes";
 import { Icon } from "./Icon";
 import { DictationControls, DictationPreview, DictationStatusBar } from "./DictationControls";
@@ -17,19 +56,23 @@ type Props = {
   readonly onClose: () => void;
   readonly tasks: Task[];
   readonly habits: Habit[];
+  readonly areas: Area[];
+  readonly projects: Project[];
   readonly user: SessionUser | null;
-  readonly onAddTasks: (tasks: TaskDraft[]) => Promise<void>;
+  readonly onAddTasks: (tasks: Array<TaskDraft & { areaName?: string | null; projectName?: string | null }>) => Promise<void>;
   readonly onAddHabits: (habits: Array<Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit">>) => Promise<void>;
   readonly onAddNotes: (notes: NoteDraft[]) => Promise<void>;
   readonly onAddFolders: (folders: NoteFolderDraft[]) => Promise<void>;
+  readonly onAddAreas?: (areas: Array<{ name: string }>) => Promise<void>;
+  readonly onAddProjects?: (projects: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus }>) => Promise<void>;
 };
 
 const STARTER_PROMPTS = [
-  { icon: "bolt" as const, title: "Plan today's priorities", prompt: "Help me prioritize today. I need to focus on high-impact work and handle urgent deadlines first." },
-  { icon: "inbox" as const, title: "Triage a brain dump", prompt: "Here is a brain dump of things on my mind: " },
-  { icon: "plan" as const, title: "Break down a project", prompt: "Break down this project into atomic, actionable Eisenhower tasks with clear urgency and importance: " },
-  { icon: "file-text" as const, title: "Turn into a note", prompt: "Turn the following into a well-structured Markdown note with headings, a task list, and a table where useful: " },
-  { icon: "sparkles" as const, title: "Organize my inbox", prompt: "Review my current task list and suggest what to tackle first, what to schedule, and what to defer." },
+  { icon: "sparkles" as const, title: "Help me set up all my work", prompt: "Help me set up all my work. Guide me through my main areas of responsibility, current projects, concrete next actions, and anything I am waiting on." },
+  { icon: "folder" as const, title: "Organize into Areas and Projects", prompt: "Organize my existing tasks into high-level Areas and actionable Projects. Propose clean areas, projects, and structured task assignments." },
+  { icon: "bolt" as const, title: "What should I do today?", prompt: "What should I do today? Review my active tasks and recommend my highest-impact focus priorities for today." },
+  { icon: "user" as const, title: "Which tasks should I delegate?", prompt: "Which tasks should I delegate or put on waiting? Identify items that would be best delegated or require follow-up from others." },
+  { icon: "inbox" as const, title: "Review my Inbox", prompt: "Review my Inbox tasks and help me clarify, prioritize, schedule, or file them into projects." },
 ];
 
 function useOverlayMode(): boolean {
@@ -57,7 +100,7 @@ function modelConfirmLabel(customDraft: string, listDraft: string): string {
   return `Use ${shortModelName(effective)}`;
 }
 
-export function AgentSidebar({ open, inert, onClose, tasks, habits, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders }: Props) {
+export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, projects, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders, onAddAreas, onAddProjects }: Props) {
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(settings.apiKey);
@@ -382,11 +425,13 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, user, onAddT
       setMessages(nextMessages);
       if (chatId && token) await persistMessage(chatId, userMsg, token);
 
-      const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings, notesStore.list(), notesStore.listFolders());
+      const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings, notesStore.list(), notesStore.listFolders(), areas, projects);
       const assistantMsg: AgentMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: response.reply,
+        proposedAreas: response.areas,
+        proposedProjects: response.projects,
         proposedTasks: response.tasks,
         proposedHabits: response.habits,
         proposedNotes: response.notes,
@@ -521,8 +566,68 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, user, onAddT
     }
   }
 
+  function updateProposedArea(messageId: string, areaId: string, update: Partial<ProposedArea>) {
+    setMessages((prev) => updateAreaProposal(prev, messageId, areaId, update));
+  }
+
+  async function handleAddSingleArea(messageId: string, area: ProposedArea) {
+    setAddingIds((prev) => ({ ...prev, [area.id]: true }));
+    try {
+      if (onAddAreas) await onAddAreas([areaDraftOf(area)]);
+      setMessages((prev) => markAreasAdded(prev, messageId, new Set([area.id])));
+    } finally {
+      setAddingIds((prev) => ({ ...prev, [area.id]: false }));
+    }
+  }
+
+  async function handleAddAllAreas(messageId: string, proposed: ProposedArea[]) {
+    const toAdd = proposed.filter((area) => area.selected && !area.added);
+    if (!toAdd.length) return;
+    const ids = new Set(toAdd.map((area) => area.id));
+    toAdd.forEach((area) => setAddingIds((prev) => ({ ...prev, [area.id]: true })));
+    try {
+      if (onAddAreas) await onAddAreas(toAdd.map(areaDraftOf));
+      setMessages((prev) => markAreasAdded(prev, messageId, ids));
+    } finally {
+      toAdd.forEach((area) => setAddingIds((prev) => ({ ...prev, [area.id]: false })));
+    }
+  }
+
+  function updateProposedProject(messageId: string, projectId: string, update: Partial<ProposedProject>) {
+    setMessages((prev) => updateProjectProposal(prev, messageId, projectId, update));
+  }
+
+  async function handleAddSingleProject(messageId: string, project: ProposedProject) {
+    setAddingIds((prev) => ({ ...prev, [project.id]: true }));
+    try {
+      if (onAddProjects) await onAddProjects([projectDraftOf(project)]);
+      setMessages((prev) => markProjectsAdded(prev, messageId, new Set([project.id])));
+    } finally {
+      setAddingIds((prev) => ({ ...prev, [project.id]: false }));
+    }
+  }
+
+  async function handleAddAllProjects(messageId: string, proposed: ProposedProject[]) {
+    const toAdd = proposed.filter((project) => project.selected && !project.added);
+    if (!toAdd.length) return;
+    const ids = new Set(toAdd.map((project) => project.id));
+    toAdd.forEach((project) => setAddingIds((prev) => ({ ...prev, [project.id]: true })));
+    try {
+      if (onAddProjects) await onAddProjects(toAdd.map(projectDraftOf));
+      setMessages((prev) => markProjectsAdded(prev, messageId, ids));
+    } finally {
+      toAdd.forEach((project) => setAddingIds((prev) => ({ ...prev, [project.id]: false })));
+    }
+  }
+
   const messageHandlers: AssistantMessageHandlers = {
     addingIds,
+    onUpdateArea: updateProposedArea,
+    onAddSingleArea: (messageId, area) => void handleAddSingleArea(messageId, area),
+    onAddAllAreas: (messageId, areas) => void handleAddAllAreas(messageId, areas),
+    onUpdateProject: updateProposedProject,
+    onAddSingleProject: (messageId, project) => void handleAddSingleProject(messageId, project),
+    onAddAllProjects: (messageId, projects) => void handleAddAllProjects(messageId, projects),
     onToggleTaskSelect: handleToggleSelect,
     onToggleTaskImportant: handleToggleImportant,
     onToggleTaskUrgent: handleToggleUrgent,

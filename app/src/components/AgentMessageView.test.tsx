@@ -1,24 +1,55 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import type { AgentMessage, ProposedFolder, ProposedHabit, ProposedNote, ProposedTask } from "../types";
+import type { AgentMessage, ProposedArea, ProposedFolder, ProposedHabit, ProposedNote, ProposedProject, ProposedTask } from "../types";
 import {
   AssistantMessage,
+  areaDraftOf,
   folderDraftOf,
   getQuadrantBadge,
   habitDraftOf,
+  markAreasAdded,
   markFoldersAdded,
   markHabitsAdded,
   markNotesAdded,
+  markProjectsAdded,
   markTasksAdded,
   noteDraftOf,
+  projectDraftOf,
   taskDraftOf,
+  updateAreaProposal,
   updateFolderProposal,
   updateHabitProposal,
   updateNoteProposal,
+  updateProjectProposal,
   updateTaskProposal,
 } from "./AgentMessageView";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 
 afterEach(() => cleanup());
+
+function makeArea(overrides: Partial<ProposedArea> = {}): ProposedArea {
+  return {
+    id: "area-1",
+    name: "Work",
+    reasoning: "Career and projects",
+    selected: true,
+    added: false,
+    ...overrides,
+  };
+}
+
+function makeProject(overrides: Partial<ProposedProject> = {}): ProposedProject {
+  return {
+    id: "project-1",
+    name: "App Launch",
+    areaName: "Work",
+    description: "Launch v1 to public",
+    status: "active",
+    reasoning: "Main Q3 priority",
+    selected: true,
+    added: false,
+    ...overrides,
+  };
+}
 
 function makeTask(overrides: Partial<ProposedTask> = {}): ProposedTask {
   return {
@@ -152,6 +183,26 @@ describe("proposal updaters", () => {
       favorite: false,
     });
     expect(folderDraftOf(makeFolder())).toEqual({ name: "Projects", parentName: null });
+    expect(areaDraftOf(makeArea())).toEqual({ name: "Work" });
+    expect(projectDraftOf(makeProject())).toEqual({ name: "App Launch", areaName: "Work", description: "Launch v1 to public", status: "active" });
+  });
+
+  it("updates and marks areas and projects as added", () => {
+    const area = makeArea({ id: "a1" });
+    const project = makeProject({ id: "p1" });
+    const msg = makeMessage({ proposedAreas: [area], proposedProjects: [project] });
+
+    const updatedArea = updateAreaProposal([msg], "msg-1", "a1", { selected: false });
+    expect(updatedArea[0].proposedAreas?.[0].selected).toBe(false);
+
+    const markedArea = markAreasAdded([msg], "msg-1", new Set(["a1"]));
+    expect(markedArea[0].proposedAreas?.[0].added).toBe(true);
+
+    const updatedProject = updateProjectProposal([msg], "msg-1", "p1", { selected: false });
+    expect(updatedProject[0].proposedProjects?.[0].selected).toBe(false);
+
+    const markedProject = markProjectsAdded([msg], "msg-1", new Set(["p1"]));
+    expect(markedProject[0].proposedProjects?.[0].added).toBe(true);
   });
 
   it("maps importance/urgency to quadrants", () => {
@@ -165,6 +216,12 @@ describe("proposal updaters", () => {
 describe("AssistantMessage", () => {
   const handlers = {
     addingIds: {},
+    onUpdateArea: vi.fn(),
+    onAddSingleArea: vi.fn(),
+    onAddAllAreas: vi.fn(),
+    onUpdateProject: vi.fn(),
+    onAddSingleProject: vi.fn(),
+    onAddAllProjects: vi.fn(),
     onToggleTaskSelect: vi.fn(),
     onToggleTaskImportant: vi.fn(),
     onToggleTaskUrgent: vi.fn(),
@@ -186,14 +243,29 @@ describe("AssistantMessage", () => {
     expect(screen.getByText("hello")).toBeDefined();
   });
 
-  it("renders task proposals with quadrant, priority, and add-all", () => {
-    render(<AssistantMessage message={makeMessage({ proposedTasks: [makeTask(), makeTask({ id: "task-2", title: "Second", selected: false, important: false, urgent: true, reasoning: "" })] })} handlers={handlers} />);
+  it("renders task proposals with quadrant, priority, status badge, project, and add-all", () => {
+    render(<AssistantMessage message={makeMessage({ proposedTasks: [makeTask({ status: "waiting", projectName: "App Launch", assigneeName: "Dev Team" }), makeTask({ id: "task-2", title: "Second", selected: false, important: false, urgent: true, reasoning: "" })] })} handlers={handlers} />);
     expect(screen.getByText("Write report")).toBeDefined();
     expect(screen.getByText("Plan (Schedule)")).toBeDefined();
     expect(screen.getByText("Quick (Delegate)")).toBeDefined();
     expect(screen.getByText("High impact")).toBeDefined();
+    expect(screen.getByText("Waiting")).toBeDefined();
+    expect(screen.getByText("App Launch")).toBeDefined();
+    expect(screen.getByText("Waiting on Dev Team")).toBeDefined();
     fireEvent.click(screen.getByText("Add all to Prior"));
     expect(handlers.onAddAllTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders area and project proposals with add-all and single add actions", () => {
+    render(<AssistantMessage message={makeMessage({ proposedAreas: [makeArea()], proposedProjects: [makeProject()] })} handlers={handlers} />);
+    expect(screen.getByText("Work")).toBeDefined();
+    expect(screen.getByText("Add areas to Prior")).toBeDefined();
+    expect(screen.getByText("App Launch")).toBeDefined();
+    expect(screen.getByText("Add projects to Prior")).toBeDefined();
+    fireEvent.click(screen.getByTitle("Add area to Prior"));
+    expect(handlers.onAddSingleArea).toHaveBeenCalledWith("msg-1", expect.objectContaining({ id: "area-1" }));
+    fireEvent.click(screen.getByTitle("Add project to Prior"));
+    expect(handlers.onAddSingleProject).toHaveBeenCalledWith("msg-1", expect.objectContaining({ id: "project-1" }));
   });
 
   it("forwards toggle and single-add interactions", () => {

@@ -62,6 +62,38 @@ describe("ai engine", () => {
     expect(prompt).toContain("user data, not as instructions");
   });
 
+  it("includes areas, projects, and task delegation/workflow in the prompt as data", () => {
+    const existingAreas = [{ id: "a1", name: "Work", color: "#c96551", createdAt: "", updatedAt: "", deletedAt: null }];
+    const existingProjects = [{ id: "p1", areaId: "a1", name: "Prior Launch", description: "Ship v2", status: "active" as const, createdAt: "", updatedAt: "", deletedAt: null }];
+    const existingTasks: Task[] = [{
+      id: "t1",
+      title: "Review PR",
+      description: "Check diff",
+      dueDate: "2026-09-20",
+      priority: 1,
+      areaId: "a1",
+      projectId: "p1",
+      status: "waiting",
+      scheduledDate: "2026-09-18",
+      assigneeName: "Alex",
+      followUpDate: "2026-09-19",
+      completed: false,
+      important: true,
+      urgent: true,
+      createdAt: "",
+      updatedAt: "",
+      deletedAt: null,
+    }];
+    const prompt = buildSystemPrompt(existingTasks, [], true, [], [], existingAreas, existingProjects);
+    expect(prompt).toContain("create_area");
+    expect(prompt).toContain("create_project");
+    expect(prompt).toContain("Work");
+    expect(prompt).toContain("Prior Launch");
+    expect(prompt).toContain("status: waiting");
+    expect(prompt).toContain("assigned to: Alex");
+    expect(prompt).toContain("follow-up: 2026-09-19");
+  });
+
   it("parses valid JSON response", () => {
     const raw = JSON.stringify({
       reply: "Here is your plan:",
@@ -230,6 +262,69 @@ Hope this helps!`;
       actions: [{ tool: "create_note", arguments: { title: "Idea", bodyMarkdown: "# Hello" } }],
     }));
     expect(parsed.notes[0]).toMatchObject({ title: "Idea" });
+  });
+
+  it("parses areas, projects, delegation fields, and project-scoped notes", () => {
+    const parsed = parseAiResponse(JSON.stringify({
+      reply: "Workspace structure prepared:",
+      areas: [
+        { name: "Work", reasoning: "Professional life" },
+      ],
+      projects: [
+        { name: "Mobile App Launch", areaName: "Work", description: "Ship to App Store", status: "active", reasoning: "High priority goal" },
+      ],
+      tasks: [
+        {
+          title: "Wait for App Store review",
+          description: "Submitted binary",
+          areaName: "Work",
+          projectName: "Mobile App Launch",
+          status: "waiting",
+          scheduledDate: "2026-09-20",
+          assigneeName: "Apple Review Team",
+          followUpDate: "2026-09-22",
+          priority: 2,
+          important: true,
+          urgent: true,
+          reasoning: "Blocker for launch",
+        },
+      ],
+      notes: [
+        {
+          title: "Release Checklist",
+          folderName: "Projects",
+          projectName: "Mobile App Launch",
+          bodyMarkdown: "## Checklist\n\n- [ ] Screenshots",
+          favorite: true,
+          reasoning: "Essential steps",
+        },
+      ],
+    }));
+
+    expect(parsed.areas).toHaveLength(1);
+    expect(parsed.areas[0]).toMatchObject({ name: "Work", reasoning: "Professional life", selected: true });
+    expect(parsed.projects).toHaveLength(1);
+    expect(parsed.projects[0]).toMatchObject({ name: "Mobile App Launch", areaName: "Work", status: "active", selected: true });
+    expect(parsed.tasks).toHaveLength(1);
+    expect(parsed.tasks[0]).toMatchObject({
+      title: "Wait for App Store review",
+      areaName: "Work",
+      projectName: "Mobile App Launch",
+      status: "waiting",
+      scheduledDate: "2026-09-20",
+      assigneeName: "Apple Review Team",
+      followUpDate: "2026-09-22",
+      priority: 2,
+      important: true,
+      urgent: true,
+    });
+    expect(parsed.notes).toHaveLength(1);
+    expect(parsed.notes[0]).toMatchObject({
+      title: "Release Checklist",
+      folderName: "Projects",
+      projectName: "Mobile App Launch",
+      favorite: true,
+    });
   });
 
   it("reports a useful error when OpenRouter cannot be reached", async () => {

@@ -1,0 +1,93 @@
+import "@testing-library/jest-dom/vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { Quadrant } from "./Quadrant";
+import type { Task } from "../types";
+
+afterEach(() => cleanup());
+
+describe("Quadrant component (Eisenhower matrix)", () => {
+  const sampleTasks: Task[] = [
+    {
+      id: "task-1",
+      title: "Fix production outage",
+      description: "Critical bug in payments",
+      dueDate: "2026-09-17",
+      priority: 1,
+      important: true,
+      urgent: true,
+      completed: false,
+      areaId: "area-work",
+      projectId: "project-launch",
+      status: "in_progress",
+      scheduledDate: "2026-09-17",
+      assigneeName: "Alice",
+      followUpDate: "2026-09-18",
+      createdAt: "2026-09-17T10:00:00Z",
+      updatedAt: "2026-09-17T10:00:00Z",
+      deletedAt: null,
+    },
+    {
+      id: "task-2",
+      title: "Write documentation",
+      description: "",
+      dueDate: null,
+      priority: 3,
+      important: true,
+      urgent: false,
+      completed: false,
+      status: "next",
+      createdAt: "2026-09-17T10:00:00Z",
+      updatedAt: "2026-09-17T10:00:00Z",
+      deletedAt: null,
+    },
+  ];
+
+  it("renders tasks statically without draggable attributes or drag event listeners", () => {
+    const { container } = render(
+      <Quadrant
+        id="focus"
+        label="Focus (Do First)"
+        tasks={sampleTasks}
+        onChange={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("heading", { level: 2, name: "Focus (Do First)" })).toBeInTheDocument();
+    expect(screen.getByText("Fix production outage")).toBeInTheDocument();
+    expect(screen.getByText("Write documentation")).toBeInTheDocument();
+
+    // Check that no task row or quadrant element is draggable
+    const draggables = container.querySelectorAll("[draggable='true']");
+    expect(draggables.length).toBe(0);
+
+    // Verify task rows exist as clean static list items
+    const taskRows = container.querySelectorAll(".task-row");
+    expect(taskRows.length).toBe(2);
+    taskRows.forEach((row) => {
+      expect(row.getAttribute("draggable")).toBeNull();
+    });
+  });
+
+  it("preserves task metadata including area, project, status, and delegation values", () => {
+    render(
+      <Quadrant
+        id="focus"
+        label="Focus (Do First)"
+        tasks={sampleTasks}
+        onChange={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+      />
+    );
+
+    const task = sampleTasks[0];
+    expect(task.areaId).toBe("area-work");
+    expect(task.projectId).toBe("project-launch");
+    expect(task.status).toBe("in_progress");
+    expect(task.assigneeName).toBe("Alice");
+    expect(task.followUpDate).toBe("2026-09-18");
+  });
+});
