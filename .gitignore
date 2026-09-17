@@ -19,3 +19,6 @@ coverage/
 *.keystore
 .scannerwork/
 coverage.out
+
+# macOS signing credentials for scripts/macos/build-signed.sh
+scripts/macos/signing.env

@@ -115,6 +115,8 @@ The workflow builds macOS universal, Windows, Linux, and Android artifacts, sign
 
 Required GitHub Actions secrets include `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, the Apple signing secrets, Windows certificate secrets, and the Android keystore secrets. The production Android keystore and Tauri updater signing key must be retained permanently.
 
+The macOS job refuses to build without a Developer ID certificate and notarization credentials, and verifies the produced `.app`/`.dmg` with `codesign`, `stapler`, and `spctl` before the release is published; this is what keeps the Gatekeeper warning away. Configure the `APPLE_*` secrets with `scripts/macos/setup-github-secrets.sh`, build a signed app locally with `scripts/macos/build-signed.sh`, and never set the `ALLOW_UNSIGNED_MACOS` repository variable for a public release. See `specs/RELEASES.md`.
+
 ## Coolify and server deployment
 
 Coolify deploys the API from `server/Dockerfile` on port `8080` and the browser app from `app/Dockerfile` on port `80`. The app container needs the build argument:
