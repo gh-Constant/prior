@@ -86,7 +86,7 @@ class PriorPlugin(private val activity: Activity) : Plugin(activity) {
                     .addCredentialOption(googleIdOption)
                     .build()
                 val credentialManager = CredentialManager.create(activity)
-                val result = credentialManager.getCredential(request, activity)
+                val result = credentialManager.getCredential(activity, request)
                 val googleCredential = GoogleIdTokenCredential.createFrom(result.credential.data)
                 invoke.resolveObject(GoogleSignInResult(googleCredential.idToken))
             } catch (cancelled: GetCredentialCancellationException) {
