@@ -6,6 +6,7 @@ export type Area = {
   id: string;
   name: string;
   color: string;
+  icon?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -18,6 +19,7 @@ export type Project = {
   areaId: string | null;
   name: string;
   description: string;
+  icon?: string | null;
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;

@@ -167,6 +167,7 @@ export function App() {
   const aiShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ J" : "Ctrl J";
 
   const refreshWorkspace = useCallback(() => {
+    workspaceStore.syncNoteCategories();
     setAreas(workspaceStore.listAreas());
     setProjects(workspaceStore.listProjects());
   }, []);

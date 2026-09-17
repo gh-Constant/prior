@@ -44,6 +44,13 @@ describe("notesStore", () => {
     expect(notesStore.list().find((item) => item.id === note.id)?.projectId).toBe("project-1");
   });
 
+  it("places new project notes in the project's workspace category", () => {
+    const folder = notesStore.ensureWorkspaceFolder("project", "project-1", "Launch site", null, "#c96551", "rocket");
+    const note = notesStore.create("Launch brief", null, "project-1");
+    expect(note.folderId).toBe(folder.id);
+    expect(notesStore.list().find((item) => item.id === note.id)).toMatchObject({ projectId: "project-1", folderId: folder.id });
+  });
+
   it("deletes a folder while keeping its notes and subfolders", () => {
     const projects = notesStore.createFolder("Projects");
     const research = notesStore.createFolder("Research", projects.id);

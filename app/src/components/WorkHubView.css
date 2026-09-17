@@ -12,18 +12,30 @@
 .workhub-project-group { min-width: 0; }
 .workhub-group-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
 .workhub-group-heading h3 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.workhub-group-icon { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 auto; border: 1px solid currentColor; border-radius: 8px; background: color-mix(in srgb, currentColor 10%, transparent); }
+.workhub-group-icon svg, .workhub-group-icon img { width: 14px; height: 14px; }
 .workhub-area-dot { width: 9px; height: 9px; border-radius: 50%; }
 .workhub-count { color: var(--muted); font-size: 11px; }
+.workhub-group-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.workhub-group-actions .text-button { margin-left: 0; }
 .text-button { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; margin-left: auto; padding: 0 7px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 650; }
 .text-button:hover { background: #f1efea; color: var(--ink); }
 .text-button svg { width: 13px; height: 13px; }
 .workhub-project-list { display: grid; gap: 8px; }
-.workhub-project-card { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 66px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); text-align: left; box-shadow: 0 3px 12px #27252203; }
+.workhub-project-card { display: flex; align-items: stretch; width: 100%; min-height: 66px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 3px 12px #27252203; }
 .workhub-project-card:hover { border-color: #d7b2a7; background: #fffdfa; box-shadow: 0 6px 18px #2725220b; transform: translateY(-1px); }
-.workhub-project-card > svg { width: 16px; color: #aaa49b; }
-.workhub-project-card-main { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
-.workhub-project-card-main strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.workhub-project-card-main small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.workhub-project-card-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 13px 8px 13px 14px; border: 0; background: transparent; color: var(--ink); text-align: left; }
+.workhub-project-card-main > svg { width: 16px; flex: 0 0 auto; color: #aaa49b; }
+.workhub-project-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 10px; background: #f6eee9; color: var(--accent-dark); }
+.workhub-project-icon svg, .workhub-project-icon img { width: 18px; height: 18px; }
+.workhub-project-card-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+.workhub-project-card-copy strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.workhub-project-card-copy small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.workhub-icon-action { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #a5a099; }
+.workhub-icon-action:hover { background: #f2eeea; color: var(--ink); }
+.workhub-icon-action.danger:hover { background: #fff0eb; color: #ad4633; }
+.project-edit-action { align-self: center; margin: 0 8px 0 0; }
+.workhub-icon-action svg { width: 14px; height: 14px; }
 .project-status { display: inline-flex; align-items: center; min-height: 23px; padding: 0 8px; border-radius: 6px; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .status-active { background: #edf4e9; color: #4f754a; }
 .status-planned { background: #eef1f5; color: #607085; }
@@ -64,8 +76,13 @@
 .back-link:hover { background: #f1efea; color: var(--ink); }
 .back-link svg { width: 14px; height: 14px; }
 .project-detail-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.project-detail-title-row { display: flex; align-items: center; gap: 12px; }
+.project-detail-icon { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 auto; border-radius: 13px; background: #f6eee9; color: var(--accent-dark); }
+.project-detail-icon svg, .project-detail-icon img { width: 22px; height: 22px; }
 .project-detail-kicker { margin-bottom: 7px; color: var(--accent-dark); font-size: 10px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
 .project-detail-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.project-edit-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.project-edit-button svg { width: 14px; height: 14px; }
 .project-detail-actions select, .workhub-field select { min-height: 40px; padding: 0 30px 0 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 650; }
 .project-progress { margin: 24px 0 22px; }
 .project-progress > div:first-child { display: flex; justify-content: space-between; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
@@ -88,5 +105,23 @@
 .project-note-card strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .project-note-card small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .project-open-notes { display: block; margin: 16px auto 0; }
+.workspace-item-form { gap: 15px; }
+.workspace-icon-picker { display: flex; align-items: center; gap: 12px; }
+.workspace-icon-options { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; flex: 1; }
+.workspace-icon-option { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: #fbfaf8; color: var(--muted); }
+.workspace-icon-option:hover { border-color: #e8a08e; color: var(--accent-dark); }
+.workspace-icon-option.active { border-color: var(--accent); background: #fff1eb; color: var(--accent-dark); box-shadow: 0 0 0 2px #fa654a20; }
+.workspace-icon-option svg { width: 17px; height: 17px; }
+.workspace-icon-upload { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 9px 0 5px; border: 1px dashed #d8cfc7; border-radius: 9px; color: var(--muted); font-size: 10px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+.workspace-icon-upload:hover { border-color: #e8a08e; color: var(--accent-dark); background: #fffaf7; }
+.workspace-icon-upload-preview { display: grid; place-items: center; width: 26px; height: 26px; overflow: hidden; border-radius: 7px; background: #f4eee9; color: var(--accent-dark); }
+.workspace-icon-upload-preview svg, .workspace-icon-upload-preview img { width: 16px; height: 16px; }
+.workspace-icon-image { display: block; object-fit: cover; }
+.workspace-icon-help { color: #9b958d; font-size: 10px; line-height: 1.45; }
+.workspace-icon-error { color: #a33c2e; font-size: 11px; }
+.workspace-delete-message { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.workspace-delete-message strong { color: var(--ink); }
+.workspace-delete-button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 9px; background: #a33c2e; color: #fff; font-size: 12px; font-weight: 650; }
+.workspace-delete-button:hover { background: #8e3428; }
 @media (max-width: 820px) { .today-grid { grid-template-columns: 1fr; } .project-detail-header, .workhub-intro { align-items: flex-start; flex-direction: column; } .project-detail-actions, .workhub-intro-actions { justify-content: flex-start; } }
-@media (max-width: 560px) { .workhub-project-card .project-status { display: none; } .workhub-intro h2, .project-detail-heading h2, .today-intro h2 { font-size: 26px; } .project-notes-heading { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 560px) { .workhub-project-card .project-status { display: none; } .workhub-intro h2, .project-detail-heading h2, .today-intro h2 { font-size: 26px; } .project-notes-heading { align-items: flex-start; flex-direction: column; } .workhub-icon-action { width: 34px; height: 34px; } .workhub-group-actions .text-button { padding-inline: 4px; } .workspace-icon-picker { align-items: flex-start; flex-direction: column; } .workspace-icon-options { width: 100%; } .workspace-icon-upload { align-self: flex-start; } }

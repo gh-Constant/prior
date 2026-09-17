@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { askAgent, buildSystemPrompt, getAgentSettings, parseAiResponse, saveAgentSettings } from "./ai";
+import { askAgent, buildSystemPrompt, fetchAvailableModels, getAgentSettings, parseAiResponse, saveAgentSettings } from "./ai";
 import type { Habit, Task } from "../types";
 
 describe("ai engine", () => {
@@ -331,6 +331,21 @@ Hope this helps!`;
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Load failed")));
     await expect(askAgent("Hello", [], [], [], { apiKey: "test-key", transcriptionApiKey: "", model: "openrouter/free", webSearch: false }))
       .rejects.toThrow("could not reach OpenRouter");
+  });
+
+  it("loads paid and free OpenRouter models for searchable selection", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [
+        { id: "openai/gpt-5.6-luna", name: "OpenAI: GPT-5.6 Luna", description: "Fast model", pricing: { prompt: "0.000001", completion: "0.000002" } },
+        { id: "example/free-model:free", name: "Example Free", pricing: { prompt: "0", completion: "0" } },
+      ] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const models = await fetchAvailableModels();
+    expect(models.find((model) => model.id === "openai/gpt-5.6-luna")).toMatchObject({ label: "OpenAI: GPT-5.6 Luna", desc: expect.stringContaining("Paid") });
+    expect(models.find((model) => model.id === "example/free-model:free")?.desc).toContain("Free");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("persists and retrieves agent settings", () => {

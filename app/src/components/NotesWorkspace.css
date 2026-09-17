@@ -38,7 +38,9 @@
 .note-folder-row { display: flex; align-items: center; gap: 7px; min-height: 31px; padding: 0 7px; border-radius: 6px; color: #6e6963; font-size: 12px; cursor: pointer; user-select: none; }
 .note-folder-row.root { margin-bottom: 4px; color: var(--ink); }
 .note-folder-icon { display: grid; place-items: center; width: 14px; flex: 0 0 auto; }
-.note-folder-icon svg { width: 13px; height: 13px; display: block; }
+.note-folder-icon svg, .note-folder-icon img { width: 13px; height: 13px; display: block; }
+.note-folder-row.workspace-folder { color: var(--ink); font-weight: 600; }
+.note-folder-row.workspace-folder .note-folder-icon { color: var(--folder-color, var(--accent)); }
 .note-folder-children { margin-left: 14px; padding-left: 5px; border-left: 2px solid var(--folder-color, transparent); border-radius: 2px; }
 .note-folder-children.root-children { margin-left: 10px; }
 .note-folder-row.root { margin-bottom: 4px; color: var(--ink); }
@@ -200,6 +202,7 @@
 }
 @media (max-width: 900px) and (min-width: 761px) {
   .notes-toolbar-actions { flex-basis: 100%; justify-content: flex-end; }
+  .notes-inspector { display: none; }
 }
 @media (max-width: 760px) {
   .notes-workspace { display: block; min-height: calc(100dvh - 84px); border: 0; border-radius: 0; box-shadow: none; }

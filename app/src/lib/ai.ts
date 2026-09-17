@@ -20,13 +20,18 @@ import type { Note, NoteFolder } from "./notes";
 
 export const DEFAULT_MODEL = "openrouter/free";
 
-export const POPULAR_FREE_MODELS: Array<{ id: string; label: string; desc: string }> = [
+export type AgentModelOption = { id: string; label: string; desc: string };
+
+export const POPULAR_FREE_MODELS: AgentModelOption[] = [
   { id: "openrouter/free", label: "Auto (openrouter/free)", desc: "Automatically selects the best available free model" },
   { id: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B (Free)", desc: "High-capacity reasoning from Meta" },
   { id: "google/gemini-2.0-flash-exp:free", label: "Gemini 2.0 Flash (Free)", desc: "Fast & responsive model from Google" },
   { id: "qwen/qwen-2.5-72b-instruct:free", label: "Qwen 2.5 72B (Free)", desc: "Strong multilingual & coding model" },
   { id: "deepseek/deepseek-r1:free", label: "DeepSeek R1 (Free)", desc: "Advanced reasoning and deep breakdown" },
 ];
+
+let modelCache: AgentModelOption[] | null = null;
+let modelRequest: Promise<AgentModelOption[]> | null = null;
 
 const SETTINGS_KEY = "prior.ai.settings.v1";
 
@@ -784,34 +789,51 @@ export function parseAiResponse(raw: string): {
 }
 
 function shortenModelDescription(description: string | undefined): string {
-  if (!description) return "Free model on OpenRouter";
+  if (!description) return "Model available on OpenRouter";
   const truncated = description.slice(0, 70);
   return description.length > 70 ? `${truncated}…` : truncated;
 }
 
-export async function fetchAvailableFreeModels(): Promise<Array<{ id: string; label: string; desc: string }>> {  try {
-    const res = await fetch("https://openrouter.ai/api/v1/models");
-    if (!res.ok) return POPULAR_FREE_MODELS;
-    const json = await res.json();
-    if (!Array.isArray(json.data)) return POPULAR_FREE_MODELS;
+export async function fetchAvailableModels(): Promise<AgentModelOption[]> {
+  if (modelCache) return modelCache;
+  if (modelRequest) return modelRequest;
+  modelRequest = (async () => {
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/models");
+      if (!res.ok) return POPULAR_FREE_MODELS;
+      const json = await res.json() as { data?: unknown };
+      if (!Array.isArray(json.data)) return POPULAR_FREE_MODELS;
 
-    type RawModel = { id: string; name?: string; description?: string; pricing?: { prompt?: string; completion?: string } };
-    const free = (json.data as RawModel[])
-      .filter((m) => m.id.endsWith(":free") || (m.pricing?.prompt === "0" && m.pricing?.completion === "0"))
-      .map((m) => ({
-        id: m.id,
-        label: m.name || m.id,
-        desc: shortenModelDescription(m.description),
-      }));
-
-    return [
-      POPULAR_FREE_MODELS[0],
-      ...free.filter((m) => m.id !== DEFAULT_MODEL),
-    ];
-  } catch {
-    return POPULAR_FREE_MODELS;
-  }
+      type RawModel = { id?: string; name?: string; description?: string; pricing?: { prompt?: string; completion?: string } };
+      const models = (json.data as RawModel[])
+        .filter((model): model is RawModel & { id: string } => typeof model.id === "string" && model.id.length > 0)
+        .map((model) => {
+          const isFree = model.id.endsWith(":free") || (model.pricing?.prompt === "0" && model.pricing?.completion === "0");
+          return {
+            id: model.id,
+            label: model.name?.trim() || model.id,
+            desc: `${shortenModelDescription(model.description)}${isFree ? " · Free" : " · Paid"}`,
+          };
+        });
+      const seen = new Set<string>();
+      const ordered = [...POPULAR_FREE_MODELS, ...models].filter((model) => {
+        if (seen.has(model.id)) return false;
+        seen.add(model.id);
+        return true;
+      });
+      modelCache = ordered;
+      return ordered;
+    } catch {
+      return POPULAR_FREE_MODELS;
+    } finally {
+      modelRequest = null;
+    }
+  })();
+  return modelRequest;
 }
+
+/** @deprecated Kept as a compatibility alias for callers that used the old free-only name. */
+export const fetchAvailableFreeModels = fetchAvailableModels;
 
 export async function askAgent(
   prompt: string,

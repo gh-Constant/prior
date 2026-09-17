@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentChatSummary,
   AgentMessage,
@@ -18,7 +18,7 @@ import type {
   Task,
   TaskDraft,
 } from "../types";
-import { askAgent, AGENT_SETTINGS_EVENT, DEFAULT_MODEL, fetchAvailableFreeModels, getAgentSettings, notifyAgentSettingsChanged, POPULAR_FREE_MODELS, saveAgentSettings } from "../lib/ai";
+import { askAgent, AGENT_SETTINGS_EVENT, DEFAULT_MODEL, fetchAvailableModels, getAgentSettings, notifyAgentSettingsChanged, POPULAR_FREE_MODELS, saveAgentSettings, type AgentModelOption } from "../lib/ai";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
 import "./AgentSidebar.css";
@@ -98,7 +98,10 @@ function shortModelName(id: string): string {
 export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, projects, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders, onAddAreas, onAddProjects, onOpenSettings }: Props) {
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
 
-  const [modelList, setModelList] = useState(POPULAR_FREE_MODELS);
+  const [modelList, setModelList] = useState<AgentModelOption[]>(POPULAR_FREE_MODELS);
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelQuery, setModelQuery] = useState("");
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [chatHistory, setChatHistory] = useState<AgentChatSummary[]>([]);
@@ -116,6 +119,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDialogElement>(null);
+  const modelPickerRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const isComposingRef = useRef(false);
   const isOverlay = useOverlayMode();
@@ -139,10 +143,26 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   });
 
   useEffect(() => {
-    void fetchAvailableFreeModels().then((list) => {
+    void fetchAvailableModels().then((list) => {
       if (list?.length) setModelList(list);
-    });
+    }).finally(() => setModelsLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!modelPickerOpen) return undefined;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (modelPickerRef.current && !modelPickerRef.current.contains(event.target as Node)) setModelPickerOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModelPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [modelPickerOpen]);
 
   useEffect(() => {
     // The API key and web search live in Settings now: reload whenever the
@@ -287,9 +307,15 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     onClose();
   }
 
-  const modelOptions = modelList.some((m) => m.id === settings.model)
+  const modelOptions = useMemo(() => modelList.some((m) => m.id === settings.model)
     ? modelList
-    : [...modelList, { id: settings.model, label: shortModelName(settings.model), desc: "Custom model from Settings" }];
+    : [...modelList, { id: settings.model, label: shortModelName(settings.model), desc: "Custom model from Settings" }], [modelList, settings.model]);
+  const deferredModelQuery = useDeferredValue(modelQuery.trim().toLowerCase());
+  const filteredModelOptions = useMemo(() => {
+    if (!deferredModelQuery) return modelOptions.slice(0, 80);
+    return modelOptions.filter((model) => `${model.label} ${model.id} ${model.desc}`.toLowerCase().includes(deferredModelQuery)).slice(0, 80);
+  }, [deferredModelQuery, modelOptions]);
+  const selectedModel = modelOptions.find((model) => model.id === settings.model) ?? modelOptions[0];
 
   function startDictation(): void {
     const textarea = textareaRef.current;
@@ -722,19 +748,57 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       )}
 
       <div className="agent-model-row">
-        <label htmlFor="prior-agent-model">Model</label>
-        <select
-          id="prior-agent-model"
-          value={settings.model}
-          onChange={(event) => handleModelChange(event.target.value)}
-          aria-label="Assistant model"
-        >
-          {modelOptions.map((m) => (
-            <option key={m.id} value={m.id} title={m.desc}>
-              {m.label}
-            </option>
-          ))}
-        </select>
+        <label id="prior-agent-model-label">Model</label>
+        <div className="agent-model-picker" ref={modelPickerRef}>
+          <button
+            type="button"
+            className="agent-model-trigger"
+            aria-haspopup="listbox"
+            aria-expanded={modelPickerOpen}
+            aria-labelledby="prior-agent-model-label prior-agent-model-value"
+            onClick={() => setModelPickerOpen((open) => !open)}
+          >
+            <span id="prior-agent-model-value" className="agent-model-trigger-copy">
+              <strong>{selectedModel?.label ?? shortModelName(settings.model)}</strong>
+              <small>{selectedModel?.id ?? settings.model}</small>
+            </span>
+            <Icon name="chevron-down" />
+          </button>
+          {modelPickerOpen && (
+            <div className="agent-model-popover" role="dialog" aria-label="Choose assistant model">
+              <label className="agent-model-search">
+                <Icon name="search" />
+                <input
+                  autoFocus
+                  type="search"
+                  value={modelQuery}
+                  onChange={(event) => setModelQuery(event.target.value)}
+                  placeholder="Search all OpenRouter models"
+                  aria-label="Search OpenRouter models"
+                />
+                {modelQuery && <button type="button" aria-label="Clear model search" onClick={() => setModelQuery("")}><Icon name="close" /></button>}
+              </label>
+              <div className="agent-model-results" role="listbox" aria-label="OpenRouter models">
+                {modelsLoading && <span className="agent-model-note">Loading OpenRouter models…</span>}
+                {!modelsLoading && !filteredModelOptions.length && <span className="agent-model-note">No matching models</span>}
+                {filteredModelOptions.map((model) => (
+                  <button
+                    key={model.id}
+                    type="button"
+                    role="option"
+                    aria-selected={model.id === settings.model}
+                    className={`agent-model-option ${model.id === settings.model ? "active" : ""}`}
+                    onClick={() => { handleModelChange(model.id); setModelPickerOpen(false); setModelQuery(""); }}
+                  >
+                    <span className="agent-model-option-copy"><strong>{model.label}</strong><small>{model.id}</small></span>
+                    <span className="agent-model-option-description">{model.desc}</span>
+                  </button>
+                ))}
+                {filteredModelOptions.length === 80 && <span className="agent-model-note">Showing the first 80 matches. Refine your search for more.</span>}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {!settings.apiKey && (

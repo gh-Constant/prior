@@ -3,10 +3,15 @@ export type NoteFolder = {
   name: string;
   parentId: string | null;
   color: string | null;
+  workspaceKind?: "area" | "project" | null;
+  workspaceId?: string | null;
+  icon?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
 };
+
+export type WorkspaceFolderKind = "area" | "project";
 
 export type Note = {
   id: string;
@@ -62,7 +67,7 @@ function write<T>(key: string, value: T): void {
 }
 
 function normalizeFolder(folder: NoteFolder): NoteFolder {
-  return { ...folder, parentId: folder.parentId ?? null, color: folder.color ?? null, deletedAt: folder.deletedAt ?? null };
+  return { ...folder, parentId: folder.parentId ?? null, color: folder.color ?? null, workspaceKind: folder.workspaceKind ?? null, workspaceId: folder.workspaceId ?? null, icon: folder.icon ?? null, deletedAt: folder.deletedAt ?? null };
 }
 
 function normalizeNote(note: Note): Note {
@@ -126,9 +131,37 @@ export const notesStore = {
     ensureSeed();
     return read<NoteFolder[]>(FOLDERS_KEY, []).filter((folder) => !folder.deletedAt).map(normalizeFolder).sort((a, b) => a.name.localeCompare(b.name));
   },
+  getWorkspaceFolder(kind: WorkspaceFolderKind, workspaceId: string): NoteFolder | null {
+    return this.listFolders().find((folder) => folder.workspaceKind === kind && folder.workspaceId === workspaceId) ?? null;
+  },
+  ensureWorkspaceFolder(kind: WorkspaceFolderKind, workspaceId: string, name: string, parentId: string | null, color: string | null, icon: string | null): NoteFolder {
+    ensureSeed();
+    const folders = read<NoteFolder[]>(FOLDERS_KEY, []);
+    const existing = folders.find((folder) => folder.workspaceKind === kind && folder.workspaceId === workspaceId);
+    const timestamp = now();
+    const next: NoteFolder = normalizeFolder({
+      ...(existing ?? { id: uid(), createdAt: timestamp }),
+      name: name.trim() || (kind === "area" ? "Area" : "Project"),
+      parentId,
+      color,
+      workspaceKind: kind,
+      workspaceId,
+      icon,
+      updatedAt: timestamp,
+      deletedAt: null,
+    });
+    if (existing && existing.name === next.name && existing.parentId === next.parentId && existing.color === next.color && existing.icon === next.icon && !existing.deletedAt) return next;
+    write(FOLDERS_KEY, existing ? folders.map((folder) => folder.id === existing.id ? next : folder) : [...folders, next]);
+    return next;
+  },
+  removeWorkspaceFolder(kind: WorkspaceFolderKind, workspaceId: string): void {
+    const folder = this.getWorkspaceFolder(kind, workspaceId);
+    if (folder) this.deleteFolder(folder.id);
+  },
   create(title = "Untitled note", folderId: string | null = null, projectId: string | null = null): Note {
     const timestamp = now();
-    const note: Note = { id: uid(), title: title.trim() || "Untitled note", body: "", folderId, projectId, favorite: false, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
+    const projectFolderId = projectId ? this.getWorkspaceFolder("project", projectId)?.id ?? null : null;
+    const note: Note = { id: uid(), title: title.trim() || "Untitled note", body: "", folderId: folderId ?? projectFolderId, projectId, favorite: false, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
     write(NOTES_KEY, [...read<Note[]>(NOTES_KEY, []), note]);
     return note;
   },
@@ -142,9 +175,9 @@ export const notesStore = {
     write(NOTES_KEY, read<Note[]>(NOTES_KEY, []).map((note) => note.id === noteId ? { ...note, deletedAt: timestamp, updatedAt: timestamp } : note));
   },
   restore(noteId: string): void { write(NOTES_KEY, read<Note[]>(NOTES_KEY, []).map((note) => note.id === noteId ? { ...note, deletedAt: null, updatedAt: now() } : note)); },
-  createFolder(name: string, parentId: string | null = null, color: string | null = null): NoteFolder {
+  createFolder(name: string, parentId: string | null = null, color: string | null = null, options: { workspaceKind?: WorkspaceFolderKind; workspaceId?: string; icon?: string | null } = {}): NoteFolder {
     const timestamp = now();
-    const folder: NoteFolder = { id: uid(), name: name.trim() || "New folder", parentId, color, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
+    const folder: NoteFolder = { id: uid(), name: name.trim() || "New folder", parentId, color, workspaceKind: options.workspaceKind ?? null, workspaceId: options.workspaceId ?? null, icon: options.icon ?? null, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
     write(FOLDERS_KEY, [...read<NoteFolder[]>(FOLDERS_KEY, []), folder]);
     return folder;
   },

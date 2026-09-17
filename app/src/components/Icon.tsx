@@ -51,7 +51,13 @@ export type IconName =
   | "file-plus"
   | "palette"
   | "logout"
-  | "menu";
+  | "menu"
+  | "briefcase"
+  | "target"
+  | "rocket"
+  | "home"
+  | "book"
+  | "heart";
 
 const calendarCheckPath = Array.isArray(faCalendarCheck.icon[4])
   ? faCalendarCheck.icon[4].join(" ")
@@ -110,6 +116,12 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconN
     palette: <><path d="M12 4a8 8 0 1 0 .5 15.97c1.4.12 2-.9 1.4-2-.7-1.2-.1-2.6 1.5-2.6h1.7a3.9 3.9 0 0 0 3.9-3.9C21 6.9 17 4 12 4Z" /><circle cx="8.3" cy="10.2" r=".9" /><circle cx="12" cy="7.6" r=".9" /><circle cx="15.7" cy="9.4" r=".9" /></>,
     logout: <><path d="M14 4H5v16h9" /><path d="M10 12h11" /><path d="m18 9 3 3-3 3" /></>,
     menu: <><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>,
+    briefcase: <><rect x="4" y="7" width="16" height="13" rx="2" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M4 12h16M10 12v2h4v-2" /></>,
+    target: <><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1" /></>,
+    rocket: <><path d="M14.5 4.5c2.5-2.5 5.2-2.2 5.2-2.2s.3 2.7-2.2 5.2l-5.8 5.8-3.6-.8-.8-3.6Z" /><path d="m7.7 14.3-3.2 3.2M6.2 19.8l-2 .2.2-2M12.8 8.2l3 3M9.2 15.8c-1.7 1.7-3.1 2.1-4.7 2.1M8.2 16.8c0 1.7-.4 3.1-2.1 4.7" /></>,
+    home: <><path d="m3.5 10.5 8.5-7 8.5 7" /><path d="M5.5 9v11h13V9M9.5 20v-6h5v6" /></>,
+    book: <><path d="M4.5 5.5A2.5 2.5 0 0 1 7 3h12.5v17H7a2.5 2.5 0 0 0-2.5 2.5Z" /><path d="M4.5 5.5v17M7 20h12.5" /></>,
+    heart: <path d="m12 20-1.4-1.3C5.5 14 2.5 11.3 2.5 8a5 5 0 0 1 9.5-2.1A5 5 0 0 1 21.5 8c0 3.3-3 6-8.1 10.7Z" />,
   };
   return <svg aria-hidden="true" {...common}>{paths[name]}</svg>;
 }
