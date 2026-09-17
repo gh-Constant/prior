@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SessionUser } from "../lib/auth";
 import { signInWithPassword, signUpWithPassword } from "../lib/auth";
 import { checkForUpdate, getAppVersion, installAvailableUpdate, supportsDesktopUpdates, type UpdateInfo } from "../lib/updater";
+import { checkForAndroidUpdate, getAndroidAppVersion, openAndroidUpdate, supportsAndroidUpdates, type AndroidUpdateInfo } from "../lib/androidUpdater";
 import { useModalDialog } from "../hooks/useModalDialog";
 import { DownloadPanel } from "./DownloadPanel";
 import { Icon } from "./Icon";
@@ -120,14 +121,68 @@ function UpdateCard() {
   );
 }
 
+function AndroidUpdateCard() {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [update, setUpdate] = useState<AndroidUpdateInfo | null>(null);
+  const [updateState, setUpdateState] = useState<UpdateState>("idle");
+
+  async function inspectUpdate() {
+    setUpdateState("checking");
+    try {
+      const [version, nextUpdate] = await Promise.all([getAndroidAppVersion(), checkForAndroidUpdate()]);
+      setAppVersion(version);
+      setUpdate(nextUpdate);
+      setUpdateState(nextUpdate ? "available" : "current");
+    } catch {
+      setUpdateState("error");
+    }
+  }
+
+  async function downloadUpdate() {
+    if (!update) return;
+    setUpdateState("installing");
+    try {
+      await openAndroidUpdate(update.downloadUrl);
+      setUpdateState("available");
+    } catch {
+      setUpdateState("error");
+    }
+  }
+
+  useEffect(() => { void inspectUpdate(); }, []);
+
+  const checking = updateState === "checking" || updateState === "installing";
+  return (
+    <div className="update-card">
+      <div className="update-card-heading"><span>Updates</span>{appVersion && <small>v{appVersion}</small>}</div>
+      {updateState === "available" && update
+        ? (
+          <>
+            <button className="update-button" type="button" onClick={() => void downloadUpdate()}>
+              <Icon name="download" /> Download v{update.version}{update.sizeMb ? ` (${update.sizeMb} MB)` : ""}
+            </button>
+            <p className="update-hint">The APK downloads in your browser — open it to install. Allow “unknown apps” once if asked.</p>
+          </>
+        )
+        : (
+          <button className="update-check" type="button" disabled={checking} onClick={() => void inspectUpdate()}>
+            <Icon name="refresh" /> {updateState === "current" ? "Up to date" : updateCheckLabel(updateState)}
+          </button>
+        )}
+    </div>
+  );
+}
+
 function AccountPanel({ user, onLogout }: { readonly user: SessionUser; readonly onLogout: () => Promise<void> }) {
   const desktopUpdates = supportsDesktopUpdates();
+  const androidUpdates = supportsAndroidUpdates();
   return (
     <div className="account-panel">
       <div className="account-avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}</div>
       <p className="account-panel-name">{user.displayName || "Prior account"}</p>
       <p className="account-panel-email">{user.email}</p>
       {desktopUpdates && <UpdateCard />}
+      {androidUpdates && <AndroidUpdateCard />}
       <button className="danger-button" type="button" onClick={() => void onLogout()}>Log out</button>
     </div>
   );

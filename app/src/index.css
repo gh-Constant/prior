@@ -276,6 +276,7 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
 .update-card-heading { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 12px; }
 .update-card-heading small { color: var(--muted); font-size: 11px; }
 .update-button, .update-check { display: flex; width: 100%; align-items: center; justify-content: center; gap: 8px; }
+.update-hint { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .download-panel { padding: 0 24px; text-align: center; }
 .download-brand { width: 62px; height: 62px; margin: 4px auto 8px; }
 .download-brand img { width: 100%; height: 100%; object-fit: contain; }
