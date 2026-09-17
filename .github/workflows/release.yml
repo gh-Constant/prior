@@ -53,6 +53,8 @@ jobs:
           fetch-depth: 0
       - name: Calculate changed release targets
         id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/release/plan.mjs
 
   # A platform-independent frontend bundle is built once. The cache key ignores
@@ -324,17 +326,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
+        if: needs.plan.outputs.build_desktop == 'true'
         with:
           pattern: desktop-*
           path: new-artifacts
           merge-multiple: true
-          if-no-artifact-found: ignore
       - uses: actions/download-artifact@v4
+        if: needs.plan.outputs.build_android == 'true'
         with:
           pattern: android-apk
           path: new-artifacts
           merge-multiple: true
-          if-no-artifact-found: ignore
       - name: Carry forward unchanged platform assets
         if: needs.plan.outputs.previous_tag != ''
         env:

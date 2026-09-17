@@ -7,7 +7,31 @@ const tags = execFileSync("git", ["tag", "--sort=-version:refname"], { encoding:
   .split("\n")
   .map((value) => value.trim())
   .filter(Boolean);
-const previousTag = tags.find((value) => value !== tag) || "";
+
+function publishedReleaseTags() {
+  if (!process.env.GITHUB_REPOSITORY) return [];
+  try {
+    const output = execFileSync(
+      "gh",
+      ["release", "list", "--repo", process.env.GITHUB_REPOSITORY, "--limit", "100", "--json", "tagName,isDraft,isPrerelease"],
+      {
+        encoding: "utf8",
+        env: { ...process.env, GH_TOKEN: process.env.GH_TOKEN || process.env.GITHUB_TOKEN },
+      },
+    );
+    return JSON.parse(output)
+      .filter((release) => release.isDraft === false && release.isPrerelease === false)
+      .map((release) => release.tagName)
+      .filter(Boolean);
+  } catch {
+    // Local planning and environments without GitHub CLI authentication still
+    // use the git-tag fallback below.
+    return [];
+  }
+}
+
+const publishedTags = new Set(publishedReleaseTags());
+const previousTag = tags.find((value) => value !== tag && (publishedTags.size === 0 || publishedTags.has(value))) || "";
 
 function gitDiffFiles() {
   if (!previousTag) return [];
