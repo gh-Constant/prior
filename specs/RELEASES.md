@@ -22,7 +22,7 @@ Set the secrets once from a Mac that holds the certificate and its private key:
 scripts/macos/setup-github-secrets.sh
 ```
 
-It exports the Developer ID identity (plus the Apple intermediate) as a password-protected PKCS#12, checks that it re-imports into a scratch keychain the same way CI does, validates the Apple ID app-specific password with `notarytool`, and writes the five `APPLE_*` secrets with `gh secret set`. Pass `--p12 file.p12` to reuse an identity exported from Keychain Access.
+It exports the Developer ID identity (plus the Apple intermediate) as a password-protected PKCS#12, checks that it re-imports into a scratch keychain the same way CI does, validates the notarization credentials with `notarytool`, and writes the `APPLE_*` secrets with `gh secret set`. Pass `--p12 file.p12` to reuse an identity exported from Keychain Access. Prefer `--api-key AuthKey_<id>.p8 --api-issuer <uuid>` (an App Store Connect team key with the Developer role) over an Apple ID app-specific password: the key belongs to the team, so releases keep working regardless of who pushes the tag or whose Apple account changes. `--skip-certificate` re-configures notarization only.
 
 Local signed builds use the same certificate from the login keychain:
 
