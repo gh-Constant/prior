@@ -201,6 +201,7 @@ export type AgentChat = AgentChatSummary & {
 
 export type AgentSettings = {
   apiKey: string;
+  transcriptionApiKey: string;
   model: string;
   webSearch: boolean;
 };

@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 import { SettingsPage } from "./SettingsPage";
 
 vi.mock("../lib/api", () => ({
-  api: { updateProfile: vi.fn() },
+  api: { updateProfile: vi.fn(), getSettings: vi.fn(), saveSettings: vi.fn() },
 }));
 
 vi.mock("../lib/auth", () => ({
@@ -36,5 +36,18 @@ describe("SettingsPage profile", () => {
     await waitFor(() => expect(onUserUpdated).toHaveBeenCalledWith({ ...user, displayName: "Ada Lovelace" }));
     expect(api.updateProfile).toHaveBeenCalledWith("Ada Lovelace", "session-token");
     expect(screen.getByRole("status")).toHaveTextContent("Saved");
+  });
+
+  it("saves the per-user OpenAI transcription key with assistant settings", async () => {
+    vi.mocked(api.saveSettings).mockResolvedValue({ openrouterApiKey: "", openaiApiKey: "sk-openai", webSearch: true });
+    vi.mocked(api.getSettings).mockResolvedValue({ openrouterApiKey: "", openaiApiKey: "", webSearch: true });
+
+    render(<SettingsPage user={user} onUserUpdated={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Assistant" }));
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalledWith("session-token"));
+    fireEvent.change(screen.getByPlaceholderText("sk-..."), { target: { value: "sk-openai" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
+
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ openrouterApiKey: "", openaiApiKey: "sk-openai", webSearch: true }, "session-token"));
   });
 });

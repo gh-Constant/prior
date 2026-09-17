@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
@@ -145,10 +145,14 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
 
 function AssistantSettings() {
   const [apiKey, setApiKey] = useState(() => getAgentSettings().apiKey);
+  const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => getAgentSettings().transcriptionApiKey);
   const [webSearch, setWebSearch] = useState(() => getAgentSettings().webSearch !== false);
-  const [showKey, setShowKey] = useState(false);
+  const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
+  const [showTranscriptionKey, setShowTranscriptionKey] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [synced, setSynced] = useState(false);
+  const settingsDirtyRef = useRef(false);
 
   // The key follows the account: pull the shared copy when signed in.
   useEffect(() => {
@@ -159,8 +163,13 @@ function AssistantSettings() {
         if (!live || !token) return;
         if (await pullAssistantSettings()) {
           if (!live) return;
+          if (settingsDirtyRef.current) {
+            setSynced(true);
+            return;
+          }
           const current = getAgentSettings();
           setApiKey(current.apiKey);
+          setTranscriptionApiKey(current.transcriptionApiKey);
           setWebSearch(current.webSearch !== false);
           setSynced(true);
         }
@@ -168,12 +177,18 @@ function AssistantSettings() {
     return () => { live = false; };
   }, []);
 
-  function handleSaveKey() {
+  async function handleSaveKeys() {
+    if (saving) return;
+    setSaving(true);
     const current = getAgentSettings();
-    saveAgentSettings({ ...current, apiKey: apiKey.trim() });
+    const updated = { ...current, apiKey: apiKey.trim(), transcriptionApiKey: transcriptionApiKey.trim() };
+    saveAgentSettings(updated);
+    settingsDirtyRef.current = false;
     notifyAgentSettingsChanged();
-    void pushAssistantSettings();
+    const syncedNow = await pushAssistantSettings(undefined, updated);
+    setSynced(syncedNow);
     setSaved(true);
+    setSaving(false);
     window.setTimeout(() => setSaved(false), 2500);
   }
 
@@ -192,15 +207,15 @@ function AssistantSettings() {
         <div className="field">
           <Icon name="lock" />
           <input
-            type={showKey ? "text" : "password"}
+            type={showOpenRouterKey ? "text" : "password"}
             placeholder="sk-or-v1-..."
             value={apiKey}
             autoComplete="off"
             spellCheck={false}
-            onChange={(event) => { setApiKey(event.target.value); setSaved(false); }}
+            onChange={(event) => { settingsDirtyRef.current = true; setApiKey(event.target.value); setSaved(false); }}
           />
-          <button type="button" className="show-key-btn" onClick={() => setShowKey((value) => !value)}>
-            {showKey ? "Hide" : "Show"}
+          <button type="button" className="show-key-btn" onClick={() => setShowOpenRouterKey((value) => !value)}>
+            {showOpenRouterKey ? "Hide" : "Show"}
           </button>
         </div>
         <small className="settings-help">
@@ -208,12 +223,36 @@ function AssistantSettings() {
           <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">
             openrouter.ai/keys
           </a>
-          . It stays on this device.
+          . It is saved to your account and available on your signed-in devices.
+        </small>
+      </label>
+      <label className="settings-page-field">
+        <span>OpenAI API key for voice transcription</span>
+        <div className="field">
+          <Icon name="microphone" />
+          <input
+            type={showTranscriptionKey ? "text" : "password"}
+            placeholder="sk-..."
+            value={transcriptionApiKey}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => { settingsDirtyRef.current = true; setTranscriptionApiKey(event.target.value); setSaved(false); }}
+          />
+          <button type="button" className="show-key-btn" onClick={() => setShowTranscriptionKey((value) => !value)}>
+            {showTranscriptionKey ? "Hide" : "Show"}
+          </button>
+        </div>
+        <small className="settings-help">
+          Get a key at{" "}
+          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
+            platform.openai.com/api-keys
+          </a>
+          . It is saved to your account and used only for your voice transcriptions.
         </small>
       </label>
       <div className="settings-page-row">
-        <button type="button" className="primary-button" onClick={handleSaveKey}>
-          Save key
+        <button type="button" className="primary-button" onClick={() => void handleSaveKeys()} disabled={saving}>
+          {saving ? "Saving…" : "Save keys"}
         </button>
         {saved && <span className="settings-saved" role="status">Saved</span>}
       </div>

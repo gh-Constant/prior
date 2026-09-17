@@ -1,4 +1,4 @@
--- Per-user assistant settings (OpenRouter key, web search). The API key is
+-- Per-user assistant settings (OpenRouter/OpenAI keys, web search). The API keys are
 -- stored sealed with AES-256-GCM when SETTINGS_ENCRYPTION_KEY is configured;
 -- only the owning user can read it through the authenticated /v1/settings
 -- endpoints, and it is never logged.

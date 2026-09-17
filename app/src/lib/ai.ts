@@ -38,6 +38,7 @@ export function getAgentSettings(): AgentSettings {
         const parsed = JSON.parse(raw) as Partial<AgentSettings>;
         return {
           apiKey: parsed.apiKey || "",
+          transcriptionApiKey: parsed.transcriptionApiKey || "",
           model: parsed.model || DEFAULT_MODEL,
           webSearch: parsed.webSearch ?? true,
         };
@@ -46,7 +47,7 @@ export function getAgentSettings(): AgentSettings {
   } catch {
     // fallback below
   }
-  return { apiKey: "", model: DEFAULT_MODEL, webSearch: true };
+  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, webSearch: true };
 }
 
 export function saveAgentSettings(settings: AgentSettings): void {
@@ -57,6 +58,15 @@ export function saveAgentSettings(settings: AgentSettings): void {
   } catch {
     // ignore
   }
+}
+
+export function clearAgentSettings(): void {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.removeItem(SETTINGS_KEY);
+  } catch {
+    // ignore
+  }
+  notifyAgentSettingsChanged();
 }
 
 export const AGENT_SETTINGS_EVENT = "prior-ai-settings-changed";

@@ -37,7 +37,7 @@ Android requires JDK 17, Android SDK Platform 36, Build Tools 35, NDK 27.1.12297
 
 Email/password accounts are available directly in the app. Passwords are stored as bcrypt hashes and sessions are returned as bearer tokens. Google OAuth remains optional: create a Google Cloud OAuth client for a web application, add the exact redirect URI from `GOOGLE_REDIRECT_URL`, configure the consent screen with the verified `prior.constantsuchet.fr` domain, and keep the client secret only in the API environment. Prior requests only `openid email profile`. See [specs/AUTH.md](specs/AUTH.md).
 
-Voice transcription is handled by the API. Set `OPENAI_API_KEY` in the server or Coolify environment; the key is never sent to the browser, Tauri app, or Android WebView. The authenticated client uploads a short `webm`/`mp4` recording to `POST /transcribe`, which forwards it to OpenAI's `gpt-4o-mini-transcribe` model.
+Voice transcription is handled by the API with a per-user OpenAI key configured in Settings → Assistant. The key is stored with that user's assistant settings and encrypted at rest when `SETTINGS_ENCRYPTION_KEY` is configured; it is never logged or shared with another account. The authenticated client uploads a short `webm`/`mp4` recording to `POST /transcribe`, which forwards it to OpenAI's `gpt-4o-mini-transcribe` model.
 
 ## Coolify
 

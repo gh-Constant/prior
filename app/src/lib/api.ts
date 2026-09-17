@@ -36,7 +36,7 @@ function isNetworkFailure(error: unknown): boolean {
 type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
 type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }> };
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number };
-export type ServerSettings = { openrouterApiKey: string; webSearch: boolean };
+export type ServerSettings = { openrouterApiKey: string; openaiApiKey: string; webSearch: boolean };
 export type ProfileUser = { id: string; email: string; displayName: string; avatarUrl?: string };
 
 async function requestOnce<T>(url: string, path: string, init: RequestInit, token: string | undefined, timeoutMs: number): Promise<T> {

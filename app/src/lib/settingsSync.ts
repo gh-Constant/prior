@@ -8,13 +8,15 @@ import { getToken } from "./auth";
 // Merge rule: when the server holds a key it wins (shared copy); otherwise
 // a local key seeds the server on next push.
 export function mergeServerSettings(local: AgentSettings, server: ServerSettings): { merged: AgentSettings; shouldPush: boolean } {
-  if (server.openrouterApiKey) {
-    return {
-      merged: { apiKey: server.openrouterApiKey, model: local.model, webSearch: server.webSearch },
-      shouldPush: false,
-    };
-  }
-  return { merged: local, shouldPush: local.apiKey !== "" };
+  return {
+    merged: {
+      apiKey: server.openrouterApiKey || local.apiKey,
+      transcriptionApiKey: server.openaiApiKey || local.transcriptionApiKey,
+      model: local.model,
+      webSearch: server.webSearch,
+    },
+    shouldPush: (!server.openrouterApiKey && local.apiKey !== "") || (!server.openaiApiKey && local.transcriptionApiKey !== ""),
+  };
 }
 
 // Pull the shared settings into the local cache. Returns true when a
@@ -36,13 +38,15 @@ export async function pullAssistantSettings(): Promise<boolean> {
 
 // Push the local settings to the account. Best-effort: local storage stays
 // authoritative while offline.
-export async function pushAssistantSettings(token?: string): Promise<void> {
+export async function pushAssistantSettings(token?: string, settings?: AgentSettings): Promise<boolean> {
   const resolved = token ?? await getToken().catch(() => null);
-  if (!resolved) return;
-  const local = getAgentSettings();
+  if (!resolved) return false;
+  const local = settings ?? getAgentSettings();
   try {
-    await api.saveSettings({ openrouterApiKey: local.apiKey, webSearch: local.webSearch !== false }, resolved);
+    await api.saveSettings({ openrouterApiKey: local.apiKey, openaiApiKey: local.transcriptionApiKey, webSearch: local.webSearch !== false }, resolved);
+    return true;
   } catch {
     // Offline: the local copy remains the source of truth until next sync.
+    return false;
   }
 }

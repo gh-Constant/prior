@@ -21,6 +21,7 @@
 .settings-page-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .settings-saved { color: #2b7a4b; font-size: 12px; font-weight: 700; }
 .settings-error { margin: 0; color: #b43b25; font-size: 12px; line-height: 1.5; }
+.settings-assistant { display: flex; flex-direction: column; gap: 18px; }
 .settings-search-toggle { display: flex; gap: 10px; margin-top: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #faf9f7; cursor: pointer; }
 .settings-search-toggle input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
 .settings-search-toggle span { display: flex; flex-direction: column; gap: 3px; }

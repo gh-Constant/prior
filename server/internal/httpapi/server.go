@@ -588,7 +588,22 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, err)
 		return
 	}
-	if strings.TrimSpace(s.cfg.OpenAIAPIKey) == "" {
+	stored, err := s.store.GetUserSettings(r.Context(), user.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusServiceUnavailable, errors.New("voice transcription is not configured"))
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errors.New("unable to load transcription settings"))
+		return
+	}
+	openAIAPIKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenAIAPIKey)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errors.New("unable to load transcription settings"))
+		return
+	}
+	openAIAPIKey = strings.TrimSpace(openAIAPIKey)
+	if openAIAPIKey == "" {
 		writeError(w, http.StatusServiceUnavailable, errors.New("voice transcription is not configured"))
 		return
 	}
@@ -626,7 +641,7 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to prepare transcription"))
 		return
 	}
-	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(s.cfg.OpenAIAPIKey))
+	request.Header.Set("Authorization", "Bearer "+openAIAPIKey)
 	request.Header.Set("Content-Type", payload.contentType)
 	client := s.openAIClient
 	if client == nil {

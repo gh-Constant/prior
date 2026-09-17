@@ -1,6 +1,7 @@
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { invoke } from "@tauri-apps/api/core";
 import { API_URL, api } from "./api";
+import { clearAgentSettings } from "./ai";
 import { openExternalUrl } from "./browser";
 import { getSecret, removeSecret, setSecret } from "./secureStore";
 
@@ -44,6 +45,7 @@ export async function clearSession(): Promise<void> {
     cachedToken = null;
     tokenRead = null;
     localStorage.removeItem(USER_KEY);
+    clearAgentSettings();
   }
   if (failure) throw failure;
 }

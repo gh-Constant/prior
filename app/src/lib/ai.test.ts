@@ -329,7 +329,7 @@ Hope this helps!`;
 
   it("reports a useful error when OpenRouter cannot be reached", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Load failed")));
-    await expect(askAgent("Hello", [], [], [], { apiKey: "test-key", model: "openrouter/free", webSearch: false }))
+    await expect(askAgent("Hello", [], [], [], { apiKey: "test-key", transcriptionApiKey: "", model: "openrouter/free", webSearch: false }))
       .rejects.toThrow("could not reach OpenRouter");
   });
 
@@ -347,9 +347,10 @@ Hope this helps!`;
     Object.defineProperty(globalThis, "localStorage", { value: mockStorage, configurable: true });
 
     try {
-      saveAgentSettings({ apiKey: "test-key-123", model: "meta-llama/llama-3.3-70b-instruct:free", webSearch: false });
+      saveAgentSettings({ apiKey: "test-key-123", transcriptionApiKey: "sk-openai-test", model: "meta-llama/llama-3.3-70b-instruct:free", webSearch: false });
       const loaded = getAgentSettings();
       expect(loaded.apiKey).toBe("test-key-123");
+      expect(loaded.transcriptionApiKey).toBe("sk-openai-test");
       expect(loaded.model).toBe("meta-llama/llama-3.3-70b-instruct:free");
       expect(loaded.webSearch).toBe(false);
     } finally {

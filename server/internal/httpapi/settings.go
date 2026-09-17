@@ -13,14 +13,15 @@ import (
 	"github.com/gh-Constant/prior/server/internal/store"
 )
 
-// Per-user assistant settings. The OpenRouter API key syncs across the
-// user's devices so it only has to be entered once. It is readable solely
-// by the owning authenticated user and is never logged.
+// Per-user assistant settings. API keys sync across the user's devices so
+// they only have to be entered once. They are readable solely by the owning
+// authenticated user and are never logged.
 
 const settingsSealPrefix = "gcm1:"
 
 type settingsPayload struct {
 	OpenRouterAPIKey string `json:"openrouterApiKey"`
+	OpenAIAPIKey     string `json:"openaiApiKey"`
 	WebSearch        bool   `json:"webSearch"`
 }
 
@@ -109,12 +110,17 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to load settings"))
 		return
 	}
-	apiKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenRouterAPIKey)
+	openRouterAPIKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenRouterAPIKey)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to load settings"))
 		return
 	}
-	writeJSON(w, http.StatusOK, settingsPayload{OpenRouterAPIKey: apiKey, WebSearch: stored.WebSearch})
+	openAIAPIKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenAIAPIKey)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errors.New("unable to load settings"))
+		return
+	}
+	writeJSON(w, http.StatusOK, settingsPayload{OpenRouterAPIKey: openRouterAPIKey, OpenAIAPIKey: openAIAPIKey, WebSearch: stored.WebSearch})
 }
 
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
@@ -129,24 +135,35 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.OpenRouterAPIKey = strings.TrimSpace(body.OpenRouterAPIKey)
-	if len(body.OpenRouterAPIKey) > 2000 {
+	body.OpenAIAPIKey = strings.TrimSpace(body.OpenAIAPIKey)
+	if len(body.OpenRouterAPIKey) > 2000 || len(body.OpenAIAPIKey) > 2000 {
 		writeError(w, http.StatusBadRequest, errors.New("invalid settings request"))
 		return
 	}
-	sealed, err := sealSettingsValue(s.cfg.SettingsEncryptionKey, body.OpenRouterAPIKey)
+	sealedOpenRouterAPIKey, err := sealSettingsValue(s.cfg.SettingsEncryptionKey, body.OpenRouterAPIKey)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to save settings"))
 		return
 	}
-	stored, err := s.store.SaveUserSettings(r.Context(), user.ID, sealed, body.WebSearch)
+	sealedOpenAIAPIKey, err := sealSettingsValue(s.cfg.SettingsEncryptionKey, body.OpenAIAPIKey)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to save settings"))
 		return
 	}
-	apiKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenRouterAPIKey)
+	stored, err := s.store.SaveUserSettings(r.Context(), user.ID, sealedOpenRouterAPIKey, sealedOpenAIAPIKey, body.WebSearch)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to save settings"))
 		return
 	}
-	writeJSON(w, http.StatusOK, settingsPayload{OpenRouterAPIKey: apiKey, WebSearch: stored.WebSearch})
+	openRouterAPIKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenRouterAPIKey)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errors.New("unable to save settings"))
+		return
+	}
+	openAIAPIKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenAIAPIKey)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errors.New("unable to save settings"))
+		return
+	}
+	writeJSON(w, http.StatusOK, settingsPayload{OpenRouterAPIKey: openRouterAPIKey, OpenAIAPIKey: openAIAPIKey, WebSearch: stored.WebSearch})
 }
