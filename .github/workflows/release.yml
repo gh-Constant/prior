@@ -208,7 +208,7 @@ jobs:
         working-directory: app
       - name: Build signed desktop bundles
         working-directory: app
-        run: pnpm tauri build --config '{"build":{"beforeBuildCommand":""}}' ${{ matrix.args }}
+        run: pnpm tauri build --config src-tauri/tauri.release.json ${{ matrix.args }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -301,7 +301,7 @@ jobs:
           echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
       - name: Build APK
         working-directory: app
-        run: pnpm tauri android build --target aarch64 --apk --config '{"build":{"beforeBuildCommand":""}}'
+        run: pnpm tauri android build --target aarch64 --apk --config src-tauri/tauri.release.json
       - name: Collect Android release files
         shell: bash
         run: |
