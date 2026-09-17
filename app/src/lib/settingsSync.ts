@@ -14,6 +14,7 @@ export function mergeServerSettings(local: AgentSettings, server: ServerSettings
     model: local.model,
     webSearch: server.webSearch,
   };
+  if (local.codexModel !== undefined) merged.codexModel = local.codexModel;
   if (local.provider) merged.provider = local.provider;
   return {
     merged,

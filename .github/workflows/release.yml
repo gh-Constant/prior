@@ -40,11 +40,59 @@ jobs:
             }
             core.setOutput('release_id', String(release.data.id))
 
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      previous_tag: ${{ steps.plan.outputs.previous_tag }}
+      build_frontend: ${{ steps.plan.outputs.build_frontend }}
+      build_desktop: ${{ steps.plan.outputs.build_desktop }}
+      build_android: ${{ steps.plan.outputs.build_android }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Calculate changed release targets
+        id: plan
+        run: node scripts/release/plan.mjs
+
+  # A platform-independent frontend bundle is built once. The cache key ignores
+  # release-only version lines, so native-only releases reuse this bundle too.
+  frontend:
+    needs: plan
+    if: needs.plan.outputs.build_frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile=false
+        working-directory: app
+      - uses: actions/cache@v4
+        id: frontend-cache
+        with:
+          path: app/dist
+          key: prior-web-dist-${{ hashFiles('app/src/**', 'app/public/**', 'app/index.html', 'app/vite.config.*', 'app/tsconfig*.json', 'pnpm-lock.yaml') }}
+      - name: Build frontend bundle
+        if: steps.frontend-cache.outputs.cache-hit != 'true'
+        run: pnpm build
+        working-directory: app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prior-web-dist
+          path: app/dist
+          if-no-files-found: error
+
   desktop:
-    needs: prepare
+    needs: [plan, frontend]
+    if: needs.plan.outputs.build_desktop == 'true'
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         include:
           - platform: ubuntu-22.04
@@ -56,6 +104,10 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prior-web-dist
+          path: app/dist
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.5
@@ -64,6 +116,10 @@ jobs:
           node-version: 20
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
       - name: Install Linux bundle dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libdbus-1-dev patchelf
@@ -71,11 +127,9 @@ jobs:
         if: runner.os == 'macOS'
         run: rustup target add x86_64-apple-darwin
       # A macOS build only opens without the Gatekeeper warning when it is signed with a
-      # "Developer ID Application" certificate AND notarized. Both are mandatory here;
+      # Developer ID Application certificate AND notarized. Both are mandatory here;
       # set the repository variable ALLOW_UNSIGNED_MACOS=true to knowingly ship an
       # ad-hoc build (local testing only). Secrets come from scripts/macos/setup-github-secrets.sh.
-      # macOS 26 no longer reliably infers PKCS#12 when Tauri imports APPLE_CERTIFICATE,
-      # so import it explicitly and let Tauri use the already-configured keychain.
       - name: Prepare macOS signing keychain
         if: runner.os == 'macOS'
         env:
@@ -115,22 +169,12 @@ jobs:
           security create-keychain -p "$keychain_password" "$keychain_path"
           security unlock-keychain -p "$keychain_password" "$keychain_path"
           security set-keychain-settings -t 21600 -u "$keychain_path"
-          security import "$certificate_path" \
-            -k "$keychain_path" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A \
-            -t cert \
-            -f pkcs12
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$keychain_password" \
-            "$keychain_path"
+          security import "$certificate_path" -k "$keychain_path" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
           security list-keychain -d user -s "$keychain_path"
           security default-keychain -s "$keychain_path"
           rm -f "$certificate_path"
 
-          # Only a Developer ID Application identity passes Gatekeeper on other Macs.
           signing_identity="$(find_developer_id_identity "$keychain_path")"
           if [ -z "$signing_identity" ]; then
             echo "::error::APPLE_CERTIFICATE contains no 'Developer ID Application' identity (an 'Apple Development' certificate is not enough)." >&2
@@ -162,21 +206,15 @@ jobs:
           printf 'MACOS_REQUIRE_NOTARIZATION=1\n' >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile=false
         working-directory: app
-      - uses: tauri-apps/tauri-action@v0.6.2
+      - name: Build signed desktop bundles
+        working-directory: app
+        run: pnpm tauri build --config '{"build":{"beforeBuildCommand":""}}' ${{ matrix.args }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        with:
-          projectPath: app
-          releaseId: ${{ needs.prepare.outputs.release_id }}
-          releaseDraft: true
-          includeUpdaterJson: true
-          updaterJsonPreferNsis: true
-          args: ${{ matrix.args }}
       # Fail the release instead of shipping a macOS artifact that Gatekeeper would reject.
       - name: Verify macOS signature and notarization
         if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != '-'
@@ -190,12 +228,29 @@ jobs:
           for dmg in "$bundle_dir"/dmg/*.dmg; do
             [ -f "$dmg" ] && verify_dmg "$dmg"
           done
+      - name: Collect desktop release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-output
+          find app/src-tauri/target -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*.msi' -o -name '*.exe' -o -name '*.app.tar.gz' -o -name '*.sig' \) -exec cp {} release-output/ \;
+          test -n "$(find release-output -type f -print -quit)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: release-output
+          if-no-files-found: error
 
   android:
-    needs: [prepare, desktop]
+    needs: [plan, frontend]
+    if: needs.plan.outputs.build_android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prior-web-dist
+          path: app/dist
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.5
@@ -211,6 +266,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: prior-android-${{ runner.os }}-${{ hashFiles('app/src-tauri/gen/android/**', 'app/src-tauri/Cargo.lock') }}
+          restore-keys: prior-android-${{ runner.os }}-
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -224,6 +289,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "ANDROID_KEYSTORE_BASE64 is required for signed releases" >&2
             exit 1
@@ -235,18 +301,66 @@ jobs:
           echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
       - name: Build APK
         working-directory: app
-        run: pnpm tauri android build --target aarch64 --apk
-      - name: Upload Android APK to release
-        uses: softprops/action-gh-release@v2
+        run: pnpm tauri android build --target aarch64 --apk --config '{"build":{"beforeBuildCommand":""}}'
+      - name: Collect Android release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-output
+          find app/src-tauri/gen/android/app/build/outputs -type f -name '*.apk' -exec cp {} release-output/ \;
+          test -n "$(find release-output -type f -print -quit)"
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          files: app/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          name: android-apk
+          path: release-output
+          if-no-files-found: error
 
+  # GitHub release assets and latest.json are written by one job only. This
+  # keeps parallel platform builds fast without reintroducing upload races.
   publish:
-    needs: [prepare, desktop, android]
+    needs: [prepare, plan, frontend, desktop, android]
+    if: ${{ always() && needs.prepare.result == 'success' && needs.plan.result == 'success' && (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') && (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') && (needs.android.result == 'success' || needs.android.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: new-artifacts
+          merge-multiple: true
+          if-no-artifact-found: ignore
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: android-apk
+          path: new-artifacts
+          merge-multiple: true
+          if-no-artifact-found: ignore
+      - name: Carry forward unchanged platform assets
+        if: needs.plan.outputs.previous_tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREVIOUS_TAG: ${{ needs.plan.outputs.previous_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p reused-artifacts
+          gh release download "$PREVIOUS_TAG" --dir reused-artifacts
+          rm -f reused-artifacts/latest.json
+      - name: Generate updater metadata for newly built platforms
+        run: |
+          mkdir -p new-artifacts release-assets
+          node scripts/release/generate-latest-json.mjs \
+            --version "${GITHUB_REF_NAME#v}" \
+            --tag "$GITHUB_REF_NAME" \
+            --artifacts new-artifacts \
+            --output release-assets/latest.json
+      - name: Upload all release assets once
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p reused-artifacts new-artifacts
+          find reused-artifacts new-artifacts -type f -print0 2>/dev/null | xargs -0 -r gh release upload "$GITHUB_REF_NAME" --clobber
+          gh release upload "$GITHUB_REF_NAME" release-assets/latest.json --clobber
       - name: Publish release
         uses: actions/github-script@v7
         env:

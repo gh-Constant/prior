@@ -27,6 +27,9 @@ enum CodexRequest {
     AccountRead {
         response: Sender<Result<CodexAccount, String>>,
     },
+    ModelList {
+        response: Sender<Result<Vec<CodexModel>, String>>,
+    },
     LoginStart {
         response: Sender<Result<CodexLoginStart, String>>,
     },
@@ -49,6 +52,7 @@ pub struct CodexRunRequest {
     pub prompt: String,
     pub history: Vec<CodexHistoryMessage>,
     pub system_prompt: String,
+    pub model: Option<String>,
     pub thread_id: Option<String>,
 }
 
@@ -67,6 +71,15 @@ pub struct CodexAccount {
     pub plan_type: Option<String>,
     pub email: Option<String>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexModel {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    pub is_default: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,6 +103,16 @@ pub fn codex_account_read(state: tauri::State<'_, CodexState>) -> Result<CodexAc
     let (response, result) = response_channel();
     requests
         .send(CodexRequest::AccountRead { response })
+        .map_err(|_| "The Codex connection closed. Try again.".to_string())?;
+    receive(result, SHORT_REQUEST_TIMEOUT)
+}
+
+#[tauri::command]
+pub fn codex_model_list(state: tauri::State<'_, CodexState>) -> Result<Vec<CodexModel>, String> {
+    let requests = state.sender()?;
+    let (response, result) = response_channel();
+    requests
+        .send(CodexRequest::ModelList { response })
         .map_err(|_| "The Codex connection closed. Try again.".to_string())?;
     receive(result, SHORT_REQUEST_TIMEOUT)
 }
@@ -261,6 +284,9 @@ impl CodexProcess {
                 CodexRequest::AccountRead { response } => {
                     let _ = response.send(self.account_read());
                 }
+                CodexRequest::ModelList { response } => {
+                    let _ = response.send(self.model_list());
+                }
                 CodexRequest::LoginStart { response } => {
                     let _ = response.send(self.login_start());
                 }
@@ -280,6 +306,63 @@ impl CodexProcess {
     fn account_read(&mut self) -> Result<CodexAccount, String> {
         let result = self.request("account/read", json!({ "refreshToken": false }))?;
         Ok(account_from_response(&result))
+    }
+
+    fn model_list(&mut self) -> Result<Vec<CodexModel>, String> {
+        let mut cursor: Option<String> = None;
+        let mut models = Vec::new();
+
+        for _ in 0..10 {
+            let mut params = json!({
+                "includeHidden": false,
+                "limit": 200
+            });
+            if let Some(value) = cursor.as_deref() {
+                params["cursor"] = json!(value);
+            }
+            let result = self.request("model/list", params)?;
+            if let Some(data) = result.get("data").and_then(Value::as_array) {
+                for model in data {
+                    let id = model
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .or_else(|| model.get("id").and_then(Value::as_str))
+                        .filter(|value| !value.is_empty());
+                    let Some(id) = id else { continue };
+                    if models.iter().any(|item: &CodexModel| item.id == id) {
+                        continue;
+                    }
+                    models.push(CodexModel {
+                        id: id.to_string(),
+                        label: model
+                            .get("displayName")
+                            .and_then(Value::as_str)
+                            .filter(|value| !value.is_empty())
+                            .unwrap_or(id)
+                            .to_string(),
+                        description: model
+                            .get("description")
+                            .and_then(Value::as_str)
+                            .unwrap_or("Available through your Codex subscription.")
+                            .to_string(),
+                        is_default: model
+                            .get("isDefault")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
+                    });
+                }
+            }
+            cursor = result
+                .get("nextCursor")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            if cursor.is_none() {
+                break;
+            }
+        }
+
+        Ok(models)
     }
 
     fn login_start(&mut self) -> Result<CodexLoginStart, String> {
@@ -352,7 +435,8 @@ impl CodexProcess {
                     json!({
                         "cwd": workspace,
                         "approvalPolicy": "never",
-                        "sandbox": "readOnly",
+                        "sandbox": "read-only",
+                        "model": request.model.clone(),
                         "personality": "friendly",
                         "serviceName": "prior"
                     }),
@@ -372,15 +456,11 @@ impl CodexProcess {
             json!({
                 "threadId": thread_id,
                 "input": [{ "type": "text", "text": build_turn_input(&request) }],
+                "model": request.model.clone(),
                 "cwd": workspace,
                 "approvalPolicy": "never",
                 "sandboxPolicy": {
-                    "type": "readOnly",
-                    "access": {
-                        "type": "restricted",
-                        "includePlatformDefaults": true,
-                        "readableRoots": [workspace]
-                    }
+                    "type": "readOnly"
                 },
                 "summary": "concise",
                 "personality": "friendly",
@@ -395,6 +475,11 @@ impl CodexProcess {
 
         let mut streamed_text = String::new();
         let mut completed_text: Option<String> = None;
+        let mut actual_model = turn
+            .get("turn")
+            .and_then(|value| value.get("model"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
         loop {
             let message = self.read_message()?;
             let method = message
@@ -441,6 +526,11 @@ impl CodexProcess {
                         "Codex could not complete the request.",
                     ));
                 }
+                actual_model = completed_turn
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or(actual_model);
                 break;
             }
             self.handle_server_request(&message)?;
@@ -453,7 +543,7 @@ impl CodexProcess {
         Ok(CodexRunResult {
             text,
             thread_id,
-            actual_model: None,
+            actual_model,
         })
     }
 
@@ -621,17 +711,95 @@ fn build_turn_input(request: &CodexRunRequest) -> String {
 }
 
 fn output_schema() -> Value {
-    let item = json!({ "type": "object", "additionalProperties": true });
+    let area = json!({
+        "type": "object",
+        "properties": {
+            "name": { "type": "string" },
+            "reasoning": { "type": "string" }
+        },
+        "required": ["name", "reasoning"],
+        "additionalProperties": false
+    });
+    let project = json!({
+        "type": "object",
+        "properties": {
+            "name": { "type": "string" },
+            "areaName": { "type": ["string", "null"] },
+            "description": { "type": "string" },
+            "status": { "type": "string" },
+            "reasoning": { "type": "string" }
+        },
+        "required": ["name", "areaName", "description", "status", "reasoning"],
+        "additionalProperties": false
+    });
+    let task = json!({
+        "type": "object",
+        "properties": {
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "dueDate": { "type": ["string", "null"] },
+            "priority": { "type": "integer" },
+            "important": { "type": "boolean" },
+            "urgent": { "type": "boolean" },
+            "areaName": { "type": ["string", "null"] },
+            "projectName": { "type": ["string", "null"] },
+            "status": { "type": ["string", "null"] },
+            "scheduledDate": { "type": ["string", "null"] },
+            "assigneeName": { "type": ["string", "null"] },
+            "followUpDate": { "type": ["string", "null"] },
+            "reasoning": { "type": "string" }
+        },
+        "required": ["title", "description", "dueDate", "priority", "important", "urgent", "areaName", "projectName", "status", "scheduledDate", "assigneeName", "followUpDate", "reasoning"],
+        "additionalProperties": false
+    });
+    let habit = json!({
+        "type": "object",
+        "properties": {
+            "title": { "type": "string" },
+            "important": { "type": "boolean" },
+            "urgent": { "type": "boolean" },
+            "interval": { "type": "integer" },
+            "unit": { "type": "string" },
+            "endDate": { "type": ["string", "null"] },
+            "daysOfWeek": { "type": "array", "items": { "type": "integer" } },
+            "reasoning": { "type": "string" }
+        },
+        "required": ["title", "important", "urgent", "interval", "unit", "endDate", "daysOfWeek", "reasoning"],
+        "additionalProperties": false
+    });
+    let note = json!({
+        "type": "object",
+        "properties": {
+            "title": { "type": "string" },
+            "folderName": { "type": ["string", "null"] },
+            "projectName": { "type": ["string", "null"] },
+            "bodyMarkdown": { "type": "string" },
+            "favorite": { "type": "boolean" },
+            "reasoning": { "type": "string" }
+        },
+        "required": ["title", "folderName", "projectName", "bodyMarkdown", "favorite", "reasoning"],
+        "additionalProperties": false
+    });
+    let folder = json!({
+        "type": "object",
+        "properties": {
+            "name": { "type": "string" },
+            "parentName": { "type": ["string", "null"] },
+            "reasoning": { "type": "string" }
+        },
+        "required": ["name", "parentName", "reasoning"],
+        "additionalProperties": false
+    });
     json!({
         "type": "object",
         "properties": {
             "reply": { "type": "string" },
-            "areas": { "type": "array", "items": item },
-            "projects": { "type": "array", "items": item },
-            "tasks": { "type": "array", "items": item },
-            "habits": { "type": "array", "items": item },
-            "notes": { "type": "array", "items": item },
-            "folders": { "type": "array", "items": item }
+            "areas": { "type": "array", "items": area },
+            "projects": { "type": "array", "items": project },
+            "tasks": { "type": "array", "items": task },
+            "habits": { "type": "array", "items": habit },
+            "notes": { "type": "array", "items": note },
+            "folders": { "type": "array", "items": folder }
         },
         "required": ["reply", "areas", "projects", "tasks", "habits", "notes", "folders"],
         "additionalProperties": false
@@ -719,6 +887,7 @@ mod tests {
         let request = CodexRunRequest {
             prompt: "Create a task".to_string(),
             system_prompt: "Prior rules".to_string(),
+            model: Some("gpt-5.6-luna".to_string()),
             thread_id: None,
             history: vec![super::CodexHistoryMessage {
                 role: "user".to_string(),
@@ -738,5 +907,10 @@ mod tests {
         assert!(required.iter().any(|field| field == "reply"));
         assert!(required.iter().any(|field| field == "tasks"));
         assert!(required.iter().any(|field| field == "notes"));
+        assert_eq!(
+            schema["properties"]["tasks"]["items"]["additionalProperties"],
+            false
+        );
+        assert!(schema["properties"]["tasks"]["items"]["required"].is_array());
     }
 }

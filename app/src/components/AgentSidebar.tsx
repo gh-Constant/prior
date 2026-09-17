@@ -20,6 +20,7 @@ import type {
   TaskDraft,
 } from "../types";
 import { askAgent, AGENT_SETTINGS_EVENT, DEFAULT_MODEL, fetchAvailableModels, getAgentSettings, notifyAgentSettingsChanged, POPULAR_FREE_MODELS, saveAgentSettings, type AgentModelOption } from "../lib/ai";
+import { fetchCodexModels, supportsCodexDesktop, type CodexModelOption } from "../lib/codex";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
 import "./AgentSidebar.css";
@@ -101,6 +102,8 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
 
   const [modelList, setModelList] = useState<AgentModelOption[]>(POPULAR_FREE_MODELS);
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [codexModelList, setCodexModelList] = useState<CodexModelOption[]>([]);
+  const [codexModelsLoading, setCodexModelsLoading] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
 
@@ -149,6 +152,29 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       if (list?.length) setModelList(list);
     }).finally(() => setModelsLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!supportsCodexDesktop() || settings.provider !== "codex") return undefined;
+    let cancelled = false;
+    setCodexModelsLoading(true);
+    void fetchCodexModels()
+      .then((list) => {
+        if (cancelled) return;
+        setCodexModelList(list);
+        const defaultModel = list.find((model) => model.isDefault)?.id ?? list[0]?.id;
+        const current = getAgentSettings();
+        if (defaultModel && !current.codexModel) {
+          const updated = { ...current, codexModel: defaultModel };
+          saveAgentSettings(updated);
+          setSettings(updated);
+          notifyAgentSettingsChanged();
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCodexModelsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [settings.provider]);
 
   useEffect(() => {
     if (!modelPickerOpen) return undefined;
@@ -303,7 +329,9 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   }, [messages, open, loading]);
 
   function handleModelChange(model: string): void {
-    const updated: AgentSettings = { ...settings, model: model || DEFAULT_MODEL };
+    const updated: AgentSettings = settings.provider === "codex"
+      ? { ...settings, codexModel: model }
+      : { ...settings, model: model || DEFAULT_MODEL };
     setSettings(updated);
     saveAgentSettings(updated);
     notifyAgentSettingsChanged();
@@ -314,15 +342,26 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     onClose();
   }
 
-  const modelOptions = useMemo(() => modelList.some((m) => m.id === settings.model)
-    ? modelList
-    : [...modelList, { id: settings.model, label: shortModelName(settings.model), desc: "Custom model from Settings" }], [modelList, settings.model]);
+  const activeModelId = settings.provider === "codex"
+    ? settings.codexModel ?? ""
+    : settings.model;
+  const providerModelOptions = useMemo<AgentModelOption[]>(() => settings.provider === "codex"
+    ? codexModelList.map((model) => ({ id: model.id, label: model.label, desc: model.description }))
+    : modelList, [codexModelList, modelList, settings.provider]);
+  const modelOptions = useMemo(() => {
+    if (!activeModelId || providerModelOptions.some((model) => model.id === activeModelId)) return providerModelOptions;
+    return [...providerModelOptions, {
+      id: activeModelId,
+      label: shortModelName(activeModelId),
+      desc: settings.provider === "codex" ? "Current model from your Codex session" : "Custom model from Settings",
+    }];
+  }, [activeModelId, providerModelOptions, settings.provider]);
   const deferredModelQuery = useDeferredValue(modelQuery.trim().toLowerCase());
   const filteredModelOptions = useMemo(() => {
     if (!deferredModelQuery) return modelOptions.slice(0, 80);
     return modelOptions.filter((model) => `${model.label} ${model.id} ${model.desc}`.toLowerCase().includes(deferredModelQuery)).slice(0, 80);
   }, [deferredModelQuery, modelOptions]);
-  const selectedModel = modelOptions.find((model) => model.id === settings.model) ?? modelOptions[0];
+  const selectedModel = modelOptions.find((model) => model.id === activeModelId) ?? modelOptions[0];
 
   function startDictation(): void {
     const textarea = textareaRef.current;
@@ -757,13 +796,14 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         </div>
       )}
 
-      {settings.provider === "codex" ? (
+      {settings.provider === "codex" && (
         <div className="agent-codex-provider" role="status">
           <Icon name="sparkles" />
-          <span><strong>Codex · ChatGPT subscription</strong><small>Model selection and quota are managed by your Codex login.</small></span>
+          <span><strong>Codex · ChatGPT subscription</strong><small>Uses your connected Codex quota.</small></span>
         </div>
-      ) : <div className="agent-model-row">
-        <label id="prior-agent-model-label">Model</label>
+      )}
+      <div className="agent-model-row">
+        <label id="prior-agent-model-label">{settings.provider === "codex" ? "Codex model" : "Model"}</label>
         <div className="agent-model-picker" ref={modelPickerRef}>
           <button
             type="button"
@@ -788,21 +828,21 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                   type="search"
                   value={modelQuery}
                   onChange={(event) => setModelQuery(event.target.value)}
-                  placeholder="Search all OpenRouter models"
-                  aria-label="Search OpenRouter models"
+                  placeholder={settings.provider === "codex" ? "Search Codex models" : "Search all OpenRouter models"}
+                  aria-label={settings.provider === "codex" ? "Search Codex models" : "Search OpenRouter models"}
                 />
                 {modelQuery && <button type="button" aria-label="Clear model search" onClick={() => setModelQuery("")}><Icon name="close" /></button>}
               </label>
-              <div className="agent-model-results" role="listbox" aria-label="OpenRouter models">
-                {modelsLoading && <span className="agent-model-note">Loading OpenRouter models…</span>}
-                {!modelsLoading && !filteredModelOptions.length && <span className="agent-model-note">No matching models</span>}
+              <div className="agent-model-results" role="listbox" aria-label={settings.provider === "codex" ? "Codex models" : "OpenRouter models"}>
+                {(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && <span className="agent-model-note">Loading {settings.provider === "codex" ? "Codex" : "OpenRouter"} models…</span>}
+                {!(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && !filteredModelOptions.length && <span className="agent-model-note">No matching models</span>}
                 {filteredModelOptions.map((model) => (
                   <button
                     key={model.id}
                     type="button"
                     role="option"
-                    aria-selected={model.id === settings.model}
-                    className={`agent-model-option ${model.id === settings.model ? "active" : ""}`}
+                    aria-selected={model.id === activeModelId}
+                    className={`agent-model-option ${model.id === activeModelId ? "active" : ""}`}
                     onClick={() => { handleModelChange(model.id); setModelPickerOpen(false); setModelQuery(""); }}
                   >
                     <span className="agent-model-option-copy"><strong>{model.label}</strong><small>{model.id}</small></span>
@@ -814,7 +854,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             </div>
           )}
         </div>
-      </div>}
+      </div>
 
       {settings.provider !== "codex" && !settings.apiKey && (
         <div className="agent-key-notice" role="note">

@@ -11,6 +11,13 @@ export type CodexAccount = {
   error: string | null;
 };
 
+export type CodexModelOption = {
+  id: string;
+  label: string;
+  description: string;
+  isDefault: boolean;
+};
+
 export type CodexLoginStart = {
   loginId: string;
   authUrl: string;
@@ -26,6 +33,7 @@ export type CodexRunRequest = {
   prompt: string;
   history: Pick<AgentMessage, "role" | "content">[];
   systemPrompt: string;
+  model?: string | null;
   threadId?: string | null;
 };
 
@@ -51,6 +59,15 @@ export async function getCodexAccount(): Promise<CodexAccount> {
     return await invoke<CodexAccount>("codex_account_read");
   } catch (error) {
     return unavailableAccount(error instanceof Error ? error.message : "Codex is not available on this device.");
+  }
+}
+
+export async function fetchCodexModels(): Promise<CodexModelOption[]> {
+  if (!supportsCodexDesktop()) return [];
+  try {
+    return await invoke<CodexModelOption[]>("codex_model_list");
+  } catch {
+    return [];
   }
 }
 

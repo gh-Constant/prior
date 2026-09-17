@@ -16,7 +16,8 @@ struct SessionState;
 
 #[cfg(desktop)]
 use codex::{
-    codex_account_read, codex_login_start, codex_login_wait, codex_logout, codex_run, CodexState,
+    codex_account_read, codex_login_start, codex_login_wait, codex_logout, codex_model_list,
+    codex_run, CodexState,
 };
 
 #[cfg(all(not(desktop), not(target_os = "android")))]
@@ -246,6 +247,8 @@ pub fn run() {
             session_clear,
             #[cfg(desktop)]
             codex_account_read,
+            #[cfg(desktop)]
+            codex_model_list,
             #[cfg(desktop)]
             codex_login_start,
             #[cfg(desktop)]

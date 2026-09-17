@@ -348,13 +348,13 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
       <div className="settings-codex-heading">
         <div className="settings-codex-icon"><Icon name="sparkles" /></div>
         <div>
-          <div className="settings-codex-title"><strong>Codex provider</strong><span>Beta</span></div>
-          <p>Use the Codex app-server locally with your ChatGPT subscription. Prior never receives or stores your Codex tokens.</p>
+          <div className="settings-codex-title"><strong>Codex</strong><span>Beta</span></div>
+          <p>Use your ChatGPT subscription in the Prior Agent. Tokens stay on this desktop.</p>
         </div>
       </div>
 
       {loading ? (
-        <p className="settings-codex-status">Checking for Codex…</p>
+        <p className="settings-codex-status">Checking connection…</p>
       ) : !account?.available ? (
         <div className="settings-codex-unavailable">
           <p>{error || "Codex CLI is not available on this desktop."}</p>
@@ -365,22 +365,22 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
           <div className={`settings-codex-connection ${chatGptConnected ? "connected" : ""}`}>
             <span className="settings-codex-dot" aria-hidden="true" />
             <div>
-              <strong>{chatGptConnected ? `Connected · ${accountLabel}` : "Not connected with ChatGPT"}</strong>
-              <small>{chatGptConnected ? (account.email || "Uses the local Codex ChatGPT session") : account.authMode === "apikey" ? "Codex is using an API key. Connect with ChatGPT to use subscription quota." : "Sign in with ChatGPT to enable this provider."}</small>
+              <strong>{chatGptConnected ? `Connected · ${accountLabel}` : "Not connected"}</strong>
+              <small>{chatGptConnected ? (account.email || "ChatGPT subscription available") : account.authMode === "apikey" ? "Codex is using an API key. Connect with ChatGPT to use subscription quota." : "Connect with ChatGPT to enable Codex."}</small>
             </div>
-          </div>
-          {chatGptConnected ? (
-            <div className="settings-codex-actions">
-              <label className="settings-codex-use">
-                <input type="checkbox" checked={provider === "codex"} onChange={(event) => onProviderChange(event.target.checked ? "codex" : "openrouter")} />
-                <span><strong>Use Codex for Prior Agent</strong><small>Runs locally and uses your ChatGPT/Codex allowance.</small></span>
-              </label>
+            {chatGptConnected ? (
               <button type="button" className="text-button settings-codex-disconnect" onClick={() => void handleDisconnect()} disabled={connecting}>Disconnect</button>
-            </div>
-          ) : (
-            <button type="button" className="secondary-button settings-codex-connect" onClick={() => void handleConnect()} disabled={connecting}>
-              {connecting ? "Waiting for ChatGPT…" : "Connect with ChatGPT"}
-            </button>
+            ) : (
+              <button type="button" className="secondary-button settings-codex-connect" onClick={() => void handleConnect()} disabled={connecting}>
+                {connecting ? "Waiting…" : "Connect"}
+              </button>
+            )}
+          </div>
+          {chatGptConnected && (
+            <label className="settings-codex-use">
+              <input type="checkbox" checked={provider === "codex"} onChange={(event) => onProviderChange(event.target.checked ? "codex" : "openrouter")} />
+              <span><strong>Use Codex for Prior Agent</strong><small>Runs locally using your ChatGPT/Codex allowance.</small></span>
+            </label>
           )}
         </>
       )}

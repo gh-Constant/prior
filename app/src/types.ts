@@ -215,6 +215,7 @@ export type AgentSettings = {
   apiKey: string;
   transcriptionApiKey: string;
   model: string;
+  codexModel?: string;
   webSearch: boolean;
   provider?: AgentProvider;
 };

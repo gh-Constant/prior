@@ -6,7 +6,37 @@ on:
   pull_request:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      native: ${{ steps.filter.outputs.native }}
+      android: ${{ steps.filter.outputs.android }}
+      server: ${{ steps.filter.outputs.server }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            app:
+              - 'app/src/**'
+              - 'app/public/**'
+              - 'app/index.html'
+              - 'app/package.json'
+              - 'pnpm-lock.yaml'
+              - 'app/vite.config.*'
+              - 'app/tsconfig*.json'
+            native:
+              - 'app/src-tauri/**'
+            android:
+              - 'app/src-tauri/gen/android/**'
+            server:
+              - 'server/**'
+
   app:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,6 +57,8 @@ jobs:
       - run: pnpm build
 
   server:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -43,6 +75,8 @@ jobs:
       - run: go build ./cmd/prior
 
   native:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -61,6 +95,7 @@ jobs:
   container:
     runs-on: ubuntu-latest
     needs: server
+    if: needs.server.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -72,6 +107,8 @@ jobs:
           tags: prior-api:ci
 
   android:
+    needs: changes
+    if: needs.changes.outputs.app == 'true' || needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

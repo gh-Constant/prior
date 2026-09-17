@@ -46,6 +46,7 @@ export function getAgentSettings(): AgentSettings {
           apiKey: parsed.apiKey || "",
           transcriptionApiKey: parsed.transcriptionApiKey || "",
           model: parsed.model || DEFAULT_MODEL,
+          codexModel: parsed.codexModel || "",
           webSearch: parsed.webSearch ?? true,
           provider: parsed.provider === "codex" ? "codex" : "openrouter",
         };
@@ -54,7 +55,7 @@ export function getAgentSettings(): AgentSettings {
   } catch {
     // fallback below
   }
-  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, webSearch: true, provider: "openrouter" };
+  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: true, provider: "openrouter" };
 }
 
 export function saveAgentSettings(settings: AgentSettings): void {
@@ -885,6 +886,7 @@ export async function askAgent(
       prompt,
       history: history.slice(-8).map((message) => ({ role: message.role, content: message.content })),
       systemPrompt: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
+      model: settings.codexModel || null,
       threadId: codexThreadId,
     });
     return {
