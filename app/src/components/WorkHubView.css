@@ -52,7 +52,7 @@
 .workhub-empty-mark svg { margin: 0; }
 .today-view, .task-collection, .workhub-projects-view, .workhub-project-detail { width: 100%; max-width: var(--content-width); margin: 0 auto; }
 .today-intro { margin-bottom: 28px; }
-.today-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
+.today-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .today-section { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); box-shadow: 0 3px 12px #27252203; }
 .today-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 17px 18px 12px; border-bottom: 1px solid var(--line); }
 .section-kicker { display: block; margin-bottom: 4px; color: var(--accent-dark); font-size: 9px; font-weight: 800; letter-spacing: .14em; }
