@@ -804,36 +804,41 @@ export function App() {
       { id: "done", name: "Done", category: "completed" as const },
     ];
     const result: Record<string, Omit<ProjectCollaborationProps, "project">> = {};
-    for (const entry of collaborationStore.list()) {
-      const memberById = new Map(entry.members.map((member) => [member.userId, member]));
-      const projectIssues = tasks.filter((task) => task.projectId === entry.project.id).map((task) => ({
+    for (const project of projects) {
+      // The collaboration workspace is the default project experience. A
+      // server entry enriches it with ACLs and members; local projects still
+      // need to render the same workspace before the first authenticated sync.
+      const entry = collaborationStore.get(project.id);
+      const readOnly = entry?.role === "viewer";
+      const members = entry?.members.map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email, role: member.role })) ?? (user ? [{ id: user.id, name: user.displayName || user.email, email: user.email, role: "owner" as const }] : []);
+      const memberById = new Map(members.map((member) => [member.id, member]));
+      const projectIssues = tasks.filter((task) => task.projectId === project.id).map((task) => ({
         id: task.id,
         title: task.title,
         stateId: task.completed ? "done" : task.status ?? "inbox",
         priority: task.priority,
         people: (task.peopleIds ?? []).map((personId): TaskPerson | null => {
           const person = memberById.get(personId);
-          return person ? { id: person.userId, name: person.displayName || person.email, email: person.email, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator" } : null;
+          return person ? { id: person.id, name: person.name, email: person.email, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator" } : null;
         }).filter((person): person is TaskPerson => Boolean(person)),
         properties: [],
       }));
-      const members = entry.members.map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email, role: member.role }));
-      result[entry.project.id] = {
+      result[project.id] = {
         issues: projectIssues,
         states: stateOptions,
         cycles: [],
-        readOnly: entry.role === "viewer",
-        onCreateIssue: entry.role === "viewer" ? undefined : () => openNewTask({ projectId: entry.project.id, status: "next" }),
+        readOnly,
+        onCreateIssue: readOnly ? undefined : () => openNewTask({ projectId: project.id, status: "next" }),
         sharing: {
           members,
-          invites: (entry.pendingInvites ?? []).map((invite) => ({ id: invite.id, email: invite.email, role: invite.role })),
-          canManage: entry.role === "owner",
+          invites: (entry?.pendingInvites ?? []).map((invite) => ({ id: invite.id, email: invite.email, role: invite.role })),
+          canManage: entry?.role === "owner",
           onInvite: (email, role) => {
             void (async () => {
               const token = await getToken();
               if (!token) { setAuthOpen(true); return; }
               try {
-                const response = await api.shareProject(entry.project.id, email, role, token);
+                const response = await api.shareProject(project.id, email, role, token);
                 await collaborationStore.sync(token);
                 refreshWorkspace();
                 if (response.invite?.inviteToken) {
@@ -853,7 +858,7 @@ export function App() {
               const token = await getToken();
               if (!token) return;
               try {
-                await api.revokeProjectInvite(entry.project.id, inviteId, token);
+                await api.revokeProjectInvite(project.id, inviteId, token);
                 await collaborationStore.sync(token);
                 refreshWorkspace();
                 setToast("Invitation revoked.");
@@ -867,7 +872,7 @@ export function App() {
               const token = await getToken();
               if (!token) return;
               try {
-                await api.updateProjectMember(entry.project.id, userId, role, token);
+                await api.updateProjectMember(project.id, userId, role, token);
                 await collaborationStore.sync(token);
                 refreshWorkspace();
                 setToast("Project role updated.");
@@ -881,7 +886,7 @@ export function App() {
               const token = await getToken();
               if (!token) return;
               try {
-                await api.removeProjectMember(entry.project.id, userId, token);
+                await api.removeProjectMember(project.id, userId, token);
                 await collaborationStore.sync(token);
                 refreshWorkspace();
                 setToast("Project member removed.");
@@ -893,7 +898,7 @@ export function App() {
           onCopyLink: () => {
             void (async () => {
               try {
-                await navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}#project=${entry.project.id}`);
+                await navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}#project=${project.id}`);
                 setToast("Project link copied. Access is still required.");
               } catch {
                 setToast("Unable to copy the project link.");

@@ -3,9 +3,11 @@
 These components are presentation-only. They do not read stores, send requests,
 change access permissions, or persist collaboration fields on `Task` / `Project`.
 
-- `WorkHubView.collaborationByProject[projectId]` opts one project into Overview,
-  Issues, Board and Cycles. Omit it to retain the existing Tasks/Notes screen.
-  Pass `onOpenNotes` to retain a notes entry point in the Overview resources card.
+- `WorkHubView.collaborationByProject[projectId]` renders the default project
+  workspace with Overview, Issues, Board and Cycles. The app supplies this
+  mapping for every project; server-backed entries additionally provide ACLs,
+  members and invitations. Pass `onOpenNotes` to retain a notes entry point in
+  the Overview resources card.
 - `ProjectCollaboration` accepts issues, workflow states, cycles, optional overview
   metadata and sharing props. It defaults to view-only. Board grouping is display
   only; moving cards and workflow mutations are not implemented.
