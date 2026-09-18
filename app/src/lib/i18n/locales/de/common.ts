@@ -105,8 +105,6 @@ export const common = {
     formIcon: "Symbol",
     projectIcon: "Projektsymbol",
     areaIcon: "Bereichssymbol",
-    helpProject: "Wähle ein einfaches Symbol oder lade ein quadratisches Bild hoch. Ältere Projekte nutzen automatisch das Standardsymbol.",
-    helpArea: "Wähle ein einfaches Symbol oder lade ein quadratisches Bild hoch. Ältere Bereiche nutzen automatisch das Standardsymbol.",
     saveChanges: "Änderungen speichern",
     createProject: "Projekt erstellen",
     createArea: "Bereich erstellen",

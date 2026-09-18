@@ -3,6 +3,7 @@ import type { TaskFilterState } from "../lib/taskFilters";
 import { defaultTaskFilters } from "../lib/taskFilters";
 import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
+import { CustomSelect } from "./CustomSelect";
 
 type Vars = Record<string, string | number>;
 type TFn = (key: string, vars?: Vars) => string;
@@ -96,11 +97,15 @@ function FilterField({ label, ariaLabel, value, options, onSelect }: {
   return (
     <label className="filter-field">
       <span>{label}</span>
-      <select aria-label={ariaLabel} value={value} onChange={(event) => onSelect(event.target.value)}>
-        {options.map(([optionValue, optionLabel]) => (
-          <option key={optionValue} value={optionValue}>{optionLabel}</option>
-        ))}
-      </select>
+      <CustomSelect
+        ariaLabel={ariaLabel}
+        value={value}
+        onChange={(val) => onSelect(String(val))}
+        options={options.map(([optionValue, optionLabel]) => ({
+          value: optionValue,
+          label: optionLabel,
+        }))}
+      />
     </label>
   );
 }
@@ -185,15 +190,21 @@ export function TaskFilters({ value, onChange }: Props) {
             {activeCount > 0 && <span className="filter-count" aria-label={tp("tasks.filters.active", activeCount)}>{activeCount}</span>}
             <Icon name="chevron-down" />
           </button>
-          <label className="filter-sort">
+          <div className="filter-sort">
             <span className="filter-sort-label">{t("tasks.filters.sortLabel")}</span>
-            <select aria-label={t("tasks.filters.sortAria")} value={value.sort} onChange={(event) => onChange({ ...value, sort: event.target.value as TaskFilterState["sort"] })}>
-              <option value="recent">{t("tasks.filters.sortRecent")}</option>
-              <option value="oldest">{t("tasks.filters.sortOldest")}</option>
-              <option value="dueSoonest">{t("tasks.filters.sortDueSoonest")}</option>
-              <option value="dueLatest">{t("tasks.filters.sortDueLatest")}</option>
-            </select>
-          </label>
+            <CustomSelect
+              className="filter-sort-custom-select"
+              ariaLabel={t("tasks.filters.sortAria")}
+              value={value.sort}
+              onChange={(next) => onChange({ ...value, sort: next as TaskFilterState["sort"] })}
+              options={[
+                { value: "recent", label: t("tasks.filters.sortRecent") },
+                { value: "oldest", label: t("tasks.filters.sortOldest") },
+                { value: "dueSoonest", label: t("tasks.filters.sortDueSoonest") },
+                { value: "dueLatest", label: t("tasks.filters.sortDueLatest") },
+              ]}
+            />
+          </div>
         </div>
       </div>
 

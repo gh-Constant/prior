@@ -11,6 +11,7 @@ import { UpdateCards } from "./UpdateCards";
 import { Icon } from "./Icon";
 import { LANGUAGES, useI18n, type Language } from "../lib/i18n";
 import { EditableAvatar, IconUpload } from "./IconPicker";
+import { CustomSelect } from "./CustomSelect";
 import "./SettingsPage.css";
 
 type SettingsTab = "general" | "profile" | "assistant";
@@ -124,13 +125,16 @@ function GeneralSettings() {
     <div className="settings-general">
       <div className="settings-version-row">
         <label htmlFor="settings-language-select">{t("settings.language.label")}</label>
-        <select id="settings-language-select" value={lang} onChange={(event) => setLang(event.target.value as Language)}>
-          {LANGUAGES.map((entry) => (
-            <option key={entry.code} value={entry.code}>{entry.nativeName}</option>
-          ))}
-        </select>
+        <div className="settings-language-select-wrap">
+          <CustomSelect
+            id="settings-language-select"
+            ariaLabel={t("settings.language.label")}
+            value={lang}
+            onChange={(next) => setLang(next as Language)}
+            options={LANGUAGES.map((entry) => ({ value: entry.code, label: entry.nativeName }))}
+          />
+        </div>
       </div>
-      <p className="settings-hint">{t("settings.language.hint")}</p>
       <div className="settings-version-row">
         <span>{t("settings.general.version")}</span>
         <strong>{versionLabel}{!version && latest ? t("settings.general.latestSuffix") : ""}</strong>
@@ -209,7 +213,6 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
           onBusyChange={setAvatarBusy}
           onUploaded={(avatarUrl) => onUserUpdated({ ...user, avatarUrl })}
         />
-        <small className="settings-help">{t("settings.profile.photoHelp")}</small>
       </div>
       <label className="settings-page-field">
         <span>{t("settings.profile.usernameLabel")}</span>
@@ -225,7 +228,6 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
             placeholder={t("settings.profile.usernamePlaceholder")}
           />
         </div>
-        <small className="settings-help">{t("settings.profile.usernameHelp")}</small>
       </label>
       <div className="settings-page-row">
         <button type="submit" className="primary-button" disabled={saving || !username.trim()}>
@@ -242,13 +244,11 @@ function AssistantSettings() {
   const { t } = useI18n();
   const [apiKey, setApiKey] = useState(() => getAgentSettings().apiKey);
   const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => getAgentSettings().transcriptionApiKey);
-  const [webSearch, setWebSearch] = useState(() => getAgentSettings().webSearch !== false);
   const [provider, setProvider] = useState<AgentProvider>(() => getAgentSettings().provider ?? "openrouter");
   const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
   const [showTranscriptionKey, setShowTranscriptionKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [synced, setSynced] = useState(false);
   const settingsDirtyRef = useRef(false);
 
   // The key follows the account: pull the shared copy when signed in.
@@ -261,15 +261,12 @@ function AssistantSettings() {
         if (await pullAssistantSettings()) {
           if (!live) return;
           if (settingsDirtyRef.current) {
-            setSynced(true);
             return;
           }
           const current = getAgentSettings();
           setApiKey(current.apiKey);
           setTranscriptionApiKey(current.transcriptionApiKey);
-          setWebSearch(current.webSearch !== false);
           setProvider(current.provider ?? "openrouter");
-          setSynced(true);
         }
       });
     return () => { live = false; };
@@ -283,19 +280,10 @@ function AssistantSettings() {
     saveAgentSettings(updated);
     settingsDirtyRef.current = false;
     notifyAgentSettingsChanged();
-    const syncedNow = await pushAssistantSettings(undefined, updated);
-    setSynced(syncedNow);
+    await pushAssistantSettings(undefined, updated);
     setSaved(true);
     setSaving(false);
     window.setTimeout(() => setSaved(false), 2500);
-  }
-
-  function handleWebSearch(checked: boolean) {
-    setWebSearch(checked);
-    const current = getAgentSettings();
-    saveAgentSettings({ ...current, webSearch: checked });
-    notifyAgentSettingsChanged();
-    void pushAssistantSettings();
   }
 
   function handleProviderChange(next: AgentProvider) {
@@ -363,14 +351,6 @@ function AssistantSettings() {
         </button>
         {saved && <span className="settings-saved" role="status">{t("settings.common.saved")}</span>}
       </div>
-      <label className="settings-search-toggle">
-        <input type="checkbox" checked={webSearch} onChange={(event) => handleWebSearch(event.target.checked)} />
-        <span>
-          <strong>{t("settings.assistant.webSearchTitle")}</strong>
-          <small>{t("settings.assistant.webSearchHint")}</small>
-        </span>
-      </label>
-      <p className="settings-hint">{t("settings.assistant.modelHint")}{synced ? t("settings.assistant.syncedSuffix") : ""}</p>
     </div>
   );
 }

@@ -105,8 +105,6 @@ export const common = {
     formIcon: "Icono",
     projectIcon: "Icono del proyecto",
     areaIcon: "Icono del área",
-    helpProject: "Elige un icono sencillo o sube una imagen cuadrada. Los proyectos antiguos usan el icono predeterminado automáticamente.",
-    helpArea: "Elige un icono sencillo o sube una imagen cuadrada. Las áreas antiguas usan el icono predeterminado automáticamente.",
     saveChanges: "Guardar cambios",
     createProject: "Crear proyecto",
     createArea: "Crear área",

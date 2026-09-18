@@ -46,7 +46,7 @@ describe("ai engine", () => {
     expect(prompt).toContain("create_habit");
     expect(prompt).toContain("create_note");
     expect(prompt).toContain("create_folder");
-    expect(prompt).toContain("search_web");
+    expect(prompt).not.toContain("search_web");
     expect(prompt).toContain("Read for 20 minutes");
   });
 

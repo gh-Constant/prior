@@ -3,26 +3,25 @@ import { Icon, type IconName } from "./Icon";
 export const DEFAULT_AREA_ICON: IconName = "briefcase";
 export const DEFAULT_PROJECT_ICON: IconName = "folder";
 
-export const AREA_ICON_OPTIONS: IconName[] = [
-  "briefcase", "home", "heart", "book", "grid", "focus",
-  "folder", "inbox", "plan", "star", "flag", "tag",
-  "calendar-check", "check-circle", "list", "list-todo",
-  "sparkles", "bolt", "rocket", "target", "code", "user",
-  "cloud", "palette", "file-text", "link",
+export const ALL_WORKSPACE_ICONS: IconName[] = [
+  "briefcase", "home", "heart", "book", "book-open", "grid", "focus",
+  "folder", "folder-plus", "inbox", "plan", "star", "flag", "tag",
+  "calendar-check", "check-circle", "list", "list-todo", "list-ordered",
+  "sparkles", "bolt", "zap", "rocket", "target", "code", "terminal", "cpu", "database",
+  "user", "cloud", "palette", "file-text", "file", "file-plus", "link",
+  "coffee", "globe", "monitor", "smartphone", "camera", "music",
+  "shield", "award", "feather", "gift", "bookmark", "bell",
+  "compass", "map", "map-pin", "layers", "anchor",
+  "shopping-bag", "shopping-cart", "sun", "moon", "umbrella",
+  "key", "tool", "send", "flame", "smile", "activity",
+  "credit-card", "dollar-sign", "trending-up", "bar-chart",
+  "clock", "hourglass", "archive", "clipboard", "building", "wifi", "sliders", "eye",
+  "gear", "columns",
 ];
-export const PROJECT_ICON_OPTIONS: IconName[] = [
-  "folder", "folder-plus", "rocket", "target", "flag", "star",
-  "bolt", "sparkles", "code", "file-text", "file", "file-plus",
-  "list-todo", "list-ordered", "list", "grid", "columns",
-  "calendar-check", "check-circle", "inbox", "plan", "tag",
-  "link", "palette", "briefcase", "book", "cloud", "gear",
-];
-export const PROFILE_ICON_OPTIONS: IconName[] = [
-  "user", "star", "heart", "sparkles", "bolt", "rocket",
-  "target", "flag", "book", "briefcase", "home", "palette",
-  "code", "cloud", "plan", "focus", "grid", "list",
-  "check-circle", "calendar-check", "inbox", "tag", "file-text", "gear",
-];
+
+export const AREA_ICON_OPTIONS: IconName[] = ALL_WORKSPACE_ICONS;
+export const PROJECT_ICON_OPTIONS: IconName[] = ALL_WORKSPACE_ICONS;
+export const PROFILE_ICON_OPTIONS: IconName[] = ALL_WORKSPACE_ICONS;
 
 const ICON_NAMES = new Set<IconName>([
   "plus", "check", "check-circle", "star", "bolt", "trash", "arrow", "cloud", "user", "inbox", "focus",
@@ -30,6 +29,10 @@ const ICON_NAMES = new Set<IconName>([
   "refresh", "calendar-check", "search", "sparkles", "gear", "chevron-left", "chevron-right", "chevron-down", "microphone",
   "stop", "file-text", "folder", "file", "heading", "list-ordered", "list-todo", "quote", "code", "divider", "link", "tag",
   "pencil", "folder-plus", "file-plus", "palette", "logout", "menu", "briefcase", "target", "rocket", "home", "book", "heart",
+  "coffee", "globe", "monitor", "smartphone", "camera", "music", "shield", "award", "zap", "feather", "gift", "bookmark",
+  "bell", "compass", "map", "map-pin", "layers", "database", "terminal", "cpu", "anchor", "shopping-bag", "shopping-cart",
+  "sun", "moon", "umbrella", "key", "tool", "send", "flame", "smile", "activity", "book-open", "credit-card", "dollar-sign",
+  "trending-up", "bar-chart", "clock", "hourglass", "archive", "clipboard", "building", "wifi", "sliders", "eye",
 ]);
 
 type Props = {

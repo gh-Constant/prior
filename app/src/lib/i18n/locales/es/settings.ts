@@ -3,7 +3,7 @@ export const settings = {
     ariaLabel: "Ajustes",
     eyebrow: "ESPACIO DE TRABAJO",
     title: "Ajustes",
-    subtitle: "Ajusta la aplicación y el agente Prior.",
+    subtitle: "Configura la aplicación y el agente Prior.",
     sectionsLabel: "Secciones de ajustes",
   },
   tabs: {
@@ -13,7 +13,6 @@ export const settings = {
   },
   language: {
     label: "Idioma",
-    hint: "Se aplica de inmediato y se guarda en este dispositivo.",
   },
   general: {
     version: "Versión",
@@ -45,10 +44,8 @@ export const settings = {
     fallbackName: "Cuenta de Prior",
     avatarLabel: "Editar foto de perfil",
     photoLabel: "Foto de perfil",
-    photoHelp: "Haz clic en tu foto para cambiarla. Las fotos personalizadas permanecen en este dispositivo; tu foto de Google la gestiona Google.",
     usernameLabel: "Nombre de usuario",
     usernamePlaceholder: "Tu nombre de usuario",
-    usernameHelp: "Este es el nombre que se muestra en todo Prior.",
     save: "Guardar perfil",
   },
   assistant: {
@@ -62,10 +59,6 @@ export const settings = {
     saveKeys: "Guardar claves",
     show: "Mostrar",
     hide: "Ocultar",
-    webSearchTitle: "Búsqueda web cuando sea necesario",
-    webSearchHint: "Úsala para información actual o especializada. Pueden aplicarse costes del proveedor de búsqueda.",
-    modelHint: "Elige el modelo directamente en la barra lateral del agente Prior, sin necesidad de diálogos.",
-    syncedSuffix: " Clave sincronizada con tu cuenta.",
   },
   codex: {
     sectionLabel: "Codex beta",

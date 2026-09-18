@@ -73,16 +73,46 @@ const SCHEDULE_WEEKDAY_KEYS = [
   "habits.schedule.weekdaySaturday",
 ] as const;
 
-function scheduleLabelFor(input: Pick<Habit, "interval" | "unit" | "daysOfWeek">, t: TFn, tp: TpFn): string {
+function joinLocalizedList(items: string[], lang = "fr"): string {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0];
+  try {
+    const formatter = new Intl.ListFormat(lang, { style: "long", type: "conjunction" });
+    return formatter.format(items);
+  } catch {
+    const conj = lang === "fr" ? " et " : lang === "de" ? " und " : lang === "es" ? " y " : lang === "pt" ? " e " : " and ";
+    return `${items.slice(0, -1).join(", ")}${conj}${items[items.length - 1]}`;
+  }
+}
+
+function scheduleLabelFor(input: Pick<Habit, "interval" | "unit" | "daysOfWeek">, t: TFn, tp: TpFn, lang = "fr"): string {
   const interval = Number.isFinite(input.interval) && input.interval > 0 ? Math.floor(input.interval) : 1;
-  const selected = [...new Set((input.daysOfWeek ?? []).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((left, right) => left - right);
+  const selected = [...new Set((input.daysOfWeek ?? []).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7));
   if (input.unit === "week" && selected.length) {
-    const days = selected.map((day) => t(SCHEDULE_WEEKDAY_KEYS[day])).join(", ");
+    if (selected.length === 7) {
+      if (interval === 1) {
+        return lang === "fr" ? "Tous les jours" : lang === "en" ? "Every day" : tp("habits.schedule.day", 1);
+      }
+      return t("habits.schedule.everyWeeks", { count: interval, days: lang === "fr" ? "jours" : "days" });
+    }
+    const dayNames = selected.map((day) => {
+      const raw = t(SCHEDULE_WEEKDAY_KEYS[day]);
+      if (lang === "fr") {
+        return raw.endsWith("s") ? raw : `${raw}s`;
+      }
+      return raw;
+    });
+    const days = joinLocalizedList(dayNames, lang);
     return interval === 1
       ? t("habits.schedule.everyDays", { days })
       : t("habits.schedule.everyWeeks", { count: interval, days });
   }
-  if (input.unit === "day") return tp("habits.schedule.day", interval);
+  if (input.unit === "day") {
+    if (interval === 1) {
+      return lang === "fr" ? "Tous les jours" : lang === "en" ? "Every day" : tp("habits.schedule.day", 1);
+    }
+    return tp("habits.schedule.day", interval);
+  }
   if (input.unit === "week") return tp("habits.schedule.week", interval);
   if (input.unit === "month") return tp("habits.schedule.month", interval);
   return tp("habits.schedule.year", interval);
@@ -469,7 +499,7 @@ async function runGuarded(action: () => Promise<void>, onError: (message: string
 }
 
 function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, onChange, onDelete, onEdit, onVisualCompletionStart, onVisualCompletionFailure, order }: HabitCardProps) {
-  const { t, tp } = useI18n();
+  const { t, tp, lang } = useI18n();
   const status = habitStatus(habit, reference);
   const today = dateKey(reference);
   const completedDates = new Set(habit.completedDates ?? []);
@@ -553,7 +583,7 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
           <span className={`habit-status status-${status} ${isSettling ? "is-saved" : ""}`}>{statusLabel}</span>
         </div>
         <div className="habit-meta">
-          <span className="habit-schedule-label">{scheduleLabelFor(habit, t, tp)}</span>
+          <span className="habit-schedule-label">{scheduleLabelFor(habit, t, tp, lang)}</span>
           {habit.endDate && <span className="habit-end-date">{t("habits.card.until", { date: habit.endDate })}</span>}
           {habit.important && <span className="habit-flag important"><Icon name="star" /> {t("habits.card.important")}</span>}
           {habit.urgent && <span className="habit-flag urgent"><Icon name="bolt" /> {t("habits.card.urgent")}</span>}

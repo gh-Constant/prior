@@ -4,6 +4,7 @@ import { Modal } from "../Modal";
 import { PersonAvatar } from "./PersonAvatar";
 import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
 import { useI18n } from "../../lib/i18n";
+import { CustomSelect } from "../CustomSelect";
 import type { ProjectInvite, ProjectSharingProps } from "./types";
 import "./Collaboration.css";
 
@@ -40,7 +41,21 @@ export function ProjectShareDialog({ projectName, onClose, members, invites, can
           {members.length ? <ul className="collab-members">{members.map((member) => <li key={member.id}>
             <PersonAvatar person={member} />
             <div className="collab-person-copy"><strong>{member.name}</strong>{member.email && <small>{member.email}</small>}</div>
-            {member.role === "owner" ? <span className="collab-chip">{t("collab.roles.owner")}</span> : <><select aria-label={t("collab.share.roleFor", { name: member.name })} value={member.role} disabled={!editable || !onRoleChange} onChange={(event) => onRoleChange?.(member.id, event.target.value as ProjectInvite["role"])}><option value="editor">{t("collab.roles.editor")}</option><option value="viewer">{t("collab.roles.viewer")}</option></select>{canManage && <button type="button" className="secondary-button" disabled={!editable || !onRemoveMember} onClick={() => onRemoveMember?.(member.id)} aria-label={t("collab.share.removeFor", { name: member.name })}>{t("collab.share.remove")}</button>}</>}
+            {member.role === "owner" ? <span className="collab-chip">{t("collab.roles.owner")}</span> : <>
+              <div className="collab-role-select-wrap">
+                <CustomSelect
+                  ariaLabel={t("collab.share.roleFor", { name: member.name })}
+                  value={member.role}
+                  disabled={!editable || !onRoleChange}
+                  onChange={(val) => onRoleChange?.(member.id, val as ProjectInvite["role"])}
+                  options={[
+                    { value: "editor", label: t("collab.roles.editor") },
+                    { value: "viewer", label: t("collab.roles.viewer") },
+                  ]}
+                />
+              </div>
+              {canManage && <button type="button" className="secondary-button" disabled={!editable || !onRemoveMember} onClick={() => onRemoveMember?.(member.id)} aria-label={t("collab.share.removeFor", { name: member.name })}>{t("collab.share.remove")}</button>}
+            </>}
           </li>)}</ul> : <p className="collab-muted">{t("collab.share.noMembers")}</p>}
         </section>
         <section aria-label={t("collab.share.invitesGroup")}><h3>{t("collab.share.invites")} <span className="collab-muted">{invites.length}</span></h3>
@@ -52,7 +67,7 @@ export function ProjectShareDialog({ projectName, onClose, members, invites, can
       </>}
       {canManage && <form className="collab-invite-form" onSubmit={(event) => { event.preventDefault(); if (editable && email.trim() && !duplicate) onInvite?.(email.trim(), role); }}>
         <label className="collab-field"><span>{t("collab.share.email")}</span><input type="email" required value={email} disabled={!editable || !onInvite} onChange={(event) => setEmail(event.target.value)} placeholder={t("collab.share.emailPlaceholder")} /></label>
-        <label className="collab-field"><span>{t("collab.share.inviteRole")}</span><select value={role} disabled={!editable || !onInvite} onChange={(event) => setRole(event.target.value as ProjectInvite["role"])}><option value="editor">{t("collab.roles.editor")}</option><option value="viewer">{t("collab.roles.viewer")}</option></select></label>
+        <div className="collab-field"><span>{t("collab.share.inviteRole")}</span><CustomSelect ariaLabel={t("collab.share.inviteRole")} value={role} disabled={!editable || !onInvite} onChange={(val) => setRole(val as ProjectInvite["role"])} options={[{ value: "editor", label: t("collab.roles.editor") }, { value: "viewer", label: t("collab.roles.viewer") }]} /></div>
         <button type="submit" className="primary-button" disabled={!editable || !onInvite || !email.trim() || duplicate}><Icon name="mail" />{busy ? t("collab.share.working") : t("collab.share.invite")}</button>
         {duplicate && <p className="collab-muted" role="status">{t("collab.share.duplicate")}</p>}
       </form>}

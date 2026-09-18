@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DEFAULT_PROJECT_ICON, PROJECT_ICON_OPTIONS } from "../WorkspaceIcon";
 import { EditableIcon, IconPicker, IconUpload } from "../IconPicker";
 import { EditorDialog } from "./EditorDialog";
+import { CustomSelect } from "../CustomSelect";
 import { useI18n } from "../../lib/i18n";
 import type { EditableProject, ProjectEditorProps } from "./types";
 
@@ -35,7 +36,8 @@ export function ProjectEditor({ project, avatarUrl, onSave, onClose }: ProjectEd
         value={draft.icon ?? ""}
         options={PROJECT_ICON_OPTIONS}
         fallback={DEFAULT_PROJECT_ICON}
-        label="Project icon"
+        label={t("collab.editor.icon")}
+        compact
         disabled={uploading}
         onSelect={(icon) => setDraft((current) => ({ ...current, icon }))}
       />
@@ -51,8 +53,34 @@ export function ProjectEditor({ project, avatarUrl, onSave, onClose }: ProjectEd
       />
     </div>
     <div className="collab-planning-grid">
-      <label className="collab-field"><span>{t("collab.editor.status")}</span><select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as EditableProject["status"] })}><option value="planned">{t("collab.editor.statusPlanned")}</option><option value="active">{t("collab.editor.statusActive")}</option><option value="paused">{t("collab.editor.statusPaused")}</option><option value="completed">{t("collab.editor.statusCompleted")}</option></select></label>
-      <label className="collab-field"><span>{t("collab.editor.health")}</span><select value={draft.health ?? ""} onChange={(event) => setDraft({ ...draft, health: (event.target.value || null) as EditableProject["health"] })}><option value="">{t("collab.editor.healthNotSet")}</option><option value="On track">{t("collab.editor.healthOnTrack")}</option><option value="At risk">{t("collab.editor.healthAtRisk")}</option><option value="Off track">{t("collab.editor.healthOffTrack")}</option></select></label>
+      <label className="collab-field">
+        <span>{t("collab.editor.status")}</span>
+        <CustomSelect
+          ariaLabel={t("collab.editor.status")}
+          value={draft.status}
+          onChange={(val) => setDraft({ ...draft, status: val as EditableProject["status"] })}
+          options={[
+            { value: "planned", label: t("collab.editor.statusPlanned") },
+            { value: "active", label: t("collab.editor.statusActive") },
+            { value: "paused", label: t("collab.editor.statusPaused") },
+            { value: "completed", label: t("collab.editor.statusCompleted") },
+          ]}
+        />
+      </label>
+      <label className="collab-field">
+        <span>{t("collab.editor.health")}</span>
+        <CustomSelect
+          ariaLabel={t("collab.editor.health")}
+          value={draft.health ?? ""}
+          onChange={(val) => setDraft({ ...draft, health: (val ? String(val) : null) as EditableProject["health"] })}
+          options={[
+            { value: "", label: t("collab.editor.healthNotSet") },
+            { value: "On track", label: t("collab.editor.healthOnTrack"), color: "#22c55e" },
+            { value: "At risk", label: t("collab.editor.healthAtRisk"), color: "#f59e0b" },
+            { value: "Off track", label: t("collab.editor.healthOffTrack"), color: "#ef4444" },
+          ]}
+        />
+      </label>
       <label className="collab-field"><span>{t("collab.editor.startDate")}</span><input type="date" value={draft.startDate ?? ""} onChange={(event) => setDraft({ ...draft, startDate: event.target.value || null })} /></label>
       <label className="collab-field"><span>{t("collab.editor.targetDate")}</span><input type="date" min={draft.startDate ?? undefined} value={draft.targetDate ?? ""} onChange={(event) => setDraft({ ...draft, targetDate: event.target.value || null })} /></label>
     </div>

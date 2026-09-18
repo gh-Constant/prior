@@ -13,7 +13,6 @@ export const settings = {
   },
   language: {
     label: "Language",
-    hint: "Applies immediately and is saved on this device.",
   },
   general: {
     version: "Version",
@@ -45,10 +44,8 @@ export const settings = {
     fallbackName: "Prior account",
     avatarLabel: "Edit profile photo",
     photoLabel: "Profile photo",
-    photoHelp: "Click your photo to change it. Custom photos stay on this device; your Google photo is managed by Google.",
     usernameLabel: "Username",
     usernamePlaceholder: "Your username",
-    usernameHelp: "This is the name shown throughout Prior.",
     save: "Save profile",
   },
   assistant: {
@@ -62,10 +59,6 @@ export const settings = {
     saveKeys: "Save keys",
     show: "Show",
     hide: "Hide",
-    webSearchTitle: "Web search when needed",
-    webSearchHint: "Use it for current or niche information. Search provider costs may apply.",
-    modelHint: "Choose the model directly in the Prior Agent sidebar — no dialog needed.",
-    syncedSuffix: " Key synced with your account.",
   },
   codex: {
     sectionLabel: "Codex beta",

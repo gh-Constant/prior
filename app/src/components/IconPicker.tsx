@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n";
 import { Icon, type IconName } from "./Icon";
 import { WorkspaceIcon, imageFileToIcon } from "./WorkspaceIcon";
@@ -42,19 +42,51 @@ type IconPickerProps = {
   readonly onSelect: (icon: string) => void;
   readonly label?: string;
   readonly disabled?: boolean;
+  readonly compact?: boolean;
 };
 
-export function IconPicker({ value, options, fallback, onSelect, label, disabled = false }: IconPickerProps) {
+export function IconPicker({ value, options, fallback, onSelect, label, disabled = false, compact = false }: IconPickerProps) {
   const { t } = useI18n();
   const resolvedLabel = label ?? t("common.iconPicker.defaultLabel");
   const searchLabel = resolvedLabel.toLowerCase();
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const filtered = filterIconOptions(options, query);
-  return (
-    <div className="icon-picker" data-testid="icon-picker">
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      searchInputRef.current?.focus();
+    }
+  }, [open]);
+
+  const searchAndGrid = (
+    <>
       <label className="icon-picker-search">
         <Icon name="search" aria-hidden="true" />
         <input
+          ref={compact ? searchInputRef : undefined}
           type="search"
           value={query}
           disabled={disabled}
@@ -78,13 +110,49 @@ export function IconPicker({ value, options, fallback, onSelect, label, disabled
             aria-label={t("common.iconPicker.useIcon", { icon: option })}
             aria-pressed={value === option}
             title={option}
-            onClick={() => onSelect(option)}
+            onClick={() => {
+              onSelect(option);
+              if (compact) setOpen(false);
+            }}
           >
             <WorkspaceIcon icon={option} fallback={fallback} />
           </button>
         ))}
         {!filtered.length && <p className="icon-picker-empty">{t("common.iconPicker.noMatch", { query: query.trim() })}</p>}
       </div>
+    </>
+  );
+
+  if (compact) {
+    return (
+      <div className="icon-picker-compact-wrap" ref={containerRef} data-testid="icon-picker">
+        <button
+          type="button"
+          disabled={disabled}
+          className={`icon-picker-compact-trigger ${open ? "open" : ""}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-label={t("common.iconPicker.useIcon", { icon: value || fallback })}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          <WorkspaceIcon icon={value} fallback={fallback} />
+          <span className="icon-picker-compact-badge">
+            <Icon name="chevron-down" />
+          </span>
+        </button>
+
+        {open && (
+          <div className="icon-picker-popover" role="dialog" aria-label={resolvedLabel}>
+            {searchAndGrid}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="icon-picker" data-testid="icon-picker">
+      {searchAndGrid}
     </div>
   );
 }

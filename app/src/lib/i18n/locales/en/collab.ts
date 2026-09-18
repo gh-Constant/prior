@@ -71,6 +71,11 @@ export const collab = {
     assignee: "Assignee",
     collaborator: "Collaborator",
   },
+  presence: {
+    online: "Online",
+    away: "Away",
+    inactive: "Inactive",
+  },
   cycle: {
     progress: "{completed} of {total} issues complete",
     progress_plural: "{completed} of {total} issues complete",

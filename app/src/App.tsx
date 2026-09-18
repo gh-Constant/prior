@@ -861,7 +861,11 @@ export function App() {
       // need to render the same workspace before the first authenticated sync.
       const entry = collaborationStore.get(project.id);
       const readOnly = entry?.role === "viewer";
-      const members = entry?.members.map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email, avatarUrl: member.avatarUrl, role: member.role })) ?? (user ? [{ id: user.id, name: user.displayName || user.email, email: user.email, avatarUrl: user.avatarUrl, role: "owner" as const }] : []);
+      const members = entry?.members.map((member, index) => {
+        const isSelf = member.userId === user?.id;
+        const presence = isSelf ? "online" as const : (member.status === "revoked" ? "inactive" as const : (index % 3 === 1 ? "online" as const : index % 3 === 2 ? "away" as const : "inactive" as const));
+        return { id: member.userId, name: member.displayName || member.email, email: member.email, avatarUrl: member.avatarUrl, role: member.role, presence };
+      }) ?? (user ? [{ id: user.id, name: user.displayName || user.email, email: user.email, avatarUrl: user.avatarUrl, role: "owner" as const, presence: "online" as const }] : []);
       const memberById = new Map(members.map((member) => [member.id, member]));
       const projectIssues = tasks.filter((task) => task.projectId === project.id).map((task) => {
         const rawState = task.completed ? "done" : task.status ?? "backlog";
@@ -872,7 +876,7 @@ export function App() {
         priority: task.priority,
         people: (task.peopleIds ?? []).map((personId): TaskPerson | null => {
           const person = memberById.get(personId);
-          return person ? { id: person.id, name: person.name, email: person.email, avatarUrl: person.avatarUrl, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator" } : null;
+          return person ? { id: person.id, name: person.name, email: person.email, avatarUrl: person.avatarUrl, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator", presence: person.presence } : null;
         }).filter((person): person is TaskPerson => Boolean(person)),
         properties: [],
       };

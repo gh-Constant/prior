@@ -2,7 +2,8 @@ import type { Project, TaskPriority } from "../../types";
 
 // Presentation contracts only. These are not persisted Task/Project fields.
 export type ProjectRole = "owner" | "editor" | "viewer";
-export type Person = { id: string; name: string; email?: string; avatarUrl?: string | null };
+export type PersonPresence = "online" | "away" | "offline" | "inactive";
+export type Person = { id: string; name: string; email?: string; avatarUrl?: string | null; presence?: PersonPresence; status?: string };
 export type ProjectMember = Person & { role: ProjectRole };
 export type ProjectInvite = { id: string; email: string; role: Exclude<ProjectRole, "owner"> };
 export type TaskPerson = Person & { role: "owner" | "assignee" | "collaborator" };

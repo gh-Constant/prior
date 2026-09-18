@@ -3,6 +3,7 @@ import { Icon, type IconName } from "../Icon";
 import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
 import { PersonAvatar } from "./PersonAvatar";
 import { useI18n } from "../../lib/i18n";
+import { CustomSelect } from "../CustomSelect";
 import type { Person, PlanningKey, ProjectIssue, TaskPerson, TaskPlanningProps } from "./types";
 import "./Collaboration.css";
 
@@ -53,13 +54,27 @@ export function TaskPeoplePicker({ people, availablePeople, readOnly = false, lo
         return <li key={person.id}>
           <PersonAvatar person={person} />
           <div className="collab-person-copy"><strong>{person.name}</strong>{lastOwner && <small>{t("collab.taskPeople.lastOwner")}</small>}</div>
-          <select aria-label={t("collab.taskPeople.roleFor", { name: person.name })} value={person.role} disabled={!editable || lastOwner} onChange={(event) => changeRole(person, event.target.value as TaskPerson["role"])}>
-            <option value="owner">{t("collab.roles.owner")}</option><option value="assignee">{t("collab.roles.assignee")}</option><option value="collaborator">{t("collab.roles.collaborator")}</option>
-          </select>
+          <div className="collab-role-select-wrap">
+            <CustomSelect
+              ariaLabel={t("collab.taskPeople.roleFor", { name: person.name })}
+              value={person.role}
+              disabled={!editable || lastOwner}
+              onChange={(val) => changeRole(person, val as TaskPerson["role"])}
+              options={[
+                { value: "owner", label: t("collab.roles.owner") },
+                { value: "assignee", label: t("collab.roles.assignee") },
+                { value: "collaborator", label: t("collab.roles.collaborator") },
+              ]}
+            />
+          </div>
           <button type="button" className="icon-button" aria-label={t("collab.taskPeople.removeFor", { name: person.name })} disabled={!editable || lastOwner} onClick={() => { if (editable && !lastOwner) onPeopleChange?.(people.filter((item) => item.id !== person.id)); }}><Icon name="close" /></button>
         </li>;
       })}</ul>}
-      {editable && <details className="collab-picker-options"><summary>{t("collab.taskPeople.add")}</summary>
+      {editable && <details className="collab-picker-options">
+        <summary className="collab-disclosure-summary">
+          {t("collab.taskPeople.add")}
+          <Icon name="chevron-down" className="collab-disclosure-chevron" />
+        </summary>
         <label className="collab-field"><span>{t("collab.taskPeople.search")}</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("collab.taskPeople.searchPlaceholder")} /></label>
         <div className="collab-candidates">{candidates.map((person) => <button key={person.id} type="button" className="secondary-button" onClick={() => onPeopleChange?.([...people, { ...person, role: "collaborator" }])}><Icon name="plus" />{person.name}</button>)}</div>
         {!candidates.length && <p className="collab-muted">{query ? t("collab.taskPeople.noMatch") : t("collab.taskPeople.noMore")}</p>}
@@ -74,14 +89,72 @@ export function TaskPlanning({ fields, onFieldChange, ...peopleProps }: TaskPlan
   const disabled = peopleProps.readOnly || peopleProps.loading || !onFieldChange;
   return <div className="collab-task-planning">
     <TaskPeoplePicker {...peopleProps} />
-    <details className="collab-planning"><summary>{t("collab.planning.title")}</summary>
-      <div className="collab-planning-grid">{fields.map((field) => <label className="collab-field" key={field.key}>
+    <details className="collab-planning">
+      <summary className="collab-disclosure-summary">
+        {t("collab.planning.title")}
+        <Icon name="chevron-down" className="collab-disclosure-chevron" />
+      </summary>
+      <div className="collab-planning-grid">{fields.map((field) => <div className="collab-field" key={field.key}>
         <span>{field.label}</span>
-        <select disabled={disabled} multiple={field.key === "labels"} value={field.key === "labels" ? [...field.selectedIds] : field.selectedIds[0] ?? ""} onChange={(event) => onFieldChange?.(field.key, Array.from(event.currentTarget.selectedOptions, (option) => option.value).filter(Boolean))}>
-          {field.key !== "labels" && <option value="">{t("collab.planning.none")}</option>}
-          {field.options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-        </select>
-      </label>)}</div>
+        {field.key === "labels" ? (
+          <>
+            <div className="collab-multi-chips">
+              {field.options.map((option) => {
+                const isSelected = field.selectedIds.includes(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    disabled={disabled}
+                    className={`collab-chip-btn ${isSelected ? "selected" : ""}`}
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      const next = isSelected
+                        ? field.selectedIds.filter((id) => id !== option.id)
+                        : [...field.selectedIds, option.id];
+                      onFieldChange?.(field.key, next);
+                    }}
+                  >
+                    <Icon name={isSelected ? "check" : "tag"} />
+                    <span>{option.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <select
+              aria-label={field.label}
+              className="custom-select-native-hidden"
+              disabled={disabled}
+              multiple
+              tabIndex={-1}
+              value={[...field.selectedIds]}
+              onChange={(event) =>
+                onFieldChange?.(
+                  field.key,
+                  Array.from(event.currentTarget.selectedOptions, (option) => option.value).filter(Boolean)
+                )
+              }
+            >
+              {field.options.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </>
+        ) : (
+          <CustomSelect
+            ariaLabel={field.label}
+            disabled={disabled}
+            value={field.selectedIds[0] ?? ""}
+            onChange={(next) => onFieldChange?.(field.key, next ? [String(next)] : [])}
+            options={[
+              { value: "", label: t("collab.planning.none") },
+              ...field.options.map((opt) => ({ value: opt.id, label: opt.name })),
+            ]}
+          />
+        )}
+      </div>)}</div>
       {!fields.length && <p className="collab-muted">{t("collab.planning.empty")}</p>}
     </details>
   </div>;

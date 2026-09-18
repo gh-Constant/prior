@@ -16,7 +16,7 @@ The React UI is shared by browser, macOS, Windows, Linux, and Android. Browser s
 
 Task data includes a title, optional description, optional ISO due date, Todoist-style priority 1–4, importance, urgency, completion state, and timestamps. Keep these fields in sync across `app/src/types.ts`, local SQLite/localStorage, PostgreSQL, sync mutations, and task-change snapshots. Existing data may omit the newer optional fields; normalize it to an empty description, no due date, and priority 4.
 
-The in-app AI assistant is a client-side OpenRouter integration. Its system prompt describes Prior's real capabilities: `list_tasks`, `list_habits`, `create_task`, `create_habit`, `prioritize_tasks`, and optional `search_web`. Create actions are returned as review cards and only persist after the user confirms them. Chat history is stored in PostgreSQL; OpenRouter API settings remain in local storage and must never be logged or committed.
+The in-app AI assistant is a client-side OpenRouter integration. Its system prompt describes Prior's real capabilities: `list_tasks`, `list_habits`, `create_task`, `create_habit`, and `prioritize_tasks`. Create actions are returned as review cards and only persist after the user confirms them. Chat history is stored in PostgreSQL; OpenRouter API settings remain in local storage and must never be logged or committed.
 
 ## Working rules
 

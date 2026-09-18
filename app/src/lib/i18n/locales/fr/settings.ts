@@ -13,7 +13,6 @@ export const settings = {
   },
   language: {
     label: "Langue",
-    hint: "Appliquée immédiatement et enregistrée sur cet appareil.",
   },
   general: {
     version: "Version",
@@ -45,10 +44,8 @@ export const settings = {
     fallbackName: "Compte Prior",
     avatarLabel: "Modifier la photo de profil",
     photoLabel: "Photo de profil",
-    photoHelp: "Cliquez sur votre photo pour la changer. Les photos personnalisées restent sur cet appareil ; votre photo Google est gérée par Google.",
     usernameLabel: "Nom d’utilisateur",
     usernamePlaceholder: "Votre nom d’utilisateur",
-    usernameHelp: "C’est le nom affiché dans tout Prior.",
     save: "Enregistrer le profil",
   },
   assistant: {
@@ -62,10 +59,6 @@ export const settings = {
     saveKeys: "Enregistrer les clés",
     show: "Afficher",
     hide: "Masquer",
-    webSearchTitle: "Recherche web si nécessaire",
-    webSearchHint: "Utile pour les informations récentes ou spécialisées. Des frais du fournisseur de recherche peuvent s’appliquer.",
-    modelHint: "Choisissez le modèle directement dans la barre latérale de l’agent Prior — aucune boîte de dialogue nécessaire.",
-    syncedSuffix: " Clé synchronisée avec votre compte.",
   },
   codex: {
     sectionLabel: "Codex beta",

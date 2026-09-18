@@ -5,6 +5,8 @@
 .settings-card { min-width: 0; max-width: 640px; padding: 20px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); box-shadow: var(--shadow-card); }
 .settings-card .update-card { margin-top: 16px; }
 .settings-version-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; background: #faf9f7; color: #736d65; font-size: 12.5px; font-weight: 600; }
+.settings-language-select-wrap { min-width: 150px; }
+.settings-language-select-wrap .custom-select-trigger { min-height: 34px; background: #ffffff; border-radius: 7px; font-size: 12px; }
 .settings-version-row strong { color: var(--ink); }
 .settings-general .update-card { margin-top: 12px; }
 .settings-profile { display: flex; flex-direction: column; gap: 18px; }

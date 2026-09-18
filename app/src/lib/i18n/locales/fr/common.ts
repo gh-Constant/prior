@@ -105,8 +105,6 @@ export const common = {
     formIcon: "Icône",
     projectIcon: "Icône du projet",
     areaIcon: "Icône de l’espace",
-    helpProject: "Choisissez une icône simple ou importez une image carrée. Les anciens projets utilisent automatiquement l’icône par défaut.",
-    helpArea: "Choisissez une icône simple ou importez une image carrée. Les anciens espaces utilisent automatiquement l’icône par défaut.",
     saveChanges: "Enregistrer les modifications",
     createProject: "Créer le projet",
     createArea: "Créer l’espace",

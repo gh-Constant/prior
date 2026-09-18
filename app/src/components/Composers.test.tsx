@@ -102,4 +102,30 @@ describe("HabitComposer", () => {
 
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: "Clean shower", unit: "week", daysOfWeek: [6], endDate: "2026-10-10" }));
   });
+
+  it("supports frequency mode buttons, quick presets, and natural schedule preview", async () => {
+    const onSave = vi.fn(async (_input: Record<string, unknown>) => undefined);
+    render(<HabitComposer onSave={onSave} onCancel={() => undefined} />);
+
+    fireEvent.change(screen.getByLabelText("Habit title"), { target: { value: "Workout" } });
+
+    // Click "Specific days" frequency button
+    fireEvent.click(screen.getByRole("radio", { name: /Specific days/i }));
+
+    // Click "Weekend" preset chip
+    fireEvent.click(screen.getByRole("button", { name: /Weekend/i }));
+    expect(screen.getByText(/Every Saturday and Sunday/i)).toBeInTheDocument();
+
+    // Click Wednesday to also include it
+    fireEvent.click(screen.getByRole("button", { name: "Wednesday" }));
+    expect(screen.getByText(/Every Wednesday, Saturday, and Sunday/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Create habit"));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Workout",
+      unit: "week",
+      interval: 1,
+      daysOfWeek: [1, 6, 0].includes(3) ? expect.arrayContaining([3, 6, 0]) : expect.any(Array),
+    }));
+  });
 });

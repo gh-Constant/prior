@@ -39,8 +39,8 @@ describe("SettingsPage profile", () => {
   });
 
   it("saves the per-user OpenAI transcription key with assistant settings", async () => {
-    vi.mocked(api.saveSettings).mockResolvedValue({ openrouterApiKey: "", openaiApiKey: "sk-openai", webSearch: true });
-    vi.mocked(api.getSettings).mockResolvedValue({ openrouterApiKey: "", openaiApiKey: "", webSearch: true });
+    vi.mocked(api.saveSettings).mockResolvedValue({ openrouterApiKey: "", openaiApiKey: "sk-openai", webSearch: false });
+    vi.mocked(api.getSettings).mockResolvedValue({ openrouterApiKey: "", openaiApiKey: "", webSearch: false });
 
     render(<SettingsPage user={user} onUserUpdated={vi.fn()} />);
     fireEvent.click(screen.getByRole("tab", { name: "Assistant" }));
@@ -48,6 +48,6 @@ describe("SettingsPage profile", () => {
     fireEvent.change(screen.getByPlaceholderText("sk-..."), { target: { value: "sk-openai" } });
     fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
 
-    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ openrouterApiKey: "", openaiApiKey: "sk-openai", webSearch: true }, "session-token"));
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ openrouterApiKey: "", openaiApiKey: "sk-openai", webSearch: false }, "session-token"));
   });
 });

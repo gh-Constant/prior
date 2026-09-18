@@ -77,7 +77,7 @@ export function getAgentSettings(): AgentSettings {
           transcriptionApiKey: parsed.transcriptionApiKey || "",
           model: parsed.model || DEFAULT_MODEL,
           codexModel: parsed.codexModel || "",
-          webSearch: parsed.webSearch ?? true,
+          webSearch: false,
           provider: parsed.provider === "codex" ? "codex" : "openrouter",
           reasoningEffort: normalizeReasoningEffort(parsed.reasoningEffort),
         };
@@ -86,7 +86,7 @@ export function getAgentSettings(): AgentSettings {
   } catch {
     // fallback below
   }
-  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: true, provider: "openrouter", reasoningEffort: "auto" };
+  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: false, provider: "openrouter", reasoningEffort: "auto" };
 }
 
 export function saveAgentSettings(settings: AgentSettings): void {
@@ -211,7 +211,7 @@ const UI_LANGUAGE_NAMES: Record<string, string> = {
 export function buildSystemPrompt(
   existingTasks: Task[] = [],
   existingHabits: Habit[] = [],
-  webSearchEnabled = true,
+  _webSearchEnabled = false,
   existingNotes: Note[] = [],
   existingFolders: NoteFolder[] = [],
   existingAreas: Area[] = [],
@@ -281,7 +281,6 @@ PRIOR CAPABILITIES (use these exact names when the user asks what tools you have
 - create_note: prepare one or more Markdown notes with an optional folder and project. The app shows them as an approval card; they are saved when the user clicks Add.
 - create_folder: prepare one or more note folders with an optional parent. The app shows them as an approval card; they are saved when the user clicks Add.
 - prioritize_tasks: classify tasks by importance and urgency and explain the trade-off.
-- search_web: look up current, recent, niche, or explicitly requested online information when web search is enabled for this chat. Include useful source links in the reply when you search.
 - search_notes: filter the provided note inventory by title or snippet. There is no semantic full-text search beyond what is listed in this prompt.
 
 WORKSPACE HIERARCHY AND PLANNING RULES:
@@ -364,9 +363,6 @@ EISENHOWER CLASSIFICATION:
 - Q4 Later = not important + not urgent: ideas, nice-to-haves, distractions, low-impact chores.
 - A small personal routine such as "dire bonjour" is normally not important and not urgent unless the user gives a meaningful consequence or deadline. Do not mark everything important.
 - Give one short, concrete reasoning sentence. If the context is insufficient, choose the conservative lower urgency/importance and say what assumption you made.
-
-WEB SEARCH:
-${webSearchEnabled ? "Web search is enabled. Use search_web for current facts, latest information, niche terms, or when the user explicitly asks to search/look up/verify. Do not search for ordinary task creation or casual conversation." : "Web search is disabled for this chat. Do not imply that you searched; tell the user they can enable Web search in the assistant settings if they need current information."}
 
 CURRENT PRIOR DATA (read-only context for this turn):
 Current date: ${new Date().toISOString().slice(0, 10)}
@@ -947,7 +943,7 @@ export async function askAgentStream(
       {
         prompt,
         history: history.slice(-8).map((message) => ({ role: message.role, content: message.content })),
-        systemPrompt: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
+        systemPrompt: buildSystemPrompt(existingTasks, existingHabits, false, existingNotes, existingFolders, existingAreas, existingProjects),
         model: settings.codexModel || null,
         threadId: codexThreadId,
         reasoningEffort: reasoningEffortParam(settings),
@@ -997,9 +993,9 @@ export async function askAgent(
         {
           model: settings.model || DEFAULT_MODEL,
           prompt,
-          system: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
+          system: buildSystemPrompt(existingTasks, existingHabits, false, existingNotes, existingFolders, existingAreas, existingProjects),
           history: history.slice(-8).map((message) => ({ role: message.role, content: message.content })),
-          webSearch: settings.webSearch !== false,
+          webSearch: false,
           reasoningEffort: reasoningEffortParam(settings) ?? undefined,
         },
         sessionToken,
@@ -1019,7 +1015,7 @@ export async function askAgent(
     const result = await runCodex({
       prompt,
       history: history.slice(-8).map((message) => ({ role: message.role, content: message.content })),
-      systemPrompt: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
+      systemPrompt: buildSystemPrompt(existingTasks, existingHabits, false, existingNotes, existingFolders, existingAreas, existingProjects),
       model: settings.codexModel || null,
       threadId: codexThreadId,
       reasoningEffort: reasoningEffortParam(settings),
@@ -1035,10 +1031,9 @@ export async function askAgent(
     throw new Error(translateStored("agent.errors.missingKey"));
   }
 
-  const webSearchEnabled = settings.webSearch !== false;
   const systemMessage = {
     role: "system",
-    content: buildSystemPrompt(existingTasks, existingHabits, webSearchEnabled, existingNotes, existingFolders, existingAreas, existingProjects),
+    content: buildSystemPrompt(existingTasks, existingHabits, false, existingNotes, existingFolders, existingAreas, existingProjects),
   };
   const conversationMessages = history.slice(-8).map((message) => ({
     role: message.role,
@@ -1053,7 +1048,6 @@ export async function askAgent(
     model: settings.model || DEFAULT_MODEL,
     messages,
     temperature: 0.2,
-    ...(webSearchEnabled ? { tools: [{ type: "openrouter:web_search" }] } : {}),
     ...(reasoningEffortParam(settings) ? { reasoning: { effort: reasoningEffortParam(settings) } } : {}),
   };
 
@@ -1082,9 +1076,6 @@ export async function askAgent(
       // If response_format caused an issue with this specific model, retry without it
       if (response.status === 400 && errorText.toLowerCase().includes("response_format")) {
         return await sendPlainRequest(payload, headers);
-      }
-      if (response.status === 400 && webSearchEnabled && /tool|web_search/i.test(errorText)) {
-        return await sendPlainRequest(withoutTools(payload), headers);
       }
       throw new Error(translateStored("agent.errors.openrouterStatus", { status: response.status, detail: errorText || response.statusText }));
     }
