@@ -1,9 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "../lib/i18n";
 import { Icon, type IconName } from "./Icon";
 import { WorkspaceIcon, imageFileToIcon } from "./WorkspaceIcon";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { Person } from "./collaboration/types";
+import { useFloatingMenu } from "../hooks/useFloatingMenu";
 import "./IconPicker.css";
 
 // WorkspaceIcon throws English errors; map the known ones so the picker can
@@ -52,28 +54,19 @@ export function IconPicker({ value, options, fallback, onSelect, label, disabled
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const filtered = filterIconOptions(options, query);
 
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
+  const floating = useFloatingMenu(triggerRef, {
+    open: compact && open,
+    onClose: () => setOpen(false),
+    isPill: false,
+    minWidth: 280,
+    maxWidth: 320,
+    offset: 6,
+    estimatedHeight: 280,
+  });
 
   useEffect(() => {
     if (open) {
@@ -124,9 +117,22 @@ export function IconPicker({ value, options, fallback, onSelect, label, disabled
   );
 
   if (compact) {
+    const popoverContent = open ? (
+      <div
+        ref={floating.menuRef}
+        className={`icon-picker-popover ${floating.placement === "top" ? "open-top" : "open-bottom"}`}
+        role="dialog"
+        aria-label={resolvedLabel}
+        style={floating.style}
+      >
+        {searchAndGrid}
+      </div>
+    ) : null;
+
     return (
       <div className="icon-picker-compact-wrap" ref={containerRef} data-testid="icon-picker">
         <button
+          ref={triggerRef}
           type="button"
           disabled={disabled}
           className={`icon-picker-compact-trigger ${open ? "open" : ""}`}
@@ -141,11 +147,7 @@ export function IconPicker({ value, options, fallback, onSelect, label, disabled
           </span>
         </button>
 
-        {open && (
-          <div className="icon-picker-popover" role="dialog" aria-label={resolvedLabel}>
-            {searchAndGrid}
-          </div>
-        )}
+        {floating.portalTarget && popoverContent ? createPortal(popoverContent, floating.portalTarget) : popoverContent}
       </div>
     );
   }

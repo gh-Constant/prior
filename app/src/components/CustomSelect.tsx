@@ -1,5 +1,7 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Icon, type IconName } from "./Icon";
+import { useFloatingMenu } from "../hooks/useFloatingMenu";
 import "./CustomSelect.css";
 
 export type CustomSelectOption<T extends string | number = string | number> = {
@@ -42,28 +44,15 @@ export function CustomSelect<T extends string | number = string | number>({
   const selectId = id ?? generatedId;
 
   const selectedOption = options.find((opt) => String(opt.value) === String(value));
+  const isPill = className.includes("custom-select-pill");
 
-  // Close when clicking outside
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
+  const floating = useFloatingMenu(triggerRef, {
+    open,
+    onClose: () => setOpen(false),
+    isPill,
+    offset: 4,
+    estimatedHeight: Math.min(options.length * 36 + 10, 260),
+  });
 
   function handleSelect(option: CustomSelectOption<T>) {
     if (option.disabled || disabled) return;
@@ -92,6 +81,38 @@ export function CustomSelect<T extends string | number = string | number>({
       setOpen((prev) => !prev);
     }
   }
+
+  const menuContent = open ? (
+    <div
+      ref={floating.menuRef}
+      className={`custom-select-menu ${floating.placement === "top" ? "open-top" : "open-bottom"} ${isPill ? "custom-select-menu-pill" : ""}`.trim()}
+      role="listbox"
+      aria-label={ariaLabel}
+      style={floating.style}
+    >
+      {options.map((option) => {
+        const isSelected = String(option.value) === String(value);
+        return (
+          <button
+            key={String(option.value)}
+            type="button"
+            role="option"
+            aria-selected={isSelected}
+            disabled={option.disabled}
+            className={`custom-select-item ${isSelected ? "selected" : ""}`}
+            onClick={() => handleSelect(option)}
+          >
+            {option.icon && <Icon name={option.icon} className="custom-select-icon" />}
+            {option.color && (
+              <span className="custom-select-color-dot" style={{ backgroundColor: option.color }} />
+            )}
+            <span className="custom-select-item-label">{option.label}</span>
+            {isSelected && <Icon name="check" className="custom-select-check" />}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
 
   return (
     <div className={`custom-select-wrap ${className}`.trim()} ref={containerRef}>
@@ -124,31 +145,7 @@ export function CustomSelect<T extends string | number = string | number>({
         <Icon name="chevron-down" className={`custom-select-chevron ${open ? "rotated" : ""}`} />
       </div>
 
-      {open && (
-        <div className="custom-select-menu" role="listbox" aria-label={ariaLabel}>
-          {options.map((option) => {
-            const isSelected = String(option.value) === String(value);
-            return (
-              <button
-                key={String(option.value)}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                disabled={option.disabled}
-                className={`custom-select-item ${isSelected ? "selected" : ""}`}
-                onClick={() => handleSelect(option)}
-              >
-                {option.icon && <Icon name={option.icon} className="custom-select-icon" />}
-                {option.color && (
-                  <span className="custom-select-color-dot" style={{ backgroundColor: option.color }} />
-                )}
-                <span className="custom-select-item-label">{option.label}</span>
-                {isSelected && <Icon name="check" className="custom-select-check" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {floating.portalTarget && menuContent ? createPortal(menuContent, floating.portalTarget) : menuContent}
 
       {/* Visually-hidden native select for full accessibility, tests, and form parity */}
       <select

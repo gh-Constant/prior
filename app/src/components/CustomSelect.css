@@ -66,10 +66,8 @@
   background: #f3f1ed;
 }
 
-.custom-select-wrap.custom-select-pill .custom-select-menu {
-  min-width: 170px;
+.custom-select-menu-pill {
   width: max-content;
-  max-width: 280px;
 }
 
 .custom-select-trigger-content {
@@ -121,25 +119,47 @@
 }
 
 .custom-select-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 120;
-  max-height: 240px;
+  position: fixed;
+  z-index: 99999;
+  box-sizing: border-box;
   overflow-y: auto;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  overflow-x: hidden;
+  padding: 5px;
+  border: 1px solid var(--line, #e9e8e4);
+  border-radius: 10px;
   background: var(--panel, #ffffff);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06);
-  animation: custom-select-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+  animation: custom-select-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.custom-select-menu.open-top {
+  animation-name: custom-select-in-top;
+}
+
+.custom-select-menu::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-select-menu::-webkit-scrollbar-thumb {
+  background: #d4d0c8;
+  border-radius: 4px;
 }
 
 @keyframes custom-select-in {
   from {
     opacity: 0;
     transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes custom-select-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
