@@ -19,6 +19,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? initialContext?.status ?? "inbox");
   const [assigneeName, setAssigneeName] = useState(task?.assigneeName ?? "");
   const [followUpDate, setFollowUpDate] = useState(task?.followUpDate ?? "");
+  const [planningPeople, setPlanningPeople] = useState(planning?.people ?? []);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   useModalDialog(dialogRef);
@@ -33,7 +34,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   async function submit() {
     const clean = title.trim();
     if (!clean) return;
-    await onSave({ title: clean, description: description.trim(), dueDate: dueDate || null, priority, important, urgent, areaId, projectId, status, assigneeName: assigneeName.trim(), followUpDate: followUpDate || null });
+    await onSave({ title: clean, description: description.trim(), dueDate: dueDate || null, priority, important, urgent, areaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null });
     if (!task) {
       setTitle("");
       setDescription("");
@@ -92,7 +93,16 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
           <button type="button" className={`option-button flag-toggle ${urgent ? "selected urgent" : ""}`} aria-pressed={urgent} onClick={() => setUrgent((value) => !value)}><Icon name="bolt" /> Urgent</button>
         </div>
         <details className="task-advanced-options"><summary>More details</summary><div className="task-advanced-grid"><label className="field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value as TaskStatus)}><option value="inbox">Inbox</option><option value="next">Next</option><option value="in_progress">In progress</option><option value="waiting">Waiting / delegated</option></select></label><label className="field"><span>Assignee</span><input value={assigneeName} onChange={(event) => setAssigneeName(event.target.value)} placeholder="Optional" /></label><label className="field"><span>Follow up</span><input type="date" value={followUpDate} onChange={(event) => setFollowUpDate(event.target.value)} /></label></div></details>
-        {planning && <TaskPlanning {...planning} />}
+        {planning && <TaskPlanning
+          {...planning}
+          people={planningPeople}
+          fields={planning.fields.map((field) => field.key === "state" ? { ...field, selectedIds: [status] } : field)}
+          onPeopleChange={(people) => { setPlanningPeople(people); planning.onPeopleChange?.(people); }}
+          onFieldChange={(key, selectedIds) => {
+            if (key === "state" && selectedIds[0]) setStatus(selectedIds[0] as TaskStatus);
+            planning.onFieldChange?.(key, selectedIds);
+          }}
+        />}
         <div className="modal-footer">
           <button type="button" className="secondary-button" onClick={onCancel}>Cancel</button>
           <button className="primary-button" type="submit" disabled={!title.trim()}>{task ? "Save task" : "Create task"}</button>

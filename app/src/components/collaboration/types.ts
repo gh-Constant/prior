@@ -52,6 +52,7 @@ export type ProjectSharingProps = {
   notice?: string;
   onInvite?: (email: string, role: ProjectInvite["role"]) => void;
   onRoleChange?: (personId: string, role: ProjectInvite["role"]) => void;
+  onRemoveMember?: (personId: string) => void;
   onRevokeInvite?: (inviteId: string) => void;
   onCopyLink?: () => void;
 };

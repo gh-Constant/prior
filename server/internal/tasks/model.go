@@ -14,6 +14,7 @@ type Task struct {
 	ScheduledDate  *string    `json:"scheduledDate,omitempty"`
 	AssigneeName   string     `json:"assigneeName"`
 	FollowUpDate   *string    `json:"followUpDate,omitempty"`
+	PeopleIDs      []string   `json:"peopleIds,omitempty"`
 	Completed      bool       `json:"completed"`
 	Important      bool       `json:"important"`
 	Urgent         bool       `json:"urgent"`

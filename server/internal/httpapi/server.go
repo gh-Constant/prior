@@ -146,6 +146,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sync/push", s.push)
 	mux.HandleFunc("GET /v1/sync/pull", s.pull)
 	mux.HandleFunc("POST /v1/workspace/sync", s.syncWorkspace)
+	mux.HandleFunc("GET /v1/collaboration/projects", s.collaborationProjects)
+	mux.HandleFunc("GET /v1/collaboration/projects/{projectID}/members", s.collaborationProjectMembers)
+	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/members", s.shareProject)
+	mux.HandleFunc("PATCH /v1/collaboration/projects/{projectID}/members/{userID}", s.updateProjectMember)
+	mux.HandleFunc("DELETE /v1/collaboration/projects/{projectID}/members/{userID}", s.removeProjectMember)
+	mux.HandleFunc("DELETE /v1/collaboration/projects/{projectID}/invites/{inviteID}", s.revokeProjectInvite)
+	mux.HandleFunc("POST /v1/collaboration/invites/accept", s.acceptProjectInvite)
 	mux.HandleFunc("GET /v1/realtime", s.realtime)
 	return s.middleware(mux)
 }

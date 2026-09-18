@@ -1403,6 +1403,7 @@ type mutationContext struct {
 	ctx      context.Context
 	tx       pgx.Tx
 	userID   uuid.UUID
+	ownerID  uuid.UUID
 	revision int64
 }
 
@@ -1638,27 +1639,35 @@ func applyTaskMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutatio
 	if err != nil {
 		return AppliedMutation{}, fmt.Errorf("task id: %w", err)
 	}
-	if err := ensureTaskOwned(ctx, tx, taskID, userID); err != nil {
+	ownerID, err := authorizeTaskMutationTx(ctx, tx, userID, taskID, mutation.Task.ProjectID)
+	if err != nil {
 		return AppliedMutation{}, err
 	}
 	if err := validateTask(&mutation.Task); err != nil {
 		return AppliedMutation{}, err
 	}
+	if len(mutation.Task.PeopleIDs) == 0 {
+		mutation.Task.PeopleIDs = []string{userID.String()}
+	}
 	if err := checkClockSkew(mutation.Task.UpdatedAt.UTC(), time.Now().UTC()); err != nil {
 		return AppliedMutation{}, err
 	}
-	return persistTaskMutation(ctx, tx, userID, mutation, taskID, mutationID)
+	return persistTaskMutation(ctx, tx, userID, ownerID, mutation, taskID, mutationID)
 }
 
 func insertTaskRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, createdAt, updatedAt time.Time) error {
+	peopleJSON, err := json.Marshal(task.PeopleIDs)
+	if err != nil {
+		return err
+	}
 	result, err := mc.tx.Exec(mc.ctx, `
-			INSERT INTO tasks (id, user_id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, revision)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-			ON CONFLICT (user_id, id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date,
+			INSERT INTO tasks (id, user_id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date,
 			 priority = EXCLUDED.priority, area_id = EXCLUDED.area_id, project_id = EXCLUDED.project_id, status = EXCLUDED.status,
-			 scheduled_date = EXCLUDED.scheduled_date, assignee_name = EXCLUDED.assignee_name, follow_up_date = EXCLUDED.follow_up_date,
+			 scheduled_date = EXCLUDED.scheduled_date, assignee_name = EXCLUDED.assignee_name, follow_up_date = EXCLUDED.follow_up_date, people_ids = EXCLUDED.people_ids,
 			 completed = EXCLUDED.completed, important = EXCLUDED.important, urgent = EXCLUDED.urgent,
-			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision`, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.AssigneeName, task.FollowUpDate, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision)
+			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision`, taskID, mc.ownerID, task.Title, task.Description, task.DueDate, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.AssigneeName, task.FollowUpDate, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision)
 	if err != nil {
 		return err
 	}
@@ -1669,18 +1678,25 @@ func insertTaskRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, create
 }
 
 func insertTaskChangeRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, createdAt, updatedAt time.Time) error {
-	_, err := mc.tx.Exec(mc.ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`, mc.revision, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.AssigneeName, task.FollowUpDate, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt)
+	peopleJSON, err := json.Marshal(task.PeopleIDs)
+	if err != nil {
+		return err
+	}
+	_, err = mc.tx.Exec(mc.ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, people_ids, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`, mc.revision, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.AssigneeName, task.FollowUpDate, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt)
 	return err
 }
 
-func persistTaskMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, mutation tasks.Mutation, taskID, mutationID uuid.UUID) (AppliedMutation, error) {
+func persistTaskMutation(ctx context.Context, tx pgx.Tx, userID, ownerID uuid.UUID, mutation tasks.Mutation, taskID, mutationID uuid.UUID) (AppliedMutation, error) {
 	revision, err := nextRevision(ctx, tx)
 	if err != nil {
 		return AppliedMutation{}, err
 	}
 	createdAt, updatedAt := coalesceTimestamps(mutation.Task.CreatedAt.UTC(), mutation.Task.UpdatedAt.UTC())
-	mc := mutationContext{ctx: ctx, tx: tx, userID: userID, revision: revision}
+	mc := mutationContext{ctx: ctx, tx: tx, userID: userID, ownerID: ownerID, revision: revision}
 	if err := insertTaskRow(mc, mutation.Task, taskID, createdAt, updatedAt); err != nil {
+		return AppliedMutation{}, err
+	}
+	if err := replaceTaskPeopleTx(ctx, tx, taskID, userID, mutation.Task.ProjectID, mutation.Task.PeopleIDs); err != nil {
 		return AppliedMutation{}, err
 	}
 	mutation.Task.ServerRevision = revision
@@ -1709,7 +1725,11 @@ func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) (PullRe
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT revision, kind FROM (
-			SELECT revision, 'task'::text AS kind FROM task_changes WHERE user_id = $1 AND revision > $2
+			SELECT c.revision, 'task'::text AS kind FROM task_changes c
+			WHERE c.revision > $2 AND (c.user_id = $1 OR EXISTS (
+				SELECT 1 FROM project_members pm
+				WHERE pm.project_id = c.project_id AND pm.user_id = $1 AND pm.status = 'active'
+			))
 			UNION ALL
 			SELECT revision, 'habit'::text AS kind FROM habit_changes WHERE user_id = $1 AND revision > $2
 		) s ORDER BY revision ASC LIMIT 201`, userID, since)
@@ -1803,16 +1823,25 @@ func pullChangelogTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUI
 		return result, nil
 	}
 	rows, err := pool.Query(ctx, `
-		SELECT task_id::text, title, description, due_date, priority, area_id::text, project_id::text, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, revision
-		FROM task_changes WHERE user_id = $1 AND revision = ANY($2) ORDER BY revision ASC`, userID, revisions)
+		SELECT task_id::text, title, description, due_date, priority, area_id::text, project_id::text, status, scheduled_date, assignee_name, follow_up_date, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		FROM task_changes c WHERE revision = ANY($2) AND (c.user_id = $1 OR EXISTS (
+			SELECT 1 FROM project_members pm
+			WHERE pm.project_id = c.project_id AND pm.user_id = $1 AND pm.status = 'active'
+		)) ORDER BY revision ASC`, userID, revisions)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var task tasks.Task
-		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.AssigneeName, &task.FollowUpDate, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
+		var peopleJSON []byte
+		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.AssigneeName, &task.FollowUpDate, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
 			return nil, err
+		}
+		if len(peopleJSON) > 0 && string(peopleJSON) != "null" {
+			if err := json.Unmarshal(peopleJSON, &task.PeopleIDs); err != nil {
+				return nil, err
+			}
 		}
 		result = append(result, task)
 	}

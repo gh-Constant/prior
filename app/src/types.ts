@@ -37,6 +37,7 @@ export type Task = {
   status?: TaskStatus;
   scheduledDate?: string | null;
   assigneeName?: string;
+  peopleIds?: string[];
   followUpDate?: string | null;
   completed: boolean;
   important: boolean;
@@ -47,7 +48,7 @@ export type Task = {
   serverRevision?: number;
 };
 
-export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "assigneeName" | "followUpDate">>;
+export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "assigneeName" | "peopleIds" | "followUpDate">>;
 
 export type HabitUnit = "day" | "week" | "month" | "year";
 

@@ -64,6 +64,9 @@ type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "ha
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number; nextSince?: number; hasMore?: boolean; workspaceRevision?: number; profile?: { displayName: string; profileRevision: number; updatedAt: string } };
 export type ServerSettings = { openrouterApiKey: string; openaiApiKey: string; webSearch: boolean };
 export type ProfileUser = { id: string; email: string; displayName: string; avatarUrl?: string };
+export type CollaborationMember = { userId: string; email: string; displayName: string; avatarUrl?: string; role: "owner" | "editor" | "viewer"; status: "active" | "revoked"; createdAt: string };
+export type CollaborationInvite = { id: string; email: string; role: "editor" | "viewer"; expiresAt: string; inviteToken?: string; projectId: string };
+export type CollaborationProject = { project: Project; role: "owner" | "editor" | "viewer"; members: CollaborationMember[]; pendingInvites?: CollaborationInvite[] };
 export type SessionInfo = {
   id: string;
   deviceName: string;
@@ -204,6 +207,27 @@ export const api = {
   },
   syncWorkspace(snapshot: WorkspaceSnapshot, token: string): Promise<WorkspaceSnapshot> {
     return request<WorkspaceSnapshot>("/v1/workspace/sync", { method: "POST", body: JSON.stringify(snapshot) }, token, 30_000);
+  },
+  listCollaborativeProjects(token: string): Promise<{ projects: CollaborationProject[] }> {
+    return request<{ projects: CollaborationProject[] }>("/v1/collaboration/projects", {}, token, 30_000);
+  },
+  listProjectMembers(projectId: string, token: string): Promise<{ members: CollaborationMember[]; pendingInvites: CollaborationInvite[]; role: CollaborationProject["role"] }> {
+    return request<{ members: CollaborationMember[]; pendingInvites: CollaborationInvite[]; role: CollaborationProject["role"] }>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members`, {}, token);
+  },
+  shareProject(projectId: string, email: string, role: "editor" | "viewer", token: string): Promise<{ member?: CollaborationMember; invite?: CollaborationInvite }> {
+    return request<{ member?: CollaborationMember; invite?: CollaborationInvite }>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members`, { method: "POST", body: JSON.stringify({ email, role }) }, token);
+  },
+  updateProjectMember(projectId: string, userId: string, role: "editor" | "viewer", token: string): Promise<void> {
+    return request<void>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`, { method: "PATCH", body: JSON.stringify({ role }) }, token);
+  },
+  removeProjectMember(projectId: string, userId: string, token: string): Promise<void> {
+    return request<void>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" }, token);
+  },
+  revokeProjectInvite(projectId: string, inviteId: string, token: string): Promise<void> {
+    return request<void>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/invites/${encodeURIComponent(inviteId)}`, { method: "DELETE" }, token);
+  },
+  acceptProjectInvite(tokenValue: string, token: string): Promise<{ projectId: string }> {
+    return request<{ projectId: string }>("/v1/collaboration/invites/accept", { method: "POST", body: JSON.stringify({ token: tokenValue }) }, token);
   },
   listAgentChats(token: string): Promise<AgentChatSummary[]> {
     return request<AgentChatSummary[]>("/v1/agent/chats", {}, token);

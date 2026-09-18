@@ -105,6 +105,10 @@ function normalizeWeekdays(value: unknown): number[] {
 
 // Pure, adapter-independent normalizers shared by SQLite + localStorage paths.
 export function normalizeTask(task: Task): Task {
+  let peopleIds: unknown = task.peopleIds;
+  if (typeof peopleIds === "string") {
+    try { peopleIds = JSON.parse(peopleIds); } catch { peopleIds = []; }
+  }
   return {
     ...task,
     description: typeof task.description === "string" ? task.description : "",
@@ -115,6 +119,7 @@ export function normalizeTask(task: Task): Task {
     status: normalizeStatus(task.status, Boolean(task.completed)),
     scheduledDate: normalizeDueDate(task.scheduledDate),
     assigneeName: typeof task.assigneeName === "string" ? task.assigneeName : "",
+    peopleIds: Array.isArray(peopleIds) ? [...new Set(peopleIds.filter((value): value is string => typeof value === "string" && value.length > 0))] : [],
     followUpDate: normalizeDueDate(task.followUpDate),
     completed: Boolean(task.completed),
     important: Boolean(task.important),
@@ -162,6 +167,7 @@ export function buildTask(
     status: normalizeStatus(input.status ?? previous?.status, Boolean(input.completed ?? previous?.completed ?? false)),
     scheduledDate: normalizeDueDate(input.scheduledDate ?? previous?.scheduledDate),
     assigneeName: input.assigneeName?.trim() ?? previous?.assigneeName ?? "",
+    peopleIds: Array.isArray(input.peopleIds) ? [...new Set(input.peopleIds)] : previous?.peopleIds ?? [],
     followUpDate: normalizeDueDate(input.followUpDate ?? previous?.followUpDate),
     completed: Boolean(input.completed ?? previous?.completed ?? false),
     important: Boolean(input.important),
@@ -252,7 +258,7 @@ async function findPreviousTask(db: SqlDatabase | null, accountId: string, id: s
   if (!id) return undefined;
   if (db) {
     const rows = await db.select<Task>(
-      "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE id = ? AND account_id = ?",
+      "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE id = ? AND account_id = ?",
       [id, accountId],
     );
     return rows[0] ? normalizeTask(rows[0]) : undefined;
@@ -289,8 +295,8 @@ async function mergeRemoteTasksIntoDb(db: SqlDatabase, pendingIds: Set<string>, 
     for (const task of candidates) {
       if (isRemoteStale(task.serverRevision, revisions.get(task.id))) continue;
       await db.execute(
-        "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
-        [accountId, task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.assigneeName ?? "", task.followUpDate ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
+        "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, people_ids, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+        [accountId, task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.assigneeName ?? "", JSON.stringify(task.peopleIds ?? []), task.followUpDate ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
       );
     }
   });
@@ -343,7 +349,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       const rows = await db.select<Task>(
-        "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? ORDER BY updated_at DESC",
+        "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? ORDER BY updated_at DESC",
         [accountId],
       );
       return rows.map(normalizeTask);
@@ -356,7 +362,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       const rows = await db.select<Task>(
-      "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? AND deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
+      "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? AND deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
       [accountId],
       );
       return rows.map(normalizeTask);
@@ -385,8 +391,8 @@ export const localStore = {
     const task = buildTask(input, previous, timestamp, input.id ?? uuid());
     if (db) {
       await db.execute(
-        "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
-        [accountId, task.id, task.title, task.description, task.dueDate, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.assigneeName, task.followUpDate, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
+        "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, people_ids, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+        [accountId, task.id, task.title, task.description, task.dueDate, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.assigneeName, JSON.stringify(task.peopleIds ?? []), task.followUpDate, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
       );
     } else {
       const tasks = read<Task[]>(TASKS_KEY, []).filter((item) => item.id !== task.id);

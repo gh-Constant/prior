@@ -29,7 +29,9 @@ import { NotesWorkspace } from "./components/NotesWorkspace";
 import { notesStore } from "./lib/notes";
 import { workspaceSync } from "./lib/workspaceSync";
 import { workspaceStore } from "./lib/workspaceStore";
+import { collaborationStore } from "./lib/collaborationStore";
 import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
+import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
 
 type Layout = "list" | "board";
 
@@ -99,12 +101,14 @@ type WorkspaceContentProps = {
   readonly onOpenWaiting: () => void;
   readonly onNewTask: (context?: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void;
   readonly onWorkspaceChange: () => void;
+  readonly collaborationByProject: Readonly<Record<string, Omit<ProjectCollaborationProps, "project">>>;
 };
+type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange, collaborationByProject }: WorkspaceContentProps) {
   if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
-  if (["today", "inbox", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} />;
+  if (["today", "inbox", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
   }
@@ -130,6 +134,7 @@ export function App() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [areas, setAreas] = useState<Area[]>(() => workspaceStore.listAreas());
   const [projects, setProjects] = useState<Project[]>(() => workspaceStore.listProjects());
+  const [, bumpCollaboration] = useReducer((value: number) => value + 1, 0);
   const [composerOpen, setComposerOpen] = useState(false);
   const [newTaskContext, setNewTaskContext] = useState<Pick<TaskDraft, "areaId" | "projectId" | "status"> | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -180,7 +185,10 @@ export function App() {
   const refreshWorkspace = useCallback(() => {
     workspaceStore.syncNoteCategories();
     setAreas(workspaceStore.listAreas());
-    setProjects(workspaceStore.listProjects());
+    const personalProjects = workspaceStore.listProjects();
+    const personalIds = new Set(personalProjects.map((project) => project.id));
+    setProjects([...personalProjects, ...collaborationStore.listProjects().filter((project) => !personalIds.has(project.id))]);
+    bumpCollaboration();
   }, []);
 
   useEffect(() => {
@@ -232,7 +240,8 @@ export function App() {
     if (refreshInFlight.current) return refreshInFlight.current;
     const run = (async () => {
       const [nextTasks, nextHabits] = await Promise.all([localStore.listTasks(), localStore.listHabits()]);
-      setTasks(nextTasks);
+      const accessibleProjectIds = new Set([...workspaceStore.listProjects(), ...collaborationStore.listProjects()].map((project) => project.id));
+      setTasks(nextTasks.filter((task) => !task.projectId || accessibleProjectIds.has(task.projectId)));
       setHabits(nextHabits);
       void updateAndroidWidget(nextTasks, nextHabits).catch(() => undefined);
     })();
@@ -339,6 +348,34 @@ export function App() {
         await localStore.applyRemoteHabits(pulled.habits ?? [], pendingSnapshot.habits);
         await workspaceSync.sync(token, () => generation === sessionGeneration.current);
         if (generation !== sessionGeneration.current) return;
+        let collaborationChanged = false;
+        try {
+          collaborationChanged = (await collaborationStore.sync(token)).changed;
+        } catch (collaborationError) {
+          // The cache remains usable when the collaboration endpoint is not
+          // deployed yet or the account has no shared projects.
+          console.warn("Prior collaboration sync failed:", collaborationError);
+        }
+        const inviteToken = typeof window !== "undefined" ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("invite") : null;
+        if (inviteToken) {
+          try {
+            await api.acceptProjectInvite(inviteToken, token);
+            window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+            collaborationChanged = (await collaborationStore.sync(token)).changed || collaborationChanged;
+            setToast("Project invitation accepted.");
+          } catch (inviteError) {
+            console.warn("Prior project invite could not be accepted:", inviteError);
+          }
+        }
+        // A newly accepted/shared project may contain task revisions older than
+        // this account's normal sync cursor. Pull the authorized history once
+        // when the project ACL changes so the member sees the existing work.
+        if (collaborationChanged) {
+          const collaborationHistory = await pullAll(0);
+          if (generation !== sessionGeneration.current) return;
+          await localStore.applyRemoteTasks(collaborationHistory.tasks, pendingSnapshot.tasks);
+          pulled = { ...pulled, revision: Math.max(pulled.revision, collaborationHistory.revision) };
+        }
         // Assistant settings follow the account after workspace data.
         try {
           const settingsOk = await pullAssistantSettings();
@@ -467,6 +504,8 @@ export function App() {
     scheduleWorkspaceSync();
   }), [refreshWorkspace, scheduleWorkspaceSync]);
 
+  useEffect(() => collaborationStore.subscribe(refreshWorkspace), [refreshWorkspace]);
+
   useEffect(() => notesStore.subscribe(scheduleWorkspaceSync), [scheduleWorkspaceSync]);
 
   useEffect(() => {
@@ -568,7 +607,7 @@ export function App() {
   }
 
   async function saveTask(input: TaskDraft) {
-    await localStore.saveTask({ ...newTaskContext, ...input });
+    await localStore.saveTask({ ...newTaskContext, ...input, peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
     setComposerOpen(false);
     setNewTaskContext(undefined);
     await refresh();
@@ -602,12 +641,12 @@ export function App() {
     if (existing) {
       if (areaId && !existing.areaId) {
         workspaceStore.updateProject({ ...existing, areaId });
-        setProjects(workspaceStore.listProjects());
+        refreshWorkspace();
       }
       return existing.id;
     }
     const created = workspaceStore.createProject(projectName.trim(), areaId);
-    setProjects(workspaceStore.listProjects());
+    refreshWorkspace();
     return created.id;
   }
 
@@ -639,7 +678,7 @@ export function App() {
       }
     }
     setAreas(workspaceStore.listAreas());
-    setProjects(workspaceStore.listProjects());
+    refreshWorkspace();
   }
 
   async function addAgentTasks(batch: Array<TaskDraft & { areaName?: string | null; projectName?: string | null }>) {
@@ -656,6 +695,7 @@ export function App() {
         ...item,
         areaId,
         projectId,
+        peopleIds: item.peopleIds ?? (user ? [user.id] : []),
       });
     }
     await refresh();
@@ -708,7 +748,7 @@ export function App() {
       const created = notesStore.create(title, folderId, projectId);
       notesStore.update({ ...created, body: item.bodyMarkdown, favorite: item.favorite });
     }
-    setProjects(workspaceStore.listProjects());
+    refreshWorkspace();
   }
 
   async function changeTask(task: Task) {
@@ -755,6 +795,139 @@ export function App() {
 
   async function changeHabit(habit: Habit) { await localStore.updateHabit(habit); await refresh(); void syncNow(); }
   async function deleteHabit(habit: Habit) { await localStore.removeHabit(habit); await refresh(); void syncNow(); }
+
+  const collaborationByProject = useMemo<CollaborationByProject>(() => {
+    const stateOptions = [
+      { id: "inbox", name: "Triage", category: "triage" as const },
+      { id: "next", name: "Todo", category: "unstarted" as const },
+      { id: "in_progress", name: "In progress", category: "started" as const },
+      { id: "done", name: "Done", category: "completed" as const },
+    ];
+    const result: Record<string, Omit<ProjectCollaborationProps, "project">> = {};
+    for (const entry of collaborationStore.list()) {
+      const memberById = new Map(entry.members.map((member) => [member.userId, member]));
+      const projectIssues = tasks.filter((task) => task.projectId === entry.project.id).map((task) => ({
+        id: task.id,
+        title: task.title,
+        stateId: task.completed ? "done" : task.status ?? "inbox",
+        priority: task.priority,
+        people: (task.peopleIds ?? []).map((personId): TaskPerson | null => {
+          const person = memberById.get(personId);
+          return person ? { id: person.userId, name: person.displayName || person.email, email: person.email, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator" } : null;
+        }).filter((person): person is TaskPerson => Boolean(person)),
+        properties: [],
+      }));
+      const members = entry.members.map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email, role: member.role }));
+      result[entry.project.id] = {
+        issues: projectIssues,
+        states: stateOptions,
+        cycles: [],
+        readOnly: entry.role === "viewer",
+        onCreateIssue: entry.role === "viewer" ? undefined : () => openNewTask({ projectId: entry.project.id, status: "next" }),
+        sharing: {
+          members,
+          invites: (entry.pendingInvites ?? []).map((invite) => ({ id: invite.id, email: invite.email, role: invite.role })),
+          canManage: entry.role === "owner",
+          onInvite: (email, role) => {
+            void (async () => {
+              const token = await getToken();
+              if (!token) { setAuthOpen(true); return; }
+              try {
+                const response = await api.shareProject(entry.project.id, email, role, token);
+                await collaborationStore.sync(token);
+                refreshWorkspace();
+                if (response.invite?.inviteToken) {
+                  const inviteLink = `${window.location.origin}${window.location.pathname}#invite=${encodeURIComponent(response.invite.inviteToken)}`;
+                  await navigator.clipboard?.writeText(inviteLink);
+                  setToast(`Invite link copied for ${email}.`);
+                } else {
+                  setToast(`${email} was added to the project.`);
+                }
+              } catch (error) {
+                setToast(error instanceof Error ? error.message : "Unable to share this project.");
+              }
+            })();
+          },
+          onRevokeInvite: (inviteId) => {
+            void (async () => {
+              const token = await getToken();
+              if (!token) return;
+              try {
+                await api.revokeProjectInvite(entry.project.id, inviteId, token);
+                await collaborationStore.sync(token);
+                refreshWorkspace();
+                setToast("Invitation revoked.");
+              } catch (error) {
+                setToast(error instanceof Error ? error.message : "Unable to revoke the invitation.");
+              }
+            })();
+          },
+          onRoleChange: (userId, role) => {
+            void (async () => {
+              const token = await getToken();
+              if (!token) return;
+              try {
+                await api.updateProjectMember(entry.project.id, userId, role, token);
+                await collaborationStore.sync(token);
+                refreshWorkspace();
+                setToast("Project role updated.");
+              } catch (error) {
+                setToast(error instanceof Error ? error.message : "Unable to update the project role.");
+              }
+            })();
+          },
+          onRemoveMember: (userId) => {
+            void (async () => {
+              const token = await getToken();
+              if (!token) return;
+              try {
+                await api.removeProjectMember(entry.project.id, userId, token);
+                await collaborationStore.sync(token);
+                refreshWorkspace();
+                setToast("Project member removed.");
+              } catch (error) {
+                setToast(error instanceof Error ? error.message : "Unable to remove the project member.");
+              }
+            })();
+          },
+          onCopyLink: () => {
+            void (async () => {
+              try {
+                await navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}#project=${entry.project.id}`);
+                setToast("Project link copied. Access is still required.");
+              } catch {
+                setToast("Unable to copy the project link.");
+              }
+            })();
+          },
+        },
+        overview: { lead: members.find((member) => member.role === "owner") },
+      };
+    }
+    return result;
+  }, [openNewTask, projects, tasks, user, refreshWorkspace]);
+
+  const taskPlanning = useMemo<TaskPlanningProps | undefined>(() => {
+    const projectId = editingTask?.projectId ?? newTaskContext?.projectId;
+    if (!projectId) return undefined;
+    const entry = collaborationStore.get(projectId);
+    if (!entry) return undefined;
+    const availablePeople: Person[] = entry.members.map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email }));
+    if (user && !availablePeople.some((person) => person.id === user.id)) availablePeople.unshift({ id: user.id, name: user.displayName || user.email, email: user.email });
+    const selectedIds = editingTask?.peopleIds?.length ? editingTask.peopleIds : user ? [user.id] : [];
+    const people: TaskPerson[] = selectedIds.map((personId) => {
+      const person = availablePeople.find((item) => item.id === personId) ?? { id: personId, name: "Unknown person" };
+      return { ...person, role: personId === user?.id ? "owner" : "collaborator" };
+    });
+    return {
+      people,
+      availablePeople,
+      readOnly: entry.role === "viewer",
+      fields: [
+        { key: "state", label: "Workflow state", options: [{ id: "inbox", name: "Triage" }, { id: "next", name: "Todo" }, { id: "in_progress", name: "In progress" }, { id: "done", name: "Done" }], selectedIds: [editingTask?.status ?? newTaskContext?.status ?? "inbox"] },
+      ],
+    };
+  }, [editingTask, newTaskContext, user]);
 
   async function logout() {
     const token = await getToken().catch(() => null);
@@ -936,6 +1109,7 @@ export function App() {
             onOpenWaiting={openWaiting}
             onNewTask={openNewTask}
             onWorkspaceChange={refreshWorkspace}
+            collaborationByProject={collaborationByProject}
           />
         </CompletionExitProvider>
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => setComposerOpen(true)}><Icon name="plus" /> New task</button>}
@@ -959,7 +1133,7 @@ export function App() {
         onOpenSettings={() => { setAgentOpen(false); changeView("settings"); }}
       />
 
-      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); }} />}
+      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); }} />}
       {habitComposerOpen && <HabitComposer habit={editingHabit ?? undefined} onSave={saveHabit} onCancel={() => { setHabitComposerOpen(false); setEditingHabit(null); }} />}
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}
