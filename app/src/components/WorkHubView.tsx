@@ -5,6 +5,8 @@ import { workspaceStore } from "../lib/workspaceStore";
 import { Icon } from "./Icon";
 import { TaskRow } from "./TaskRow";
 import { Modal } from "./Modal";
+import { ProjectCollaboration } from "./collaboration/ProjectCollaboration";
+import type { ProjectCollaborationProps } from "./collaboration/types";
 import { AREA_ICON_OPTIONS, DEFAULT_AREA_ICON, DEFAULT_PROJECT_ICON, PROJECT_ICON_OPTIONS, WorkspaceIcon, imageFileToIcon } from "./WorkspaceIcon";
 import "./WorkHubView.css";
 
@@ -24,6 +26,8 @@ type Props = {
   readonly onTaskDelete: (task: Task) => Promise<void>;
   readonly onTaskEdit: (task: Task) => void;
   readonly onWorkspaceChange: () => void;
+  /** Opt-in presentation data; absent projects keep the existing personal UI. */
+  readonly collaborationByProject?: Readonly<Record<string, Omit<ProjectCollaborationProps, "project">>>;
 };
 
 type WorkspaceModal =
@@ -182,7 +186,7 @@ function ProjectDetail({ project, area, tasks, onBack, onOpenNotes, onNewTask, o
   </section>;
 }
 
-export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange }: Props) {
+export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, collaborationByProject }: Props) {
   const [projectQuery, setProjectQuery] = useState("");
   const [modal, setModal] = useState<WorkspaceModal>(null);
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
@@ -194,6 +198,12 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   const nowTasks = rankedTasks.filter((task) => taskScore(task, today) >= 700).slice(0, 3);
   const nextTasks = rankedTasks.filter((task) => !nowTasks.some((item) => item.id === task.id) && taskScore(task, today) >= 0).slice(0, 8);
   const areaForProject = (project: Project) => areas.find((area) => area.id === project.areaId);
+  const collaboration = selectedProject ? collaborationByProject?.[selectedProject.id] : undefined;
+
+  if (view === "project" && selectedProject && collaboration) return <div className="workhub-project-detail">
+    <button type="button" className="back-link" onClick={() => onOpenProject("")}><Icon name="chevron-left" />All projects</button>
+    <ProjectCollaboration key={selectedProject.id} {...collaboration} project={selectedProject} />
+  </div>;
 
   function saveModal(name: string, areaId: string | null, icon: string): void {
     if (modal?.kind === "area") {

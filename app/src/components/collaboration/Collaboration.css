@@ -1,0 +1,85 @@
+.collab-project { width: 100%; max-width: var(--content-width); margin-inline: auto; color: var(--ink); }
+.collab-project-header, .collab-actions, .collab-share-footer, .collab-issue-toolbar, .collab-cycle-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.collab-project-header { margin-bottom: 20px; }
+.collab-project-header h2 { margin: 0; font-size: clamp(24px, 3vw, 34px); letter-spacing: -.045em; overflow-wrap: anywhere; }
+.collab-project h3, .collab-share-body h3, .collab-people-picker h3 { margin: 0 0 12px; font-size: 13px; font-weight: 650; }
+.collab-actions .secondary-button, .collab-share-footer .secondary-button, .collab-panel .secondary-button, .collab-candidates button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.collab-notice { display: flex; align-items: flex-start; gap: 8px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: #faf9f7; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.collab-notice svg { flex-shrink: 0; margin-top: 1px; }
+.collab-tabs { display: flex; gap: 4px; margin-block: 18px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.collab-tabs button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 650; }
+.collab-tabs button[aria-selected="true"] { background: #fff0e9; color: var(--accent-dark); }
+.collab-project :focus-visible, .collab-share-body :focus-visible, .collab-task-planning :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.collab-overview { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; }
+.collab-panel { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); font-size: 13px; overflow-wrap: anywhere; }
+.collab-brief { margin-block: 0 18px; white-space: pre-wrap; line-height: 1.65; color: var(--muted); }
+.collab-muted { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.collab-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-block: 20px; }
+.collab-metadata dt { color: var(--muted); font-size: 11px; }
+.collab-metadata dd { margin: 5px 0 0; text-transform: capitalize; font-size: 12px; }
+.collab-progress-label { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
+.collab-progress { display: block; width: 100%; height: 7px; margin-top: 10px; border: 0; border-radius: 20px; overflow: hidden; accent-color: var(--accent); background: var(--line); }
+.collab-progress::-webkit-progress-bar { background: var(--line); }
+.collab-progress::-webkit-progress-value { background: var(--accent); border-radius: 20px; }
+.collab-progress::-moz-progress-bar { background: var(--accent); }
+.collab-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.collab-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; background: #faf9f7; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.collab-chip svg { width: 12px; height: 12px; flex-shrink: 0; }
+.collab-avatar { display: inline-grid; place-items: center; width: 23px; height: 23px; flex-shrink: 0; border-radius: 50%; background: #f6e9e2; color: var(--accent-dark); font-size: 10px; font-weight: 700; }
+.collab-milestones, .collab-resources, .collab-members { margin: 0; padding: 0; list-style: none; }
+.collab-milestones li, .collab-resources a { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; line-height: 1.5; }
+.collab-milestones li span { flex: 1; }
+.collab-milestones small { color: var(--muted); }
+.collab-resources a { color: var(--accent-dark); }
+.collab-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; min-height: 190px; padding: 28px; border: 1px dashed var(--line); border-radius: 12px; text-align: center; color: var(--muted); font-size: 13px; }
+.collab-empty strong { color: var(--ink); }
+.collab-empty p { max-width: 360px; margin: 0; line-height: 1.6; }
+.collab-issue-toolbar { margin-bottom: 14px; }
+.collab-search { display: flex; align-items: center; gap: 8px; width: min(100%, 360px); min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--muted); }
+.collab-search input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--ink); font-size: 13px; }
+.collab-issue-list { display: grid; gap: 8px; }
+.collab-issue { display: grid; gap: 10px; min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.collab-issue-heading { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.collab-issue-heading small { color: var(--muted); font-size: 10px; }
+.collab-issue-heading button, .collab-issue-heading strong { padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 13px; font-weight: 600; text-align: left; overflow-wrap: anywhere; }
+.collab-issue-heading button:hover { color: var(--accent-dark); }
+.collab-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 12px; }
+.collab-board-column { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #f7f5f1; }
+.collab-board-column h3 { display: flex; justify-content: space-between; gap: 10px; }
+.collab-board-column .collab-issue + .collab-issue { margin-top: 8px; }
+.collab-cycle-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; }
+.collab-cycle-heading h3 { margin: 0; }
+.collab-share-body { display: grid; gap: 20px; padding: 0 24px 24px; font-size: 13px; }
+.collab-share-body .collab-notice { margin: 0; }
+.collab-members li { display: flex; align-items: center; gap: 9px; padding-block: 10px; border-bottom: 1px solid var(--line); }
+.collab-person-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.collab-person-copy strong { font-size: 12px; font-weight: 600; }
+.collab-person-copy small { color: var(--muted); font-size: 11px; }
+.collab-members select, .collab-field select, .collab-field input { min-width: 0; min-height: 38px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; font-size: 12px; }
+.collab-field { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
+.collab-field > span { color: var(--muted); font-size: 11px; font-weight: 600; }
+.collab-invite-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 8px; }
+.collab-invite-form > p { grid-column: 1 / -1; margin: 0; }
+.collab-error { margin: 0; color: #a33c2e; line-height: 1.5; }
+.collab-task-planning { margin: 18px 24px 0; }
+.collab-people-picker { min-width: 0; }
+.collab-picker-options, .collab-planning { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.collab-picker-options summary, .collab-planning summary { padding: 4px 0 12px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.collab-candidates { display: flex; flex-wrap: wrap; gap: 8px; max-height: 180px; overflow-y: auto; margin-top: 10px; }
+.collab-planning-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.collab-share-body button:disabled, .collab-task-planning button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 640px) {
+  .collab-overview { grid-template-columns: minmax(0, 1fr); }
+  .collab-tabs { gap: 0; }
+  .collab-tabs button { flex: 1; min-width: 0; padding-inline: 7px; }
+  .collab-panel { padding: 16px; }
+  .collab-board { grid-auto-flow: row; grid-auto-columns: auto; }
+  .collab-invite-form { grid-template-columns: minmax(0, 1fr) auto; }
+  .collab-invite-form > .collab-field:first-child, .collab-invite-form > button { grid-column: 1 / -1; }
+  .collab-share-body { padding-inline: 16px; }
+  .collab-members li { flex-wrap: wrap; }
+  .collab-person-copy { flex-basis: 50%; }
+  .collab-share-footer { align-items: stretch; }
+  .collab-share-footer button { flex: 1; }
+  .collab-planning-grid { grid-template-columns: minmax(0, 1fr); }
+}

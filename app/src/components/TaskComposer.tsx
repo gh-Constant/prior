@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import type { Area, Project, Task, TaskDraft, TaskPriority, TaskStatus } from "../types";
 import { useModalDialog } from "../hooks/useModalDialog";
 import { Icon } from "./Icon";
+import { TaskPlanning } from "./collaboration/TaskPlanning";
+import type { TaskPlanningProps } from "./collaboration/types";
 
-type Props = { readonly task?: Task; readonly areas?: Area[]; readonly projects?: Project[]; readonly initialContext?: Pick<TaskDraft, "areaId" | "projectId" | "status">; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
+type Props = { readonly task?: Task; readonly areas?: Area[]; readonly projects?: Project[]; readonly initialContext?: Pick<TaskDraft, "areaId" | "projectId" | "status">; readonly planning?: TaskPlanningProps; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
 
-export function TaskComposer({ task, areas = [], projects = [], initialContext, onSave, onCancel }: Props) {
+export function TaskComposer({ task, areas = [], projects = [], initialContext, planning, onSave, onCancel }: Props) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
@@ -90,6 +92,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
           <button type="button" className={`option-button flag-toggle ${urgent ? "selected urgent" : ""}`} aria-pressed={urgent} onClick={() => setUrgent((value) => !value)}><Icon name="bolt" /> Urgent</button>
         </div>
         <details className="task-advanced-options"><summary>More details</summary><div className="task-advanced-grid"><label className="field"><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value as TaskStatus)}><option value="inbox">Inbox</option><option value="next">Next</option><option value="in_progress">In progress</option><option value="waiting">Waiting / delegated</option></select></label><label className="field"><span>Assignee</span><input value={assigneeName} onChange={(event) => setAssigneeName(event.target.value)} placeholder="Optional" /></label><label className="field"><span>Follow up</span><input type="date" value={followUpDate} onChange={(event) => setFollowUpDate(event.target.value)} /></label></div></details>
+        {planning && <TaskPlanning {...planning} />}
         <div className="modal-footer">
           <button type="button" className="secondary-button" onClick={onCancel}>Cancel</button>
           <button className="primary-button" type="submit" disabled={!title.trim()}>{task ? "Save task" : "Create task"}</button>
