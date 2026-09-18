@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
 import "./Modal.css";
 
@@ -12,6 +13,7 @@ export type ModalProps = {
 };
 
 export function Modal({ title, onClose, children, className = "", ariaLabelledBy, maxWidth }: ModalProps) {
+  const { t } = useI18n();
   const openerRef = useRef<HTMLElement | null>(
     typeof document !== "undefined" && document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -60,8 +62,8 @@ export function Modal({ title, onClose, children, className = "", ariaLabelledBy
           <button
             type="button"
             className="prior-modal-close"
-            aria-label="Close dialog"
-            title="Close"
+            aria-label={t("common.modal.closeDialog")}
+            title={t("common.actions.close")}
             onClick={onClose}
           >
             <Icon name="close" />
@@ -91,13 +93,16 @@ export function SimpleFormModal({
   submitLabel,
   name,
   onNameChange,
-  namePlaceholder = "Name",
-  nameLabel = "Name",
+  namePlaceholder,
+  nameLabel,
   isSubmitDisabled,
   onClose,
   onSubmit,
   children,
 }: SimpleFormModalProps) {
+  const { t } = useI18n();
+  const resolvedPlaceholder = namePlaceholder ?? t("common.modal.name");
+  const resolvedLabel = nameLabel ?? t("common.modal.name");
   const isValid = name.trim().length > 0;
   const canSubmit = isSubmitDisabled !== undefined ? !isSubmitDisabled && isValid : isValid;
 
@@ -113,13 +118,13 @@ export function SimpleFormModal({
         }}
       >
         <label className="prior-modal-field">
-          <span>{nameLabel}</span>
+          <span>{resolvedLabel}</span>
           <input
             className="prior-modal-input"
             autoFocus
             value={name}
             onChange={(event) => onNameChange(event.target.value)}
-            placeholder={namePlaceholder}
+            placeholder={resolvedPlaceholder}
           />
         </label>
         {children}
@@ -129,7 +134,7 @@ export function SimpleFormModal({
             className="prior-modal-button-secondary"
             onClick={onClose}
           >
-            Cancel
+            {t("common.actions.cancel")}
           </button>
           <button
             type="submit"

@@ -1,7 +1,11 @@
 import { useState } from "react";
 import type { TaskFilterState } from "../lib/taskFilters";
 import { defaultTaskFilters } from "../lib/taskFilters";
+import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
+
+type Vars = Record<string, string | number>;
+type TFn = (key: string, vars?: Vars) => string;
 
 type Props = {
   readonly value: TaskFilterState;
@@ -14,48 +18,45 @@ type Pill = {
   readonly clear: () => void;
 };
 
-const DATE_LABELS: Record<TaskFilterState["date"], string> = {
-  any: "Any date",
-  today: "Added today",
-  week: "Last 7 days",
-  older: "Added earlier",
+const DATE_KEYS: Record<TaskFilterState["date"], string> = {
+  any: "tasks.filters.dateAny",
+  today: "tasks.filters.dateToday",
+  week: "tasks.filters.dateWeek",
+  older: "tasks.filters.dateOlder",
 };
 
-const DUE_LABELS: Record<TaskFilterState["dueDate"], string> = {
-  any: "Any due date",
-  overdue: "Overdue",
-  today: "Due today",
-  next7: "Next 7 days",
-  none: "No due date",
+const DUE_KEYS: Record<TaskFilterState["dueDate"], string> = {
+  any: "tasks.filters.dueAny",
+  overdue: "tasks.filters.dueOverdue",
+  today: "tasks.filters.dueToday",
+  next7: "tasks.filters.dueNext7",
+  none: "tasks.filters.dueNone",
 };
 
-const TASK_PRIORITY_LABELS: Record<TaskFilterState["taskPriority"], string> = {
-  any: "Any priority",
-  p1: "Priority 1",
-  p2: "Priority 2",
-  p3: "Priority 3",
-  p4: "Priority 4",
+function taskPriorityLabel(value: TaskFilterState["taskPriority"], t: TFn): string {
+  if (value === "any") return t("tasks.filters.priorityAny");
+  return t("tasks.filters.priorityOption", { value: value.slice(1) });
+}
+
+const MATRIX_KEYS: Record<TaskFilterState["priority"], string> = {
+  any: "tasks.filters.importanceAny",
+  important: "tasks.filters.importanceImportant",
+  urgent: "tasks.filters.importanceUrgent",
+  both: "tasks.filters.importanceBoth",
+  none: "tasks.filters.importanceNone",
 };
 
-const MATRIX_LABELS: Record<TaskFilterState["priority"], string> = {
-  any: "Any importance",
-  important: "Important",
-  urgent: "Urgent",
-  both: "Important + urgent",
-  none: "Neither",
+const STATUS_KEYS: Record<TaskFilterState["status"], string> = {
+  open: "tasks.filters.statusOpen",
+  completed: "tasks.filters.statusCompleted",
+  all: "tasks.filters.statusAll",
 };
 
-const STATUS_LABELS: Record<TaskFilterState["status"], string> = {
-  open: "Open",
-  completed: "Completed",
-  all: "All",
-};
-
-const SORT_LABELS: Record<TaskFilterState["sort"], string> = {
-  recent: "Recently updated",
-  oldest: "Oldest first",
-  dueSoonest: "Due soonest",
-  dueLatest: "Due latest",
+const SORT_KEYS: Record<TaskFilterState["sort"], string> = {
+  recent: "tasks.filters.sortRecent",
+  oldest: "tasks.filters.sortOldest",
+  dueSoonest: "tasks.filters.sortDueSoonest",
+  dueLatest: "tasks.filters.sortDueLatest",
 };
 
 function activeFilterCount(value: TaskFilterState): number {
@@ -71,17 +72,17 @@ function activeFilterCount(value: TaskFilterState): number {
   return flags.filter(Boolean).length;
 }
 
-function collectPills(value: TaskFilterState, onChange: (next: TaskFilterState) => void): Pill[] {
+function collectPills(value: TaskFilterState, onChange: (next: TaskFilterState) => void, t: TFn): Pill[] {
   const pills: Pill[] = [];
   if (value.query.trim()) {
     pills.push({ key: "query", label: `“${value.query.trim()}”`, clear: () => onChange({ ...value, query: "" }) });
   }
-  if (value.date !== "any") pills.push({ key: "date", label: DATE_LABELS[value.date], clear: () => onChange({ ...value, date: "any" }) });
-  if (value.dueDate !== "any") pills.push({ key: "dueDate", label: DUE_LABELS[value.dueDate], clear: () => onChange({ ...value, dueDate: "any" }) });
-  if (value.taskPriority !== "any") pills.push({ key: "taskPriority", label: TASK_PRIORITY_LABELS[value.taskPriority], clear: () => onChange({ ...value, taskPriority: "any" }) });
-  if (value.priority !== "any") pills.push({ key: "priority", label: MATRIX_LABELS[value.priority], clear: () => onChange({ ...value, priority: "any" }) });
-  if (value.status !== "open") pills.push({ key: "status", label: STATUS_LABELS[value.status], clear: () => onChange({ ...value, status: "open" }) });
-  if (value.sort !== "recent") pills.push({ key: "sort", label: SORT_LABELS[value.sort], clear: () => onChange({ ...value, sort: "recent" }) });
+  if (value.date !== "any") pills.push({ key: "date", label: t(DATE_KEYS[value.date]), clear: () => onChange({ ...value, date: "any" }) });
+  if (value.dueDate !== "any") pills.push({ key: "dueDate", label: t(DUE_KEYS[value.dueDate]), clear: () => onChange({ ...value, dueDate: "any" }) });
+  if (value.taskPriority !== "any") pills.push({ key: "taskPriority", label: taskPriorityLabel(value.taskPriority, t), clear: () => onChange({ ...value, taskPriority: "any" }) });
+  if (value.priority !== "any") pills.push({ key: "priority", label: t(MATRIX_KEYS[value.priority]), clear: () => onChange({ ...value, priority: "any" }) });
+  if (value.status !== "open") pills.push({ key: "status", label: t(STATUS_KEYS[value.status]), clear: () => onChange({ ...value, status: "open" }) });
+  if (value.sort !== "recent") pills.push({ key: "sort", label: t(SORT_KEYS[value.sort]), clear: () => onChange({ ...value, sort: "recent" }) });
   return pills;
 }
 
@@ -105,63 +106,66 @@ function FilterField({ label, ariaLabel, value, options, onSelect }: {
 }
 
 function FiltersPanel({ value, onChange }: Props) {
+  const { t } = useI18n();
   return (
     <div id="task-filter-panel" className="filters-panel">
-      <FilterField label="Date added" ariaLabel="Date added" value={value.date} onSelect={(next) => onChange({ ...value, date: next as TaskFilterState["date"] })}
-        options={[["any", "Any date"], ["today", "Added today"], ["week", "Last 7 days"], ["older", "Added earlier"]]} />
-      <FilterField label="Due date" ariaLabel="Due date" value={value.dueDate} onSelect={(next) => onChange({ ...value, dueDate: next as TaskFilterState["dueDate"] })}
-        options={[["any", "Any due date"], ["overdue", "Overdue"], ["today", "Due today"], ["next7", "Next 7 days"], ["none", "No due date"]]} />
-      <FilterField label="Priority" ariaLabel="Task priority" value={value.taskPriority} onSelect={(next) => onChange({ ...value, taskPriority: next as TaskFilterState["taskPriority"] })}
-        options={[["any", "Any priority"], ["p1", "Priority 1"], ["p2", "Priority 2"], ["p3", "Priority 3"], ["p4", "Priority 4"]]} />
-      <FilterField label="Importance" ariaLabel="Importance and urgency" value={value.priority} onSelect={(next) => onChange({ ...value, priority: next as TaskFilterState["priority"] })}
-        options={[["any", "Any importance"], ["important", "Important"], ["urgent", "Urgent"], ["both", "Important + urgent"], ["none", "Neither"]]} />
-      <FilterField label="Status" ariaLabel="Status" value={value.status} onSelect={(next) => onChange({ ...value, status: next as TaskFilterState["status"] })}
-        options={[["open", "Open"], ["completed", "Completed"], ["all", "All"]]} />
+      <FilterField label={t("tasks.filters.dateAdded")} ariaLabel={t("tasks.filters.dateAdded")} value={value.date} onSelect={(next) => onChange({ ...value, date: next as TaskFilterState["date"] })}
+        options={[["any", t("tasks.filters.dateAny")], ["today", t("tasks.filters.dateToday")], ["week", t("tasks.filters.dateWeek")], ["older", t("tasks.filters.dateOlder")]]} />
+      <FilterField label={t("tasks.filters.dueDate")} ariaLabel={t("tasks.filters.dueDate")} value={value.dueDate} onSelect={(next) => onChange({ ...value, dueDate: next as TaskFilterState["dueDate"] })}
+        options={[["any", t("tasks.filters.dueAny")], ["overdue", t("tasks.filters.dueOverdue")], ["today", t("tasks.filters.dueToday")], ["next7", t("tasks.filters.dueNext7")], ["none", t("tasks.filters.dueNone")]]} />
+      <FilterField label={t("tasks.filters.priority")} ariaLabel={t("tasks.filters.priorityAria")} value={value.taskPriority} onSelect={(next) => onChange({ ...value, taskPriority: next as TaskFilterState["taskPriority"] })}
+        options={[["any", t("tasks.filters.priorityAny")], ["p1", t("tasks.filters.priorityOption", { value: "1" })], ["p2", t("tasks.filters.priorityOption", { value: "2" })], ["p3", t("tasks.filters.priorityOption", { value: "3" })], ["p4", t("tasks.filters.priorityOption", { value: "4" })]]} />
+      <FilterField label={t("tasks.filters.importance")} ariaLabel={t("tasks.filters.importanceAria")} value={value.priority} onSelect={(next) => onChange({ ...value, priority: next as TaskFilterState["priority"] })}
+        options={[["any", t("tasks.filters.importanceAny")], ["important", t("tasks.filters.importanceImportant")], ["urgent", t("tasks.filters.importanceUrgent")], ["both", t("tasks.filters.importanceBoth")], ["none", t("tasks.filters.importanceNone")]]} />
+      <FilterField label={t("tasks.filters.status")} ariaLabel={t("tasks.filters.status")} value={value.status} onSelect={(next) => onChange({ ...value, status: next as TaskFilterState["status"] })}
+        options={[["open", t("tasks.filters.statusOpen")], ["completed", t("tasks.filters.statusCompleted")], ["all", t("tasks.filters.statusAll")]]} />
     </div>
   );
 }
 
 function ActivePills({ pills, onClearAll }: { readonly pills: readonly Pill[]; readonly onClearAll: () => void }) {
+  const { t } = useI18n();
   if (pills.length === 0) return null;
   return (
-    <div className="active-pills" aria-label="Active filters">
+    <div className="active-pills" aria-label={t("tasks.filters.activeLabel")}>
       {pills.map((pill) => (
         <span key={pill.key} className="active-pill">
           <span>{pill.label}</span>
-          <button type="button" aria-label={`Remove ${pill.label} filter`} onClick={pill.clear}>
+          <button type="button" aria-label={t("tasks.filters.remove", { label: pill.label })} onClick={pill.clear}>
             <Icon name="close" />
           </button>
         </span>
       ))}
       <button type="button" className="pills-clear" onClick={onClearAll}>
-        Clear all
+        {t("tasks.filters.clearAll")}
       </button>
     </div>
   );
 }
 
 export function TaskFilters({ value, onChange }: Props) {
+  const { t, tp } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const activeCount = activeFilterCount(value);
-  const pills = collectPills(value, onChange);
+  const pills = collectPills(value, onChange, t);
 
   return (
-    <div className="task-filters" aria-label="Task filters">
+    <div className="task-filters" aria-label={t("tasks.filters.label")}>
       <div className="filters-toolbar">
         <label className="filter-search">
           <Icon name="search" />
           <input
             type="search"
             value={value.query}
-            aria-label="Search tasks"
-            placeholder="Search tasks…"
+            aria-label={t("tasks.filters.searchLabel")}
+            placeholder={t("tasks.filters.searchPlaceholder")}
             onChange={(event) => onChange({ ...value, query: event.target.value })}
           />
           {value.query.trim() && (
             <button
               type="button"
               className="filter-search-clear"
-              aria-label="Clear search"
+              aria-label={t("tasks.filters.clearSearch")}
               onClick={() => onChange({ ...value, query: "" })}
             >
               <Icon name="close" />
@@ -177,17 +181,17 @@ export function TaskFilters({ value, onChange }: Props) {
             onClick={() => setExpanded((prev) => !prev)}
           >
             <Icon name="list" />
-            <span>Filters</span>
-            {activeCount > 0 && <span className="filter-count" aria-label={`${activeCount} active filters`}>{activeCount}</span>}
+            <span>{t("tasks.filters.toggle")}</span>
+            {activeCount > 0 && <span className="filter-count" aria-label={tp("tasks.filters.active", activeCount)}>{activeCount}</span>}
             <Icon name="chevron-down" />
           </button>
           <label className="filter-sort">
-            <span className="filter-sort-label">Sort</span>
-            <select aria-label="Sort tasks" value={value.sort} onChange={(event) => onChange({ ...value, sort: event.target.value as TaskFilterState["sort"] })}>
-              <option value="recent">Recently updated</option>
-              <option value="oldest">Oldest first</option>
-              <option value="dueSoonest">Due soonest</option>
-              <option value="dueLatest">Due latest</option>
+            <span className="filter-sort-label">{t("tasks.filters.sortLabel")}</span>
+            <select aria-label={t("tasks.filters.sortAria")} value={value.sort} onChange={(event) => onChange({ ...value, sort: event.target.value as TaskFilterState["sort"] })}>
+              <option value="recent">{t("tasks.filters.sortRecent")}</option>
+              <option value="oldest">{t("tasks.filters.sortOldest")}</option>
+              <option value="dueSoonest">{t("tasks.filters.sortDueSoonest")}</option>
+              <option value="dueLatest">{t("tasks.filters.sortDueLatest")}</option>
             </select>
           </label>
         </div>

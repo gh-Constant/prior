@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { api } from "./lib/api";
 import { AUTH_REQUIRED_EVENT, clearSession, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
+import { useI18n } from "./lib/i18n";
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
@@ -37,17 +38,17 @@ import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps }
 
 type Layout = "list" | "board";
 
-function viewTitle(view: WorkspaceView): string {
-  if (view === "today") return "Today";
-  if (view === "inbox") return "Inbox";
-  if (view === "projects") return "Projects";
-  if (view === "project") return "Project";
-  if (view === "waiting") return "Waiting";
-  if (view === "eisenhower") return "Eisenhower";
-  if (view === "habits") return "Habits";
-  if (view === "notes") return "Notes";
-  if (view === "settings") return "Settings";
-  return "All tasks";
+function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
+  if (view === "today") return t("common.views.today");
+  if (view === "inbox") return t("common.views.inbox");
+  if (view === "projects") return t("common.views.projects");
+  if (view === "project") return t("common.views.project");
+  if (view === "waiting") return t("common.views.waiting");
+  if (view === "eisenhower") return t("common.views.eisenhower");
+  if (view === "habits") return t("common.views.habits");
+  if (view === "notes") return t("common.views.notes");
+  if (view === "settings") return t("common.views.settings");
+  return t("common.views.allTasks");
 }
 
 type WorkspaceHeaderProps = {
@@ -60,18 +61,19 @@ type WorkspaceHeaderProps = {
 };
 
 function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
+  const { t } = useI18n();
   if (["today", "inbox", "projects", "project", "waiting", "notes", "settings"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
-  const newTaskLabel = creatingHabit ? "New habit" : "New task";
+  const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
     <header className="workspace-header">
-      <h1>{viewTitle(activeView)}</h1>
+      <h1>{viewTitle(activeView, t)}</h1>
       <div className="workspace-actions">
-        {activeView === "all" && <div className="layout-switch" role="toolbar" aria-label="Task layout">
-          <button type="button" className={layout === "list" ? "active" : ""} aria-label="List view" aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /></button>
-          <button type="button" className={layout === "board" ? "active" : ""} aria-label="Column view" title="Column view" aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /></button>
+        {activeView === "all" && <div className="layout-switch" role="toolbar" aria-label={t("common.header.layout")}>
+          <button type="button" className={layout === "list" ? "active" : ""} aria-label={t("common.header.listView")} aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /></button>
+          <button type="button" className={layout === "board" ? "active" : ""} aria-label={t("common.header.columnView")} title={t("common.header.columnView")} aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /></button>
         </div>}
-        <button className="primary-button new-task-button" type="button" aria-label={newTaskLabel} title={`${newTaskLabel} (${shortcut})`} aria-keyshortcuts={shortcutKey} onClick={onNewTask}><Icon name="plus" /><span>{newTaskLabel}</span><kbd>{shortcut}</kbd></button>
+        <button className="primary-button new-task-button" type="button" aria-label={newTaskLabel} title={t("common.header.newActionTitle", { label: newTaskLabel, shortcut })} aria-keyshortcuts={shortcutKey} onClick={onNewTask}><Icon name="plus" /><span>{newTaskLabel}</span><kbd>{shortcut}</kbd></button>
       </div>
     </header>
   );
@@ -108,6 +110,7 @@ type WorkspaceContentProps = {
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
 function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange, collaborationByProject }: WorkspaceContentProps) {
+  const { t } = useI18n();
   if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (["today", "inbox", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} />;
@@ -125,13 +128,14 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, ta
     return <TaskColumns tasks={visibleTasks} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />;
   }
   return (
-    <section className="list-view" aria-label="All tasks">
+    <section className="list-view" aria-label={t("common.views.allTasks")}>
       {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}
     </section>
   );
 }
 
 export function App() {
+  const { t } = useI18n();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [areas, setAreas] = useState<Area[]>(() => workspaceStore.listAreas());
@@ -283,9 +287,9 @@ export function App() {
           if (await handleAuthError(profileError)) {
             if (generation !== sessionGeneration.current) return;
             setUser(null);
-            setAuthError(profileError instanceof Error ? profileError.message : "Your session has expired. Please sign in again.");
+            setAuthError(profileError instanceof Error ? profileError.message : t("common.session.expired"));
             setAuthOpen(true);
-            setToast("Session expired — please sign in again.");
+            setToast(t("common.toasts.sessionExpired"));
             return;
           }
           console.warn("Prior profile sync failed:", profileError);
@@ -367,7 +371,7 @@ export function App() {
             await api.acceptProjectInvite(inviteToken, token);
             window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
             collaborationChanged = (await collaborationStore.sync(token)).changed || collaborationChanged;
-            setToast("Project invitation accepted.");
+            setToast(t("common.toasts.inviteAccepted"));
           } catch (inviteError) {
             console.warn("Prior project invite could not be accepted:", inviteError);
           }
@@ -389,9 +393,9 @@ export function App() {
           if (await handleAuthError(settingsError)) {
             if (generation !== sessionGeneration.current) return;
             setUser(null);
-            setAuthError(settingsError instanceof Error ? settingsError.message : "Your session has expired. Please sign in again.");
+            setAuthError(settingsError instanceof Error ? settingsError.message : t("common.session.expired"));
             setAuthOpen(true);
-            setToast("Session expired — please sign in again.");
+            setToast(t("common.toasts.sessionExpired"));
             return;
           }
           console.warn("Prior assistant settings sync failed:", settingsError);
@@ -406,9 +410,9 @@ export function App() {
       } catch (error) {
         if (await handleAuthError(error)) {
           setUser(null);
-          setAuthError(error instanceof Error ? error.message : "Your session has expired. Please sign in again.");
+          setAuthError(error instanceof Error ? error.message : t("common.session.expired"));
           setAuthOpen(true);
-          setToast("Session expired — please sign in again.");
+          setToast(t("common.toasts.sessionExpired"));
           return;
         }
         console.warn("Prior sync failed:", error);
@@ -540,7 +544,7 @@ export function App() {
       void refresh().catch((error) => console.warn("Prior could not refresh on auth change:", error));
     };
     const onAuthRequired = (event: Event) => {
-      const message = (event as CustomEvent<{ message?: string }>).detail?.message ?? "Your session has expired. Please sign in again.";
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message ?? t("common.session.expired");
       setAuthError(message);
       setAuthOpen(true);
       setToast(message);
@@ -634,7 +638,7 @@ export function App() {
   }
 
   async function saveTask(input: TaskDraft) {
-    if (input.projectId && collaborationStore.role(input.projectId) === "viewer") throw new Error("You have view-only access to this project.");
+    if (input.projectId && collaborationStore.role(input.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
     await localStore.saveTask({ ...newTaskContext, ...input, completed: input.status === "done", peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
     setComposerOpen(false);
     setNewTaskContext(undefined);
@@ -644,7 +648,7 @@ export function App() {
 
   async function saveEditedTask(input: TaskDraft) {
     if (!editingTask) return;
-    if (editingTask.projectId && collaborationStore.role(editingTask.projectId) === "viewer") throw new Error("You have view-only access to this project.");
+    if (editingTask.projectId && collaborationStore.role(editingTask.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
     await localStore.updateTask({ ...editingTask, ...input, completed: input.status ? input.status === "done" : editingTask.completed, description: input.description ?? "", dueDate: input.dueDate ?? null, priority: input.priority ?? 4 });
     setEditingTask(null);
     await refresh();
@@ -768,7 +772,7 @@ export function App() {
 
   async function addAgentNotes(batch: NoteDraft[]) {
     for (const item of batch) {
-      const title = item.title.trim() || "Untitled note";
+      const title = item.title.trim() || t("common.notes.untitled");
       const folderId = resolveAgentFolderId(item.folderName);
       let projectId: string | null = null;
       if (item.projectName) {
@@ -781,7 +785,7 @@ export function App() {
   }
 
   async function changeTask(task: Task) {
-    if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error("You have view-only access to this project.");
+    if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
     const previous = tasks.find((item) => item.id === task.id);
     const savedTask = await localStore.updateTask(task);
     if (previous && !previous.completed && task.completed) {
@@ -796,7 +800,7 @@ export function App() {
   }
 
   async function deleteTask(task: Task) {
-    if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error("You have view-only access to this project.");
+    if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
     await localStore.removeTask(task);
     releaseCompletionExit(task.id);
     await refresh();
@@ -829,10 +833,10 @@ export function App() {
 
   async function saveProjectDetails(project: Project): Promise<void> {
     const entry = collaborationStore.get(project.id);
-    if (entry?.role === "viewer") throw new Error("You have view-only access to this project.");
+    if (entry?.role === "viewer") throw new Error(t("common.access.viewOnly"));
     if (entry && entry.role !== "owner") {
       const token = await getToken();
-      if (!token) throw new Error("Sign in to update this shared project.");
+      if (!token) throw new Error(t("common.access.signInToUpdate"));
       await api.updateCollaborativeProject(project.id, project, token);
       await collaborationStore.sync(token);
     } else {
@@ -844,11 +848,11 @@ export function App() {
 
   const collaborationByProject = useMemo<CollaborationByProject>(() => {
     const stateOptions = [
-      { id: "backlog", name: "Backlog", category: "backlog" as const },
-      { id: "next", name: "Todo", category: "unstarted" as const },
-      { id: "in_progress", name: "In progress", category: "started" as const },
-      { id: "waiting", name: "Waiting", category: "started" as const },
-      { id: "done", name: "Done", category: "completed" as const },
+      { id: "backlog", name: t("common.states.backlog"), category: "backlog" as const },
+      { id: "next", name: t("common.states.todo"), category: "unstarted" as const },
+      { id: "in_progress", name: t("common.states.inProgress"), category: "started" as const },
+      { id: "waiting", name: t("common.states.waiting"), category: "started" as const },
+      { id: "done", name: t("common.states.done"), category: "completed" as const },
     ];
     const result: Record<string, Omit<ProjectCollaborationProps, "project">> = {};
     for (const project of projects) {
@@ -898,7 +902,7 @@ export function App() {
         },
         onMoveIssue: readOnly ? undefined : async (id, stateId) => {
           const task = tasks.find((item) => item.id === id && item.projectId === project.id);
-          if (!task || !stateOptions.some((state) => state.id === stateId)) throw new Error("Unable to move this task.");
+          if (!task || !stateOptions.some((state) => state.id === stateId)) throw new Error(t("common.errors.moveFailed"));
           await changeTask({ ...task, status: stateId as Task["status"], completed: stateId === "done" });
         },
         sharing: {
@@ -916,12 +920,12 @@ export function App() {
                 if (response.invite?.inviteToken) {
                   const inviteLink = `${window.location.origin}${window.location.pathname}#invite=${encodeURIComponent(response.invite.inviteToken)}`;
                   await navigator.clipboard?.writeText(inviteLink);
-                  setToast(`Invite link copied for ${email}.`);
+                  setToast(t("common.toasts.inviteCopied", { email }));
                 } else {
-                  setToast(`${email} was added to the project.`);
+                  setToast(t("common.toasts.memberAdded", { email }));
                 }
               } catch (error) {
-                setToast(error instanceof Error ? error.message : "Unable to share this project.");
+                setToast(error instanceof Error ? error.message : t("common.errors.shareFailed"));
               }
             })();
           },
@@ -933,9 +937,9 @@ export function App() {
                 await api.revokeProjectInvite(project.id, inviteId, token);
                 await collaborationStore.sync(token);
                 refreshWorkspace();
-                setToast("Invitation revoked.");
+                setToast(t("common.toasts.inviteRevoked"));
               } catch (error) {
-                setToast(error instanceof Error ? error.message : "Unable to revoke the invitation.");
+                setToast(error instanceof Error ? error.message : t("common.errors.revokeFailed"));
               }
             })();
           },
@@ -947,9 +951,9 @@ export function App() {
                 await api.updateProjectMember(project.id, userId, role, token);
                 await collaborationStore.sync(token);
                 refreshWorkspace();
-                setToast("Project role updated.");
+                setToast(t("common.toasts.roleUpdated"));
               } catch (error) {
-                setToast(error instanceof Error ? error.message : "Unable to update the project role.");
+                setToast(error instanceof Error ? error.message : t("common.errors.roleFailed"));
               }
             })();
           },
@@ -961,9 +965,9 @@ export function App() {
                 await api.removeProjectMember(project.id, userId, token);
                 await collaborationStore.sync(token);
                 refreshWorkspace();
-                setToast("Project member removed.");
+                setToast(t("common.toasts.memberRemoved"));
               } catch (error) {
-                setToast(error instanceof Error ? error.message : "Unable to remove the project member.");
+                setToast(error instanceof Error ? error.message : t("common.errors.removeFailed"));
               }
             })();
           },
@@ -971,9 +975,9 @@ export function App() {
             void (async () => {
               try {
                 await navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}#project=${project.id}`);
-                setToast("Project link copied. Access is still required.");
+                setToast(t("common.toasts.linkCopied"));
               } catch {
-                setToast("Unable to copy the project link.");
+                setToast(t("common.errors.linkCopyFailed"));
               }
             })();
           },
@@ -982,7 +986,7 @@ export function App() {
       };
     }
     return result;
-  }, [openNewTask, projects, tasks, user, refreshWorkspace]);
+  }, [openNewTask, projects, tasks, user, refreshWorkspace, t]);
 
   const taskPlanning = useMemo<TaskPlanningProps | undefined>(() => {
     const projectId = composerProjectId !== undefined ? composerProjectId : editingTask?.projectId ?? newTaskContext?.projectId;
@@ -991,7 +995,7 @@ export function App() {
     if (user && !availablePeople.some((person) => person.id === user.id)) availablePeople.unshift({ id: user.id, name: user.displayName || user.email, email: user.email, avatarUrl: user.avatarUrl });
     const selectedIds = editingTask && editingTask.projectId === projectId ? editingTask.peopleIds ?? [] : user ? [user.id] : [];
     const people: TaskPerson[] = selectedIds.map((personId) => {
-      const person = availablePeople.find((item) => item.id === personId) ?? { id: personId, name: "Unknown person" };
+      const person = availablePeople.find((item) => item.id === personId) ?? { id: personId, name: t("common.planning.unknownPerson") };
       return { ...person, role: personId === user?.id ? "owner" : "collaborator" };
     });
     return {
@@ -999,10 +1003,10 @@ export function App() {
       availablePeople,
       readOnly: entry?.role === "viewer" || Boolean(editingTask?.projectId && collaborationStore.role(editingTask.projectId) === "viewer"),
       fields: [
-        { key: "state", label: "Workflow state", options: [{ id: "backlog", name: "Backlog" }, { id: "next", name: "Todo" }, { id: "in_progress", name: "In progress" }, { id: "done", name: "Done" }], selectedIds: [(() => { const raw = editingTask?.status ?? newTaskContext?.status ?? "backlog"; return raw === "inbox" ? "backlog" : raw; })()] },
+        { key: "state", label: t("common.planning.workflowState"), options: [{ id: "backlog", name: t("common.states.backlog") }, { id: "next", name: t("common.states.todo") }, { id: "in_progress", name: t("common.states.inProgress") }, { id: "done", name: t("common.states.done") }], selectedIds: [(() => { const raw = editingTask?.status ?? newTaskContext?.status ?? "backlog"; return raw === "inbox" ? "backlog" : raw; })()] },
       ],
     };
-  }, [editingTask, newTaskContext, composerProjectId, user, projects]);
+  }, [editingTask, newTaskContext, composerProjectId, user, projects, t]);
 
   async function logout() {
     const token = await getToken().catch(() => null);
@@ -1077,10 +1081,10 @@ export function App() {
     try {
       await installAvailableUpdate();
       if (/Windows/i.test(typeof navigator === "undefined" ? "" : navigator.userAgent)) {
-        setToast("Update installed — restart the app to finish.");
+        setToast(t("common.toasts.updateInstalled"));
       }
     } catch {
-      setToast("Update install failed — try again from Settings.");
+      setToast(t("common.errors.updateFailed"));
     } finally {
       setUpdateInstalling(false);
     }
@@ -1115,7 +1119,7 @@ export function App() {
       setAuthOpen(false);
     } catch {
       console.warn("Prior could not open Google sign-in.");
-      setAuthError("Unable to open Google sign-in. Please try again.");
+      setAuthError(t("common.errors.googleFailed"));
       setAuthOpen(true);
     }
   }
@@ -1187,7 +1191,7 @@ export function App() {
             collaborationByProject={collaborationByProject}
           />
         </CompletionExitProvider>
-        {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => openNewTask()}><Icon name="plus" /> New task</button>}
+        {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => openNewTask()}><Icon name="plus" /> {t("common.header.newTask")}</button>}
       </main>
 
       <AgentSidebar
@@ -1216,8 +1220,8 @@ export function App() {
         onClose={() => setCycleEditor(null)}
         onSave={async (draft) => {
           const project = projects.find((item) => item.id === cycleEditor.projectId);
-          if (!project) throw new Error("Project no longer available.");
-          if (!draft.startsOn || !draft.endsOn) throw new Error("Choose a start and end date.");
+          if (!project) throw new Error(t("common.errors.projectGone"));
+          if (!draft.startsOn || !draft.endsOn) throw new Error(t("common.errors.chooseDates"));
           const cycle = { ...draft, startsOn: draft.startsOn, endsOn: draft.endsOn, id: cycleEditor.cycleId ?? crypto.randomUUID() };
           const cycles = cycleEditor.cycleId ? (project.cycles ?? []).map((item) => item.id === cycle.id ? cycle : item) : [...(project.cycles ?? []), cycle];
           await saveProjectDetails({ ...project, cycles });
@@ -1226,9 +1230,9 @@ export function App() {
       />}
       {habitComposerOpen && <HabitComposer habit={editingHabit ?? undefined} onSave={saveHabit} onCancel={() => { setHabitComposerOpen(false); setEditingHabit(null); }} />}
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
-      {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}
-      {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>Notice</strong><small>{toast}</small></span><button type="button" aria-label="Dismiss" onClick={() => setToast(null)}>✕</button></div>}
-      {desktopUpdate && activeView !== "settings" && <div className="completion-celebration" role="status" aria-live="polite"><span className="update-install-icon update-install-icon-sm" aria-hidden="true"><Icon name="download" /></span><span><strong>Update available</strong><small>v{desktopUpdate.version} is ready.</small></span><button type="button" disabled={updateInstalling} onClick={() => void installDesktopUpdate()}>{updateInstalling ? "Installing…" : "Install & restart"}</button><button type="button" className="text-button" onClick={() => changeView("settings")}>Details</button></div>}
+      {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>{t("common.celebration.completed")}</strong><small>{completionCelebration.title}</small></span></div>}
+      {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>{t("common.celebration.notice")}</strong><small>{toast}</small></span><button type="button" aria-label={t("common.actions.dismiss")} onClick={() => setToast(null)}>✕</button></div>}
+      {desktopUpdate && activeView !== "settings" && <div className="completion-celebration" role="status" aria-live="polite"><span className="update-install-icon update-install-icon-sm" aria-hidden="true"><Icon name="download" /></span><span><strong>{t("common.celebration.updateAvailable")}</strong><small>{t("common.celebration.updateReady", { version: desktopUpdate.version })}</small></span><button type="button" disabled={updateInstalling} onClick={() => void installDesktopUpdate()}>{updateInstalling ? t("common.celebration.installing") : t("common.celebration.installRestart")}</button><button type="button" className="text-button" onClick={() => changeView("settings")}>{t("common.actions.details")}</button></div>}
     </div>
   );
 }

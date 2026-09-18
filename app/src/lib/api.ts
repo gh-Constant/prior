@@ -1,5 +1,6 @@
 import type { AgentChat, AgentMessage, AgentChatSummary, Area, Habit, Mutation, Project, ProjectCycle, ProjectHealth, Task } from "../types";
 import type { Note, NoteFolder } from "./notes";
+import { translateStored } from "./i18n";
 import { isTauri } from "./platform";
 
 export type WorkspaceSnapshot = {
@@ -180,7 +181,7 @@ export const api = {
     try {
       return await request<ExchangeResponse>("/v1/auth/exchange", { method: "POST", body: JSON.stringify({ code }), signal: controller.signal }, undefined, 30_000);
     } catch (error) {
-      if (controller.signal.aborted) throw new Error("Sign-in timed out. Check your connection and try again.");
+      if (controller.signal.aborted) throw new Error(translateStored("auth.errors.signInTimeout"));
       throw error;
     } finally {
       clearTimeout(timeout);

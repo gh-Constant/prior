@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
 import { checkForUpdate, getAppVersion, installAvailableUpdate, supportsDesktopUpdates, type UpdateInfo } from "../lib/updater";
 import { checkForAndroidUpdate, getAndroidAppVersion, openAndroidUpdate, supportsAndroidUpdates, type AndroidUpdateInfo } from "../lib/androidUpdater";
+import { useI18n, type Translator } from "../lib/i18n";
 import { Icon } from "./Icon";
 
 type UpdateState = "idle" | "checking" | "current" | "available" | "installing" | "error";
 
-function updateCheckLabel(updateState: UpdateState): string {
+function updateCheckLabel(t: Translator["t"], updateState: UpdateState): string {
   switch (updateState) {
-    case "checking": return "Checking…";
-    case "installing": return "Installing…";
-    case "error": return "Try again";
-    default: return "Check for updates";
+    case "checking": return t("settings.updates.checking");
+    case "installing": return t("settings.updates.installing");
+    case "error": return t("settings.updates.retry");
+    default: return t("settings.updates.check");
   }
 }
 
 export function UpdateCard() {
+  const { t } = useI18n();
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState>("idle");
@@ -53,23 +55,23 @@ export function UpdateCard() {
   const checking = updateState === "checking" || updateState === "installing";
   return (
     <div className="update-card">
-      <div className="update-card-heading"><span>Updates</span>{appVersion && <small>v{appVersion}</small>}</div>
+      <div className="update-card-heading"><span>{t("settings.updates.title")}</span>{appVersion && <small>v{appVersion}</small>}</div>
       {updateState === "available" && update
         ? (
           <>
             <button className="update-install" type="button" disabled={checking} onClick={() => void installUpdate()}>
               <span className="update-install-icon" aria-hidden="true"><Icon name="download" /></span>
               <span className="update-install-copy">
-                <strong>{checking ? "Installing…" : `Install v${update.version} & restart`}</strong>
-                <small>Downloads, installs and reopens Prior</small>
+                <strong>{checking ? t("settings.updates.installing") : t("settings.updates.installNow", { version: update.version })}</strong>
+                <small>{t("settings.updates.installHint")}</small>
               </span>
             </button>
-            {installed && <p className="update-hint">Installed — restart the app to finish.</p>}
+            {installed && <p className="update-hint">{t("settings.updates.installedHint")}</p>}
           </>
         )
         : (
           <button className="update-check" type="button" disabled={checking} onClick={() => void inspectUpdate()}>
-            <Icon name="refresh" /> {updateCheckLabel(updateState)}
+            <Icon name="refresh" /> {updateCheckLabel(t, updateState)}
           </button>
         )}
     </div>
@@ -77,6 +79,7 @@ export function UpdateCard() {
 }
 
 export function AndroidUpdateCard() {
+  const { t } = useI18n();
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [update, setUpdate] = useState<AndroidUpdateInfo | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState>("idle");
@@ -109,19 +112,19 @@ export function AndroidUpdateCard() {
   const checking = updateState === "checking" || updateState === "installing";
   return (
     <div className="update-card">
-      <div className="update-card-heading"><span>Updates</span>{appVersion && <small>v{appVersion}</small>}</div>
+      <div className="update-card-heading"><span>{t("settings.updates.title")}</span>{appVersion && <small>v{appVersion}</small>}</div>
       {updateState === "available" && update
         ? (
           <>
             <button className="update-button" type="button" onClick={() => void downloadUpdate()}>
-              <Icon name="download" /> Download v{update.version}{update.sizeMb ? ` (${update.sizeMb} MB)` : ""}
+              <Icon name="download" /> {update.sizeMb ? t("settings.updates.downloadWithSize", { version: update.version, size: update.sizeMb }) : t("settings.updates.download", { version: update.version })}
             </button>
-            <p className="update-hint">The APK downloads in your browser — open it to install. Allow “unknown apps” once if asked.</p>
+            <p className="update-hint">{t("settings.updates.apkHint")}</p>
           </>
         )
         : (
           <button className="update-check" type="button" disabled={checking} onClick={() => void inspectUpdate()}>
-            <Icon name="refresh" /> {updateState === "current" ? "Up to date" : updateCheckLabel(updateState)}
+            <Icon name="refresh" /> {updateState === "current" ? t("settings.updates.upToDate") : updateCheckLabel(t, updateState)}
           </button>
         )}
     </div>

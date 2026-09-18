@@ -3,6 +3,7 @@ import { Icon } from "../Icon";
 import { Modal } from "../Modal";
 import { PersonAvatar } from "./PersonAvatar";
 import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
+import { useI18n } from "../../lib/i18n";
 import type { ProjectInvite, ProjectSharingProps } from "./types";
 import "./Collaboration.css";
 
@@ -10,6 +11,7 @@ export function ProjectShareDialog({ projectName, onClose, members, invites, can
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<ProjectInvite["role"]>("editor");
   const bodyRef = useRef<HTMLDivElement>(null);
+  const { t } = useI18n();
   const editable = canManage && !loading && !busy;
   const duplicate = [...members.map((member) => member.email), ...invites.map((invite) => invite.email)].some((value) => value?.toLowerCase() === email.trim().toLowerCase());
 
@@ -27,34 +29,34 @@ export function ProjectShareDialog({ projectName, onClose, members, invites, can
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   }
 
-  return <div onKeyDown={trapFocus}><Modal title={`Share ${projectName}`} onClose={onClose} maxWidth={560}>
+  return <div onKeyDown={trapFocus}><Modal title={t("collab.share.title", { name: projectName })} onClose={onClose} maxWidth={560}>
     <div className="collab-share-body" ref={bodyRef}>
-      <p className="collab-notice"><Icon name="lock" aria-hidden="true" />Only invited members can access this project. A link does not grant access.</p>
+      <p className="collab-notice"><Icon name="lock" aria-hidden="true" />{t("collab.share.notice")}</p>
       {!canManage && <ReadOnlyNotice />}
       {error && <p className="collab-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
-      {loading ? <CollaborationState title="Loading project members…" loading /> : <>
-        <section aria-label="Project members"><h3>Members <span className="collab-muted">{members.length}</span></h3>
+      {loading ? <CollaborationState title={t("collab.share.loading")} loading /> : <>
+        <section aria-label={t("collab.share.membersGroup")}><h3>{t("collab.share.members")} <span className="collab-muted">{members.length}</span></h3>
           {members.length ? <ul className="collab-members">{members.map((member) => <li key={member.id}>
             <PersonAvatar person={member} />
             <div className="collab-person-copy"><strong>{member.name}</strong>{member.email && <small>{member.email}</small>}</div>
-            {member.role === "owner" ? <span className="collab-chip">Owner</span> : <><select aria-label={`Project role for ${member.name}`} value={member.role} disabled={!editable || !onRoleChange} onChange={(event) => onRoleChange?.(member.id, event.target.value as ProjectInvite["role"])}><option value="editor">Editor</option><option value="viewer">Viewer</option></select>{canManage && <button type="button" className="secondary-button" disabled={!editable || !onRemoveMember} onClick={() => onRemoveMember?.(member.id)} aria-label={`Remove ${member.name} from project`}>Remove</button>}</>}
-          </li>)}</ul> : <p className="collab-muted">No members to display.</p>}
+            {member.role === "owner" ? <span className="collab-chip">{t("collab.roles.owner")}</span> : <><select aria-label={t("collab.share.roleFor", { name: member.name })} value={member.role} disabled={!editable || !onRoleChange} onChange={(event) => onRoleChange?.(member.id, event.target.value as ProjectInvite["role"])}><option value="editor">{t("collab.roles.editor")}</option><option value="viewer">{t("collab.roles.viewer")}</option></select>{canManage && <button type="button" className="secondary-button" disabled={!editable || !onRemoveMember} onClick={() => onRemoveMember?.(member.id)} aria-label={t("collab.share.removeFor", { name: member.name })}>{t("collab.share.remove")}</button>}</>}
+          </li>)}</ul> : <p className="collab-muted">{t("collab.share.noMembers")}</p>}
         </section>
-        <section aria-label="Pending invitations"><h3>Pending invites <span className="collab-muted">{invites.length}</span></h3>
+        <section aria-label={t("collab.share.invitesGroup")}><h3>{t("collab.share.invites")} <span className="collab-muted">{invites.length}</span></h3>
           {invites.length ? <ul className="collab-members">{invites.map((invite) => <li key={invite.id}>
-            <div className="collab-person-copy"><strong>{invite.email}</strong><small>{invite.role === "editor" ? "Editor" : "Viewer"} · Pending</small></div>
-            {canManage && <button type="button" className="secondary-button" disabled={!editable || !onRevokeInvite} onClick={() => onRevokeInvite?.(invite.id)} aria-label={`Revoke invite for ${invite.email}`}>Revoke</button>}
-          </li>)}</ul> : <p className="collab-muted">No pending invitations.</p>}
+            <div className="collab-person-copy"><strong>{invite.email}</strong><small>{invite.role === "editor" ? t("collab.roles.editor") : t("collab.roles.viewer")} · {t("collab.share.pending")}</small></div>
+            {canManage && <button type="button" className="secondary-button" disabled={!editable || !onRevokeInvite} onClick={() => onRevokeInvite?.(invite.id)} aria-label={t("collab.share.revokeFor", { email: invite.email })}>{t("collab.share.revoke")}</button>}
+          </li>)}</ul> : <p className="collab-muted">{t("collab.share.noInvites")}</p>}
         </section>
       </>}
       {canManage && <form className="collab-invite-form" onSubmit={(event) => { event.preventDefault(); if (editable && email.trim() && !duplicate) onInvite?.(email.trim(), role); }}>
-        <label className="collab-field"><span>Email address</span><input type="email" required value={email} disabled={!editable || !onInvite} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" /></label>
-        <label className="collab-field"><span>Invite role</span><select value={role} disabled={!editable || !onInvite} onChange={(event) => setRole(event.target.value as ProjectInvite["role"])}><option value="editor">Editor</option><option value="viewer">Viewer</option></select></label>
-        <button type="submit" className="primary-button" disabled={!editable || !onInvite || !email.trim() || duplicate}><Icon name="mail" />{busy ? "Working…" : "Invite"}</button>
-        {duplicate && <p className="collab-muted" role="status">This person is already a member or has a pending invitation.</p>}
+        <label className="collab-field"><span>{t("collab.share.email")}</span><input type="email" required value={email} disabled={!editable || !onInvite} onChange={(event) => setEmail(event.target.value)} placeholder={t("collab.share.emailPlaceholder")} /></label>
+        <label className="collab-field"><span>{t("collab.share.inviteRole")}</span><select value={role} disabled={!editable || !onInvite} onChange={(event) => setRole(event.target.value as ProjectInvite["role"])}><option value="editor">{t("collab.roles.editor")}</option><option value="viewer">{t("collab.roles.viewer")}</option></select></label>
+        <button type="submit" className="primary-button" disabled={!editable || !onInvite || !email.trim() || duplicate}><Icon name="mail" />{busy ? t("collab.share.working") : t("collab.share.invite")}</button>
+        {duplicate && <p className="collab-muted" role="status">{t("collab.share.duplicate")}</p>}
       </form>}
-      <div className="collab-share-footer"><button type="button" className="secondary-button" disabled={!onCopyLink || loading || busy} onClick={onCopyLink}><Icon name="link" />Copy project link</button><button type="button" className="secondary-button" onClick={onClose}>Done</button></div>
+      <div className="collab-share-footer"><button type="button" className="secondary-button" disabled={!onCopyLink || loading || busy} onClick={onCopyLink}><Icon name="link" />{t("collab.share.copyLink")}</button><button type="button" className="secondary-button" onClick={onClose}>{t("collab.share.done")}</button></div>
     </div>
   </Modal></div>;
 }

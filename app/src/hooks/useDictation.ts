@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { getToken } from "../lib/auth";
+import { translateStored } from "../lib/i18n";
 import { insertTranscript, type TranscriptSnapshot } from "../lib/dictation";
 import {
   audioFilenameForMimeType,
@@ -55,9 +56,9 @@ function clearIntervalTimer(timer: number | null): void {
 }
 
 function mapTranscriptionError(error: unknown): string {
-  if (error instanceof DOMException && error.name === "AbortError") return "Transcription was cancelled.";
+  if (error instanceof DOMException && error.name === "AbortError") return translateStored("agent.dictation.cancelled");
   if (error instanceof Error && error.message) return error.message;
-  return "Prior could not transcribe the recording. Check your connection and try again.";
+  return translateStored("agent.dictation.transcribeFailed");
 }
 
 export function useDictation({ enabled = true, language: _language, onCommit }: UseDictationOptions) {
@@ -129,7 +130,7 @@ export function useDictation({ enabled = true, language: _language, onCommit }: 
       draftRef.current = null;
       setFinalText("");
       setInterimText("");
-      setError("No speech was detected. Try again when you are ready.");
+      setError(translateStored("agent.dictation.noSpeech"));
       setStatus("error");
       return;
     }
@@ -139,7 +140,7 @@ export function useDictation({ enabled = true, language: _language, onCommit }: 
     setFinalText(transcript);
     setInterimText("");
     setError(null);
-    setWarning(session.maxDurationReached ? "The recording reached the two-minute limit; review the inserted text before sending." : null);
+    setWarning(session.maxDurationReached ? translateStored("agent.dictation.maxDuration") : null);
     setStatus("review");
     onCommitRef.current(result);
   }
@@ -159,13 +160,13 @@ export function useDictation({ enabled = true, language: _language, onCommit }: 
     }
     const audio = new Blob(session.chunks, { type: session.mimeType || undefined });
     if (audio.size === 0) {
-      finishWithError(id, MICROPHONE_BLOCKED_MESSAGE);
+      finishWithError(id, translateStored("agent.dictation.micBlocked"));
       return;
     }
 
     try {
       const token = await getToken();
-      if (!token) throw new Error("Sign in to use voice input with the Prior Agent.");
+      if (!token) throw new Error(translateStored("agent.dictation.signIn"));
       if (!isCurrent(id)) return;
       const controller = new AbortController();
       session.transcriptionAbort = controller;
@@ -180,7 +181,7 @@ export function useDictation({ enabled = true, language: _language, onCommit }: 
     if (!enabled || sessionRef.current || status === "preparing" || status === "listening" || status === "stopping") return false;
     const capabilities = getAudioCaptureCapabilities();
     if (!capabilities.available || typeof navigator === "undefined") {
-      setError("Voice input is unavailable in this browser or app.");
+      setError(translateStored("agent.dictation.unavailable"));
       setStatus("unavailable");
       return false;
     }
@@ -239,7 +240,7 @@ export function useDictation({ enabled = true, language: _language, onCommit }: 
         if (isCurrent(id)) void transcribeRecording(id);
       };
       recorder.onerror = () => {
-        if (isCurrent(id)) finishWithError(id, "Audio recording failed. Check your microphone and try again.");
+        if (isCurrent(id)) finishWithError(id, translateStored("agent.dictation.recordFailed"));
       };
       recorder.start(250);
     } catch (error_) {

@@ -19,6 +19,7 @@ import type {
 } from "../types";
 import { runCodex, runCodexStream } from "./codex";
 import { api, isAuthError } from "./api";
+import { storedLanguage, translateStored } from "./i18n";
 import { readScopedStorage, removeScopedStorage, writeScopedStorage } from "./accountScope";
 import type { Note, NoteFolder } from "./notes";
 
@@ -199,6 +200,14 @@ function describeNoteForPrompt(note: Note, folders: NoteFolder[], projects: Proj
   return `- "${note.title}" (in ${location}${projectLabel}${star}; snippet: ${snippetForPrompt(note.body)})`;
 }
 
+const UI_LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  fr: "French",
+  es: "Spanish",
+  de: "German",
+  pt: "Portuguese",
+};
+
 export function buildSystemPrompt(
   existingTasks: Task[] = [],
   existingHabits: Habit[] = [],
@@ -207,6 +216,7 @@ export function buildSystemPrompt(
   existingFolders: NoteFolder[] = [],
   existingAreas: Area[] = [],
   existingProjects: Project[] = [],
+  uiLanguage: string = storedLanguage(),
 ): string {
   const areasSummary = existingAreas
     .filter((area) => !area.deletedAt)
@@ -242,6 +252,9 @@ export function buildSystemPrompt(
     .map((note) => describeNoteForPrompt(note, existingFolders, existingProjects))
     .join("\n");
 
+  const uiLanguageCode = uiLanguage in UI_LANGUAGE_NAMES ? uiLanguage : "en";
+  const uiLanguageName = UI_LANGUAGE_NAMES[uiLanguageCode] ?? "English";
+
   return `You are Prior's practical in-app assistant. You are not a generic chatbot: you are embedded inside Prior, a local-first task, habit, notes, and workspace manager. Help the user turn messy thoughts into clear structure and useful next actions, answer naturally, and never invent capabilities or claim an action happened when it has not.
 
 LANGUAGE AND TONE:
@@ -249,6 +262,10 @@ LANGUAGE AND TONE:
 - Understand typos, shorthand, slang, phonetic spelling, and imperfect dictation. Normalize obvious wording silently (for example "c quoi", "fait une tache", "apagnan"), but ask one short clarification when the meaning is genuinely ambiguous.
 - Be warm, direct, and useful. Do not use corporate filler, long introductions, or repetitive disclaimers. For a greeting or casual question, answer conversationally and return no items.
 - Never answer with "I don't have access to anything": you do have the Prior capabilities listed below. Be honest about the exact boundary of each capability.
+
+RESPONSE LANGUAGE:
+- The user's Prior interface language is ${uiLanguageName} (${uiLanguageCode}). Write the "reply" field in ${uiLanguageName} by default.
+- If the user clearly writes in a different language, follow the user's language instead, including for proposed item titles.
 
 PRIOR CAPABILITIES (use these exact names when the user asks what tools you have):
 - list_tasks: inspect the active task list already provided in this prompt.
@@ -543,8 +560,8 @@ async function requestOpenRouter(init: RequestInit, timeoutMs: number): Promise<
   try {
     return await fetch("https://openrouter.ai/api/v1/chat/completions", { ...init, signal: controller.signal });
   } catch (error) {
-    if (controller.signal.aborted) throw new OpenRouterRequestError("timeout", "OpenRouter took too long to respond. Check your connection and try again.");
-    if (isNetworkFailure(error)) throw new OpenRouterRequestError("network", "Prior could not reach OpenRouter. Check your connection and try again.");
+    if (controller.signal.aborted) throw new OpenRouterRequestError("timeout", translateStored("agent.errors.openrouterTimeout"));
+    if (isNetworkFailure(error)) throw new OpenRouterRequestError("network", translateStored("agent.errors.openrouterNetwork"));
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -836,7 +853,7 @@ export function parseAiResponse(raw: string): {
 
   try {
     const parsed = JSON.parse(jsonStr) as ParsedAgentPayload;
-    const reply = typeof parsed.reply === "string" ? parsed.reply : "Here are the suggested items based on your input:";
+    const reply = typeof parsed.reply === "string" ? parsed.reply : translateStored("agent.reply.fallback");
     const areas = collectItems(parsed, "create_area").filter(hasNameOrTitle).map(buildProposedArea);
     const projects = collectItems(parsed, "create_project").filter(hasNameOrTitle).map(buildProposedProject);
     const tasks = collectItems(parsed, "create_task").filter(hasTitle).map(buildProposedTask);
@@ -939,7 +956,7 @@ export async function askAgentStream(
     );
     return {
       ...parseAiResponse(result.text),
-      actualModel: result.actualModel ?? "Codex · ChatGPT subscription",
+      actualModel: result.actualModel ?? translateStored("agent.provider.codexTitle"),
       codexThreadId: result.threadId,
     };
   }
@@ -1009,13 +1026,13 @@ export async function askAgent(
     });
     return {
       ...parseAiResponse(result.text),
-      actualModel: result.actualModel ?? "Codex · ChatGPT subscription",
+      actualModel: result.actualModel ?? translateStored("agent.provider.codexTitle"),
       codexThreadId: result.threadId,
     };
   }
 
   if (!settings.apiKey) {
-    throw new Error("Missing OpenRouter API Key. Please add your key in the settings tab.");
+    throw new Error(translateStored("agent.errors.missingKey"));
   }
 
   const webSearchEnabled = settings.webSearch !== false;
@@ -1069,7 +1086,7 @@ export async function askAgent(
       if (response.status === 400 && webSearchEnabled && /tool|web_search/i.test(errorText)) {
         return await sendPlainRequest(withoutTools(payload), headers);
       }
-      throw new Error(`OpenRouter error (${response.status}): ${errorText || response.statusText}`);
+      throw new Error(translateStored("agent.errors.openrouterStatus", { status: response.status, detail: errorText || response.statusText }));
     }
 
     const data = await response.json();
@@ -1080,7 +1097,9 @@ export async function askAgent(
       actualModel: (data.model as string | undefined) || String(payload.model),
     };
   } catch (err: unknown) {
-    if (err instanceof OpenRouterRequestError || (err instanceof Error && err.message.includes("OpenRouter error"))) {
+    // Brand-name match (not the full sentence) so translated OpenRouter error
+    // messages are still rethrown instead of retried without response_format.
+    if (err instanceof OpenRouterRequestError || (err instanceof Error && err.message.includes("OpenRouter"))) {
       throw err;
     }
     // Try plain request without response_format

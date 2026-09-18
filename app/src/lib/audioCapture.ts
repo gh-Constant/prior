@@ -1,3 +1,5 @@
+import { translateStored } from "./i18n";
+
 const PREFERRED_MIME_TYPES = [
   "audio/webm;codecs=opus",
   "audio/webm",
@@ -39,14 +41,14 @@ export function mapAudioCaptureError(error: unknown): string {
   switch (name) {
     case "NotAllowedError":
     case "SecurityError":
-      return "Microphone access was denied. Allow microphone access for Prior, then try again.";
+      return translateStored("agent.audio.denied");
     case "NotFoundError":
     case "NotReadableError":
-      return "No usable microphone was found. Check your microphone and try again.";
+      return translateStored("agent.audio.notFound");
     case "AbortError":
-      return "Microphone capture was cancelled.";
+      return translateStored("agent.audio.cancelled");
     default:
-      return "Prior could not start audio recording. Check your microphone permissions and try again.";
+      return translateStored("agent.audio.failed");
   }
 }
 

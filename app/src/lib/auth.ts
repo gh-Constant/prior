@@ -5,6 +5,7 @@ import { clearAgentSettings } from "./ai";
 import { claimAnonymousStorageForAccount, emitAccountScopeChange, migrateLegacyStorageForAccount } from "./accountScope";
 import { openExternalUrl } from "./browser";
 import { getSecret, removeSecret, setSecret } from "./secureStore";
+import { translateStored } from "./i18n";
 import { isAndroid, isTauri } from "./platform";
 
 const USER_KEY = "prior.session.user";
@@ -132,9 +133,9 @@ async function finish(url: string, handledCodes: Set<string>): Promise<SessionUs
     (parsed.origin === window.location.origin && ["http:", "https:"].includes(parsed.protocol))
   );
   if ((!nativeCallback && !webCallback) || parsed.username || parsed.password) return null;
-  if (parsed.searchParams.has("error")) throw new Error("Google sign-in failed or was cancelled. Please try again.");
+  if (parsed.searchParams.has("error")) throw new Error(translateStored("auth.errors.googleFailed"));
   const code = parsed.searchParams.get("code");
-  if (!code) throw new Error("The sign-in link is missing its code. Please sign in again.");
+  if (!code) throw new Error(translateStored("auth.errors.missingCode"));
   // Tauri can deliver the same one-use code through both startup and open events.
   if (handledCodes.has(code)) return null;
   handledCodes.add(code);

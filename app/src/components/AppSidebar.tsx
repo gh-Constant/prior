@@ -1,4 +1,5 @@
 import type { SessionUser } from "../lib/auth";
+import { useI18n } from "../lib/i18n";
 import { AgentIdentity } from "./AgentIdentity";
 import { BrandMark } from "./BrandMark";
 import { Icon } from "./Icon";
@@ -22,13 +23,14 @@ type AppSidebarProps = {
   readonly onCloseMobile: () => void;
 };
 
-const NAV_GROUPS: Array<{ label: string; items: Array<{ view: WorkspaceView; label: string; icon: "inbox" | "grid" | "calendar-check" | "file-text" | "folder" | "focus" | "later" }> }> = [
-  { label: "Focus", items: [{ view: "today", label: "Today", icon: "focus" }, { view: "inbox", label: "Inbox", icon: "inbox" }] },
-  { label: "Organize", items: [{ view: "projects", label: "Projects", icon: "folder" }, { view: "all", label: "All tasks", icon: "inbox" }] },
-  { label: "Review", items: [{ view: "waiting", label: "Waiting", icon: "later" }, { view: "eisenhower", label: "Priority lens", icon: "grid" }, { view: "habits", label: "Habits", icon: "calendar-check" }, { view: "notes", label: "Notes", icon: "file-text" }] },
+const NAV_GROUPS: Array<{ labelKey: string; items: Array<{ view: WorkspaceView; labelKey: string; icon: "inbox" | "grid" | "calendar-check" | "file-text" | "folder" | "focus" | "later" }> }> = [
+  { labelKey: "common.nav.groups.focus", items: [{ view: "today", labelKey: "common.nav.items.today", icon: "focus" }, { view: "inbox", labelKey: "common.nav.items.inbox", icon: "inbox" }] },
+  { labelKey: "common.nav.groups.organize", items: [{ view: "projects", labelKey: "common.nav.items.projects", icon: "folder" }, { view: "all", labelKey: "common.nav.items.allTasks", icon: "inbox" }] },
+  { labelKey: "common.nav.groups.review", items: [{ view: "waiting", labelKey: "common.nav.items.waiting", icon: "later" }, { view: "eisenhower", labelKey: "common.nav.items.priorityLens", icon: "grid" }, { view: "habits", labelKey: "common.nav.items.habits", icon: "calendar-check" }, { view: "notes", labelKey: "common.nav.items.notes", icon: "file-text" }] },
 ];
 
 export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen, aiShortcut, inert, updateAvailable, onViewChange, onAccount, onToggle, onToggleAgent, onCloseMobile }: AppSidebarProps) {
+  const { t } = useI18n();
   function go(view: WorkspaceView): void {
     onCloseMobile();
     onViewChange(view);
@@ -46,8 +48,8 @@ export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen,
 
   return (
     <>
-      {mobileOpen && <button type="button" className="sidebar-backdrop" aria-label="Close menu" onClick={onCloseMobile} tabIndex={-1} />}
-      <aside id="prior-sidebar" className={`sidebar ${collapsed ? "is-collapsed" : ""} ${mobileOpen ? "is-mobile-open" : ""}`} inert={inert} aria-label="Primary">
+      {mobileOpen && <button type="button" className="sidebar-backdrop" aria-label={t("common.actions.closeMenu")} onClick={onCloseMobile} tabIndex={-1} />}
+      <aside id="prior-sidebar" className={`sidebar ${collapsed ? "is-collapsed" : ""} ${mobileOpen ? "is-mobile-open" : ""}`} inert={inert} aria-label={t("common.sidebar.primary")}>
         <div className="sidebar-top">
           <div className="sidebar-brand" title="Prior">
             <BrandMark withTitle />
@@ -55,9 +57,9 @@ export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen,
           <button
             type="button"
             className="sidebar-collapse-button"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? t("common.sidebar.expand") : t("common.sidebar.collapse")}
             aria-pressed={collapsed}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? t("common.sidebar.expand") : t("common.sidebar.collapse")}
             onClick={onToggle}
           >
             <Icon name={collapsed ? "chevron-right" : "chevron-left"} />
@@ -65,18 +67,18 @@ export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen,
           <button
             type="button"
             className="sidebar-close-button"
-            aria-label="Close menu"
-            title="Close menu"
+            aria-label={t("common.actions.closeMenu")}
+            title={t("common.actions.closeMenu")}
             onClick={onCloseMobile}
           >
             <Icon name="close" />
           </button>
         </div>
 
-        <nav className="sidebar-nav" aria-label="Workspace views">
-          {NAV_GROUPS.map((group) => <div className="sidebar-nav-group" key={group.label}><span className="sidebar-nav-label">{group.label}</span>{group.items.map((item) => (
-            <button key={item.view} type="button" className={`nav-item ${activeView === item.view ? "active" : ""}`} data-view={item.view} aria-current={activeView === item.view ? "page" : undefined} title={item.label} onClick={() => go(item.view)}>
-              <Icon name={item.icon} /><span>{item.label}</span>
+        <nav className="sidebar-nav" aria-label={t("common.sidebar.workspaceViews")}>
+          {NAV_GROUPS.map((group) => <div className="sidebar-nav-group" key={group.labelKey}><span className="sidebar-nav-label">{t(group.labelKey)}</span>{group.items.map((item) => (
+            <button key={item.view} type="button" className={`nav-item ${activeView === item.view ? "active" : ""}`} data-view={item.view} aria-current={activeView === item.view ? "page" : undefined} title={t(item.labelKey)} onClick={() => go(item.view)}>
+              <Icon name={item.icon} /><span>{t(item.labelKey)}</span>
             </button>
           ))}</div>)}
         </nav>
@@ -87,23 +89,23 @@ export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen,
             className={`prior-agent-button ${agentOpen ? "active" : ""}`}
             aria-expanded={agentOpen}
             aria-controls="prior-ai-assistant"
-            title={`Prior Agent (${aiShortcut})`}
+            title={t("common.sidebar.agentShortcut", { shortcut: aiShortcut })}
             onClick={toggleAgent}
           >
             <AgentIdentity size="tiny" />
-            <span className="prior-agent-label">Prior Agent</span>
+            <span className="prior-agent-label">{t("common.sidebar.agent")}</span>
             <kbd>{aiShortcut}</kbd>
           </button>
           <button
             className="account-trigger"
             type="button"
-            aria-label={updateAvailable ? "Account, update available" : "Account"}
-            title="Account"
+            aria-label={updateAvailable ? t("common.sidebar.accountUpdate") : t("common.sidebar.account")}
+            title={t("common.sidebar.account")}
             onClick={openAccount}
           >
             <span className="account-trigger-avatar">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}</span>
-            <span className="account-trigger-label">{user?.displayName || "Account"}</span>
-            {updateAvailable && <span className="update-badge-dot" aria-label="Update available" title="Update available" style={{ width: 8, height: 8, borderRadius: 999, background: "#fa654a", display: "inline-block", marginLeft: "auto" }} />}
+            <span className="account-trigger-label">{user?.displayName || t("common.sidebar.account")}</span>
+            {updateAvailable && <span className="update-badge-dot" aria-label={t("common.sidebar.updateAvailable")} title={t("common.sidebar.updateAvailable")} style={{ width: 8, height: 8, borderRadius: 999, background: "#fa654a", display: "inline-block", marginLeft: "auto" }} />}
           </button>
         </div>
       </aside>

@@ -1,4 +1,5 @@
 import type { Project, Task } from "../types";
+import { useI18n } from "../lib/i18n";
 import { TaskRow } from "./TaskRow";
 
 type Props = {
@@ -10,9 +11,10 @@ type Props = {
 };
 
 export function TaskColumns({ tasks, onChange, onDelete, onEdit, projects = [] }: Props) {
+  const { t } = useI18n();
   const projectById = new Map(projects.map((project) => [project.id, project]));
   return (
-    <section className="task-columns" aria-label="Task columns">
+    <section className="task-columns" aria-label={t("tasks.columns.label")}>
       {tasks.map((task) => (
         <div className="task-card" key={task.id}>
           <TaskRow task={task} project={task.projectId ? projectById.get(task.projectId) ?? null : null} onChange={onChange} onDelete={onDelete} onEdit={onEdit} />

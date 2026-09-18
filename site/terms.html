@@ -7,30 +7,33 @@
     <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/png" href="/prior-logo.png" />
     <link rel="stylesheet" href="/styles.css" />
-    <title>Terms — Prior</title>
+    <script src="/i18n-dicts.js" defer></script>
+    <script src="/i18n.js" defer></script>
+    <title data-i18n="terms.title">Terms — Prior</title>
   </head>
   <body>
-    <a class="skip-link" href="#content">Skip to content</a>
+    <a class="skip-link" href="#content" data-i18n="skip.link">Skip to content</a>
     <header class="site-header">
-      <a class="brand" href="/" aria-label="Prior home"><img src="/prior-logo.png" alt="" width="34" height="34" /><span>Prior</span></a>
-      <nav aria-label="Main navigation"><a class="nav-link" href="/privacy.html">Privacy</a><a class="nav-link" href="/#download">Download</a></nav>
+      <a class="brand" href="/" data-i18n-aria="brand.home" aria-label="Prior home"><img src="/prior-logo.png" alt="" width="34" height="34" /><span>Prior</span></a>
+      <nav data-i18n-aria="nav.main" aria-label="Main navigation"><a class="nav-link" href="/privacy.html" data-i18n="nav.privacy">Privacy</a><a class="nav-link" href="/#download" data-i18n="nav.download">Download</a></nav>
     </header>
     <main id="content" class="legal">
       <article>
-        <p class="eyebrow">Prior</p>
-        <h1>Terms</h1>
-        <p class="updated">Last updated: September 15, 2026</p>
-        <h2>Use of Prior</h2>
-        <p>Prior is provided as a lightweight personal task service. You are responsible for the accuracy of your tasks and for keeping access to your account and devices secure.</p>
-        <h2>Availability</h2>
-        <p>We aim to keep Prior available and preserve synchronized data, but the service is provided without a guarantee of uninterrupted availability. Local-first behavior means you can continue working with the data already on your device during temporary outages.</p>
-        <h2>Changes</h2>
-        <p>These terms may change as Prior evolves. Material changes will be reflected on this page.</p>
+        <p class="eyebrow" data-i18n="legal.eyebrow">Prior</p>
+        <h1 data-i18n="terms.h1">Terms</h1>
+        <p class="updated" data-i18n="legal.updated">Last updated: September 15, 2026</p>
+        <h2 data-i18n="terms.s1t">Use of Prior</h2>
+        <p data-i18n="terms.s1p">Prior is provided as a lightweight personal task service. You are responsible for the accuracy of your tasks and for keeping access to your account and devices secure.</p>
+        <h2 data-i18n="terms.s2t">Availability</h2>
+        <p data-i18n="terms.s2p">We aim to keep Prior available and preserve synchronized data, but the service is provided without a guarantee of uninterrupted availability. Local-first behavior means you can continue working with the data already on your device during temporary outages.</p>
+        <h2 data-i18n="terms.s3t">Changes</h2>
+        <p data-i18n="terms.s3p">These terms may change as Prior evolves. Material changes will be reflected on this page.</p>
       </article>
     </main>
     <footer class="site-footer">
       <a class="brand" href="/"><img src="/prior-logo.png" alt="" width="24" height="24" /><span>Prior</span></a>
-      <nav aria-label="Footer"><a class="nav-link" href="https://github.com/gh-Constant/prior/releases/latest">Releases</a><a class="nav-link" href="/privacy.html">Privacy</a><a class="nav-link" href="/terms.html">Terms</a></nav>
+      <nav data-i18n-aria="footer.label" aria-label="Footer"><a class="nav-link" href="https://github.com/gh-Constant/prior/releases/latest" data-i18n="footer.releases">Releases</a><a class="nav-link" href="/privacy.html" data-i18n="footer.privacy">Privacy</a><a class="nav-link" href="/terms.html" data-i18n="footer.terms">Terms</a></nav>
+      <label class="lang-picker"><select id="site-lang" data-i18n-aria="lang.label" aria-label="Language"><option value="en">English</option><option value="fr">Français</option><option value="es">Español</option><option value="de">Deutsch</option><option value="pt">Português</option></select></label>
     </footer>
   </body>
 </html>

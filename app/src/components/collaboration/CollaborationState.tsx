@@ -1,4 +1,5 @@
 import { Icon } from "../Icon";
+import { useI18n } from "../../lib/i18n";
 import "./Collaboration.css";
 
 export function CollaborationState({ title, description, loading = false }: { title: string; description?: string; loading?: boolean }) {
@@ -10,5 +11,6 @@ export function CollaborationState({ title, description, loading = false }: { ti
 }
 
 export function ReadOnlyNotice() {
-  return <p className="collab-notice"><Icon name="lock" aria-hidden="true" />You have view-only access. Ask a project owner to make changes.</p>;
+  const { t } = useI18n();
+  return <p className="collab-notice"><Icon name="lock" aria-hidden="true" />{t("collab.readonly.notice")}</p>;
 }

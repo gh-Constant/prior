@@ -17,11 +17,14 @@ import type {
 import { quadrantFor } from "../lib/priority";
 import { renderChatMarkdown } from "../lib/chatMarkdown";
 import { habitScheduleLabel } from "../lib/habits";
+import { useI18n } from "../lib/i18n";
 import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
 import "katex/dist/katex.min.css";
 
 export function getQuadrantBadge(task: Pick<Task, "important" | "urgent">): { key: QuadrantKey; label: string } {
+  // NOTE: UI labels come from agent.quadrant.* via quadrantLabel() below.
+  // The English label here is kept for backward compatibility only.
   const key = quadrantFor(task);
   switch (key) {
     case "focus":
@@ -37,6 +40,19 @@ export function getQuadrantBadge(task: Pick<Task, "important" | "urgent">): { ke
 
 function formatDueDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+function quadrantLabel(t: (key: string) => string, key: QuadrantKey): string {
+  switch (key) {
+    case "focus":
+      return t("agent.quadrant.focus");
+    case "plan":
+      return t("agent.quadrant.plan");
+    case "quick":
+      return t("agent.quadrant.quick");
+    case "later":
+      return t("agent.quadrant.later");
+  }
 }
 
 export function updateAreaProposal(
@@ -191,14 +207,35 @@ export function folderDraftOf(folder: ProposedFolder): NoteFolderDraft {
 
 function detectNoteFeatures(body: string): string[] {
   const features: string[] = [];
-  if (/(^|\n)\s*[-*+]\s+\[[ xX]\]/.test(body)) features.push("Task list");
-  if (/(^|\n)\s*\|[^|\n]+\|/.test(body)) features.push("Table");
-  if (/\$\$[^$]+\$\$|\$[^$\n]+\$/.test(body)) features.push("Math");
-  if (/\[\[[^\]]+\]\]/.test(body)) features.push("Links");
-  if (/(^|\s)#[A-Za-z][\w-]*/.test(body)) features.push("Tags");
-  if (/^> \[!(note|tip|warning|info)\]/im.test(body)) features.push("Callout");
-  if (/^```/m.test(body)) features.push("Code");
+  if (/(^|\n)\s*[-*+]\s+\[[ xX]\]/.test(body)) features.push("taskList");
+  if (/(^|\n)\s*\|[^|\n]+\|/.test(body)) features.push("table");
+  if (/\$\$[^$]+\$\$|\$[^$\n]+\$/.test(body)) features.push("math");
+  if (/\[\[[^\]]+\]\]/.test(body)) features.push("links");
+  if (/(^|\s)#[A-Za-z][\w-]*/.test(body)) features.push("tags");
+  if (/^> \[!(note|tip|warning|info)\]/im.test(body)) features.push("callout");
+  if (/^```/m.test(body)) features.push("code");
   return features.slice(0, 4);
+}
+
+function featureLabel(t: (key: string) => string, feature: string): string {
+  switch (feature) {
+    case "taskList":
+      return t("agent.features.taskList");
+    case "table":
+      return t("agent.features.table");
+    case "math":
+      return t("agent.features.math");
+    case "links":
+      return t("agent.features.links");
+    case "tags":
+      return t("agent.features.tags");
+    case "callout":
+      return t("agent.features.callout");
+    case "code":
+      return t("agent.features.code");
+    default:
+      return feature;
+  }
 }
 
 type FlagTogglesProps = {
@@ -240,14 +277,14 @@ function FlagToggles({ important, urgent, disabled, importantLabel, urgentLabel,
   );
 }
 
-function statusLabel(status: string | undefined): string | null {
+function statusLabel(t: (key: string) => string, status: string | undefined): string | null {
   switch (status) {
-    case "inbox": return "Inbox";
-    case "backlog": return "Backlog";
-    case "next": return "Next action";
-    case "in_progress": return "In progress";
-    case "waiting": return "Waiting";
-    case "done": return "Done";
+    case "inbox": return t("agent.status.inbox");
+    case "backlog": return t("agent.status.backlog");
+    case "next": return t("agent.status.next");
+    case "in_progress": return t("agent.status.in_progress");
+    case "waiting": return t("agent.status.waiting");
+    case "done": return t("agent.status.done");
     default: return null;
   }
 }
@@ -261,6 +298,7 @@ type ProposedAreaCardProps = {
 };
 
 export function ProposedAreaCard({ messageId, area, adding, onUpdate, onAdd }: ProposedAreaCardProps) {
+  const { t } = useI18n();
   return (
     <div className={`proposed-task-item proposed-area-item ${area.added ? "is-added" : ""}`}>
       <div className="proposed-task-top">
@@ -275,7 +313,7 @@ export function ProposedAreaCard({ messageId, area, adding, onUpdate, onAdd }: P
         </label>
         {area.added ? (
           <span className="task-added-badge">
-            <Icon name="check" /> Added
+            <Icon name="check" /> {t("agent.cards.added")}
           </span>
         ) : (
           <button
@@ -283,14 +321,14 @@ export function ProposedAreaCard({ messageId, area, adding, onUpdate, onAdd }: P
             className="add-single-btn"
             disabled={adding}
             onClick={() => onAdd?.(messageId, area)}
-            title="Add area to Prior"
+            title={t("agent.cards.addArea")}
           >
             <Icon name="plus" />
           </button>
         )}
       </div>
       <div className="proposed-task-meta">
-        <span className="proposed-priority proposed-priority-2">Area of responsibility</span>
+        <span className="proposed-priority proposed-priority-2">{t("agent.cards.areaKind")}</span>
       </div>
       {area.reasoning && <p className="proposed-reasoning">{area.reasoning}</p>}
     </div>
@@ -307,16 +345,17 @@ type AreaProposalBoxProps = {
 };
 
 export function AreaProposalBox({ messageId, areas, addingIds, onUpdate, onAddSingle, onAddAll }: AreaProposalBoxProps) {
+  const { t, tp } = useI18n();
   if (areas.length === 0) return null;
   const addedCount = areas.filter((a) => a.added).length;
   return (
     <div className="proposed-tasks-box proposed-areas-box">
       <div className="proposed-tasks-header">
-        <span className="proposed-count">{addedCount}/{areas.length} areas added</span>
+        <span className="proposed-count">{tp("agent.cards.areasAdded", areas.length, { added: addedCount, total: areas.length })}</span>
         {areas.some((a) => !a.added) && (
           <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll?.(messageId, [...areas])}>
             <Icon name="plus" />
-            <span>Add areas to Prior</span>
+            <span>{t("agent.cards.addAreas")}</span>
           </button>
         )}
       </div>
@@ -345,6 +384,7 @@ type ProposedProjectCardProps = {
 };
 
 export function ProposedProjectCard({ messageId, project, adding, onUpdate, onAdd }: ProposedProjectCardProps) {
+  const { t } = useI18n();
   return (
     <div className={`proposed-task-item proposed-project-item ${project.added ? "is-added" : ""}`}>
       <div className="proposed-task-top">
@@ -359,7 +399,7 @@ export function ProposedProjectCard({ messageId, project, adding, onUpdate, onAd
         </label>
         {project.added ? (
           <span className="task-added-badge">
-            <Icon name="check" /> Added
+            <Icon name="check" /> {t("agent.cards.added")}
           </span>
         ) : (
           <button
@@ -367,7 +407,7 @@ export function ProposedProjectCard({ messageId, project, adding, onUpdate, onAd
             className="add-single-btn"
             disabled={adding}
             onClick={() => onAdd?.(messageId, project)}
-            title="Add project to Prior"
+            title={t("agent.cards.addProject")}
           >
             <Icon name="plus" />
           </button>
@@ -375,7 +415,7 @@ export function ProposedProjectCard({ messageId, project, adding, onUpdate, onAd
       </div>
       {project.description && <p className="proposed-description">{project.description}</p>}
       <div className="proposed-task-meta">
-        {project.areaName && <span className="proposed-area-badge">Area: {project.areaName}</span>}
+        {project.areaName && <span className="proposed-area-badge">{t("agent.cards.areaBadge", { name: project.areaName })}</span>}
         {project.status && <span className="proposed-priority proposed-priority-3">{project.status}</span>}
       </div>
       {project.reasoning && <p className="proposed-reasoning">{project.reasoning}</p>}
@@ -393,16 +433,17 @@ type ProjectProposalBoxProps = {
 };
 
 export function ProjectProposalBox({ messageId, projects, addingIds, onUpdate, onAddSingle, onAddAll }: ProjectProposalBoxProps) {
+  const { t, tp } = useI18n();
   if (projects.length === 0) return null;
   const addedCount = projects.filter((p) => p.added).length;
   return (
     <div className="proposed-tasks-box proposed-projects-box">
       <div className="proposed-tasks-header">
-        <span className="proposed-count">{addedCount}/{projects.length} projects added</span>
+        <span className="proposed-count">{tp("agent.cards.projectsAdded", projects.length, { added: addedCount, total: projects.length })}</span>
         {projects.some((p) => !p.added) && (
           <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll?.(messageId, [...projects])}>
             <Icon name="plus" />
-            <span>Add projects to Prior</span>
+            <span>{t("agent.cards.addProjects")}</span>
           </button>
         )}
       </div>
@@ -433,8 +474,10 @@ type ProposedTaskCardProps = {
 };
 
 export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onToggleImportant, onToggleUrgent, onAdd }: ProposedTaskCardProps) {
+  const { t } = useI18n();
   const badge = getQuadrantBadge(task);
   const priority = task.priority ?? 4;
+  const taskStatus = statusLabel(t, task.status);
   return (
     <div className={`proposed-task-item ${task.added ? "is-added" : ""}`}>
       <div className="proposed-task-top">
@@ -449,7 +492,7 @@ export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onTo
         </label>
         {task.added ? (
           <span className="task-added-badge">
-            <Icon name="check" /> Added
+            <Icon name="check" /> {t("agent.cards.added")}
           </span>
         ) : (
           <button
@@ -457,7 +500,7 @@ export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onTo
             className="add-single-btn"
             disabled={adding}
             onClick={() => onAdd(messageId, task)}
-            title="Add task to Prior"
+            title={t("agent.cards.addTask")}
           >
             <Icon name="plus" />
           </button>
@@ -466,22 +509,22 @@ export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onTo
       {task.description && <p className="proposed-description">{task.description}</p>}
       <div className="proposed-task-meta">
         <span className={`quadrant-chip quadrant-chip-${badge.key}`}>
-          {badge.label}
+          {quadrantLabel(t, badge.key)}
         </span>
         <span className={`proposed-priority proposed-priority-${priority}`}>P{priority}</span>
-        {task.status && <span className={`proposed-status-badge proposed-status-${task.status}`}>{statusLabel(task.status)}</span>}
+        {taskStatus && <span className={`proposed-status-badge proposed-status-${task.status}`}>{taskStatus}</span>}
         {task.projectName && <span className="proposed-project-badge">{task.projectName}</span>}
         {task.areaName && !task.projectName && <span className="proposed-area-badge">{task.areaName}</span>}
-        {task.dueDate && <span className="proposed-due-date">Due {formatDueDate(task.dueDate)}</span>}
-        {task.scheduledDate && <span className="proposed-scheduled-date">Scheduled {formatDueDate(task.scheduledDate)}</span>}
-        {task.assigneeName && <span className="proposed-assignee-badge">Waiting on {task.assigneeName}</span>}
-        {task.followUpDate && <span className="proposed-followup-date">Follow-up {formatDueDate(task.followUpDate)}</span>}
+        {task.dueDate && <span className="proposed-due-date">{t("agent.cards.due", { date: formatDueDate(task.dueDate) })}</span>}
+        {task.scheduledDate && <span className="proposed-scheduled-date">{t("agent.cards.scheduled", { date: formatDueDate(task.scheduledDate) })}</span>}
+        {task.assigneeName && <span className="proposed-assignee-badge">{t("agent.cards.waitingOn", { name: task.assigneeName })}</span>}
+        {task.followUpDate && <span className="proposed-followup-date">{t("agent.cards.followUp", { date: formatDueDate(task.followUpDate) })}</span>}
         <FlagToggles
           important={task.important}
           urgent={task.urgent}
           disabled={task.added}
-          importantLabel={["Remove important flag", "Mark important"]}
-          urgentLabel={["Remove urgent flag", "Mark urgent"]}
+          importantLabel={[t("agent.cards.unmarkImportant"), t("agent.cards.markImportant")]}
+          urgentLabel={[t("agent.cards.unmarkUrgent"), t("agent.cards.markUrgent")]}
           onToggleImportant={() => onToggleImportant(messageId, task.id)}
           onToggleUrgent={() => onToggleUrgent(messageId, task.id)}
         />
@@ -503,16 +546,17 @@ type TaskProposalBoxProps = {
 };
 
 export function TaskProposalBox({ messageId, tasks, addingIds, onToggleSelect, onToggleImportant, onToggleUrgent, onAddSingle, onAddAll }: TaskProposalBoxProps) {
+  const { t, tp } = useI18n();
   if (tasks.length === 0) return null;
   const addedCount = tasks.filter((task) => task.added).length;
   return (
     <div className="proposed-tasks-box">
       <div className="proposed-tasks-header">
-        <span className="proposed-count">{addedCount}/{tasks.length} added</span>
+        <span className="proposed-count">{tp("agent.cards.tasksAdded", tasks.length, { added: addedCount, total: tasks.length })}</span>
         {tasks.some((task) => !task.added) && (
           <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll(messageId, [...tasks])}>
             <Icon name="plus" />
-            <span>Add all to Prior</span>
+            <span>{t("agent.cards.addAllTasks")}</span>
           </button>
         )}
       </div>
@@ -543,6 +587,7 @@ type ProposedHabitCardProps = {
 };
 
 export function ProposedHabitCard({ messageId, habit, adding, onUpdate, onAdd }: ProposedHabitCardProps) {
+  const { t } = useI18n();
   const badge = getQuadrantBadge(habit);
   return (
     <div className={`proposed-task-item ${habit.added ? "is-added" : ""}`}>
@@ -558,7 +603,7 @@ export function ProposedHabitCard({ messageId, habit, adding, onUpdate, onAdd }:
         </label>
         {habit.added ? (
           <span className="task-added-badge">
-            <Icon name="check" /> Added
+            <Icon name="check" /> {t("agent.cards.added")}
           </span>
         ) : (
           <button
@@ -566,7 +611,7 @@ export function ProposedHabitCard({ messageId, habit, adding, onUpdate, onAdd }:
             className="add-single-btn"
             disabled={adding}
             onClick={() => onAdd(messageId, habit)}
-            title="Add habit to Prior"
+            title={t("agent.cards.addHabit")}
           >
             <Icon name="plus" />
           </button>
@@ -574,14 +619,14 @@ export function ProposedHabitCard({ messageId, habit, adding, onUpdate, onAdd }:
       </div>
       <div className="proposed-task-meta">
         <span className={`quadrant-chip quadrant-chip-${badge.key}`}>
-          {habitScheduleLabel(habit)}{habit.endDate ? ` · ends ${habit.endDate}` : ""} · {badge.label}
+          {habitScheduleLabel(habit)}{habit.endDate ? ` · ${t("agent.cards.endsOn", { date: habit.endDate })}` : ""} · {quadrantLabel(t, badge.key)}
         </span>
         <FlagToggles
           important={habit.important}
           urgent={habit.urgent}
           disabled={habit.added}
-          importantLabel={["Remove important flag", "Mark important"]}
-          urgentLabel={["Remove urgent flag", "Mark urgent"]}
+          importantLabel={[t("agent.cards.unmarkImportant"), t("agent.cards.markImportant")]}
+          urgentLabel={[t("agent.cards.unmarkUrgent"), t("agent.cards.markUrgent")]}
           onToggleImportant={() => onUpdate(messageId, habit.id, { important: !habit.important })}
           onToggleUrgent={() => onUpdate(messageId, habit.id, { urgent: !habit.urgent })}
         />
@@ -601,16 +646,17 @@ type HabitProposalBoxProps = {
 };
 
 export function HabitProposalBox({ messageId, habits, addingIds, onUpdate, onAddSingle, onAddAll }: HabitProposalBoxProps) {
+  const { t, tp } = useI18n();
   if (habits.length === 0) return null;
   const addedCount = habits.filter((habit) => habit.added).length;
   return (
     <div className="proposed-tasks-box proposed-habits-box">
       <div className="proposed-tasks-header">
-        <span className="proposed-count">{addedCount}/{habits.length} habits added</span>
+        <span className="proposed-count">{tp("agent.cards.habitsAdded", habits.length, { added: addedCount, total: habits.length })}</span>
         {habits.some((habit) => !habit.added) && (
           <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll(messageId, [...habits])}>
             <Icon name="plus" />
-            <span>Add habits to Prior</span>
+            <span>{t("agent.cards.addHabits")}</span>
           </button>
         )}
       </div>
@@ -663,9 +709,11 @@ type ProposedNoteCardProps = {
 };
 
 export function ProposedNoteCard({ messageId, note, adding, onUpdate, onAdd }: ProposedNoteCardProps) {
+  const { t, tp } = useI18n();
   const features = detectNoteFeatures(note.bodyMarkdown);
   const preview = note.bodyMarkdown.length > 420 ? `${note.bodyMarkdown.slice(0, 417).trimEnd()}…` : note.bodyMarkdown;
   const wordCount = note.bodyMarkdown.trim() ? note.bodyMarkdown.trim().split(/\s+/).length : 0;
+  const favoriteLabel = note.favorite ? t("agent.cards.unmarkFavorite") : t("agent.cards.markFavorite");
   return (
     <div className={`proposed-task-item proposed-note-item ${note.added ? "is-added" : ""}`}>
       <div className="proposed-task-top">
@@ -680,7 +728,7 @@ export function ProposedNoteCard({ messageId, note, adding, onUpdate, onAdd }: P
         </label>
         {note.added ? (
           <span className="task-added-badge">
-            <Icon name="check" /> Added
+            <Icon name="check" /> {t("agent.cards.added")}
           </span>
         ) : (
           <button
@@ -688,24 +736,24 @@ export function ProposedNoteCard({ messageId, note, adding, onUpdate, onAdd }: P
             className="add-single-btn"
             disabled={adding}
             onClick={() => onAdd(messageId, note)}
-            title="Add note to Prior"
+            title={t("agent.cards.addNote")}
           >
             <Icon name="plus" />
           </button>
         )}
       </div>
       <div className="proposed-task-meta">
-        <span className="proposed-due-date">{note.folderName ?? "Library"}</span>
-        {note.projectName && <span className="proposed-project-badge">Project: {note.projectName}</span>}
-        {note.favorite && <span className="proposed-priority proposed-priority-2">Favorite</span>}
-        <span className="proposed-count">{wordCount} words</span>
+        <span className="proposed-due-date">{note.folderName ?? t("agent.cards.folderLibrary")}</span>
+        {note.projectName && <span className="proposed-project-badge">{t("agent.cards.projectFor", { name: note.projectName })}</span>}
+        {note.favorite && <span className="proposed-priority proposed-priority-2">{t("agent.cards.favorite")}</span>}
+        <span className="proposed-count">{tp("agent.cards.words", wordCount)}</span>
         {!note.added && (
           <button
             type="button"
             className={`task-action flag-toggle ${note.favorite ? "active important" : ""}`}
-            aria-label={note.favorite ? "Remove favorite" : "Mark as favorite"}
+            aria-label={favoriteLabel}
             aria-pressed={note.favorite}
-            title={note.favorite ? "Remove favorite" : "Mark as favorite"}
+            title={favoriteLabel}
             onClick={() => onUpdate(messageId, note.id, { favorite: !note.favorite })}
           >
             <Icon name="star" />
@@ -715,7 +763,7 @@ export function ProposedNoteCard({ messageId, note, adding, onUpdate, onAdd }: P
       {features.length > 0 && (
         <div className="proposed-task-meta">
           {features.map((feature) => (
-            <span key={feature} className="quadrant-chip quadrant-chip-plan">{feature}</span>
+            <span key={feature} className="quadrant-chip quadrant-chip-plan">{featureLabel(t, feature)}</span>
           ))}
         </div>
       )}
@@ -735,16 +783,17 @@ type NoteProposalBoxProps = {
 };
 
 export function NoteProposalBox({ messageId, notes, addingIds, onUpdate, onAddSingle, onAddAll }: NoteProposalBoxProps) {
+  const { t, tp } = useI18n();
   if (notes.length === 0) return null;
   const addedCount = notes.filter((note) => note.added).length;
   return (
     <div className="proposed-tasks-box proposed-notes-box">
       <div className="proposed-tasks-header">
-        <span className="proposed-count">{addedCount}/{notes.length} notes added</span>
+        <span className="proposed-count">{tp("agent.cards.notesAdded", notes.length, { added: addedCount, total: notes.length })}</span>
         {notes.some((note) => !note.added) && (
           <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll(messageId, [...notes])}>
             <Icon name="plus" />
-            <span>Add notes to Prior</span>
+            <span>{t("agent.cards.addNotes")}</span>
           </button>
         )}
       </div>
@@ -773,6 +822,7 @@ type ProposedFolderCardProps = {
 };
 
 export function ProposedFolderCard({ messageId, folder, adding, onUpdate, onAdd }: ProposedFolderCardProps) {
+  const { t } = useI18n();
   return (
     <div className={`proposed-task-item ${folder.added ? "is-added" : ""}`}>
       <div className="proposed-task-top">
@@ -787,7 +837,7 @@ export function ProposedFolderCard({ messageId, folder, adding, onUpdate, onAdd 
         </label>
         {folder.added ? (
           <span className="task-added-badge">
-            <Icon name="check" /> Added
+            <Icon name="check" /> {t("agent.cards.added")}
           </span>
         ) : (
           <button
@@ -795,14 +845,14 @@ export function ProposedFolderCard({ messageId, folder, adding, onUpdate, onAdd 
             className="add-single-btn"
             disabled={adding}
             onClick={() => onAdd(messageId, folder)}
-            title="Add folder to Prior"
+            title={t("agent.cards.addFolder")}
           >
             <Icon name="plus" />
           </button>
         )}
       </div>
       <div className="proposed-task-meta">
-        <span className="proposed-due-date">{folder.parentName ? `Inside ${folder.parentName}` : "Top level"}</span>
+        <span className="proposed-due-date">{folder.parentName ? t("agent.cards.insideFolder", { name: folder.parentName }) : t("agent.cards.topLevel")}</span>
       </div>
       {folder.reasoning && <p className="proposed-reasoning">{folder.reasoning}</p>}
     </div>
@@ -819,16 +869,17 @@ type FolderProposalBoxProps = {
 };
 
 export function FolderProposalBox({ messageId, folders, addingIds, onUpdate, onAddSingle, onAddAll }: FolderProposalBoxProps) {
+  const { t, tp } = useI18n();
   if (folders.length === 0) return null;
   const addedCount = folders.filter((folder) => folder.added).length;
   return (
     <div className="proposed-tasks-box proposed-folders-box">
       <div className="proposed-tasks-header">
-        <span className="proposed-count">{addedCount}/{folders.length} folders added</span>
+        <span className="proposed-count">{tp("agent.cards.foldersAdded", folders.length, { added: addedCount, total: folders.length })}</span>
         {folders.some((folder) => !folder.added) && (
           <button type="button" className="primary-button add-all-btn" onClick={() => onAddAll(messageId, [...folders])}>
             <Icon name="plus" />
-            <span>Add folders to Prior</span>
+            <span>{t("agent.cards.addFolders")}</span>
           </button>
         )}
       </div>
@@ -854,6 +905,7 @@ type AssistantMessageProps = {
 };
 
 export function AssistantMessage({ message: msg, handlers }: AssistantMessageProps) {
+  const { t } = useI18n();
   if (msg.role === "user") {
     return (
       <div className="agent-message-row user">
@@ -871,9 +923,9 @@ export function AssistantMessage({ message: msg, handlers }: AssistantMessagePro
       <div className="agent-message-bubble">
         <div className="agent-message-text chat-markdown" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(msg.content) }} />
         {msg.actualModel && (
-          <div className="agent-model-info" title={`Resolved via ${msg.actualModel}`}>
+          <div className="agent-model-info" title={t("agent.cards.resolvedVia", { model: msg.actualModel })}>
             <span className="routed-dot" />
-            <span>Model: <strong>{msg.actualModel}</strong></span>
+            <span>{t("agent.cards.modelLabel")} <strong>{msg.actualModel}</strong></span>
           </div>
         )}
         {msg.proposedAreas && (

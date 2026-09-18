@@ -1,9 +1,27 @@
 import { useId, useRef, useState } from "react";
+import { useI18n } from "../lib/i18n";
 import { Icon, type IconName } from "./Icon";
 import { WorkspaceIcon, imageFileToIcon } from "./WorkspaceIcon";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { Person } from "./collaboration/types";
 import "./IconPicker.css";
+
+// WorkspaceIcon throws English errors; map the known ones so the picker can
+// display them in the current language. Unknown errors pass through as-is.
+function uploadErrorMessage(message: string, t: (key: string) => string): string {
+  switch (message) {
+    case "Choose an image file":
+      return t("common.iconPicker.errorNotImage");
+    case "Unable to read image":
+      return t("common.iconPicker.errorRead");
+    case "Image processing is unavailable":
+      return t("common.iconPicker.errorProcessUnavailable");
+    case "Unable to process image":
+      return t("common.iconPicker.errorProcess");
+    default:
+      return message;
+  }
+}
 
 /** Pure filter helper (unit-tested): match icon names case-insensitively. */
 export function filterIconOptions(options: readonly IconName[], query: string): IconName[] {
@@ -26,7 +44,10 @@ type IconPickerProps = {
   readonly disabled?: boolean;
 };
 
-export function IconPicker({ value, options, fallback, onSelect, label = "Icon", disabled = false }: IconPickerProps) {
+export function IconPicker({ value, options, fallback, onSelect, label, disabled = false }: IconPickerProps) {
+  const { t } = useI18n();
+  const resolvedLabel = label ?? t("common.iconPicker.defaultLabel");
+  const searchLabel = resolvedLabel.toLowerCase();
   const [query, setQuery] = useState("");
   const filtered = filterIconOptions(options, query);
   return (
@@ -38,23 +59,23 @@ export function IconPicker({ value, options, fallback, onSelect, label = "Icon",
           value={query}
           disabled={disabled}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder={`Search ${label.toLowerCase()}s`}
-          aria-label={`Search ${label.toLowerCase()}s`}
+          placeholder={t("common.iconPicker.search", { label: searchLabel })}
+          aria-label={t("common.iconPicker.search", { label: searchLabel })}
         />
         {query && (
-          <button type="button" className="icon-picker-clear" aria-label="Clear icon search" onClick={() => setQuery("")}>
+          <button type="button" className="icon-picker-clear" aria-label={t("common.iconPicker.clearSearch")} onClick={() => setQuery("")}>
             <Icon name="close" />
           </button>
         )}
       </label>
-      <div className="icon-picker-grid" role="radiogroup" aria-label={`${label} options`}>
+      <div className="icon-picker-grid" role="radiogroup" aria-label={t("common.iconPicker.options", { label: resolvedLabel })}>
         {filtered.map((option) => (
           <button
             key={option}
             type="button"
             disabled={disabled}
             className={`icon-picker-option${value === option ? " active" : ""}`}
-            aria-label={`Use ${option} icon`}
+            aria-label={t("common.iconPicker.useIcon", { icon: option })}
             aria-pressed={value === option}
             title={option}
             onClick={() => onSelect(option)}
@@ -62,7 +83,7 @@ export function IconPicker({ value, options, fallback, onSelect, label = "Icon",
             <WorkspaceIcon icon={option} fallback={fallback} />
           </button>
         ))}
-        {!filtered.length && <p className="icon-picker-empty">No icons match “{query.trim()}”.</p>}
+        {!filtered.length && <p className="icon-picker-empty">{t("common.iconPicker.noMatch", { query: query.trim() })}</p>}
       </div>
     </div>
   );
@@ -80,7 +101,9 @@ type IconUploadProps = {
   readonly inputLabel?: string;
 };
 
-export function IconUpload({ currentIcon, fallback, onUploaded, avatarUrl, onUseAvatar, disabled = false, onBusyChange, inputLabel = "Upload icon image" }: IconUploadProps) {
+export function IconUpload({ currentIcon, fallback, onUploaded, avatarUrl, onUseAvatar, disabled = false, onBusyChange, inputLabel }: IconUploadProps) {
+  const { t } = useI18n();
+  const resolvedInputLabel = inputLabel ?? t("common.iconPicker.uploadLabel");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -96,7 +119,7 @@ export function IconUpload({ currentIcon, fallback, onUploaded, avatarUrl, onUse
       const icon = await imageFileToIcon(file);
       onUploaded(icon);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to use this image. Try a PNG or JPEG.");
+      setError(cause instanceof Error ? uploadErrorMessage(cause.message, t) : t("common.iconPicker.errorGeneric"));
     } finally {
       setUploading(false);
       onBusyChange?.(false);
@@ -138,9 +161,9 @@ export function IconUpload({ currentIcon, fallback, onUploaded, avatarUrl, onUse
         <div className="icon-upload-copy">
           <label className="icon-upload-button" htmlFor={inputId}>
             <Icon name="download" aria-hidden="true" />
-            <span>{uploading ? "Processing image…" : isImage ? "Change image" : "Upload image"}</span>
+            <span>{uploading ? t("common.iconPicker.processing") : isImage ? t("common.iconPicker.change") : t("common.iconPicker.upload")}</span>
           </label>
-          <small>{dragging ? "Drop the image to use it" : "Drag & drop a square PNG or JPEG, or browse"}</small>
+          <small>{dragging ? t("common.iconPicker.dropActive") : t("common.iconPicker.dropHint")}</small>
         </div>
         <input
           id={inputId}
@@ -148,7 +171,7 @@ export function IconUpload({ currentIcon, fallback, onUploaded, avatarUrl, onUse
           accept="image/*"
           hidden
           disabled={disabled || uploading}
-          aria-label={inputLabel}
+          aria-label={resolvedInputLabel}
           onChange={(event) => {
             const file = event.target.files?.[0];
             event.currentTarget.value = "";
@@ -158,12 +181,12 @@ export function IconUpload({ currentIcon, fallback, onUploaded, avatarUrl, onUse
       </div>
       {avatarUrl && /^https:\/\//i.test(avatarUrl) && onUseAvatar && (
         <button type="button" className="secondary-button icon-upload-avatar-btn" disabled={disabled || uploading} onClick={onUseAvatar}>
-          Use my profile photo
+          {t("common.iconPicker.useProfilePhoto")}
         </button>
       )}
       {uploading && (
         <p className="icon-upload-status" role="status">
-          Processing image…
+          {t("common.iconPicker.processing")}
         </p>
       )}
       {error && (
@@ -186,14 +209,16 @@ type EditableIconProps = {
 };
 
 /** Click-on-icon wrapper: static preview when read-only, pencil-overlay button when editable. */
-export function EditableIcon({ icon, fallback, canEdit = false, readOnly = false, onOpen, label = "Edit icon", className = "" }: EditableIconProps) {
+export function EditableIcon({ icon, fallback, canEdit = false, readOnly = false, onOpen, label, className = "" }: EditableIconProps) {
+  const { t } = useI18n();
+  const resolvedLabel = label ?? t("common.iconPicker.editIcon");
   const editable = canEditAvatar({ canEdit, readOnly }) && Boolean(onOpen);
   const preview = <WorkspaceIcon icon={icon} fallback={fallback} />;
   if (!editable || !onOpen) {
     return <span className={`editable-icon ${className}`.trim()} aria-hidden={onOpen ? undefined : "true"}>{preview}</span>;
   }
   return (
-    <button type="button" className={`editable-icon is-editable ${className}`.trim()} aria-label={label} title={label} onClick={onOpen}>
+    <button type="button" className={`editable-icon is-editable ${className}`.trim()} aria-label={resolvedLabel} title={resolvedLabel} onClick={onOpen}>
       {preview}
       <span className="editable-icon-overlay" aria-hidden="true">
         <Icon name="pencil" />
@@ -212,7 +237,9 @@ type EditableAvatarProps = {
   readonly avatarClassName?: string;
 };
 
-export function EditableAvatar({ person, canEdit = false, readOnly = false, onOpen, label = `Edit ${person.name} avatar`, className = "", avatarClassName = "collab-avatar" }: EditableAvatarProps) {
+export function EditableAvatar({ person, canEdit = false, readOnly = false, onOpen, label, className = "", avatarClassName = "collab-avatar" }: EditableAvatarProps) {
+  const { t } = useI18n();
+  const resolvedLabel = label ?? t("common.iconPicker.editAvatar", { name: person.name });
   const editable = canEditAvatar({ canEdit, readOnly }) && Boolean(onOpen);
   if (!editable || !onOpen) {
     return (
@@ -222,7 +249,7 @@ export function EditableAvatar({ person, canEdit = false, readOnly = false, onOp
     );
   }
   return (
-    <button type="button" className={`editable-avatar is-editable ${className}`.trim()} aria-label={label} title={label} onClick={onOpen}>
+    <button type="button" className={`editable-avatar is-editable ${className}`.trim()} aria-label={resolvedLabel} title={resolvedLabel} onClick={onOpen}>
       <PersonAvatar person={person} className={avatarClassName} />
       <span className="editable-avatar-overlay" aria-hidden="true">
         <Icon name="pencil" />

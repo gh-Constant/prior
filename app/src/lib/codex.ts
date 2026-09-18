@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openExternalUrl } from "./browser";
+import { translateStored } from "./i18n";
 import { supportsCodex } from "./platform";
 import type { AgentMessage } from "../types";
 
@@ -192,7 +193,7 @@ export async function runCodexStream(
   request: CodexRunRequest,
   options: CodexStreamOptions = {},
 ): Promise<CodexRunResult> {
-  if (!supportsCodexDesktop()) throw new Error("Codex is not available on this device.");
+  if (!supportsCodexDesktop()) throw new Error(translateStored("settings.codex.notOnDevice"));
   if (options.signal?.aborted) throw new DOMException("Request cancelled.", "AbortError");
   const turnId = typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()

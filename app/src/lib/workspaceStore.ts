@@ -1,5 +1,6 @@
 import type { Area, Project, ProjectStatus } from "../types";
 import { readScopedStorage, writeScopedStorage } from "./accountScope";
+import { translateStored } from "./i18n";
 import { notesStore } from "./notes";
 import { normalizeProjectPlanning } from "./projectPlanning";
 
@@ -75,13 +76,13 @@ export const workspaceStore = {
   createArea(name: string, color?: string, icon?: string | null): Area {
     const timestamp = now();
     const areas = this.listAreas();
-    const area: Area = { id: uid(), name: name.trim() || "New area", color: color || AREA_COLORS[areas.length % AREA_COLORS.length], icon: icon || DEFAULT_AREA_ICON, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
+    const area: Area = { id: uid(), name: name.trim() || translateStored("collab.workspace.newArea"), color: color || AREA_COLORS[areas.length % AREA_COLORS.length], icon: icon || DEFAULT_AREA_ICON, createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
     write(AREAS_KEY, [...read<Area[]>(AREAS_KEY, []), area]);
     ensureAreaNotes(area);
     return area;
   },
   updateArea(area: Area): Area {
-    const saved = { ...normalizeArea(area), name: area.name.trim() || "New area", updatedAt: now(), deletedAt: null };
+    const saved = { ...normalizeArea(area), name: area.name.trim() || translateStored("collab.workspace.newArea"), updatedAt: now(), deletedAt: null };
     write(AREAS_KEY, read<Area[]>(AREAS_KEY, []).map((item) => item.id === area.id ? saved : item));
     ensureAreaNotes(saved);
     workspaceStore.listProjects().filter((project) => project.areaId === saved.id).forEach((project) => ensureProjectNotes(project, workspaceStore.listAreas()));
@@ -97,13 +98,13 @@ export const workspaceStore = {
   },
   createProject(name: string, areaId: string | null = null, description = "", icon?: string | null): Project {
     const timestamp = now();
-    const project: Project = { id: uid(), areaId, name: name.trim() || "New project", description: description.trim(), icon: icon || DEFAULT_PROJECT_ICON, status: "active", createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
+    const project: Project = { id: uid(), areaId, name: name.trim() || translateStored("collab.workspace.newProject"), description: description.trim(), icon: icon || DEFAULT_PROJECT_ICON, status: "active", createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
     write(PROJECTS_KEY, [...read<Project[]>(PROJECTS_KEY, []), project]);
     ensureProjectNotes(project);
     return project;
   },
   updateProject(project: Project): Project {
-    const saved = { ...normalizeProject(project), name: project.name.trim() || "New project", updatedAt: now(), deletedAt: null };
+    const saved = { ...normalizeProject(project), name: project.name.trim() || translateStored("collab.workspace.newProject"), updatedAt: now(), deletedAt: null };
     write(PROJECTS_KEY, read<Project[]>(PROJECTS_KEY, []).map((item) => item.id === project.id ? saved : item));
     ensureProjectNotes(saved);
     return saved;

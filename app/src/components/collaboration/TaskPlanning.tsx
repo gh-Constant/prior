@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Icon, type IconName } from "../Icon";
 import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
 import { PersonAvatar } from "./PersonAvatar";
+import { useI18n } from "../../lib/i18n";
 import type { Person, PlanningKey, ProjectIssue, TaskPerson, TaskPlanningProps } from "./types";
 import "./Collaboration.css";
 
@@ -10,8 +11,9 @@ const propertyIcons: Record<PlanningKey, IconName> = {
 };
 
 export function PeopleChips({ people }: { people: readonly Person[] }) {
+  const { t } = useI18n();
   if (!people.length) return null;
-  return <div className="collab-chips" aria-label="People">
+  return <div className="collab-chips" aria-label={t("collab.people.label")}>
     {people.map((person) => <span className="collab-chip" key={person.id}>
       <PersonAvatar person={person} />{person.name}
     </span>)}
@@ -19,16 +21,18 @@ export function PeopleChips({ people }: { people: readonly Person[] }) {
 }
 
 export function AgilePropertyChips({ properties = [], priority }: Pick<ProjectIssue, "properties" | "priority">) {
-  return <div className="collab-chips" aria-label="Issue properties">
+  const { t } = useI18n();
+  return <div className="collab-chips" aria-label={t("collab.issue.properties")}>
     {properties.map((property, index) => <span className="collab-chip" key={`${property.key}-${index}`}>
       <Icon name={propertyIcons[property.key]} aria-hidden="true" /><span>{property.label}</span>
     </span>)}
-    {priority !== undefined && <span className="collab-chip"><Icon name="flag" aria-hidden="true" />Priority {priority}</span>}
+    {priority !== undefined && <span className="collab-chip"><Icon name="flag" aria-hidden="true" />{t("collab.issue.priority", { priority })}</span>}
   </div>;
 }
 
 export function TaskPeoplePicker({ people, availablePeople, readOnly = false, loading = false, onPeopleChange }: Omit<TaskPlanningProps, "fields" | "onFieldChange">) {
   const [query, setQuery] = useState("");
+  const { t } = useI18n();
   const editable = !readOnly && !loading && Boolean(onPeopleChange);
   const ownerCount = people.filter((person) => person.role === "owner").length;
   const selectedIds = new Set(people.map((person) => person.id));
@@ -39,26 +43,26 @@ export function TaskPeoplePicker({ people, availablePeople, readOnly = false, lo
     onPeopleChange?.(people.map((item) => item.id === person.id ? { ...item, role } : item));
   }
 
-  return <section className="collab-people-picker" aria-label="Task people">
-    <h3>People</h3>
+  return <section className="collab-people-picker" aria-label={t("collab.taskPeople.group")}>
+    <h3>{t("collab.people.label")}</h3>
     <PeopleChips people={people} />
     {readOnly && <ReadOnlyNotice />}
-    {loading ? <CollaborationState title="Loading people…" loading /> : <>
+    {loading ? <CollaborationState title={t("collab.taskPeople.loading")} loading /> : <>
       {people.length > 0 && <ul className="collab-members">{people.map((person) => {
         const lastOwner = person.role === "owner" && ownerCount === 1;
         return <li key={person.id}>
           <PersonAvatar person={person} />
-          <div className="collab-person-copy"><strong>{person.name}</strong>{lastOwner && <small>At least one owner must remain</small>}</div>
-          <select aria-label={`Task role for ${person.name}`} value={person.role} disabled={!editable || lastOwner} onChange={(event) => changeRole(person, event.target.value as TaskPerson["role"])}>
-            <option value="owner">Owner</option><option value="assignee">Assignee</option><option value="collaborator">Collaborator</option>
+          <div className="collab-person-copy"><strong>{person.name}</strong>{lastOwner && <small>{t("collab.taskPeople.lastOwner")}</small>}</div>
+          <select aria-label={t("collab.taskPeople.roleFor", { name: person.name })} value={person.role} disabled={!editable || lastOwner} onChange={(event) => changeRole(person, event.target.value as TaskPerson["role"])}>
+            <option value="owner">{t("collab.roles.owner")}</option><option value="assignee">{t("collab.roles.assignee")}</option><option value="collaborator">{t("collab.roles.collaborator")}</option>
           </select>
-          <button type="button" className="icon-button" aria-label={`Remove ${person.name}`} disabled={!editable || lastOwner} onClick={() => { if (editable && !lastOwner) onPeopleChange?.(people.filter((item) => item.id !== person.id)); }}><Icon name="close" /></button>
+          <button type="button" className="icon-button" aria-label={t("collab.taskPeople.removeFor", { name: person.name })} disabled={!editable || lastOwner} onClick={() => { if (editable && !lastOwner) onPeopleChange?.(people.filter((item) => item.id !== person.id)); }}><Icon name="close" /></button>
         </li>;
       })}</ul>}
-      {editable && <details className="collab-picker-options"><summary>Add people</summary>
-        <label className="collab-field"><span>Find a project member</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or email" /></label>
+      {editable && <details className="collab-picker-options"><summary>{t("collab.taskPeople.add")}</summary>
+        <label className="collab-field"><span>{t("collab.taskPeople.search")}</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("collab.taskPeople.searchPlaceholder")} /></label>
         <div className="collab-candidates">{candidates.map((person) => <button key={person.id} type="button" className="secondary-button" onClick={() => onPeopleChange?.([...people, { ...person, role: "collaborator" }])}><Icon name="plus" />{person.name}</button>)}</div>
-        {!candidates.length && <p className="collab-muted">{query ? "No matching members." : "No more project members to add."}</p>}
+        {!candidates.length && <p className="collab-muted">{query ? t("collab.taskPeople.noMatch") : t("collab.taskPeople.noMore")}</p>}
       </details>}
     </>}
   </section>;
@@ -66,18 +70,19 @@ export function TaskPeoplePicker({ people, availablePeople, readOnly = false, lo
 
 /** Fully controlled: the parent owns the draft and saves it separately from TaskDraft. */
 export function TaskPlanning({ fields, onFieldChange, ...peopleProps }: TaskPlanningProps) {
+  const { t } = useI18n();
   const disabled = peopleProps.readOnly || peopleProps.loading || !onFieldChange;
   return <div className="collab-task-planning">
     <TaskPeoplePicker {...peopleProps} />
-    <details className="collab-planning"><summary>Planning</summary>
+    <details className="collab-planning"><summary>{t("collab.planning.title")}</summary>
       <div className="collab-planning-grid">{fields.map((field) => <label className="collab-field" key={field.key}>
         <span>{field.label}</span>
         <select disabled={disabled} multiple={field.key === "labels"} value={field.key === "labels" ? [...field.selectedIds] : field.selectedIds[0] ?? ""} onChange={(event) => onFieldChange?.(field.key, Array.from(event.currentTarget.selectedOptions, (option) => option.value).filter(Boolean))}>
-          {field.key !== "labels" && <option value="">None</option>}
+          {field.key !== "labels" && <option value="">{t("collab.planning.none")}</option>}
           {field.options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
         </select>
       </label>)}</div>
-      {!fields.length && <p className="collab-muted">No planning properties available.</p>}
+      {!fields.length && <p className="collab-muted">{t("collab.planning.empty")}</p>}
     </details>
   </div>;
 }

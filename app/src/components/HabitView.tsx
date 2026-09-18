@@ -5,14 +5,17 @@ import {
   habitCompletionDate,
   habitIsScheduledInRange,
   habitOccurrenceDates,
-  habitScheduleLabel,
   habitStatus,
-  habitStatusLabel,
   type HabitStatus,
 } from "../lib/habits";
+import { useI18n } from "../lib/i18n";
 import { CompletionBurst } from "./CompletionBurst";
 import { Icon } from "./Icon";
 import "./HabitView.css";
+
+type Vars = Record<string, string | number>;
+type TFn = (key: string, vars?: Vars) => string;
+type TpFn = (base: string, count: number, vars?: Vars) => string;
 
 type HabitPeriod = "today" | "week" | "month" | "all";
 type ScheduleGroup = "daily" | "weekly" | "monthly" | "custom";
@@ -51,13 +54,50 @@ type HabitCardProps = {
 };
 
 const VISUAL_HOLD_MS = 600;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const GROUP_ORDER: ScheduleGroup[] = ["daily", "weekly", "monthly", "custom"];
-const GROUP_DETAILS: Record<ScheduleGroup, { label: string; hint: string }> = {
-  daily: { label: "Daily", hint: "Every day" },
-  weekly: { label: "Weekly", hint: "Every week" },
-  monthly: { label: "Monthly", hint: "Every month" },
-  custom: { label: "Custom", hint: "Your cadence" },
+const GROUP_KEYS: Record<ScheduleGroup, { label: string; hint: string }> = {
+  daily: { label: "habits.view.groupDaily", hint: "habits.view.groupDailyHint" },
+  weekly: { label: "habits.view.groupWeekly", hint: "habits.view.groupWeeklyHint" },
+  monthly: { label: "habits.view.groupMonthly", hint: "habits.view.groupMonthlyHint" },
+  custom: { label: "habits.view.groupCustom", hint: "habits.view.groupCustomHint" },
 };
+
+const SCHEDULE_WEEKDAY_KEYS = [
+  "habits.schedule.weekdaySunday",
+  "habits.schedule.weekdayMonday",
+  "habits.schedule.weekdayTuesday",
+  "habits.schedule.weekdayWednesday",
+  "habits.schedule.weekdayThursday",
+  "habits.schedule.weekdayFriday",
+  "habits.schedule.weekdaySaturday",
+] as const;
+
+function scheduleLabelFor(input: Pick<Habit, "interval" | "unit" | "daysOfWeek">, t: TFn, tp: TpFn): string {
+  const interval = Number.isFinite(input.interval) && input.interval > 0 ? Math.floor(input.interval) : 1;
+  const selected = [...new Set((input.daysOfWeek ?? []).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((left, right) => left - right);
+  if (input.unit === "week" && selected.length) {
+    const days = selected.map((day) => t(SCHEDULE_WEEKDAY_KEYS[day])).join(", ");
+    return interval === 1
+      ? t("habits.schedule.everyDays", { days })
+      : t("habits.schedule.everyWeeks", { count: interval, days });
+  }
+  if (input.unit === "day") return tp("habits.schedule.day", interval);
+  if (input.unit === "week") return tp("habits.schedule.week", interval);
+  if (input.unit === "month") return tp("habits.schedule.month", interval);
+  return tp("habits.schedule.year", interval);
+}
+
+function statusLabelFor(habit: Habit, reference: Date, t: TFn): string {
+  const status = habitStatus(habit, reference);
+  if (status === "complete") return t("habits.card.statusDone");
+  if (status === "due") return t("habits.card.statusDue");
+  if (status === "overdue") return t("habits.card.statusOverdue");
+  if (status === "ended") return t("habits.card.statusEnded");
+  const start = startOfDay(reference);
+  const next = habitOccurrenceDates(habit, start, new Date(start.getTime() + 370 * DAY_MS))[0];
+  return next ? t("habits.card.nextOn", { date: next }) : t("habits.card.statusUpcoming");
+}
 
 function startOfDay(value: Date): Date {
   const result = new Date(value);
@@ -112,39 +152,39 @@ function statusRank(status: HabitStatus): number {
   return 4;
 }
 
-function compareHabits(left: Habit, right: Habit, reference: Date): number {
+function compareHabits(left: Habit, right: Habit, reference: Date, lang: string): number {
   return statusRank(habitStatus(left, reference)) - statusRank(habitStatus(right, reference))
-    || left.title.localeCompare(right.title)
+    || left.title.localeCompare(right.title, lang)
     || left.id.localeCompare(right.id);
 }
 
-const PERIOD_LABELS: Record<HabitPeriod, string> = {
-  today: "Today",
-  week: "This week",
-  month: "This month",
-  all: "All habits",
+const PERIOD_KEYS: Record<HabitPeriod, string> = {
+  today: "habits.view.periodToday",
+  week: "habits.view.periodWeek",
+  month: "habits.view.periodMonth",
+  all: "habits.view.periodAll",
 };
 
-function periodLabel(period: HabitPeriod): string {
-  return PERIOD_LABELS[period];
+function periodLabel(period: HabitPeriod, t: TFn): string {
+  return t(PERIOD_KEYS[period]);
 }
 
-const EMPTY_TITLES: Record<HabitPeriod, string> = {
-  today: "Nothing due today",
-  week: "Nothing scheduled this week",
-  month: "Nothing scheduled this month",
-  all: "No habits yet",
+const EMPTY_KEYS: Record<HabitPeriod, string> = {
+  today: "habits.view.emptyToday",
+  week: "habits.view.emptyWeek",
+  month: "habits.view.emptyMonth",
+  all: "habits.view.emptyAll",
 };
 
-function rangeLabel(period: HabitPeriod, from: Date, to: Date): string {
+function rangeLabel(period: HabitPeriod, from: Date, to: Date, lang: string, t: TFn): string {
   if (period === "today") {
-    return new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" }).format(from);
+    return new Intl.DateTimeFormat(lang, { weekday: "long", month: "short", day: "numeric" }).format(from);
   }
-  if (period === "all") return "Every cadence";
+  if (period === "all") return t("habits.view.everyCadence");
   if (from.getMonth() === to.getMonth()) {
-    return `${new Intl.DateTimeFormat(undefined, { month: "short" }).format(from)} ${from.getDate()}–${to.getDate()}`;
+    return `${new Intl.DateTimeFormat(lang, { month: "short" }).format(from)} ${from.getDate()}–${to.getDate()}`;
   }
-  return `${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(from)}–${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(to)}`;
+  return `${new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" }).format(from)}–${new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" }).format(to)}`;
 }
 
 function countPeriodProgress(habits: Habit[], from: Date, to: Date): { completed: number; scheduled: number } {
@@ -160,14 +200,15 @@ function countPeriodProgress(habits: Habit[], from: Date, to: Date): { completed
   return { completed, scheduled };
 }
 
-function periodSummary(period: HabitPeriod, dueCount: number, habitCount: number, progress: { completed: number; scheduled: number }): string {
-  if (period === "today") return dueCount === 0 ? "All clear" : `${dueCount} due`;
-  if (period === "all") return `${habitCount} habit${habitCount === 1 ? "" : "s"}`;
-  if (!progress.scheduled) return `${habitCount} habit${habitCount === 1 ? "" : "s"}`;
-  return `${progress.completed}/${progress.scheduled} done`;
+function periodSummary(period: HabitPeriod, dueCount: number, habitCount: number, progress: { completed: number; scheduled: number }, t: TFn, tp: TpFn): string {
+  if (period === "today") return dueCount === 0 ? t("habits.view.allClear") : tp("habits.view.due", dueCount);
+  if (period === "all") return tp("habits.view.count", habitCount);
+  if (!progress.scheduled) return tp("habits.view.count", habitCount);
+  return t("habits.view.progress", { completed: progress.completed, scheduled: progress.scheduled });
 }
 
 export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdit }: Props) {
+  const { t, tp, lang } = useI18n();
   const [period, setPeriod] = useState<HabitPeriod>("today");
   const reference = new Date();
   const [from, to] = rangeFor(period, reference);
@@ -223,7 +264,7 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
         const status = habitStatus(habit, reference);
         return status === "overdue" || status === "complete" || habitIsScheduledInRange(habit, from, to);
       })
-      .sort((left, right) => compareHabits(left, right, reference));
+      .sort((left, right) => compareHabits(left, right, reference, lang));
     const baseIds = new Set(baseVisible.map((habit) => habit.id));
     const currentIndexes = new Map(baseVisible.map((habit, index) => [habit.id, index]));
     const heldOnly = Object.values(completionSnapshots)
@@ -237,9 +278,9 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
       if (leftSnapshot && rightSnapshot) return leftSnapshot.order - rightSnapshot.order;
       if (leftSnapshot) return leftSnapshot.order - (currentIndexes.get(right.id) ?? baseVisible.length);
       if (rightSnapshot) return (currentIndexes.get(left.id) ?? baseVisible.length) - rightSnapshot.order;
-      return compareHabits(left, right, reference);
+      return compareHabits(left, right, reference, lang);
     });
-  }, [completionSnapshots, from.getTime(), habits, period, reference.getTime(), to.getTime()]);
+  }, [completionSnapshots, from.getTime(), habits, lang, period, reference.getTime(), to.getTime()]);
 
   const visibleItems = visibleHabits.map((habit) => ({ habit: completionSnapshots[habit.id]?.habit ?? habit, snapshot: completionSnapshots[habit.id] }));
   const sections = GROUP_ORDER
@@ -247,26 +288,26 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
     .filter(({ items }) => items.length > 0);
   const dueCount = habits.filter((habit) => ["due", "overdue"].includes(habitStatus(habit, reference))).length;
   const progress = useMemo(() => countPeriodProgress(visibleItems.map(({ habit }) => habit), from, to), [from.getTime(), to.getTime(), visibleItems]);
-  const emptyTitle = EMPTY_TITLES[period];
+  const emptyTitle = t(EMPTY_KEYS[period]);
 
   return (
-    <section className="habits-view" aria-label="Habits">
+    <section className="habits-view" aria-label={t("habits.view.label")}>
       <div className="habits-intro">
         <div className="habits-intro-copy">
-          <p className="eyebrow">Routines</p>
-          <p className="habits-summary">{periodSummary(period, dueCount, habits.length, progress)}</p>
+          <p className="eyebrow">{t("habits.view.eyebrow")}</p>
+          <p className="habits-summary">{periodSummary(period, dueCount, habits.length, progress, t, tp)}</p>
         </div>
       </div>
 
       <div className="habit-period-bar">
-        <div className="habit-period-tabs" role="tablist" aria-label="Habit period">
+        <div className="habit-period-tabs" role="tablist" aria-label={t("habits.view.periodLabel")}>
           {(["today", "week", "month", "all"] as const).map((value) => (
             <button key={value} type="button" role="tab" aria-selected={period === value} className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>
-              {periodLabel(value)}
+              {periodLabel(value, t)}
             </button>
           ))}
         </div>
-        <span className="habit-range-label">{rangeLabel(period, from, to)}</span>
+        <span className="habit-range-label">{rangeLabel(period, from, to, lang, t)}</span>
       </div>
 
       {period === "week" && <HabitWeekStrip habits={visibleItems.map(({ habit }) => habit)} reference={reference} from={from} />}
@@ -277,8 +318,8 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
             <section className={`habit-group habit-group-${group}`} key={group} aria-labelledby={`habit-group-${group}`}>
               <div className="habit-group-heading">
                 <div className="habit-group-title-wrap">
-                  <h2 id={`habit-group-${group}`} className="habit-group-title">{GROUP_DETAILS[group].label}</h2>
-                  <span className="habit-group-hint">{GROUP_DETAILS[group].hint}</span>
+                  <h2 id={`habit-group-${group}`} className="habit-group-title">{t(GROUP_KEYS[group].label)}</h2>
+                  <span className="habit-group-hint">{t(GROUP_KEYS[group].hint)}</span>
                 </div>
                 <span className="habit-group-count">{items.length}</span>
               </div>
@@ -309,8 +350,8 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
         <div className="habits-empty">
           <span className="habits-empty-mark"><Icon name="calendar-check" /></span>
           <h2>{emptyTitle}</h2>
-          <p>Prior will bring routines back when they’re due.</p>
-          <button className="secondary-button" type="button" onClick={onAdd}><Icon name="plus" /> Create a habit</button>
+          <p>{t("habits.view.emptyHint")}</p>
+          <button className="secondary-button" type="button" onClick={onAdd}><Icon name="plus" /> {t("habits.view.createHabit")}</button>
         </div>
       )}
     </section>
@@ -318,6 +359,7 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
 }
 
 function HabitWeekStrip({ habits, reference, from }: { readonly habits: Habit[]; readonly reference: Date; readonly from: Date }) {
+  const { t, lang } = useI18n();
   const today = dateKey(reference);
   const days = Array.from({ length: 7 }, (_, index) => addDays(from, index));
   const stats = days.map((day) => {
@@ -335,18 +377,18 @@ function HabitWeekStrip({ habits, reference, from }: { readonly habits: Habit[];
   const totalCompleted = stats.reduce((total, day) => total + day.completed, 0);
 
   return (
-    <div className="habit-week-card" aria-label="This week">
+    <div className="habit-week-card" aria-label={t("habits.week.label")}>
       <div className="habit-week-heading">
-        <span>Week at a glance</span>
-        <span>{totalCompleted}/{totalScheduled} done</span>
+        <span>{t("habits.week.title")}</span>
+        <span>{t("habits.week.progress", { completed: totalCompleted, scheduled: totalScheduled })}</span>
       </div>
-      <ul className="habit-week-strip" aria-label="This week">
+      <ul className="habit-week-strip" aria-label={t("habits.week.label")}>
         {stats.map(({ day, key, scheduled, completed }) => {
           const isToday = key === today;
           const isMissed = key < today && scheduled > completed;
           return (
-            <li className={`habit-week-day ${isToday ? "is-today" : ""} ${scheduled ? "is-scheduled" : ""} ${completed === scheduled && scheduled ? "is-done" : ""} ${isMissed ? "is-missed" : ""}`} key={key} aria-label={`${new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(day)}: ${completed} of ${scheduled} complete`}>
-              <span className="habit-week-day-name">{new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(day)}</span>
+            <li className={`habit-week-day ${isToday ? "is-today" : ""} ${scheduled ? "is-scheduled" : ""} ${completed === scheduled && scheduled ? "is-done" : ""} ${isMissed ? "is-missed" : ""}`} key={key} aria-label={t("habits.week.dayLabel", { date: new Intl.DateTimeFormat(lang, { weekday: "long", month: "long", day: "numeric" }).format(day), completed, scheduled })}>
+              <span className="habit-week-day-name">{new Intl.DateTimeFormat(lang, { weekday: "short" }).format(day)}</span>
               <span className="habit-week-day-number">{day.getDate()}</span>
               <span className="habit-week-day-progress">{scheduled ? `${completed}/${scheduled}` : "—"}</span>
             </li>
@@ -358,6 +400,7 @@ function HabitWeekStrip({ habits, reference, from }: { readonly habits: Habit[];
 }
 
 function HabitOccurrenceTrail({ habit, period, from, to }: { readonly habit: Habit; readonly period: HabitPeriod; readonly from: Date; readonly to: Date }) {
+  const { t, lang } = useI18n();
   if (period === "today" || period === "all") return null;
   const occurrences = habitOccurrenceDates(habit, from, to);
   if (!occurrences.length) return null;
@@ -365,12 +408,12 @@ function HabitOccurrenceTrail({ habit, period, from, to }: { readonly habit: Hab
 
   if (period === "week") {
     return (
-      <div className="habit-occurrence-trail" aria-label="Scheduled dates this week">
+      <div className="habit-occurrence-trail" aria-label={t("habits.view.scheduledWeek")}>
         {occurrences.map((occurrence) => {
           const occurrenceDate = dateFromKey(occurrence);
           return (
             <span className={`habit-occurrence-chip ${completedDates.has(occurrence) ? "is-complete" : ""}`} key={occurrence} title={occurrence}>
-              {new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(occurrenceDate)} {occurrenceDate.getDate()}
+              {new Intl.DateTimeFormat(lang, { weekday: "short" }).format(occurrenceDate)} {occurrenceDate.getDate()}
             </span>
           );
         })}
@@ -379,19 +422,19 @@ function HabitOccurrenceTrail({ habit, period, from, to }: { readonly habit: Hab
   }
 
   const completed = occurrences.filter((occurrence) => completedDates.has(occurrence)).length;
-  return <span className="habit-month-progress">{completed}/{occurrences.length} this month</span>;
+  return <span className="habit-month-progress">{t("habits.view.monthProgress", { completed, total: occurrences.length })}</span>;
 }
 
-function checkAccessibilityLabel(habitTitle: string, isSaving: boolean, checkVisible: boolean): string {
-  if (isSaving) return `Saving ${habitTitle}`;
-  if (checkVisible) return `Mark ${habitTitle} incomplete`;
-  return `Mark ${habitTitle} complete`;
+function checkAccessibilityLabel(habitTitle: string, isSaving: boolean, checkVisible: boolean, t: TFn): string {
+  if (isSaving) return t("habits.card.savingTitle", { title: habitTitle });
+  if (checkVisible) return t("habits.card.markIncompleteTitle", { title: habitTitle });
+  return t("habits.card.markCompleteTitle", { title: habitTitle });
 }
 
-function cardStatusLabel(isSettling: boolean, isSaving: boolean, habit: Habit, reference: Date): string {
-  if (isSettling) return "Saved";
-  if (isSaving) return "Saving";
-  return habitStatusLabel(habit, reference);
+function cardStatusLabel(isSettling: boolean, isSaving: boolean, habit: Habit, reference: Date, t: TFn): string {
+  if (isSettling) return t("habits.card.saved");
+  if (isSaving) return t("habits.card.saving");
+  return statusLabelFor(habit, reference, t);
 }
 
 type HabitCardActionsProps = {
@@ -404,12 +447,15 @@ type HabitCardActionsProps = {
 };
 
 function HabitCardActions({ habit, disabled, onToggleImportant, onToggleUrgent, onDelete, onEdit }: HabitCardActionsProps) {
+  const { t } = useI18n();
+  const importantLabel = habit.important ? t("habits.card.removeImportant") : t("habits.card.markImportant");
+  const urgentLabel = habit.urgent ? t("habits.card.removeUrgent") : t("habits.card.markUrgent");
   return (
     <div className="habit-card-actions">
-      <button className={`task-action flag-toggle ${habit.important ? "active important" : ""}`} type="button" aria-label={`${habit.important ? "Remove" : "Mark"} important`} title={`${habit.important ? "Remove" : "Mark"} important`} aria-pressed={habit.important} onClick={onToggleImportant} disabled={disabled}><Icon name="star" /></button>
-      <button className={`task-action flag-toggle ${habit.urgent ? "active urgent" : ""}`} type="button" aria-label={`${habit.urgent ? "Remove" : "Mark"} urgent`} title={`${habit.urgent ? "Remove" : "Mark"} urgent`} aria-pressed={habit.urgent} onClick={onToggleUrgent} disabled={disabled}><Icon name="bolt" /></button>
-      <button className="task-action" type="button" aria-label={`Edit ${habit.title}`} title={`Edit ${habit.title}`} onClick={onEdit} disabled={disabled}><Icon name="pencil" /></button>
-      <button className="task-action danger" type="button" aria-label={`Delete ${habit.title}`} title={`Delete ${habit.title}`} onClick={onDelete} disabled={disabled}><Icon name="trash" /></button>
+      <button className={`task-action flag-toggle ${habit.important ? "active important" : ""}`} type="button" aria-label={importantLabel} title={importantLabel} aria-pressed={habit.important} onClick={onToggleImportant} disabled={disabled}><Icon name="star" /></button>
+      <button className={`task-action flag-toggle ${habit.urgent ? "active urgent" : ""}`} type="button" aria-label={urgentLabel} title={urgentLabel} aria-pressed={habit.urgent} onClick={onToggleUrgent} disabled={disabled}><Icon name="bolt" /></button>
+      <button className="task-action" type="button" aria-label={t("habits.card.editTitle", { title: habit.title })} title={t("habits.card.editTitle", { title: habit.title })} onClick={onEdit} disabled={disabled}><Icon name="pencil" /></button>
+      <button className="task-action danger" type="button" aria-label={t("habits.card.deleteTitle", { title: habit.title })} title={t("habits.card.deleteTitle", { title: habit.title })} onClick={onDelete} disabled={disabled}><Icon name="trash" /></button>
     </div>
   );
 }
@@ -423,6 +469,7 @@ async function runGuarded(action: () => Promise<void>, onError: (message: string
 }
 
 function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, onChange, onDelete, onEdit, onVisualCompletionStart, onVisualCompletionFailure, order }: HabitCardProps) {
+  const { t, tp } = useI18n();
   const status = habitStatus(habit, reference);
   const today = dateKey(reference);
   const completedDates = new Set(habit.completedDates ?? []);
@@ -461,7 +508,7 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
       if (markingComplete) onVisualCompletionFailure(habit.id);
       setBurst(0);
       setError(message);
-    }, "Couldn’t save. Try again.", mounted);
+    }, t("habits.card.saveError"), mounted);
     completionInFlight.current = false;
     if (mounted.current) setIsSaving(false);
   }
@@ -472,7 +519,7 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
     setError(null);
     await runGuarded(async () => {
       await onChange(nextHabit);
-    }, setError, "Couldn’t save. Try again.", mounted);
+    }, setError, t("habits.card.saveError"), mounted);
     if (mounted.current) setActionBusy(false);
   }
 
@@ -485,17 +532,17 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
     }, (message) => {
       setActionBusy(false);
       setError(message);
-    }, "Couldn’t delete. Try again.", mounted);
+    }, t("habits.card.deleteError"), mounted);
   }
 
   const disabled = isSaving || actionBusy || isSettling;
   const checkVisible = checkedToday || isSettlingDateComplete;
-  const statusLabel = cardStatusLabel(isSettling, isSaving, habit, reference);
+  const statusLabel = cardStatusLabel(isSettling, isSaving, habit, reference, t);
 
   return (
     <article className={`habit-card habit-${status} ${isSettling ? "is-completing" : ""}`}>
       <span className="habit-check-wrap">
-        <button className={`complete-button habit-check ${checkVisible ? "checked" : ""}`} type="button" aria-label={checkAccessibilityLabel(habit.title, isSaving, checkVisible)} onClick={() => void complete()} disabled={disabled || !completionDate}>
+        <button className={`complete-button habit-check ${checkVisible ? "checked" : ""}`} type="button" aria-label={checkAccessibilityLabel(habit.title, isSaving, checkVisible, t)} onClick={() => void complete()} disabled={disabled || !completionDate}>
           <Icon name="check" aria-hidden="true" />
         </button>
         <CompletionBurst trigger={burst} />
@@ -506,10 +553,10 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
           <span className={`habit-status status-${status} ${isSettling ? "is-saved" : ""}`}>{statusLabel}</span>
         </div>
         <div className="habit-meta">
-          <span className="habit-schedule-label">{habitScheduleLabel(habit)}</span>
-          {habit.endDate && <span className="habit-end-date">Until {habit.endDate}</span>}
-          {habit.important && <span className="habit-flag important"><Icon name="star" /> Important</span>}
-          {habit.urgent && <span className="habit-flag urgent"><Icon name="bolt" /> Urgent</span>}
+          <span className="habit-schedule-label">{scheduleLabelFor(habit, t, tp)}</span>
+          {habit.endDate && <span className="habit-end-date">{t("habits.card.until", { date: habit.endDate })}</span>}
+          {habit.important && <span className="habit-flag important"><Icon name="star" /> {t("habits.card.important")}</span>}
+          {habit.urgent && <span className="habit-flag urgent"><Icon name="bolt" /> {t("habits.card.urgent")}</span>}
         </div>
         <HabitOccurrenceTrail habit={habit} period={period} from={from} to={to} />
         {error && <p className="habit-card-error" role="alert">{error}</p>}

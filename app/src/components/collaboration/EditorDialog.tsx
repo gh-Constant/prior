@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Modal } from "../Modal";
+import { useI18n } from "../../lib/i18n";
 import "./Collaboration.css";
 
 /** Shared save lifecycle: retain drafts on failure and prevent duplicate submissions. */
@@ -8,6 +9,7 @@ export function EditorDialog({ title, children, onSave, onClose, invalid = false
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const { t } = useI18n();
   const pending = useRef(false);
   const form = useRef<HTMLFormElement>(null);
   const close = useCallback(() => { if (!pending.current) onClose(); }, [onClose]);
@@ -31,12 +33,12 @@ export function EditorDialog({ title, children, onSave, onClose, invalid = false
       setBusy(true);
       setError("");
       try { await onSave(); pending.current = false; onClose(); }
-      catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save. Please try again."); }
+      catch (cause) { setError(cause instanceof Error ? cause.message : t("collab.editor.saveError")); }
       finally { pending.current = false; setBusy(false); }
     }}>
       <fieldset disabled={busy}>{children}</fieldset>
       {error && <p className="collab-error" role="alert">{error}</p>}
-      <div className="collab-actions"><button type="button" className="secondary-button" disabled={busy} onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={busy || invalid}>{busy ? "Saving…" : "Save changes"}</button></div>
+      <div className="collab-actions"><button type="button" className="secondary-button" disabled={busy} onClick={close}>{t("collab.editor.cancel")}</button><button type="submit" className="primary-button" disabled={busy || invalid}>{busy ? t("collab.editor.saving") : t("collab.editor.save")}</button></div>
     </form>
   </Modal></div>;
 }

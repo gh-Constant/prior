@@ -9,6 +9,7 @@ import { getAndroidAppVersion, supportsAndroidUpdates } from "../lib/androidUpda
 import { getAppVersion, supportsDesktopUpdates } from "../lib/updater";
 import { UpdateCards } from "./UpdateCards";
 import { Icon } from "./Icon";
+import { LANGUAGES, useI18n, type Language } from "../lib/i18n";
 import { EditableAvatar, IconUpload } from "./IconPicker";
 import "./SettingsPage.css";
 
@@ -40,6 +41,7 @@ function DevSeedPanel() {
 }
 
 function DevSeedPanelInner() {
+  const { t, tp } = useI18n();
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -54,33 +56,36 @@ function DevSeedPanelInner() {
       }
       const result = await seed.seedDevDataIfEmpty({ dev: true, force: true, requireAnonymous: false });
       if (result.seeded) {
-        setStatus(`Demo data ready (${result.tasks} tasks, ${result.projects} projects). Reloading…`);
+        setStatus(t("settings.devSeed.ready", {
+          tasks: tp("settings.devSeed.tasks", result.tasks),
+          projects: tp("settings.devSeed.projects", result.projects),
+        }));
         window.setTimeout(() => window.location.reload(), 600);
       } else {
-        setStatus(`Demo seed skipped (${result.reason}).`);
+        setStatus(t("settings.devSeed.skipped", { reason: result.reason }));
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to load demo data.");
+      setStatus(error instanceof Error ? error.message : t("settings.devSeed.loadFailed"));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <section className="settings-codex" aria-label="Demo data (dev only)">
+    <section className="settings-codex" aria-label={t("settings.devSeed.ariaLabel")}>
       <div className="settings-codex-heading">
         <div className="settings-codex-icon"><Icon name="sparkles" /></div>
         <div>
-          <div className="settings-codex-title"><strong>Demo data</strong><span>Dev only</span></div>
-          <p>Loads sample tasks, projects, and icons when local stores are empty. Never runs in production builds.</p>
+          <div className="settings-codex-title"><strong>{t("settings.devSeed.title")}</strong><span>{t("settings.devSeed.badge")}</span></div>
+          <p>{t("settings.devSeed.description")}</p>
         </div>
       </div>
       <div className="settings-page-row">
         <button type="button" className="secondary-button" disabled={busy} onClick={() => void run("load")}>
-          {busy ? "Loading…" : "Load demo data"}
+          {busy ? t("settings.devSeed.loading") : t("settings.devSeed.load")}
         </button>
         <button type="button" className="secondary-button" disabled={busy} onClick={() => void run("reset")}>
-          Reset demo data
+          {t("settings.devSeed.reset")}
         </button>
       </div>
       {status && <p className="settings-hint" role="status">{status}</p>}
@@ -89,6 +94,7 @@ function DevSeedPanelInner() {
 }
 
 function GeneralSettings() {
+  const { t, lang, setLang } = useI18n();
   const [version, setVersion] = useState<string | null>(null);
   const [latest, setLatest] = useState<string | null>(null);
 
@@ -113,12 +119,21 @@ function GeneralSettings() {
     return () => { live = false; };
   }, []);
 
-  const versionLabel = version ? `v${version}` : latest ?? "Web app";
+  const versionLabel = version ? `v${version}` : latest ?? t("settings.general.webApp");
   return (
     <div className="settings-general">
       <div className="settings-version-row">
-        <span>Version</span>
-        <strong>{versionLabel}{!version && latest ? " · latest" : ""}</strong>
+        <label htmlFor="settings-language-select">{t("settings.language.label")}</label>
+        <select id="settings-language-select" value={lang} onChange={(event) => setLang(event.target.value as Language)}>
+          {LANGUAGES.map((entry) => (
+            <option key={entry.code} value={entry.code}>{entry.nativeName}</option>
+          ))}
+        </select>
+      </div>
+      <p className="settings-hint">{t("settings.language.hint")}</p>
+      <div className="settings-version-row">
+        <span>{t("settings.general.version")}</span>
+        <strong>{versionLabel}{!version && latest ? t("settings.general.latestSuffix") : ""}</strong>
       </div>
       <UpdateCards />
       <DevSeedPanel />
@@ -127,6 +142,7 @@ function GeneralSettings() {
 }
 
 function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
+  const { t } = useI18n();
   const [username, setUsername] = useState(user?.displayName ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -147,21 +163,21 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
     setError(null);
     try {
       const token = await getToken();
-      if (!token) throw new Error("Sign in again to update your profile.");
+      if (!token) throw new Error(t("settings.profile.signInAgain"));
       const updated = await api.updateProfile(nextUsername, token);
       onUserUpdated(updated);
       setUsername(updated.displayName);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2500);
     } catch (error_) {
-      setError(error_ instanceof Error ? error_.message : "Unable to update your profile.");
+      setError(error_ instanceof Error ? error_.message : t("settings.profile.updateFailed"));
     } finally {
       setSaving(false);
     }
   }
 
   if (!user) {
-    return <p className="settings-hint">Sign in to update your profile.</p>;
+    return <p className="settings-hint">{t("settings.profile.signInHint")}</p>;
   }
 
   function focusAvatarUpload() {
@@ -174,18 +190,18 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
         <EditableAvatar
           person={{ id: user.id, name: user.displayName || user.email, avatarUrl: user.avatarUrl }}
           canEdit
-          label="Edit profile photo"
+          label={t("settings.profile.avatarLabel")}
           className="settings-profile-avatar-wrap"
           avatarClassName="settings-profile-avatar"
           onOpen={focusAvatarUpload}
         />
         <div>
-          <strong>{user.displayName || "Prior account"}</strong>
+          <strong>{user.displayName || t("settings.profile.fallbackName")}</strong>
           <span>{user.email}</span>
         </div>
       </div>
       <div className="settings-page-field">
-        <span>Profile photo</span>
+        <span>{t("settings.profile.photoLabel")}</span>
         <IconUpload
           currentIcon={user.avatarUrl || "user"}
           fallback="user"
@@ -193,10 +209,10 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
           onBusyChange={setAvatarBusy}
           onUploaded={(avatarUrl) => onUserUpdated({ ...user, avatarUrl })}
         />
-        <small className="settings-help">Click your photo to change it. Custom photos stay on this device; your Google photo is managed by Google.</small>
+        <small className="settings-help">{t("settings.profile.photoHelp")}</small>
       </div>
       <label className="settings-page-field">
-        <span>Username</span>
+        <span>{t("settings.profile.usernameLabel")}</span>
         <div className="field">
           <Icon name="user" />
           <input
@@ -206,16 +222,16 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
             maxLength={80}
             required
             autoComplete="nickname"
-            placeholder="Your username"
+            placeholder={t("settings.profile.usernamePlaceholder")}
           />
         </div>
-        <small className="settings-help">This is the name shown throughout Prior.</small>
+        <small className="settings-help">{t("settings.profile.usernameHelp")}</small>
       </label>
       <div className="settings-page-row">
         <button type="submit" className="primary-button" disabled={saving || !username.trim()}>
-          {saving ? "Saving…" : "Save profile"}
+          {saving ? t("settings.common.saving") : t("settings.profile.save")}
         </button>
-        {saved && <span className="settings-saved" role="status">Saved</span>}
+        {saved && <span className="settings-saved" role="status">{t("settings.common.saved")}</span>}
       </div>
       {error && <p className="settings-error" role="alert">{error}</p>}
     </form>
@@ -223,6 +239,7 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
 }
 
 function AssistantSettings() {
+  const { t } = useI18n();
   const [apiKey, setApiKey] = useState(() => getAgentSettings().apiKey);
   const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => getAgentSettings().transcriptionApiKey);
   const [webSearch, setWebSearch] = useState(() => getAgentSettings().webSearch !== false);
@@ -293,67 +310,67 @@ function AssistantSettings() {
     <div className="settings-assistant">
       {supportsCodexDesktop() && <CodexSettings provider={provider} onProviderChange={handleProviderChange} />}
       <label className="settings-page-field">
-        <span>OpenRouter API key</span>
+        <span>{t("settings.assistant.openRouterLabel")}</span>
         <div className="field">
           <Icon name="lock" />
           <input
             type={showOpenRouterKey ? "text" : "password"}
-            placeholder="sk-or-v1-..."
+            placeholder={t("settings.assistant.openRouterPlaceholder")}
             value={apiKey}
             autoComplete="off"
             spellCheck={false}
             onChange={(event) => { settingsDirtyRef.current = true; setApiKey(event.target.value); setSaved(false); }}
           />
           <button type="button" className="show-key-btn" onClick={() => setShowOpenRouterKey((value) => !value)}>
-            {showOpenRouterKey ? "Hide" : "Show"}
+            {showOpenRouterKey ? t("settings.assistant.hide") : t("settings.assistant.show")}
           </button>
         </div>
         <small className="settings-help">
-          Get a key at{" "}
+          {t("settings.assistant.openRouterPrefix")}{" "}
           <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">
             openrouter.ai/keys
           </a>
-          . It is saved to your account and available on your signed-in devices.
+          {t("settings.assistant.openRouterSuffix")}
         </small>
       </label>
       <label className="settings-page-field">
-        <span>OpenAI API key for voice transcription</span>
+        <span>{t("settings.assistant.transcriptionLabel")}</span>
         <div className="field">
           <Icon name="microphone" />
           <input
             type={showTranscriptionKey ? "text" : "password"}
-            placeholder="sk-..."
+            placeholder={t("settings.assistant.transcriptionPlaceholder")}
             value={transcriptionApiKey}
             autoComplete="off"
             spellCheck={false}
             onChange={(event) => { settingsDirtyRef.current = true; setTranscriptionApiKey(event.target.value); setSaved(false); }}
           />
           <button type="button" className="show-key-btn" onClick={() => setShowTranscriptionKey((value) => !value)}>
-            {showTranscriptionKey ? "Hide" : "Show"}
+            {showTranscriptionKey ? t("settings.assistant.hide") : t("settings.assistant.show")}
           </button>
         </div>
         <small className="settings-help">
-          Get a key at{" "}
+          {t("settings.assistant.openRouterPrefix")}{" "}
           <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
             platform.openai.com/api-keys
           </a>
-          . It is saved to your account and used only for your voice transcriptions.
+          {t("settings.assistant.transcriptionSuffix")}
         </small>
       </label>
       <div className="settings-page-row">
         <button type="button" className="primary-button" onClick={() => void handleSaveKeys()} disabled={saving}>
-          {saving ? "Saving…" : "Save keys"}
+          {saving ? t("settings.common.saving") : t("settings.assistant.saveKeys")}
         </button>
-        {saved && <span className="settings-saved" role="status">Saved</span>}
+        {saved && <span className="settings-saved" role="status">{t("settings.common.saved")}</span>}
       </div>
       <label className="settings-search-toggle">
         <input type="checkbox" checked={webSearch} onChange={(event) => handleWebSearch(event.target.checked)} />
         <span>
-          <strong>Web search when needed</strong>
-          <small>Use it for current or niche information. Search provider costs may apply.</small>
+          <strong>{t("settings.assistant.webSearchTitle")}</strong>
+          <small>{t("settings.assistant.webSearchHint")}</small>
         </span>
       </label>
-      <p className="settings-hint">Choose the model directly in the Prior Agent sidebar — no dialog needed.{synced ? " Key synced with your account." : ""}</p>
+      <p className="settings-hint">{t("settings.assistant.modelHint")}{synced ? t("settings.assistant.syncedSuffix") : ""}</p>
     </div>
   );
 }
@@ -364,6 +381,7 @@ type CodexSettingsProps = {
 };
 
 function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
+  const { t } = useI18n();
   const [account, setAccount] = useState<CodexAccount | null>(null);
   const [binaryAvailable, setBinaryAvailable] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
@@ -399,12 +417,11 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
             authMode: null,
             planType: null,
             email: null,
-            error: "Codex CLI is not available on this desktop.",
+            error: t("settings.codex.unavailable"),
           });
           return;
         }
-        const cached = getCachedCodexAccount();
-        if (cached) {
+        const cached = getCachedCodexAccount();        if (cached) {
           setAccount(cached);
           setError(null);
         } else {
@@ -420,7 +437,7 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
           });
         }
       } catch (error_) {
-        if (live) setError(error_ instanceof Error ? error_.message : "Codex is not available.");
+        if (live) setError(error_ instanceof Error ? error_.message : t("settings.codex.notAvailable"));
       } finally {
         if (live) setLoading(false);
       }
@@ -439,7 +456,7 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
       setAccount(next);
       onProviderChange("codex");
     } catch (error_) {
-      setError(error_ instanceof Error ? error_.message : "Unable to connect Codex.");
+      setError(error_ instanceof Error ? error_.message : t("settings.codex.connectFailed"));
     } finally {
       setConnecting(false);
     }
@@ -457,52 +474,53 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
       setAccount({ ...next, available: true });
       onProviderChange("openrouter");
     } catch (error_) {
-      setError(error_ instanceof Error ? error_.message : "Unable to disconnect Codex.");
+      setError(error_ instanceof Error ? error_.message : t("settings.codex.disconnectFailed"));
     } finally {
       setConnecting(false);
     }
   }
 
   const chatGptConnected = account?.authMode === "chatgpt";
-  const accountLabel = account?.planType ? `${account.planType[0].toUpperCase()}${account.planType.slice(1)} plan` : "ChatGPT account";
+  const planName = account?.planType ? `${account.planType[0].toUpperCase()}${account.planType.slice(1)}` : null;
+  const accountLabel = planName ? t("settings.codex.planLabel", { plan: planName }) : t("settings.codex.fallbackAccount");
 
   return (
-    <section className="settings-codex" aria-label="Codex beta">
+    <section className="settings-codex" aria-label={t("settings.codex.sectionLabel")}>
       <div className="settings-codex-heading">
         <div className="settings-codex-icon"><Icon name="sparkles" /></div>
         <div>
-          <div className="settings-codex-title"><strong>Codex</strong><span>Beta</span></div>
-          <p>Use your ChatGPT subscription in the Prior Agent. Tokens stay on this desktop.</p>
+          <div className="settings-codex-title"><strong>Codex</strong><span>{t("settings.codex.beta")}</span></div>
+          <p>{t("settings.codex.description")}</p>
         </div>
       </div>
 
       {loading ? (
-        <p className="settings-codex-status">Checking...</p>
+        <p className="settings-codex-status">{t("settings.codex.checking")}</p>
       ) : binaryAvailable === false || !account?.available ? (
         <div className="settings-codex-unavailable">
-          <p>{error || "Codex CLI is not available on this desktop."}</p>
-          <small>Install Codex and make the <code>codex</code> command available, then reopen Settings.</small>
+          <p>{error || t("settings.codex.unavailable")}</p>
+          <small>{t("settings.codex.installPrefix")}<code>codex</code>{t("settings.codex.installSuffix")}</small>
         </div>
       ) : (
         <>
           <div className={`settings-codex-connection ${chatGptConnected ? "connected" : ""}`}>
             <span className="settings-codex-dot" aria-hidden="true" />
             <div>
-              <strong>{chatGptConnected ? `Connected · ${accountLabel}` : "Not connected"}</strong>
-              <small>{chatGptConnected ? (account.email || "ChatGPT subscription available") : account.authMode === "apikey" ? "Codex is using an API key. Connect with ChatGPT to use subscription quota." : "Connect with ChatGPT to enable Codex."}</small>
+              <strong>{chatGptConnected ? t("settings.codex.connected", { account: accountLabel }) : t("settings.codex.notConnected")}</strong>
+              <small>{chatGptConnected ? (account.email || t("settings.codex.emailFallback")) : account.authMode === "apikey" ? t("settings.codex.apiKeyNote") : t("settings.codex.connectHint")}</small>
             </div>
             {chatGptConnected ? (
-              <button type="button" className="text-button settings-codex-disconnect" onClick={() => void handleDisconnect()} disabled={connecting}>Disconnect</button>
+              <button type="button" className="text-button settings-codex-disconnect" onClick={() => void handleDisconnect()} disabled={connecting}>{t("settings.codex.disconnect")}</button>
             ) : (
               <button type="button" className="secondary-button settings-codex-connect" onClick={() => void handleConnect()} disabled={connecting}>
-                {connecting ? "Waiting…" : "Connect"}
+                {connecting ? t("settings.codex.waiting") : t("settings.codex.connect")}
               </button>
             )}
           </div>
           {chatGptConnected && (
             <label className="settings-codex-use">
               <input type="checkbox" checked={provider === "codex"} onChange={(event) => onProviderChange(event.target.checked ? "codex" : "openrouter")} />
-              <span><strong>Use Codex for Prior Agent</strong><small>Runs locally using your ChatGPT/Codex allowance.</small></span>
+              <span><strong>{t("settings.codex.useTitle")}</strong><small>{t("settings.codex.useHint")}</small></span>
             </label>
           )}
         </>
@@ -513,17 +531,19 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
 }
 
 export function SettingsPage({ user, onUserUpdated }: SettingsPageProps) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<SettingsTab>("general");
+  const tabLabel = tab === "general" ? t("settings.tabs.general") : tab === "profile" ? t("settings.tabs.profile") : t("settings.tabs.assistant");
   return (
-    <section className="settings-page" aria-label="Settings">
+    <section className="settings-page" aria-label={t("settings.page.ariaLabel")}>
       <div className="workhub-intro">
         <div>
-          <p className="eyebrow">WORKSPACE</p>
-          <h2>Settings</h2>
-          <p>Tune the app and the Prior Agent.</p>
+          <p className="eyebrow">{t("settings.page.eyebrow")}</p>
+          <h2>{t("settings.page.title")}</h2>
+          <p>{t("settings.page.subtitle")}</p>
         </div>
       </div>
-      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+      <div className="settings-tabs" role="tablist" aria-label={t("settings.page.sectionsLabel")}>
         <button
           type="button"
           role="tab"
@@ -531,7 +551,7 @@ export function SettingsPage({ user, onUserUpdated }: SettingsPageProps) {
           className={tab === "general" ? "active" : ""}
           onClick={() => setTab("general")}
         >
-          General
+          {t("settings.tabs.general")}
         </button>
         <button
           type="button"
@@ -540,7 +560,7 @@ export function SettingsPage({ user, onUserUpdated }: SettingsPageProps) {
           className={tab === "profile" ? "active" : ""}
           onClick={() => setTab("profile")}
         >
-          Profile
+          {t("settings.tabs.profile")}
         </button>
         <button
           type="button"
@@ -549,10 +569,10 @@ export function SettingsPage({ user, onUserUpdated }: SettingsPageProps) {
           className={tab === "assistant" ? "active" : ""}
           onClick={() => setTab("assistant")}
         >
-          Assistant
+          {t("settings.tabs.assistant")}
         </button>
       </div>
-      <section className="settings-card" aria-label={tab === "general" ? "General" : tab === "profile" ? "Profile" : "Assistant"}>
+      <section className="settings-card" aria-label={tabLabel}>
         {tab === "general" ? <GeneralSettings /> : tab === "profile" ? <ProfileSettings user={user} onUserUpdated={onUserUpdated} /> : <AssistantSettings />}
       </section>
     </section>

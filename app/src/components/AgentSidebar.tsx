@@ -48,6 +48,7 @@ import {
   type AssistantMessageHandlers,
 } from "./AgentMessageView";
 import { notesStore } from "../lib/notes";
+import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
 import { DictationControls, DictationPreview, DictationStatusBar } from "./DictationControls";
 import { useDictation } from "../hooks/useDictation";
@@ -70,13 +71,18 @@ type Props = {
   readonly onOpenSettings: () => void;
 };
 
-const STARTER_PROMPTS = [
-  { icon: "sparkles" as const, title: "Help me set up all my work", prompt: "Help me set up all my work. Guide me through my main areas of responsibility, current projects, concrete next actions, and anything I am waiting on." },
-  { icon: "folder" as const, title: "Organize into Areas and Projects", prompt: "Organize my existing tasks into high-level Areas and actionable Projects. Propose clean areas, projects, and structured task assignments." },
-  { icon: "bolt" as const, title: "What should I do today?", prompt: "What should I do today? Review my active tasks and recommend my highest-impact focus priorities for today." },
-  { icon: "user" as const, title: "Which tasks should I delegate?", prompt: "Which tasks should I delegate or put on waiting? Identify items that would be best delegated or require follow-up from others." },
-  { icon: "inbox" as const, title: "Review my Inbox", prompt: "Review my Inbox tasks and help me clarify, prioritize, schedule, or file them into projects." },
-];
+type StarterPrompt = { readonly icon: "sparkles" | "folder" | "bolt" | "user" | "inbox"; readonly title: string; readonly prompt: string };
+
+function useStarterPrompts(): StarterPrompt[] {
+  const { t } = useI18n();
+  return useMemo(() => [
+    { icon: "sparkles" as const, title: t("agent.suggest.setup.title"), prompt: t("agent.suggest.setup.prompt") },
+    { icon: "folder" as const, title: t("agent.suggest.organize.title"), prompt: t("agent.suggest.organize.prompt") },
+    { icon: "bolt" as const, title: t("agent.suggest.today.title"), prompt: t("agent.suggest.today.prompt") },
+    { icon: "user" as const, title: t("agent.suggest.delegate.title"), prompt: t("agent.suggest.delegate.prompt") },
+    { icon: "inbox" as const, title: t("agent.suggest.inbox.title"), prompt: t("agent.suggest.inbox.prompt") },
+  ], [t]);
+}
 
 function useOverlayMode(): boolean {
   const [isOverlay, setIsOverlay] = useState(() =>
@@ -92,13 +98,15 @@ function useOverlayMode(): boolean {
   return isOverlay;
 }
 
-function shortModelName(id: string): string {
-  if (id === DEFAULT_MODEL) return "Free model";
+function shortModelName(id: string, freeLabel: string): string {
+  if (id === DEFAULT_MODEL) return freeLabel;
   return id.split("/").pop()?.replace(":free", "") || id;
 }
 
 export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, projects, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders, onAddAreas, onAddProjects, onOpenSettings }: Props) {
+  const { t } = useI18n();
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
+  const starterPrompts = useStarterPrompts();
 
   const [modelList, setModelList] = useState<AgentModelOption[]>(POPULAR_FREE_MODELS);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -248,7 +256,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         } catch (error) {
           if (await handleAuthError(error)) {
             if (!cancelled) {
-              setError("Your session has expired. Please sign in again.");
+              setError(t("agent.error.sessionExpired"));
               setChatHistory([]);
             }
             return;
@@ -258,7 +266,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       })
       .catch((error) => {
         if (!cancelled) {
-          if (isAuthError(error)) setError("Your session has expired. Please sign in again.");
+          if (isAuthError(error)) setError(t("agent.error.sessionExpired"));
           setChatHistory([]);
         }
       })
@@ -391,10 +399,10 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     if (!activeModelId || providerModelOptions.some((model) => model.id === activeModelId)) return providerModelOptions;
     return [...providerModelOptions, {
       id: activeModelId,
-      label: shortModelName(activeModelId),
-      desc: settings.provider === "codex" ? "Current model from your Codex session" : "Custom model from Settings",
+      label: shortModelName(activeModelId, t("agent.model.free")),
+      desc: settings.provider === "codex" ? t("agent.model.customCodex") : t("agent.model.customSettings"),
     }];
-  }, [activeModelId, providerModelOptions, settings.provider]);
+  }, [activeModelId, providerModelOptions, settings.provider, t]);
   const deferredModelQuery = useDeferredValue(modelQuery.trim().toLowerCase());
   const filteredModelOptions = useMemo(() => {
     if (!deferredModelQuery) return modelOptions.slice(0, 80);
@@ -432,12 +440,12 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   async function ensureChat(token: string): Promise<string | null> {
     if (activeChatId) return activeChatId;
     try {
-      const chat = await api.createAgentChat("New chat", token);
+      const chat = await api.createAgentChat(t("agent.history.newChat"), token);
       setActiveChatId(chat.id);
       setChatHistory((current) => [chat, ...current.filter((item) => item.id !== chat.id)]);
       return chat.id;
     } catch (error) {
-      if (await handleAuthError(error)) setError("Your session has expired. Please sign in again.");
+      if (await handleAuthError(error)) setError(t("agent.error.sessionExpired"));
       return null;
     }
   }
@@ -449,7 +457,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       setChatHistory(chats);
     } catch (error) {
       if (await handleAuthError(error)) {
-        setError("Your session has expired. Please sign in again.");
+        setError(t("agent.error.sessionExpired"));
         return;
       }
       // Keep the conversation usable when the sync API is temporarily unavailable.
@@ -484,9 +492,9 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       if (window.matchMedia("(max-width: 760px)").matches) setHistoryOpen(false);
     } catch (err: unknown) {
       if (await handleAuthError(err)) {
-        setError("Your session has expired. Please sign in again.");
+        setError(t("agent.error.sessionExpired"));
       } else {
-        setError(err instanceof Error ? err.message : "Unable to load this conversation.");
+        setError(err instanceof Error ? err.message : t("agent.error.loadChat"));
       }
     } finally {
       setChatLoading(false);
@@ -516,7 +524,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       const existingToken = sessionToken ?? (user ? await getToken().catch(() => null) : null);
       if (existingToken && !sessionToken) setSessionToken(existingToken);
       if (!existingToken) {
-        setError("Add your OpenRouter API key in Settings to use the assistant.");
+        setError(t("agent.error.apiKey"));
         return;
       }
     }
@@ -618,7 +626,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           // never a parsed answer — always drop it.
           setMessages((prev) => prev.filter((message) => message.id !== assistantId));
         } else {
-          const msg = streamError instanceof Error ? streamError.message : "Failed to generate tasks with AI";
+          const msg = streamError instanceof Error ? streamError.message : t("agent.error.generate");
           setError(msg);
           setMessages((prev) => prev.filter((message) => message.id !== assistantId));
         }
@@ -628,9 +636,9 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       }
     } catch (err: unknown) {
       if (await handleAuthError(err)) {
-        setError("Your session has expired. Please sign in again.");
+        setError(t("agent.error.sessionExpired"));
       } else {
-        const msg = err instanceof Error ? err.message : "Failed to generate tasks with AI";
+        const msg = err instanceof Error ? err.message : t("agent.error.generate");
         setError(msg);
       }
     } finally {
@@ -842,31 +850,31 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       <header className="agent-header">
         <div className="agent-title-row">
           <AgentIdentity size="small" />
-          <h3 id="prior-ai-assistant-title">AI Assistant</h3>
+          <h3 id="prior-ai-assistant-title">{t("agent.header.title")}</h3>
         </div>
         <div className="agent-header-actions">
           <button
             type="button"
             className="icon-button agent-new-chat"
-            title="New conversation"
-            aria-label="New conversation"
+            title={t("agent.header.newChat")}
+            aria-label={t("agent.header.newChat")}
             onClick={startNewChat}
             disabled={dictation.isActive}
           >
             <Icon name="plus" />
           </button>
-          <button type="button" className="icon-button" aria-label="Close assistant" onClick={handleClose}>
+          <button type="button" className="icon-button" aria-label={t("agent.header.close")} onClick={handleClose}>
             <Icon name="close" />
           </button>
         </div>
       </header>
 
       <button className="agent-history-toggle" type="button" aria-expanded={historyOpen} aria-controls="prior-chat-history" onClick={() => setHistoryOpen((value) => !value)}>
-        <span>Chat history</span>
+        <span>{t("agent.history.toggle")}</span>
         <Icon name="chevron-down" />
       </button>
-      <nav id="prior-chat-history" className="agent-chat-history" aria-label="Chat history" hidden={!historyOpen}>
-        {historyLoading && <span className="agent-history-note">Loading chats…</span>}
+      <nav id="prior-chat-history" className="agent-chat-history" aria-label={t("agent.history.toggle")} hidden={!historyOpen}>
+        {historyLoading && <span className="agent-history-note">{t("agent.history.loading")}</span>}
         {!historyLoading && chatHistory.map((chat) => (
           <button
             key={chat.id}
@@ -881,7 +889,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             <span>{chat.title}</span>
           </button>
         ))}
-        {!historyLoading && !chatHistory.length && !user && <span className="agent-history-note">Sign in to save chats</span>}
+        {!historyLoading && !chatHistory.length && !user && <span className="agent-history-note">{t("agent.history.signIn")}</span>}
       </nav>
 
       <div className="agent-body">
@@ -891,10 +899,10 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
               <span className="agent-welcome-halo" />
               <AgentIdentity size="hero" />
             </div>
-            <h4>What’s next?</h4>
+            <h4>{t("agent.welcome.title")}</h4>
 
             <div className="starter-prompts-grid">
-              {STARTER_PROMPTS.map((item) => (
+              {starterPrompts.map((item) => (
                 <button
                   key={item.title}
                   type="button"
@@ -926,7 +934,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                       <AgentIdentity size="tiny" thinking />
                     </div>
                     <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
-                      <span className="loading-text">Working with Codex…</span>
+                      <span className="loading-text">{t("agent.streaming.codex")}</span>
                     </div>
                   </div>
                 )
@@ -939,7 +947,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                   <AgentIdentity size="tiny" thinking />
                 </div>
                 <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
-                  <span className="loading-text">Thinking through your priorities…</span>
+                  <span className="loading-text">{t("agent.streaming.thinking")}</span>
                 </div>
               </div>
             )}
@@ -951,7 +959,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       {error && (
         <div className="agent-error-banner" role="alert">
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} aria-label="Dismiss error">
+          <button type="button" onClick={() => setError(null)} aria-label={t("agent.error.dismiss")}>
             <Icon name="close" />
           </button>
         </div>
@@ -960,11 +968,11 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       {settings.provider === "codex" && (
         <div className="agent-codex-provider" role="status">
           <Icon name="sparkles" />
-          <span><strong>Codex · ChatGPT subscription</strong><small>Uses your connected Codex quota.</small></span>
+          <span><strong>{t("agent.provider.codexTitle")}</strong><small>{t("agent.provider.codexSub")}</small></span>
         </div>
       )}
       <div className="agent-model-row">
-        <label id="prior-agent-model-label">{settings.provider === "codex" ? "Codex model" : "Model"}</label>
+        <label id="prior-agent-model-label">{settings.provider === "codex" ? t("agent.model.labelCodex") : t("agent.model.label")}</label>
         <div className="agent-model-picker" ref={modelPickerRef}>
           <button
             type="button"
@@ -978,12 +986,12 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             }}
           >
             <span id="prior-agent-model-value" className="agent-model-trigger-copy">
-              <strong>{selectedModel?.label ?? shortModelName(settings.model)}</strong>
+              <strong>{selectedModel?.label ?? shortModelName(settings.model, t("agent.model.free"))}</strong>
             </span>
             <Icon name="chevron-down" />
           </button>
           {modelPickerOpen && (
-            <div className="agent-model-popover" role="dialog" aria-label="Choose assistant model">
+            <div className="agent-model-popover" role="dialog" aria-label={t("agent.model.choose")}>
               <label className="agent-model-search">
                 <Icon name="search" />
                 <input
@@ -992,14 +1000,14 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                   autoComplete="off"
                   value={modelQuery}
                   onChange={(event) => setModelQuery(event.target.value)}
-                  placeholder={settings.provider === "codex" ? "Search Codex models" : "Search all OpenRouter models"}
-                  aria-label={settings.provider === "codex" ? "Search Codex models" : "Search OpenRouter models"}
+                  placeholder={settings.provider === "codex" ? t("agent.model.searchCodex") : t("agent.model.searchOpenrouter")}
+                  aria-label={settings.provider === "codex" ? t("agent.model.searchCodex") : t("agent.model.searchOpenrouterLabel")}
                 />
-                {modelQuery && <button type="button" aria-label="Clear model search" onClick={() => setModelQuery("")}><Icon name="close" /></button>}
+                {modelQuery && <button type="button" aria-label={t("agent.model.clearSearch")} onClick={() => setModelQuery("")}><Icon name="close" /></button>}
               </label>
-              <div className="agent-model-results" role="listbox" aria-label={settings.provider === "codex" ? "Codex models" : "OpenRouter models"}>
-                {(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && <span className="agent-model-note">Loading {settings.provider === "codex" ? "Codex" : "OpenRouter"} models…</span>}
-                {!(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && !filteredModelOptions.length && <span className="agent-model-note">No matching models</span>}
+              <div className="agent-model-results" role="listbox" aria-label={settings.provider === "codex" ? t("agent.model.listCodex") : t("agent.model.listOpenrouter")}>
+                {(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && <span className="agent-model-note">{t("agent.model.loading", { provider: settings.provider === "codex" ? "Codex" : "OpenRouter" })}</span>}
+                {!(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && !filteredModelOptions.length && <span className="agent-model-note">{t("agent.model.noMatch")}</span>}
                 {filteredModelOptions.map((model) => (
                   <button
                     key={model.id}
@@ -1013,7 +1021,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                     {model.id === activeModelId && <Icon name="check" className="agent-model-check" />}
                   </button>
                 ))}
-                {filteredModelOptions.length === 80 && <span className="agent-model-note">Showing the first 80 matches. Refine your search for more.</span>}
+                {filteredModelOptions.length === 80 && <span className="agent-model-note">{t("agent.model.firstEighty")}</span>}
               </div>
             </div>
           )}
@@ -1025,20 +1033,20 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
               className="agent-reasoning-trigger"
               aria-haspopup="listbox"
               aria-expanded={reasoningPickerOpen}
-              aria-label="Model reasoning effort"
+              aria-label={t("agent.reasoning.label")}
               onClick={() => {
                 setModelPickerOpen(false);
                 setReasoningPickerOpen((open) => !open);
               }}
             >
               <span className="agent-reasoning-trigger-copy">
-                <small>Reasoning</small>
-                <strong>{REASONING_EFFORTS.find((r) => r.id === activeReasoning)?.label ?? activeReasoning}</strong>
+                <small>{t("agent.reasoning.title")}</small>
+                <strong>{t(`agent.reasoning.${activeReasoning}`)}</strong>
               </span>
               <Icon name="chevron-down" />
             </button>
             {reasoningPickerOpen && (
-              <div className="agent-reasoning-popover" role="dialog" aria-label="Choose reasoning effort">
+              <div className="agent-reasoning-popover" role="dialog" aria-label={t("agent.reasoning.choose")}>
                 <div className="agent-reasoning-results" role="listbox">
                   {REASONING_EFFORTS.map((option) => (
                     <button
@@ -1052,7 +1060,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                         setReasoningPickerOpen(false);
                       }}
                     >
-                      <span>{option.label}</span>
+                      <span>{t(`agent.reasoning.${option.id}`)}</span>
                       {option.id === activeReasoning && <Icon name="check" className="agent-model-check" />}
                     </button>
                   ))}
@@ -1065,9 +1073,9 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
 
       {settings.provider !== "codex" && !settings.apiKey && (
         <div className="agent-key-notice" role="note">
-          <span>Add your OpenRouter key to enable the assistant.</span>
+          <span>{t("agent.keyNotice.text")}</span>
           <button type="button" className="secondary-button" onClick={() => { dictation.stop(); onOpenSettings(); }}>
-            Open Settings
+            {t("agent.keyNotice.open")}
           </button>
         </div>
       )}
@@ -1086,7 +1094,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             autoComplete="off"
             onChange={(e) => setInput(e.target.value)}
             readOnly={dictation.isActive}
-            title={dictation.isActive ? "Stop dictation to edit" : undefined}
+            title={dictation.isActive ? t("agent.input.stopDictation") : undefined}
             onCompositionStart={() => { isComposingRef.current = true; }}
             onCompositionEnd={() => { isComposingRef.current = false; }}
             onKeyDown={(e) => {
@@ -1095,7 +1103,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                 void handleSend();
               }
             }}
-            placeholder="Plan something…"
+            placeholder={t("agent.input.placeholder")}
             rows={2}
           />
           <DictationPreview finalText={dictation.finalText} interimText={dictation.interimText} warning={dictation.warning} />
@@ -1108,8 +1116,8 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           <div className="agent-input-actions">
             <div className="agent-input-tools">
               {messages.length > 0 && (
-                <button type="button" className="clear-chat-btn" title="Clear conversation" onClick={startNewChat} disabled={dictation.isActive}>
-                  Clear
+                <button type="button" className="clear-chat-btn" title={t("agent.input.clearTitle")} onClick={startNewChat} disabled={dictation.isActive}>
+                  {t("agent.input.clear")}
                 </button>
               )}
             </div>
@@ -1118,23 +1126,23 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
               onStart={startDictation}
               onStop={dictation.stop}
               disabled={!user}
-              disabledTitle="Sign in to use voice input"
+              disabledTitle={t("agent.input.signInVoice")}
             />
             {loading ? (
               <button
                 type="button"
                 className="secondary-button agent-stop-btn"
                 onClick={handleStop}
-                aria-label="Stop Codex request"
+                aria-label={t("agent.input.stopLabel")}
               >
-                Stop
+                {t("agent.input.stop")}
               </button>
             ) : null}
             <button
               type="submit"
               className="primary-button agent-send-btn"
               disabled={!input.trim() || loading || dictation.isActive}
-              aria-label="Send to AI assistant"
+              aria-label={t("agent.input.send")}
             >
               <Icon name="arrow" />
             </button>

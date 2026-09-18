@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import type { Area, Project, ProjectStatus, Task, TaskDraft } from "../types";
+import { useI18n } from "../lib/i18n";
 import { notesStore } from "../lib/notes";
 import { mergeAssignedProjectTasks } from "../lib/projectTasks";
 import { workspaceStore } from "../lib/workspaceStore";
@@ -43,10 +44,10 @@ type WorkspaceModal =
   | null;
 
 const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  planned: "Planned",
-  active: "Active",
-  paused: "Paused",
-  completed: "Completed",
+  planned: "common.workhub.statusPlanned",
+  active: "common.workhub.statusActive",
+  paused: "common.workhub.statusPaused",
+  completed: "common.workhub.statusCompleted",
 };
 
 function dateKey(date = new Date()): string {
@@ -74,6 +75,7 @@ function sortTasks(tasks: Task[], today = dateKey()): Task[] {
 }
 
 function WorkspaceItemModal({ modal, areas, onClose, onSave }: { modal: Exclude<WorkspaceModal, null> & ({ kind: "project" } | { kind: "area" }); areas: Area[]; onClose: () => void; onSave: (name: string, areaId: string | null, icon: string) => void }) {
+  const { t } = useI18n();
   const isProject = modal.kind === "project";
   const [name, setName] = useState(isProject ? modal.project?.name ?? "" : modal.area?.name ?? "");
   const [areaId, setAreaId] = useState(isProject ? modal.areaId ?? "" : "");
@@ -84,21 +86,21 @@ function WorkspaceItemModal({ modal, areas, onClose, onSave }: { modal: Exclude<
   const editing = isProject ? Boolean(modal.project) : Boolean(modal.area);
 
   return (
-    <Modal title={`${editing ? "Edit" : "New"} ${isProject ? "project" : "area"}`} onClose={onClose}>
+    <Modal title={isProject ? (editing ? t("common.workhub.titleEditProject") : t("common.workhub.titleNewProject")) : (editing ? t("common.workhub.titleEditArea") : t("common.workhub.titleNewArea"))} onClose={onClose}>
       <form className="prior-modal-form workspace-item-form" onSubmit={(event) => { event.preventDefault(); if (name.trim()) onSave(name.trim(), isProject ? areaId || null : null, icon); }}>
         <label className="prior-modal-field">
-          <span>Name</span>
-          <input className="prior-modal-input" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={isProject ? "e.g. Launch website" : "e.g. Work"} maxLength={80} />
+          <span>{t("common.workhub.formName")}</span>
+          <input className="prior-modal-input" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={isProject ? t("common.workhub.projectNamePlaceholder") : t("common.workhub.areaNamePlaceholder")} maxLength={80} />
         </label>
         {isProject && (
         <label className="prior-modal-field">
-          <span>Area</span>
+          <span>{t("common.workhub.formArea")}</span>
           <select
             className="prior-modal-select"
             value={areaId}
             onChange={(event) => setAreaId(event.target.value)}
           >
-            <option value="">No area</option>
+            <option value="">{t("common.workhub.noArea")}</option>
             {areas.map((area) => (
               <option key={area.id} value={area.id}>
                 {area.name}
@@ -108,16 +110,16 @@ function WorkspaceItemModal({ modal, areas, onClose, onSave }: { modal: Exclude<
         </label>
         )}
         <div className="prior-modal-field">
-          <span>Icon</span>
+          <span>{t("common.workhub.formIcon")}</span>
           <div className="workspace-icon-picker">
-            <IconPicker value={icon} options={iconOptions} fallback={fallback} label={isProject ? "Project icon" : "Area icon"} disabled={uploading} onSelect={(next) => setIcon(next)} />
+            <IconPicker value={icon} options={iconOptions} fallback={fallback} label={isProject ? t("common.workhub.projectIcon") : t("common.workhub.areaIcon")} disabled={uploading} onSelect={(next) => setIcon(next)} />
             <IconUpload currentIcon={icon} fallback={fallback} disabled={uploading} onBusyChange={setUploading} onUploaded={(next) => setIcon(next)} />
           </div>
-          <small className="workspace-icon-help">Choose a simple icon or upload a square image. Older {isProject ? "projects" : "areas"} use the default icon automatically.</small>
+          <small className="workspace-icon-help">{isProject ? t("common.workhub.helpProject") : t("common.workhub.helpArea")}</small>
         </div>
         <div className="prior-modal-actions">
-          <button type="button" className="prior-modal-button-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" className="prior-modal-button-primary" disabled={!name.trim() || uploading}>{editing ? "Save changes" : `Create ${isProject ? "project" : "area"}`}</button>
+          <button type="button" className="prior-modal-button-secondary" onClick={onClose}>{t("common.actions.cancel")}</button>
+          <button type="submit" className="prior-modal-button-primary" disabled={!name.trim() || uploading}>{editing ? t("common.workhub.saveChanges") : (isProject ? t("common.workhub.createProject") : t("common.workhub.createArea"))}</button>
         </div>
       </form>
     </Modal>
@@ -125,85 +127,89 @@ function WorkspaceItemModal({ modal, areas, onClose, onSave }: { modal: Exclude<
 }
 
 function ConfirmAreaDeleteModal({ area, onClose, onConfirm }: { area: Area; onClose: () => void; onConfirm: () => void }) {
+  const { t, tp } = useI18n();
   const projectCount = workspaceStore.listProjects().filter((project) => project.areaId === area.id).length;
-  return <Modal title={`Delete “${area.name}”?`} onClose={onClose}>
+  return <Modal title={t("common.workhub.confirmDeleteTitle", { name: area.name })} onClose={onClose}>
     <div className="prior-modal-body">
-      <p className="workspace-delete-message">The area will be removed. Its {projectCount === 1 ? "project stays in your workspace" : "projects stay in your workspace"} and move to <strong>No area</strong>.</p>
+      <p className="workspace-delete-message">{t("common.workhub.deleteAreaMessage", { kept: tp("common.workhub.areaProjectsKept", projectCount) })} <strong>{t("common.workhub.noArea")}</strong>.</p>
       <div className="prior-modal-actions">
-        <button type="button" className="prior-modal-button-secondary" onClick={onClose}>Cancel</button>
-        <button type="button" className="workspace-delete-button" onClick={onConfirm}>Delete area</button>
+        <button type="button" className="prior-modal-button-secondary" onClick={onClose}>{t("common.actions.cancel")}</button>
+        <button type="button" className="workspace-delete-button" onClick={onConfirm}>{t("common.workhub.deleteArea")}</button>
       </div>
     </div>
   </Modal>;
 }
 
 function ConfirmProjectDeleteModal({ project, onClose, onConfirm }: { project: Project; onClose: () => void; onConfirm: () => void }) {
-  return <Modal title={`Delete “${project.name}”?`} onClose={onClose}>
+  const { t } = useI18n();
+  return <Modal title={t("common.workhub.confirmDeleteTitle", { name: project.name })} onClose={onClose}>
     <div className="prior-modal-body">
-      <p className="workspace-delete-message">The project will be removed. Its tasks stay in your workspace and remain available from <strong>All tasks</strong>.</p>
+      <p className="workspace-delete-message">{t("common.workhub.deleteProjectMessage")} <strong>{t("common.views.allTasks")}</strong>.</p>
       <div className="prior-modal-actions">
-        <button type="button" className="prior-modal-button-secondary" onClick={onClose}>Cancel</button>
-        <button type="button" className="workspace-delete-button" onClick={onConfirm}>Delete project</button>
+        <button type="button" className="prior-modal-button-secondary" onClick={onClose}>{t("common.actions.cancel")}</button>
+        <button type="button" className="workspace-delete-button" onClick={onConfirm}>{t("common.workhub.deleteProject")}</button>
       </div>
     </div>
   </Modal>;
 }
 
 function ProjectList({ areas, projects, query, onQueryChange, onOpenProject, onNewProject, onNewArea, onEditArea, onDeleteArea, onEditProject, onDeleteProject }: { areas: Area[]; projects: Project[]; query: string; onQueryChange: (value: string) => void; onOpenProject: (id: string) => void; onNewProject: (areaId?: string | null) => void; onNewArea: () => void; onEditArea: (area: Area) => void; onDeleteArea: (area: Area) => void; onEditProject: (project: Project) => void; onDeleteProject: (project: Project) => void }) {
+  const { t } = useI18n();
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
   const filtered = projects.filter((project) => project.name.toLowerCase().includes(query.toLowerCase()) || project.description.toLowerCase().includes(query.toLowerCase()));
   const byArea = (areaId: string | null) => filtered.filter((project) => project.areaId === areaId);
-  return <section className="workhub-projects-view" aria-label="Projects">
-    <div className="workhub-intro"><div><p className="eyebrow">ORGANIZE YOUR WORK</p><h2>Projects</h2><p>Keep each outcome focused, then let the tasks flow into Today.</p></div><div className="workhub-intro-actions"><button type="button" className="secondary-button workhub-new-area" onClick={onNewArea}><Icon name="folder-plus" /><span>New area</span></button><button type="button" className="primary-button" onClick={() => onNewProject()}><Icon name="plus" />New project</button></div></div>
-    <label className="workhub-search"><Icon name="search" /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Find a project" aria-label="Find a project" /></label>
+  return <section className="workhub-projects-view" aria-label={t("common.views.projects")}>
+    <div className="workhub-intro"><div><p className="eyebrow">{t("common.workhub.introEyebrow")}</p><h2>{t("common.views.projects")}</h2><p>{t("common.workhub.introDescription", { today: t("common.views.today") })}</p></div><div className="workhub-intro-actions"><button type="button" className="secondary-button workhub-new-area" onClick={onNewArea}><Icon name="folder-plus" /><span>{t("common.workhub.newArea")}</span></button><button type="button" className="primary-button" onClick={() => onNewProject()}><Icon name="plus" />{t("common.workhub.newProject")}</button></div></div>
+    <label className="workhub-search"><Icon name="search" /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("common.workhub.findProjects")} aria-label={t("common.workhub.findProjects")} /></label>
     <div className="workhub-project-groups">
-      {[...areas.map((area) => ({ id: area.id, label: area.name, color: area.color, icon: area.icon, area })), { id: "__none__", label: "No area", color: "#9a9d91", icon: DEFAULT_PROJECT_ICON, area: undefined }].map((group) => {
+      {[...areas.map((area) => ({ id: area.id, label: area.name, color: area.color, icon: area.icon, area })), { id: "__none__", label: t("common.workhub.noArea"), color: "#9a9d91", icon: DEFAULT_PROJECT_ICON, area: undefined }].map((group) => {
         const groupProjects = byArea(group.id === "__none__" ? null : group.id);
         if (!groupProjects.length && query) return null;
         return <section className="workhub-project-group" key={group.id}>
           <div
             className="workhub-group-heading"
             onContextMenu={group.area ? (event) => openMenu(event, [
-              { icon: "plus", label: `New project in ${group.area!.name}`, run: () => onNewProject(group.area!.id) },
-              { icon: "pencil", label: `Edit area ${group.area!.name}`, run: () => onEditArea(group.area!) },
-              { icon: "trash", label: `Delete area ${group.area!.name}`, danger: true, run: () => onDeleteArea(group.area!) },
+              { icon: "plus", label: t("common.workhub.menuNewProjectIn", { name: group.area!.name }), run: () => onNewProject(group.area!.id) },
+              { icon: "pencil", label: t("common.workhub.menuEditArea", { name: group.area!.name }), run: () => onEditArea(group.area!) },
+              { icon: "trash", label: t("common.workhub.menuDeleteArea", { name: group.area!.name }), danger: true, run: () => onDeleteArea(group.area!) },
             ]) : undefined}
             {...(group.area ? longPress(() => [
-              { icon: "plus", label: `New project in ${group.area!.name}`, run: () => onNewProject(group.area!.id) },
-              { icon: "pencil", label: `Edit area ${group.area!.name}`, run: () => onEditArea(group.area!) },
-              { icon: "trash", label: `Delete area ${group.area!.name}`, danger: true, run: () => onDeleteArea(group.area!) },
+              { icon: "plus", label: t("common.workhub.menuNewProjectIn", { name: group.area!.name }), run: () => onNewProject(group.area!.id) },
+              { icon: "pencil", label: t("common.workhub.menuEditArea", { name: group.area!.name }), run: () => onEditArea(group.area!) },
+              { icon: "trash", label: t("common.workhub.menuDeleteArea", { name: group.area!.name }), danger: true, run: () => onDeleteArea(group.area!) },
             ]) : {})}
-          ><span className="workhub-group-icon" style={{ color: group.color }}><WorkspaceIcon icon={group.icon} fallback={group.id === "__none__" ? DEFAULT_PROJECT_ICON : DEFAULT_AREA_ICON} /></span><h3>{group.label}</h3><span className="workhub-count">{groupProjects.length}</span><div className="workhub-group-actions"><button type="button" className="text-button" onClick={() => onNewProject(group.id === "__none__" ? null : group.id)}><Icon name="plus" />Project</button>{group.area && <><button type="button" className="workhub-icon-action" aria-label={`Edit area ${group.area.name}`} title="Edit area" onClick={() => onEditArea(group.area!)}><Icon name="pencil" /></button><button type="button" className="workhub-icon-action danger" aria-label={`Delete area ${group.area.name}`} title="Delete area" onClick={() => onDeleteArea(group.area!)}><Icon name="trash" /></button></>}</div></div>
+          ><span className="workhub-group-icon" style={{ color: group.color }}><WorkspaceIcon icon={group.icon} fallback={group.id === "__none__" ? DEFAULT_PROJECT_ICON : DEFAULT_AREA_ICON} /></span><h3>{group.label}</h3><span className="workhub-count">{groupProjects.length}</span><div className="workhub-group-actions"><button type="button" className="text-button" onClick={() => onNewProject(group.id === "__none__" ? null : group.id)}><Icon name="plus" />{t("common.workhub.projectAction")}</button>{group.area && <><button type="button" className="workhub-icon-action" aria-label={t("common.workhub.editAreaAria", { name: group.area.name })} title={t("common.workhub.editArea")} onClick={() => onEditArea(group.area!)}><Icon name="pencil" /></button><button type="button" className="workhub-icon-action danger" aria-label={t("common.workhub.deleteAreaAria", { name: group.area.name })} title={t("common.workhub.deleteArea")} onClick={() => onDeleteArea(group.area!)}><Icon name="trash" /></button></>}</div></div>
           {groupProjects.length ? <div className="workhub-project-list">{groupProjects.map((project) => <div
             className="workhub-project-card"
             key={project.id}
             onContextMenu={(event) => openMenu(event, [
-              { icon: "arrow", label: `Open ${project.name}`, run: () => onOpenProject(project.id) },
-              { icon: "pencil", label: `Edit ${project.name}`, run: () => onEditProject(project) },
-              { icon: "trash", label: `Delete ${project.name}`, danger: true, run: () => onDeleteProject(project) },
+              { icon: "arrow", label: t("common.workhub.menuOpen", { name: project.name }), run: () => onOpenProject(project.id) },
+              { icon: "pencil", label: t("common.workhub.menuEdit", { name: project.name }), run: () => onEditProject(project) },
+              { icon: "trash", label: t("common.workhub.menuDelete", { name: project.name }), danger: true, run: () => onDeleteProject(project) },
             ])}
             {...longPress(() => [
-              { icon: "arrow", label: `Open ${project.name}`, run: () => onOpenProject(project.id) },
-              { icon: "pencil", label: `Edit ${project.name}`, run: () => onEditProject(project) },
-              { icon: "trash", label: `Delete ${project.name}`, danger: true, run: () => onDeleteProject(project) },
+              { icon: "arrow", label: t("common.workhub.menuOpen", { name: project.name }), run: () => onOpenProject(project.id) },
+              { icon: "pencil", label: t("common.workhub.menuEdit", { name: project.name }), run: () => onEditProject(project) },
+              { icon: "trash", label: t("common.workhub.menuDelete", { name: project.name }), danger: true, run: () => onDeleteProject(project) },
             ])}
-          ><button type="button" className="workhub-project-card-main" onClick={() => onOpenProject(project.id)}><span className="workhub-project-icon"><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /></span><span className="workhub-project-card-copy"><strong>{project.name}</strong>{project.description && <small>{project.description}</small>}</span><span className={`project-status status-${project.status}`}>{PROJECT_STATUS_LABELS[project.status]}</span><Icon name="chevron-right" /></button><button type="button" className="workhub-icon-action project-edit-action" aria-label={`Edit project ${project.name}`} title="Edit project" onClick={() => onEditProject(project)}><Icon name="pencil" /></button></div>)}</div> : <button type="button" className="workhub-empty-inline" onClick={() => onNewProject(group.id === "__none__" ? null : group.id)}>Create your first project in {group.label}</button>}
+          ><button type="button" className="workhub-project-card-main" onClick={() => onOpenProject(project.id)}><span className="workhub-project-icon"><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /></span><span className="workhub-project-card-copy"><strong>{project.name}</strong>{project.description && <small>{project.description}</small>}</span><span className={`project-status status-${project.status}`}>{t(PROJECT_STATUS_LABELS[project.status])}</span><Icon name="chevron-right" /></button><button type="button" className="workhub-icon-action project-edit-action" aria-label={t("common.workhub.editProjectAria", { name: project.name })} title={t("common.workhub.editProject")} onClick={() => onEditProject(project)}><Icon name="pencil" /></button></div>)}</div> : <button type="button" className="workhub-empty-inline" onClick={() => onNewProject(group.id === "__none__" ? null : group.id)}>{t("common.workhub.emptyInline", { label: group.label })}</button>}
         </section>;
       })}
-      {!filtered.length && <div className="workhub-empty-state"><div className="workhub-empty-mark"><Icon name="folder" /></div><h3>{query ? "No matching projects" : "Your projects will live here"}</h3><p>{query ? "Try a different search." : "Start with one outcome you want to move forward."}</p>{!query && <button type="button" className="primary-button" onClick={() => onNewProject()}><Icon name="plus" />New project</button>}</div>}
+      {!filtered.length && <div className="workhub-empty-state"><div className="workhub-empty-mark"><Icon name="folder" /></div><h3>{query ? t("common.workhub.emptyNoMatch") : t("common.workhub.emptyTitle")}</h3><p>{query ? t("common.workhub.emptyNoMatchHint") : t("common.workhub.emptyHint")}</p>{!query && <button type="button" className="primary-button" onClick={() => onNewProject()}><Icon name="plus" />{t("common.workhub.newProject")}</button>}</div>}
     </div>
     {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
   </section>;
 }
 
 function ProjectDetail({ project, area, tasks, onBack, onOpenNotes, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, onEditProject, onDeleteProject }: { project: Project; area?: Area; tasks: Task[]; onBack: () => void; onOpenNotes: (id: string) => void; onNewTask: (context: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void; onWorkspaceChange: () => void; onEditProject: (project: Project) => void; onDeleteProject: (project: Project) => void }) {
+  const { t } = useI18n();
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
   const [tab, setTab] = useState<"tasks" | "notes">("tasks");
   const [notes, setNotes] = useState(() => notesStore.list().filter((note) => note.projectId === project.id));
   const completed = tasks.filter((task) => task.completed).length;
   const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
   const createNote = () => {
-    const note = notesStore.create("Untitled project note", null, project.id);
+    const note = notesStore.create(t("common.workhub.untitledProjectNote"), null, project.id);
     setNotes(notesStore.list().filter((item) => item.projectId === project.id));
     onOpenNotes(project.id);
     void note;
@@ -213,28 +219,29 @@ function ProjectDetail({ project, area, tasks, onBack, onOpenNotes, onNewTask, o
     onWorkspaceChange();
   }
   return <section className="workhub-project-detail" aria-label={project.name}>
-    <button type="button" className="back-link" onClick={onBack}><Icon name="chevron-left" />All projects</button>
+    <button type="button" className="back-link" onClick={onBack}><Icon name="chevron-left" />{t("common.workhub.backToAll")}</button>
     <div
       className="project-detail-header"
       onContextMenu={(event) => openMenu(event, [
-        { icon: "pencil", label: `Edit ${project.name}`, run: () => onEditProject(project) },
-        { icon: "plus", label: "New task in this project", run: () => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" }) },
-        { icon: "trash", label: `Delete ${project.name}`, danger: true, run: () => onDeleteProject(project) },
+        { icon: "pencil", label: t("common.workhub.menuEdit", { name: project.name }), run: () => onEditProject(project) },
+        { icon: "plus", label: t("common.workhub.menuNewTask"), run: () => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" }) },
+        { icon: "trash", label: t("common.workhub.menuDelete", { name: project.name }), danger: true, run: () => onDeleteProject(project) },
       ])}
       {...longPress(() => [
-        { icon: "pencil", label: `Edit ${project.name}`, run: () => onEditProject(project) },
-        { icon: "plus", label: "New task in this project", run: () => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" }) },
-        { icon: "trash", label: `Delete ${project.name}`, danger: true, run: () => onDeleteProject(project) },
+        { icon: "pencil", label: t("common.workhub.menuEdit", { name: project.name }), run: () => onEditProject(project) },
+        { icon: "plus", label: t("common.workhub.menuNewTask"), run: () => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" }) },
+        { icon: "trash", label: t("common.workhub.menuDelete", { name: project.name }), danger: true, run: () => onDeleteProject(project) },
       ])}
-    ><div className="project-detail-heading"><div className="project-detail-title-row"><span className="project-detail-icon"><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /></span><div><div className="project-detail-kicker">{area?.name ?? "No area"}</div><h2>{project.name}</h2></div></div>{project.description && <p>{project.description}</p>}</div><div className="project-detail-actions"><button type="button" className="secondary-button project-edit-button" onClick={() => onEditProject(project)}><Icon name="pencil" />Edit project</button><select aria-label="Project status" value={project.status} onChange={(event) => changeStatus(event.target.value as ProjectStatus)}>{Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button type="button" className="primary-button" onClick={() => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" })}><Icon name="plus" />New task</button></div></div>
-    <div className="project-progress"><div><span>{completed} of {tasks.length} tasks complete</span><strong>{progress}%</strong></div><div className="project-progress-track"><span style={{ width: `${progress}%` }} /></div></div>
-    <div className="workhub-tabs" role="tablist"><button type="button" role="tab" aria-selected={tab === "tasks"} className={tab === "tasks" ? "active" : ""} onClick={() => setTab("tasks")}>Tasks <span>{tasks.filter((task) => !task.completed).length}</span></button><button type="button" role="tab" aria-selected={tab === "notes"} className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}>Notes <span>{notes.length}</span></button></div>
-    {tab === "tasks" ? <div className="project-task-list">{tasks.length ? tasks.map((task) => <TaskRow key={task.id} task={task} project={project} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />) : <div className="workhub-empty-state compact"><Icon name="check-circle" /><h3>No tasks in this project</h3><p>Make the next step concrete and add it here.</p><button type="button" className="primary-button" onClick={() => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" })}><Icon name="plus" />Add next task</button></div>}</div> : <div className="project-notes-panel"><div className="project-notes-heading"><div><p className="eyebrow">PROJECT NOTES</p><h3>Keep the context close to the work</h3></div><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />New note</button></div>{notes.length ? <div className="project-note-list">{notes.map((note) => <button type="button" className="project-note-card" key={note.id} onClick={() => onOpenNotes(project.id)}><Icon name="file-text" /><span><strong>{note.title}</strong><small>{note.body.replace(/\s+/g, " ").trim().slice(0, 120) || "Empty note"}</small></span><Icon name="chevron-right" /></button>)}</div> : <div className="workhub-empty-state compact"><Icon name="file-text" /><h3>No project notes yet</h3><p>Capture decisions, research, or the project brief without leaving the project.</p><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />Create note</button></div>}<button type="button" className="secondary-button project-open-notes" onClick={() => onOpenNotes(project.id)}>Open project notes</button></div>}
+    ><div className="project-detail-heading"><div className="project-detail-title-row"><span className="project-detail-icon"><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /></span><div><div className="project-detail-kicker">{area?.name ?? t("common.workhub.noArea")}</div><h2>{project.name}</h2></div></div>{project.description && <p>{project.description}</p>}</div><div className="project-detail-actions"><button type="button" className="secondary-button project-edit-button" onClick={() => onEditProject(project)}><Icon name="pencil" />{t("common.workhub.editProject")}</button><select aria-label={t("common.workhub.detailStatusLabel")} value={project.status} onChange={(event) => changeStatus(event.target.value as ProjectStatus)}>{Object.entries(PROJECT_STATUS_LABELS).map(([value, labelKey]) => <option key={value} value={value}>{t(labelKey)}</option>)}</select><button type="button" className="primary-button" onClick={() => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" })}><Icon name="plus" />{t("common.header.newTask")}</button></div></div>
+    <div className="project-progress"><div><span>{t("common.workhub.progress", { completed, total: tasks.length })}</span><strong>{progress}%</strong></div><div className="project-progress-track"><span style={{ width: `${progress}%` }} /></div></div>
+    <div className="workhub-tabs" role="tablist"><button type="button" role="tab" aria-selected={tab === "tasks"} className={tab === "tasks" ? "active" : ""} onClick={() => setTab("tasks")}>{t("common.workhub.tasksTab")} <span>{tasks.filter((task) => !task.completed).length}</span></button><button type="button" role="tab" aria-selected={tab === "notes"} className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}>{t("common.workhub.notesTab")} <span>{notes.length}</span></button></div>
+    {tab === "tasks" ? <div className="project-task-list">{tasks.length ? tasks.map((task) => <TaskRow key={task.id} task={task} project={project} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />) : <div className="workhub-empty-state compact"><Icon name="check-circle" /><h3>{t("common.workhub.noTasksTitle")}</h3><p>{t("common.workhub.noTasksHint")}</p><button type="button" className="primary-button" onClick={() => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" })}><Icon name="plus" />{t("common.workhub.addNextTask")}</button></div>}</div> : <div className="project-notes-panel"><div className="project-notes-heading"><div><p className="eyebrow">{t("common.workhub.notesEyebrow")}</p><h3>{t("common.workhub.notesTitle")}</h3></div><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.newNote")}</button></div>{notes.length ? <div className="project-note-list">{notes.map((note) => <button type="button" className="project-note-card" key={note.id} onClick={() => onOpenNotes(project.id)}><Icon name="file-text" /><span><strong>{note.title}</strong><small>{note.body.replace(/\s+/g, " ").trim().slice(0, 120) || t("common.workhub.emptyNote")}</small></span><Icon name="chevron-right" /></button>)}</div> : <div className="workhub-empty-state compact"><Icon name="file-text" /><h3>{t("common.workhub.noNotesTitle")}</h3><p>{t("common.workhub.noNotesHint")}</p><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.createNote")}</button></div>}<button type="button" className="secondary-button project-open-notes" onClick={() => onOpenNotes(project.id)}>{t("common.workhub.openNotes")}</button></div>}
     {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
   </section>;
 }
 
 export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, collaborationByProject, currentUserId = null }: Props) {
+  const { t, tp, lang } = useI18n();
   const [projectQuery, setProjectQuery] = useState("");
   const [modal, setModal] = useState<WorkspaceModal>(null);
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
@@ -255,7 +262,7 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   const collaboration = selectedProject ? collaborationByProject?.[selectedProject.id] : undefined;
 
   if (view === "project" && selectedProject && collaboration) return <div className="workhub-project-detail">
-    <button type="button" className="back-link" onClick={() => onOpenProject("")}><Icon name="chevron-left" />All projects</button>
+    <button type="button" className="back-link" onClick={() => onOpenProject("")}><Icon name="chevron-left" />{t("common.workhub.backToAll")}</button>
     <ProjectCollaboration key={selectedProject.id} {...collaboration} project={selectedProject} />
   </div>;
 
@@ -285,10 +292,10 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   }
 
   if (view === "projects") return <><ProjectList areas={areas} projects={projects} query={projectQuery} onQueryChange={setProjectQuery} onOpenProject={onOpenProject} onNewProject={(areaId) => setModal({ kind: "project", areaId: areaId ?? null })} onNewArea={() => setModal({ kind: "area" })} onEditArea={(area) => setModal({ kind: "area", area })} onDeleteArea={(area) => setModal({ kind: "confirm-area-delete", area })} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</>;
-  if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>Project not found</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>Back to projects</button></div>;
-  if (view === "waiting") return <TaskCollection title="Waiting and delegated" eyebrow="CLEAR THE LOOP" description="Keep work that depends on someone else out of your active list." tasks={waitingTasks} projects={projects} empty="Nothing is waiting on anyone." actionLabel="Capture waiting work" onAction={() => onNewTask({ status: "waiting" })} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
-  if (view === "inbox") return <TaskCollection title="Inbox" eyebrow="CAPTURE FIRST, ORGANIZE LATER" description="A quiet holding place for tasks you have not clarified yet." tasks={inboxTasks} projects={projects} empty="Your inbox is clear." actionLabel="Capture task" onAction={() => onNewTask({ status: "inbox" })} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
-  return <section className="today-view" aria-label="Today"><div className="workhub-intro today-intro"><div><p className="eyebrow">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }).toUpperCase()}</p><h2>What deserves your attention?</h2><p>A short list for moving the important work forward.</p></div><button type="button" className="primary-button" onClick={() => onNewTask()}><Icon name="plus" />Capture task</button></div><div className="today-grid"><section className="today-section now-section"><div className="today-section-heading"><div><span className="section-kicker">NOW</span><h3>Start here</h3></div><span className="today-count">{nowTasks.length}</span></div>{nowTasks.length ? nowTasks.map((task) => <TaskRow key={task.id} task={task} project={projectFor(task)} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />) : <div className="today-empty"><Icon name="check-circle" /><strong>Nothing urgent is pulling you forward.</strong><span>Choose a next action below or capture something new.</span></div>}</section><section className="today-section next-section"><div className="today-section-heading"><div><span className="section-kicker">NEXT</span><h3>Keep moving</h3></div><span className="today-count">{nextTasks.length}</span></div>{nextTasks.length ? nextTasks.map((task) => <TaskRow key={task.id} task={task} project={projectFor(task)} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />) : <div className="today-empty"><Icon name="arrow" /><strong>Your next list is open.</strong><span>Use Inbox to capture the next thing that comes to mind.</span></div>}</section></div>{waitingTasks.length > 0 && <button type="button" className="today-waiting-banner" onClick={onOpenWaiting}><span><Icon name="later" /><strong>{waitingTasks.length} item{waitingTasks.length > 1 ? "s" : ""} waiting on someone else</strong></span><Icon name="chevron-right" /></button>}</section>;
+  if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>{t("common.workhub.notFound")}</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>{t("common.workhub.backToProjects")}</button></div>;
+  if (view === "waiting") return <TaskCollection title={t("common.workhub.waitingTitle")} eyebrow={t("common.workhub.waitingEyebrow")} description={t("common.workhub.waitingDescription")} tasks={waitingTasks} projects={projects} empty={t("common.workhub.waitingEmpty")} actionLabel={t("common.workhub.waitingAction")} onAction={() => onNewTask({ status: "waiting" })} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
+  if (view === "inbox") return <TaskCollection title={t("common.views.inbox")} eyebrow={t("common.workhub.inboxEyebrow")} description={t("common.workhub.inboxDescription")} tasks={inboxTasks} projects={projects} empty={t("common.workhub.inboxEmpty")} actionLabel={t("common.workhub.inboxAction")} onAction={() => onNewTask({ status: "inbox" })} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
+  return <section className="today-view" aria-label={t("common.views.today")}><div className="workhub-intro today-intro"><div><p className="eyebrow">{new Date().toLocaleDateString(lang, { weekday: "long", month: "long", day: "numeric" }).toUpperCase()}</p><h2>{t("common.workhub.todayIntro")}</h2><p>{t("common.workhub.todayHint")}</p></div><button type="button" className="primary-button" onClick={() => onNewTask()}><Icon name="plus" />{t("common.workhub.inboxAction")}</button></div><div className="today-grid"><section className="today-section now-section"><div className="today-section-heading"><div><span className="section-kicker">{t("common.workhub.nowKicker")}</span><h3>{t("common.workhub.nowTitle")}</h3></div><span className="today-count">{nowTasks.length}</span></div>{nowTasks.length ? nowTasks.map((task) => <TaskRow key={task.id} task={task} project={projectFor(task)} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />) : <div className="today-empty"><Icon name="check-circle" /><strong>{t("common.workhub.nowEmptyTitle")}</strong><span>{t("common.workhub.nowEmptyHint")}</span></div>}</section><section className="today-section next-section"><div className="today-section-heading"><div><span className="section-kicker">{t("common.workhub.nextKicker")}</span><h3>{t("common.workhub.nextTitle")}</h3></div><span className="today-count">{nextTasks.length}</span></div>{nextTasks.length ? nextTasks.map((task) => <TaskRow key={task.id} task={task} project={projectFor(task)} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />) : <div className="today-empty"><Icon name="arrow" /><strong>{t("common.workhub.nextEmptyTitle")}</strong><span>{t("common.workhub.nextEmptyHint")}</span></div>}</section></div>{waitingTasks.length > 0 && <button type="button" className="today-waiting-banner" onClick={onOpenWaiting}><span><Icon name="later" /><strong>{tp("common.workhub.waitingBanner", waitingTasks.length)}</strong></span><Icon name="chevron-right" /></button>}</section>;
 }
 
 function TaskCollection({ title, eyebrow, description, tasks, projects, empty, actionLabel, onAction, onTaskChange, onTaskDelete, onTaskEdit }: { title: string; eyebrow: string; description: string; tasks: Task[]; projects: Project[]; empty: string; actionLabel: string; onAction: () => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void }) {
