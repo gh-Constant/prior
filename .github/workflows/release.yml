@@ -57,6 +57,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/release/plan.mjs
 
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Version guard (tag == app/package.json == tauri.conf.json == Cargo.toml == Cargo.lock)
+        run: sh scripts/check-versions.sh
+      - name: Contract guard (frozen OPENAPI.yaml surface)
+        run: sh scripts/check-contracts.sh
+
   # A platform-independent frontend bundle is built once. The cache key ignores
   # release-only version lines, so native-only releases reuse this bundle too.
   frontend:
@@ -320,8 +331,8 @@ jobs:
   # GitHub release assets and latest.json are written by one job only. This
   # keeps parallel platform builds fast without reintroducing upload races.
   publish:
-    needs: [prepare, plan, frontend, desktop, android]
-    if: ${{ always() && needs.prepare.result == 'success' && needs.plan.result == 'success' && (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') && (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') && (needs.android.result == 'success' || needs.android.result == 'skipped') }}
+    needs: [prepare, plan, guards, frontend, desktop, android]
+    if: ${{ always() && needs.prepare.result == 'success' && needs.plan.result == 'success' && needs.guards.result == 'success' && (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') && (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') && (needs.android.result == 'success' || needs.android.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

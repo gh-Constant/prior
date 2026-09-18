@@ -1,4 +1,4 @@
-import { api, type ServerSettings } from "./api";
+import { api, isAuthError, isRetriableError, type ServerSettings } from "./api";
 import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "./ai";
 import type { AgentSettings } from "../types";
 import { getToken } from "./auth";
@@ -23,20 +23,32 @@ export function mergeServerSettings(local: AgentSettings, server: ServerSettings
 }
 
 // Pull the shared settings into the local cache. Returns true when a
-// server round-trip succeeded.
+// server round-trip succeeded. Auth failures propagate so callers can sign
+// the user out; network/server failures are retried once and then reported
+// as false (with a warning, never swallowed silently).
 export async function pullAssistantSettings(): Promise<boolean> {
   const token = await getToken().catch(() => null);
   if (!token) return false;
-  try {
-    const server = await api.getSettings(token);
-    const { merged, shouldPush } = mergeServerSettings(getAgentSettings(), server);
-    saveAgentSettings(merged);
-    notifyAgentSettingsChanged();
-    if (shouldPush) await pushAssistantSettings(token);
-    return true;
-  } catch {
-    return false;
+  const maxAttempts = 2;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const server = await api.getSettings(token);
+      const { merged, shouldPush } = mergeServerSettings(getAgentSettings(), server);
+      saveAgentSettings(merged);
+      notifyAgentSettingsChanged();
+      if (shouldPush) await pushAssistantSettings(token);
+      return true;
+    } catch (error) {
+      lastError = error;
+      if (isAuthError(error)) throw error;
+      if (isRetriableError(error) && attempt + 1 < maxAttempts) continue;
+      console.warn("Prior assistant settings sync failed:", error);
+      return false;
+    }
   }
+  console.warn("Prior assistant settings sync failed:", lastError);
+  return false;
 }
 
 // Push the local settings to the account. Best-effort: local storage stays
@@ -48,8 +60,10 @@ export async function pushAssistantSettings(token?: string, settings?: AgentSett
   try {
     await api.saveSettings({ openrouterApiKey: local.apiKey, openaiApiKey: local.transcriptionApiKey, webSearch: local.webSearch !== false }, resolved);
     return true;
-  } catch {
+  } catch (error) {
+    if (isAuthError(error)) throw error;
     // Offline: the local copy remains the source of truth until next sync.
+    console.warn("Prior assistant settings push failed:", error);
     return false;
   }
 }

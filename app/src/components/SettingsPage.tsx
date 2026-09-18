@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
-import { getCodexAccount, logoutCodex, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
+import { clearCachedCodexAccount, codexBinaryAvailable, getCachedCodexAccount, logoutCodex, setCachedCodexAccount, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
 import type { AgentProvider } from "../types";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
@@ -288,24 +288,66 @@ type CodexSettingsProps = {
 
 function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
   const [account, setAccount] = useState<CodexAccount | null>(null);
+  const [binaryAvailable, setBinaryAvailable] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
-    void getCodexAccount()
-      .then((next) => {
+    // Lazy: cheap PATH probe + localStorage cache only. Never spawn the
+    // Codex server here; the server starts only on Connect click.
+    void (async () => {
+      try {
+        if (!supportsCodexDesktop()) {
+          if (!live) return;
+          setBinaryAvailable(false);
+          setAccount({
+            available: false,
+            authenticated: false,
+            authMode: null,
+            planType: null,
+            email: null,
+            error: null,
+          });
+          return;
+        }
+        const status = await codexBinaryAvailable();
         if (!live) return;
-        setAccount(next);
-        setError(next.available ? null : next.error);
-      })
-      .catch((error_) => {
+        setBinaryAvailable(status.available);
+        if (!status.available) {
+          setAccount({
+            available: false,
+            authenticated: false,
+            authMode: null,
+            planType: null,
+            email: null,
+            error: "Codex CLI is not available on this desktop.",
+          });
+          return;
+        }
+        const cached = getCachedCodexAccount();
+        if (cached) {
+          setAccount(cached);
+          setError(null);
+        } else {
+          // Binary present but no fresh login proof: show "Not connected"
+          // without spawning the server.
+          setAccount({
+            available: true,
+            authenticated: false,
+            authMode: null,
+            planType: null,
+            email: null,
+            error: null,
+          });
+        }
+      } catch (error_) {
         if (live) setError(error_ instanceof Error ? error_.message : "Codex is not available.");
-      })
-      .finally(() => {
+      } finally {
         if (live) setLoading(false);
-      });
+      }
+    })();
     return () => { live = false; };
   }, []);
 
@@ -316,6 +358,7 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
     try {
       const login = await startCodexLogin();
       const next = await waitForCodexLogin(login.loginId);
+      setCachedCodexAccount(next);
       setAccount(next);
       onProviderChange("codex");
     } catch (error_) {
@@ -331,7 +374,10 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
     setError(null);
     try {
       const next = await logoutCodex();
-      setAccount(next);
+      clearCachedCodexAccount();
+      // Keep a fresh "not connected" placeholder so the UI stays usable
+      // without spawning the server again.
+      setAccount({ ...next, available: true });
       onProviderChange("openrouter");
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : "Unable to disconnect Codex.");
@@ -354,8 +400,8 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
       </div>
 
       {loading ? (
-        <p className="settings-codex-status">Checking connection…</p>
-      ) : !account?.available ? (
+        <p className="settings-codex-status">Checking...</p>
+      ) : binaryAvailable === false || !account?.available ? (
         <div className="settings-codex-unavailable">
           <p>{error || "Codex CLI is not available on this desktop."}</p>
           <small>Install Codex and make the <code>codex</code> command available, then reopen Settings.</small>

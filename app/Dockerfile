@@ -5,7 +5,7 @@ RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY app/package.json app/package.json
-RUN pnpm install --frozen-lockfile=false
+RUN pnpm install --frozen-lockfile
 
 COPY app app
 ARG VITE_API_URL=https://api.prior.constantsuchet.fr

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { api } from "./lib/api";
-import { clearSession, getToken, getUser, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
+import { AUTH_REQUIRED_EVENT, clearSession, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
+import { isDesktop } from "./lib/platform";
+import { checkForUpdate, type UpdateInfo } from "./lib/updater";
 import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
@@ -153,10 +155,14 @@ export function App() {
   const celebrationKey = useRef(0);
   const syncInFlight = useRef<Promise<void> | null>(null);
   const syncQueued = useRef(false);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
   const workspaceSyncTimer = useRef<number | undefined>(undefined);
+  const workspaceSyncFirstQueuedAt = useRef<number | undefined>(undefined);
   const sessionGeneration = useRef(0);
   const realtimeClose = useRef<(() => Promise<void>) | undefined>(undefined);
   const realtimeGeneration = useRef(0);
+  const [desktopUpdate, setDesktopUpdate] = useState<UpdateInfo | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const { deadlines: completionExitDeadlines, retain: retainCompletionExit, release: releaseCompletionExit } = useCompletionExits();
   const [agentOpen, setAgentOpen] = useState(() => {
     try {
@@ -222,10 +228,19 @@ export function App() {
   }, [completionCelebration]);
 
   const refresh = useCallback(async () => {
-    const [nextTasks, nextHabits] = await Promise.all([localStore.listTasks(), localStore.listHabits()]);
-    setTasks(nextTasks);
-    setHabits(nextHabits);
-    void updateAndroidWidget(nextTasks, nextHabits).catch(() => undefined);
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const run = (async () => {
+      const [nextTasks, nextHabits] = await Promise.all([localStore.listTasks(), localStore.listHabits()]);
+      setTasks(nextTasks);
+      setHabits(nextHabits);
+      void updateAndroidWidget(nextTasks, nextHabits).catch(() => undefined);
+    })();
+    refreshInFlight.current = run;
+    try {
+      await run;
+    } finally {
+      if (refreshInFlight.current === run) refreshInFlight.current = null;
+    }
   }, []);
 
   const syncNow = useCallback((): Promise<void> => {
@@ -239,22 +254,66 @@ export function App() {
         const generation = sessionGeneration.current;
         const token = await getToken();
         if (!token || generation !== sessionGeneration.current) return;
+        // Profile first: the server copy wins so a rename on another device
+        // converges locally. Failures are non-fatal for task data.
+        try {
+          const profile = await api.getProfile(token);
+          if (generation !== sessionGeneration.current) return;
+          const currentUser = getUser();
+          if (!currentUser || currentUser.displayName !== profile.displayName || currentUser.email !== profile.email || currentUser.avatarUrl !== profile.avatarUrl) {
+            saveUser(profile);
+            setUser(profile);
+          }
+        } catch (profileError) {
+          if (await handleAuthError(profileError)) {
+            if (generation !== sessionGeneration.current) return;
+            setUser(null);
+            setAuthError(profileError instanceof Error ? profileError.message : "Your session has expired. Please sign in again.");
+            setAuthOpen(true);
+            setToast("Session expired — please sign in again.");
+            return;
+          }
+          console.warn("Prior profile sync failed:", profileError);
+        }
         // navigator.onLine is unreliable in Tauri webviews. The API request has
         // its own timeout and is the source of truth for connectivity.
         const state = await localStore.getSyncState();
         let highestPushedRevision = state.lastServerRevision;
         const pending = await localStore.pendingMutations();
-        if (pending.length) {
-          const pushed = await api.push(pending, token);
+        // Server push batches are capped at 100 mutations; chunk client-side.
+        for (let offset = 0; offset < pending.length; offset += 100) {
+          const chunk = pending.slice(offset, offset + 100);
+          const pushed = await api.push(chunk, token);
           if (generation !== sessionGeneration.current) return;
           await localStore.removeMutations(pushed.applied.map((item) => item.mutationId));
           highestPushedRevision = pushed.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
         }
-        let pulled = await api.pull(state.lastServerRevision, token);
+        // Paged pull: server caps a single response at PullPageSize (200
+        // revisions). Follow nextSince/hasMore so large histories converge.
+        async function pullAll(since: number) {
+          const first = await api.pull(since, token as string);
+          if (generation !== sessionGeneration.current) return first;
+          let combined = first;
+          let guard = 0;
+          while (combined.hasMore && typeof combined.nextSince === "number" && guard < 50) {
+            guard += 1;
+            const cursor: number = combined.nextSince;
+            const next = await api.pull(cursor, token as string);
+            if (generation !== sessionGeneration.current) return combined;
+            combined = {
+              ...next,
+              tasks: [...combined.tasks, ...next.tasks],
+              habits: [...(combined.habits ?? []), ...(next.habits ?? [])],
+            };
+          }
+          return combined;
+        }
+        let pulled = await pullAll(state.lastServerRevision);
         if (generation !== sessionGeneration.current) return;
         const accountId = getUser()?.id;
         if (accountId && localStore.needsLegacySync(accountId)) {
-          const fullHistory = state.lastServerRevision === 0 ? pulled : await api.pull(0, token);
+          const fullHistory = state.lastServerRevision === 0 ? pulled : await pullAll(0);
+          if (generation !== sessionGeneration.current) return;
           const legacy = await localStore.legacyMutations(
             accountId,
             new Set(fullHistory.tasks.map((task) => task.id)),
@@ -267,11 +326,33 @@ export function App() {
             highestPushedRevision = pushedLegacy.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
           }
           localStore.markLegacySyncComplete(accountId);
-          if (legacy.length) pulled = await api.pull(state.lastServerRevision, token);
+          if (legacy.length) {
+            pulled = await pullAll(state.lastServerRevision);
+            if (generation !== sessionGeneration.current) return;
+          }
         }
-        await localStore.applyRemoteTasks(pulled.tasks);
-        await localStore.applyRemoteHabits(pulled.habits ?? []);
+        // Snapshot pending ids once per sync so remote merges skip exactly the
+        // edits that were still queued when this sync started.
+        const pendingSnapshot = await localStore.pendingIdsSnapshot();
+        await localStore.applyRemoteTasks(pulled.tasks, pendingSnapshot.tasks);
+        await localStore.applyRemoteHabits(pulled.habits ?? [], pendingSnapshot.habits);
         await workspaceSync.sync(token, () => generation === sessionGeneration.current);
+        if (generation !== sessionGeneration.current) return;
+        // Assistant settings follow the account after workspace data.
+        try {
+          const settingsOk = await pullAssistantSettings();
+          if (!settingsOk) console.warn("Prior assistant settings not yet synced; will retry on the next sync.");
+        } catch (settingsError) {
+          if (await handleAuthError(settingsError)) {
+            if (generation !== sessionGeneration.current) return;
+            setUser(null);
+            setAuthError(settingsError instanceof Error ? settingsError.message : "Your session has expired. Please sign in again.");
+            setAuthOpen(true);
+            setToast("Session expired — please sign in again.");
+            return;
+          }
+          console.warn("Prior assistant settings sync failed:", settingsError);
+        }
         // A remote merge may not write anything when the local copy is already
         // current. Refresh explicitly so a newly authenticated account cannot
         // keep rendering the previous account's in-memory workspace.
@@ -280,6 +361,13 @@ export function App() {
         await localStore.setSyncRevision(finalRevision);
         await refresh();
       } catch (error) {
+        if (await handleAuthError(error)) {
+          setUser(null);
+          setAuthError(error instanceof Error ? error.message : "Your session has expired. Please sign in again.");
+          setAuthOpen(true);
+          setToast("Session expired — please sign in again.");
+          return;
+        }
         console.warn("Prior sync failed:", error);
         // Local data remains authoritative until the next successful sync.
       }
@@ -297,27 +385,59 @@ export function App() {
 
   const scheduleWorkspaceSync = useCallback(() => {
     if (workspaceSync.isApplyingRemote()) return;
+    const nowMs = Date.now();
     if (workspaceSyncTimer.current !== undefined) window.clearTimeout(workspaceSyncTimer.current);
-    workspaceSyncTimer.current = window.setTimeout(() => {
+    if (workspaceSyncFirstQueuedAt.current === undefined) workspaceSyncFirstQueuedAt.current = nowMs;
+    const elapsed = nowMs - (workspaceSyncFirstQueuedAt.current ?? nowMs);
+    // Single scheduler: debounce 500ms with a 5s maxWait so rapid edits batch
+    // but a sustained burst cannot starve the sync indefinitely.
+    if (elapsed >= 5000) {
+      workspaceSyncFirstQueuedAt.current = undefined;
       workspaceSyncTimer.current = undefined;
       void syncNow();
-    }, 700);
+      return;
+    }
+    workspaceSyncTimer.current = window.setTimeout(() => {
+      workspaceSyncTimer.current = undefined;
+      workspaceSyncFirstQueuedAt.current = undefined;
+      void syncNow();
+    }, 500);
   }, [syncNow]);
 
   const attachRealtime = useCallback(async () => {
     const generation = ++realtimeGeneration.current;
-    const token = await getToken();
+    const token = await getToken().catch((error) => {
+      console.warn("Prior realtime could not read the session token:", error);
+      return null;
+    });
     if (!token || generation !== realtimeGeneration.current) return;
-    await realtimeClose.current?.();
+    try {
+      await realtimeClose.current?.();
+    } catch (error) {
+      console.warn("Prior realtime cleanup failed:", error);
+    }
     if (generation !== realtimeGeneration.current) return;
-    realtimeClose.current = await connectRealtime(token, () => void syncNow());
+    try {
+      realtimeClose.current = await connectRealtime(
+        token,
+        () => void syncNow(),
+        { getRevision: async () => (await localStore.getSyncState()).lastServerRevision },
+      );
+    } catch (error) {
+      console.warn("Prior realtime attach failed; retrying on next trigger:", error);
+      if (generation === realtimeGeneration.current) {
+        window.setTimeout(() => {
+          if (generation === realtimeGeneration.current) void attachRealtime().catch((retryError) => console.warn("Prior realtime retry failed:", retryError));
+        }, 5000);
+      }
+    }
   }, [syncNow]);
 
   useEffect(() => {
     void refresh().catch((error) => console.warn("Prior local store failed:", error));
     refreshWorkspace();
     void syncNow();
-    void attachRealtime().catch(() => undefined);
+    void attachRealtime().catch((error) => console.warn("Prior realtime attach failed:", error));
     const dispose = listenForAuth((nextUser) => {
       sessionGeneration.current += 1;
       setUser(nextUser);
@@ -325,9 +445,9 @@ export function App() {
       setAuthOpen(false);
       refreshWorkspace();
       void refresh().catch((error) => console.warn("Prior could not refresh after sign-in:", error));
-      void attachRealtime().catch(() => undefined);
+      void attachRealtime().catch((error) => console.warn("Prior realtime attach failed:", error));
       void syncNow();
-      void pullAssistantSettings();
+      void pullAssistantSettings().catch((error) => console.warn("Prior assistant settings pull failed:", error));
     }, (error) => {
       setAuthError(error.message);
       setAuthOpen(true);
@@ -337,7 +457,7 @@ export function App() {
       realtimeGeneration.current += 1;
       const close = realtimeClose.current;
       realtimeClose.current = undefined;
-      void close?.();
+      void close?.().catch((error) => console.warn("Prior realtime cleanup failed:", error));
     };
   }, [attachRealtime, refresh, refreshWorkspace, syncNow]);
 
@@ -353,9 +473,63 @@ export function App() {
       refreshWorkspace();
       void refresh().catch((error) => console.warn("Prior could not refresh on auth change:", error));
     };
+    const onAuthRequired = (event: Event) => {
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message ?? "Your session has expired. Please sign in again.";
+      setAuthError(message);
+      setAuthOpen(true);
+      setToast(message);
+    };
     window.addEventListener("prior-auth-change", onAuthChange);
-    return () => window.removeEventListener("prior-auth-change", onAuthChange);
+    window.addEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+    return () => {
+      window.removeEventListener("prior-auth-change", onAuthChange);
+      window.removeEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+    };
   }, [refresh, refreshWorkspace]);
+
+  // Desktop updater: idle check 5s after startup, then daily. The manual
+  // button in Settings stays authoritative; this only drives the badge dot.
+  useEffect(() => {
+    if (!isDesktop()) return undefined;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const update = await checkForUpdate();
+        if (!cancelled && update) setDesktopUpdate(update);
+      } catch (error) {
+        console.warn("Prior update check failed:", error);
+      }
+    };
+    const idleTimer = window.setTimeout(() => void check(), 5000);
+    const dailyTimer = window.setInterval(() => void check(), 24 * 60 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(idleTimer);
+      window.clearInterval(dailyTimer);
+    };
+  }, []);
+
+  // Periodic sync every 60s while visible, plus an immediate sync when the
+  // tab becomes visible again.
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void syncNow();
+    }, 60_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void syncNow();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [syncNow]);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => () => {
     if (workspaceSyncTimer.current !== undefined) window.clearTimeout(workspaceSyncTimer.current);
@@ -587,7 +761,7 @@ export function App() {
     realtimeGeneration.current += 1;
     const close = realtimeClose.current;
     realtimeClose.current = undefined;
-    void close?.();
+    void close?.().catch((error) => console.warn("Prior realtime cleanup failed:", error));
     // Local logout must not wait for a network round trip. Remote revocation
     // is best-effort and the API client has a short timeout.
     await clearSession().catch((error) => console.warn("Prior could not clear the saved session:", error));
@@ -617,9 +791,9 @@ export function App() {
     setAuthOpen(false);
     refreshWorkspace();
     void refresh().catch((error) => console.warn("Prior could not refresh after sign-in:", error));
-    void attachRealtime().catch(() => undefined);
+    void attachRealtime().catch((error) => console.warn("Prior realtime attach failed:", error));
     void syncNow();
-    void pullAssistantSettings();
+    void pullAssistantSettings().catch((error) => console.warn("Prior assistant settings pull failed:", error));
   }
 
   function handleUserUpdated(nextUser: SessionUser): void {
@@ -689,6 +863,7 @@ export function App() {
         mobileOpen={mobileNavOpen}
         agentOpen={agentOpen}
         aiShortcut={aiShortcut}
+        updateAvailable={desktopUpdate !== null}
         inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}
         onViewChange={changeView}
         onAccount={() => setAuthOpen(true)}
@@ -770,6 +945,8 @@ export function App() {
       {habitComposerOpen && <HabitComposer habit={editingHabit ?? undefined} onSave={saveHabit} onCancel={() => { setHabitComposerOpen(false); setEditingHabit(null); }} />}
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}
+      {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>Notice</strong><small>{toast}</small></span><button type="button" aria-label="Dismiss" onClick={() => setToast(null)}>✕</button></div>}
+      {desktopUpdate && activeView !== "settings" && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>Update available</strong><small>v{desktopUpdate.version} is ready — see Settings → Updates.</small></span><button type="button" onClick={() => changeView("settings")}>View</button></div>}
     </div>
   );
 }

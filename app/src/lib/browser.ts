@@ -1,12 +1,9 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { isMobileTauri as isMobilePlatform, isTauri } from "./platform";
 
-export function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
+export { isTauri };
 export function isMobileTauri(): boolean {
-  if (!isTauri() || typeof navigator === "undefined") return false;
-  return /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+  return isMobilePlatform();
 }
 
 // Opens an external URL. On mobile builds this uses an in-app browser

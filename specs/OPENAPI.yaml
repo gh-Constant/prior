@@ -1,0 +1,122 @@
+openapi: 3.0.3
+info:
+  title: Prior API (frozen contract snapshot)
+  version: 0.3.x
+  description: >
+    Frozen snapshot of the sync/auth surface. Breaking changes to these
+    operations require a contract review (scripts/check-contracts.sh).
+servers:
+  - url: https://api.prior.constantsuchet.fr
+paths:
+  /health:
+    get:
+      summary: Liveness probe (no DB access)
+      responses:
+        '200':
+          description: ok
+  /ready:
+    get:
+      summary: Readiness probe (pings PostgreSQL)
+      responses:
+        '200':
+          description: ready
+        '503':
+          description: not ready
+  /v1/me:
+    get:
+      summary: Current profile
+      responses:
+        '200':
+          description: user
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthenticated'
+  /v1/settings:
+    get:
+      summary: Per-user assistant settings
+      responses:
+        '200':
+          description: settings
+        '401':
+          description: unauthenticated
+    post:
+      summary: Save assistant settings
+      responses:
+        '200':
+          description: settings
+        '401':
+          description: unauthenticated
+  /v1/sync/pull:
+    get:
+      summary: Pull task/habit changes since a revision
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: changes
+        '401':
+          description: unauthenticated
+  /v1/sync/push:
+    post:
+      summary: Push up to 100 task/habit mutations (unknown fields ignored)
+      responses:
+        '200':
+          description: applied mutations
+        '401':
+          description: unauthenticated
+  /v1/workspace/sync:
+    post:
+      summary: Merge a workspace snapshot (unknown fields ignored)
+      responses:
+        '200':
+          description: merged snapshot
+        '401':
+          description: unauthenticated
+  /v1/agent/chats:
+    get:
+      summary: List agent chats
+      responses:
+        '200':
+          description: chats
+        '401':
+          description: unauthenticated
+    post:
+      summary: Create an agent chat
+      responses:
+        '201':
+          description: chat
+  /v1/sessions:
+    get:
+      summary: List active sessions for the current token owner
+      responses:
+        '200':
+          description: sessions
+    delete:
+      summary: Revoke all sessions (sign out everywhere)
+      responses:
+        '204':
+          description: revoked
+  /v1/agent/complete:
+    post:
+      summary: Optional server-side OpenRouter proxy (allowlisted models only)
+      responses:
+        '200':
+          description: completion
+components:
+  schemas:
+    Unauthenticated:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          example: UNAUTHENTICATED
+        error:
+          type: string

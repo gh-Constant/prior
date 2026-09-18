@@ -10,6 +10,7 @@ FROM alpine:3.21
 RUN addgroup -S prior && adduser -S -G prior prior && apk add --no-cache ca-certificates wget
 COPY --from=build /out/prior /usr/local/bin/prior
 USER prior
+ENV TZ=UTC
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD wget -qO- http://127.0.0.1:8080/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD wget -qO- http://127.0.0.1:8080/ready || exit 1
 ENTRYPOINT ["/usr/local/bin/prior"]

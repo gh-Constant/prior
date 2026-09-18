@@ -1,22 +1,35 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use tauri::{Emitter, Manager};
 
 const SERVER_START_TIMEOUT: Duration = Duration::from_secs(15);
 const SHORT_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const TURN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
-#[derive(Default)]
-pub struct CodexState(Mutex<Option<CodexHandle>>);
+pub struct CodexState {
+    slot: Mutex<Option<CodexHandle>>,
+    cancelled: Arc<Mutex<HashSet<String>>>,
+}
+
+impl Default for CodexState {
+    fn default() -> Self {
+        Self {
+            slot: Mutex::new(None),
+            cancelled: Arc::new(Mutex::new(HashSet::new())),
+        }
+    }
+}
 
 #[derive(Clone)]
 struct CodexHandle {
@@ -43,6 +56,11 @@ enum CodexRequest {
     Run {
         request: CodexRunRequest,
         response: Sender<Result<CodexRunResult, String>>,
+    },
+    RunStream {
+        request: CodexRunRequest,
+        client_turn_id: String,
+        app: tauri::AppHandle,
     },
 }
 
@@ -163,6 +181,86 @@ pub fn codex_run(
     receive(result, TURN_TIMEOUT)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexBinaryStatus {
+    pub available: bool,
+    pub path: Option<String>,
+}
+
+/// Cheap PATH probe. Must never spawn the server or initialize a connection.
+#[tauri::command]
+pub fn codex_binary_available() -> CodexBinaryStatus {
+    match find_codex_executable() {
+        Some(path) => CodexBinaryStatus {
+            available: true,
+            path: Some(path.to_string_lossy().to_string()),
+        },
+        None => CodexBinaryStatus {
+            available: false,
+            path: None,
+        },
+    }
+}
+
+/// Fire-and-forget streaming run. Returns immediately; progress is emitted as
+/// `codex-delta`, `codex-completed`, and `codex-error` events tagged with `turnId`.
+#[tauri::command]
+pub fn codex_run_stream(
+    app: tauri::AppHandle,
+    request: CodexRunRequest,
+    turn_id: String,
+) -> Result<(), String> {
+    if turn_id.trim().is_empty() {
+        return Err("Missing turn identifier.".to_string());
+    }
+    thread::Builder::new()
+        .name("prior-codex-run-stream".to_string())
+        .spawn(move || {
+            let state = app.state::<CodexState>();
+            state.clear_cancel(&turn_id);
+            let requests = match state.sender() {
+                Ok(requests) => requests,
+                Err(error) => {
+                    let _ = app.emit(
+                        "codex-error",
+                        json!({ "turnId": turn_id, "message": error }),
+                    );
+                    return;
+                }
+            };
+            if requests
+                .send(CodexRequest::RunStream {
+                    request,
+                    client_turn_id: turn_id.clone(),
+                    app: app.clone(),
+                })
+                .is_err()
+            {
+                let _ = app.emit(
+                    "codex-error",
+                    json!({ "turnId": turn_id, "message": "The Codex connection closed. Try again." }),
+                );
+            }
+            // The worker thread emits codex-delta / codex-completed / codex-error.
+            // This spawner thread exits; the Turn loop runs inside the single
+            // CodexProcess worker so stdin/stdout stay single-owner.
+        })
+        .map_err(|error| format!("Unable to start the Codex request: {error}"))?;
+    Ok(())
+}
+
+/// Mark a streaming turn as cancelled. The worker checks this flag on every
+/// incoming app-server message and aborts the turn (best-effort `turn/cancel`).
+#[tauri::command]
+pub fn codex_cancel(state: tauri::State<'_, CodexState>, turn_id: String) -> Result<(), String> {
+    if turn_id.trim().is_empty() {
+        return Ok(());
+    }
+    state.mark_cancel(&turn_id);
+    Ok(())
+}
+
 type ResultReceiver<T> = Receiver<Result<T, String>>;
 
 fn response_channel<T>() -> (Sender<Result<T, String>>, ResultReceiver<T>) {
@@ -184,11 +282,11 @@ fn receive<T>(result: ResultReceiver<T>, timeout: Duration) -> Result<T, String>
 impl CodexState {
     fn sender(&self) -> Result<Sender<CodexRequest>, String> {
         let mut slot = self
-            .0
+            .slot
             .lock()
             .map_err(|_| "The Codex connection is unavailable.".to_string())?;
         if slot.is_none() {
-            *slot = Some(CodexHandle::start()?);
+            *slot = Some(CodexHandle::start(self.cancelled.clone())?);
         }
         Ok(slot
             .as_ref()
@@ -196,15 +294,27 @@ impl CodexState {
             .requests
             .clone())
     }
+
+    fn mark_cancel(&self, turn_id: &str) {
+        if let Ok(mut cancelled) = self.cancelled.lock() {
+            cancelled.insert(turn_id.to_string());
+        }
+    }
+
+    fn clear_cancel(&self, turn_id: &str) {
+        if let Ok(mut cancelled) = self.cancelled.lock() {
+            cancelled.remove(turn_id);
+        }
+    }
 }
 
 impl CodexHandle {
-    fn start() -> Result<Self, String> {
+    fn start(cancelled: Arc<Mutex<HashSet<String>>>) -> Result<Self, String> {
         let (requests, receiver) = mpsc::channel();
         let (ready_sender, ready_receiver) = mpsc::channel();
         thread::Builder::new()
             .name("prior-codex-app-server".to_string())
-            .spawn(move || match CodexProcess::spawn() {
+            .spawn(move || match CodexProcess::spawn(cancelled) {
                 Ok(mut process) => {
                     let _ = ready_sender.send(Ok(()));
                     process.run(receiver);
@@ -233,10 +343,11 @@ struct CodexProcess {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
     next_id: u64,
+    cancelled: Arc<Mutex<HashSet<String>>>,
 }
 
 impl CodexProcess {
-    fn spawn() -> Result<Self, String> {
+    fn spawn(cancelled: Arc<Mutex<HashSet<String>>>) -> Result<Self, String> {
         let executable = find_codex_executable().ok_or_else(|| {
             "Codex CLI was not found. Install Codex and make sure the `codex` command is available to the desktop app.".to_string()
         })?;
@@ -262,6 +373,7 @@ impl CodexProcess {
             stdin,
             stdout: BufReader::new(stdout),
             next_id: 1,
+            cancelled,
         };
 
         process.request(
@@ -299,7 +411,46 @@ impl CodexProcess {
                 CodexRequest::Run { request, response } => {
                     let _ = response.send(self.run_turn(request));
                 }
+                CodexRequest::RunStream {
+                    request,
+                    client_turn_id,
+                    app,
+                } => {
+                    match self.run_turn_stream(request, &client_turn_id, &app) {
+                        Ok(result) => {
+                            let _ = app.emit(
+                                "codex-completed",
+                                json!({
+                                    "turnId": client_turn_id,
+                                    "text": result.text,
+                                    "threadId": result.thread_id,
+                                    "model": result.actual_model,
+                                }),
+                            );
+                        }
+                        Err(message) => {
+                            let _ = app.emit(
+                                "codex-error",
+                                json!({ "turnId": client_turn_id, "message": message }),
+                            );
+                        }
+                    }
+                    self.clear_cancel(&client_turn_id);
+                }
             }
+        }
+    }
+
+    fn is_cancelled(&self, client_turn_id: &str) -> bool {
+        self.cancelled
+            .lock()
+            .map(|cancelled| cancelled.contains(client_turn_id))
+            .unwrap_or(false)
+    }
+
+    fn clear_cancel(&self, client_turn_id: &str) {
+        if let Ok(mut cancelled) = self.cancelled.lock() {
+            cancelled.remove(client_turn_id);
         }
     }
 
@@ -520,6 +671,199 @@ impl CodexProcess {
                     .get("status")
                     .and_then(Value::as_str)
                     .unwrap_or("failed");
+                if status != "completed" {
+                    return Err(turn_error(
+                        &completed_turn,
+                        "Codex could not complete the request.",
+                    ));
+                }
+                actual_model = completed_turn
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or(actual_model);
+                break;
+            }
+            self.handle_server_request(&message)?;
+        }
+
+        let text = completed_text.unwrap_or(streamed_text);
+        if text.trim().is_empty() {
+            return Err("Codex returned an empty response. Try again.".to_string());
+        }
+        Ok(CodexRunResult {
+            text,
+            thread_id,
+            actual_model,
+        })
+    }
+
+    fn run_turn_stream(
+        &mut self,
+        request: CodexRunRequest,
+        client_turn_id: &str,
+        app: &tauri::AppHandle,
+    ) -> Result<CodexRunResult, String> {
+        let account = self.account_read()?;
+        if account.auth_mode.as_deref() != Some("chatgpt") {
+            return Err(
+                "Connect Codex with ChatGPT in Settings before using the Codex provider."
+                    .to_string(),
+            );
+        }
+
+        let workspace = codex_workspace()?;
+        let thread_id = match request.thread_id.as_deref().filter(|id| !id.is_empty()) {
+            Some(thread_id) => thread_id.to_string(),
+            None => {
+                if self.is_cancelled(client_turn_id) {
+                    return Err("Request cancelled.".to_string());
+                }
+                let result = self.request(
+                    "thread/start",
+                    json!({
+                        "cwd": workspace,
+                        "approvalPolicy": "never",
+                        "sandbox": "read-only",
+                        "model": request.model.clone(),
+                        "personality": "friendly",
+                        "serviceName": "prior"
+                    }),
+                )?;
+                result
+                    .get("thread")
+                    .and_then(|thread| thread.get("id"))
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                    .ok_or_else(|| "Codex did not return a conversation identifier.".to_string())?
+                    .to_string()
+            }
+        };
+
+        if self.is_cancelled(client_turn_id) {
+            return Err("Request cancelled.".to_string());
+        }
+        let turn = self.request(
+            "turn/start",
+            json!({
+                "threadId": thread_id,
+                "input": [{ "type": "text", "text": build_turn_input(&request) }],
+                "model": request.model.clone(),
+                "cwd": workspace,
+                "approvalPolicy": "never",
+                "sandboxPolicy": {
+                    "type": "readOnly"
+                },
+                "summary": "concise",
+                "personality": "friendly",
+                "outputSchema": output_schema()
+            }),
+        )?;
+        let turn_id = turn
+            .get("turn")
+            .and_then(|value| value.get("id"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+
+        let mut streamed_text = String::new();
+        let mut completed_text: Option<String> = None;
+        let mut actual_model = turn
+            .get("turn")
+            .and_then(|value| value.get("model"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        loop {
+            if self.is_cancelled(client_turn_id) {
+                // Best-effort server-side cancel; keep protocol in sync by
+                // draining until this turn completes, then report cancellation.
+                if let Some(codex_turn) = turn_id.clone() {
+                    let _ = self.notify(
+                        "turn/cancel",
+                        json!({ "threadId": thread_id, "turnId": codex_turn }),
+                    );
+                }
+                // Drain stale messages for the cancelled turn so the next
+                // request starts from a clean frame.
+                for _ in 0..512 {
+                    match self.read_message() {
+                        Ok(message) => {
+                            let method = message
+                                .get("method")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default();
+                            if method == "turn/completed" {
+                                let params =
+                                    message.get("params").cloned().unwrap_or(Value::Null);
+                                let completed_turn =
+                                    params.get("turn").cloned().unwrap_or(Value::Null);
+                                let completed_id =
+                                    completed_turn.get("id").and_then(Value::as_str);
+                                if turn_id
+                                    .as_deref()
+                                    .is_some_and(|id| completed_id != Some(id))
+                                {
+                                    continue;
+                                }
+                                break;
+                            }
+                            let _ = self.handle_server_request(&message);
+                        }
+                        Err(_) => break,
+                    }
+                }
+                return Err("Request cancelled.".to_string());
+            }
+            let message = self.read_message()?;
+            // Re-check after a blocking read so a cancel that arrived while
+            // waiting takes effect before emitting more deltas.
+            if self.is_cancelled(client_turn_id) {
+                continue;
+            }
+            let method = message
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if method == "item/agentMessage/delta" {
+                if let Some(delta) = message
+                    .get("params")
+                    .and_then(|params| params.get("delta"))
+                    .and_then(Value::as_str)
+                {
+                    streamed_text.push_str(delta);
+                    let _ = app.emit(
+                        "codex-delta",
+                        json!({ "turnId": client_turn_id, "delta": delta }),
+                    );
+                }
+                continue;
+            }
+            if method == "item/completed" {
+                if let Some(item) = message.get("params").and_then(|params| params.get("item")) {
+                    if item.get("type").and_then(Value::as_str) == Some("agentMessage") {
+                        if let Some(text) = item.get("text").and_then(Value::as_str) {
+                            completed_text = Some(text.to_string());
+                        }
+                    }
+                }
+                continue;
+            }
+            if method == "turn/completed" {
+                let params = message.get("params").cloned().unwrap_or(Value::Null);
+                let completed_turn = params.get("turn").cloned().unwrap_or(Value::Null);
+                let completed_id = completed_turn.get("id").and_then(Value::as_str);
+                if turn_id
+                    .as_deref()
+                    .is_some_and(|id| completed_id != Some(id))
+                {
+                    continue;
+                }
+                let status = completed_turn
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("failed");
+                if status == "cancelled" || status == "canceled" {
+                    return Err("Request cancelled.".to_string());
+                }
                 if status != "completed" {
                     return Err(turn_error(
                         &completed_turn,

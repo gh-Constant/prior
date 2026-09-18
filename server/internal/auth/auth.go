@@ -16,6 +16,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gh-Constant/prior/server/internal/config"
 	"github.com/gh-Constant/prior/server/internal/store"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 )
@@ -92,6 +93,50 @@ func (m *Manager) Login(ctx context.Context, email, password, device, platform s
 	}
 	token, err := m.createSession(ctx, user, device, platform)
 	return token, user, err
+}
+
+// SetPassword sets an initial password for an OAuth-only account. If the
+// account already has a password, the current password must match.
+func (m *Manager) SetPassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error {
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+	existing, err := m.store.PasswordHashByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if existing != "" {
+		if currentPassword == "" || bcrypt.CompareHashAndPassword([]byte(existing), []byte(currentPassword)) != nil {
+			return ErrInvalidCredentials
+		}
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return errors.New("unable to set password")
+	}
+	return m.store.UpdatePasswordHash(ctx, userID, string(hash))
+}
+
+// ChangePassword rotates a password and always requires the current password.
+func (m *Manager) ChangePassword(ctx context.Context, userID uuid.UUID, currentPassword, newPassword string) error {
+	if currentPassword == "" {
+		return ErrInvalidCredentials
+	}
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+	existing, err := m.store.PasswordHashByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if existing == "" || bcrypt.CompareHashAndPassword([]byte(existing), []byte(currentPassword)) != nil {
+		return ErrInvalidCredentials
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return errors.New("unable to change password")
+	}
+	return m.store.UpdatePasswordHash(ctx, userID, string(hash))
 }
 
 func (m *Manager) createSession(ctx context.Context, user store.User, device, platform string) (string, error) {
@@ -205,7 +250,11 @@ func (m *Manager) Callback(ctx context.Context, code, state string) (string, err
 	if claims.Subject == "" || claims.Email == "" || !claims.EmailVerified {
 		return value.returnTo, errors.New("Google account has no verified email")
 	}
-	user, err := m.store.UpsertUser(ctx, claims.Subject, claims.Email, claims.EmailVerified, claims.Name, claims.Picture)
+	normalizedEmail, err := normalizeEmail(claims.Email)
+	if err != nil {
+		return value.returnTo, errors.New("Google account has no verified email")
+	}
+	user, err := m.store.UpsertUser(ctx, claims.Subject, normalizedEmail, claims.EmailVerified, claims.Name, claims.Picture)
 	if err != nil {
 		return value.returnTo, fmt.Errorf("save Prior user: %w", err)
 	}
@@ -276,7 +325,11 @@ func (m *Manager) VerifyNativeIDToken(ctx context.Context, rawIDToken, device, p
 	if claims.Subject == "" || claims.Email == "" || !claims.EmailVerified {
 		return "", store.User{}, errors.New("Google account has no verified email")
 	}
-	user, err := m.store.UpsertUser(ctx, claims.Subject, claims.Email, claims.EmailVerified, claims.Name, claims.Picture)
+	normalizedEmail, err := normalizeEmail(claims.Email)
+	if err != nil {
+		return "", store.User{}, errors.New("Google account has no verified email")
+	}
+	user, err := m.store.UpsertUser(ctx, claims.Subject, normalizedEmail, claims.EmailVerified, claims.Name, claims.Picture)
 	if err != nil {
 		return "", store.User{}, fmt.Errorf("save Prior user: %w", err)
 	}

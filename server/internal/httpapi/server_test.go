@@ -30,7 +30,7 @@ func TestAuthExchangePreflight(t *testing.T) {
 			if response.Code != http.StatusNoContent || response.Header().Get("Access-Control-Allow-Origin") != origin {
 				t.Fatalf("native/web OAuth preflight rejected: status %d, headers %v", response.Code, response.Header())
 			}
-			if response.Header().Get("Access-Control-Allow-Methods") != "GET, POST, PATCH, OPTIONS" || response.Header().Get("Access-Control-Allow-Headers") != "Authorization, Content-Type" {
+			if response.Header().Get("Access-Control-Allow-Methods") != "GET, POST, PATCH, DELETE, OPTIONS" || response.Header().Get("Access-Control-Allow-Headers") != "Authorization, Content-Type" {
 				t.Fatal("preflight does not permit the JSON code exchange")
 			}
 		})
@@ -104,5 +104,79 @@ func TestGoogleNativeRequiresToken(t *testing.T) {
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("body %q: expected status 400, got %d", body, response.Code)
 		}
+	}
+}
+
+func TestUnauthorizedShape(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeUnauthorized(w, nil)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, `"code":"UNAUTHENTICATED"`) {
+		t.Fatalf("401 body must carry code UNAUTHENTICATED, got %s", body)
+	}
+}
+
+func TestDecodeJSONStrictness(t *testing.T) {
+	// Sync payloads ignore unknown fields for forward compatibility.
+	var lenient struct {
+		Mutations []string `json:"mutations"`
+	}
+	lenientRequest := httptest.NewRequest(http.MethodPost, "/v1/sync/push", strings.NewReader(`{"mutations":[],"futureField":1}`))
+	if err := decodeJSON(lenientRequest, &lenient); err != nil {
+		t.Fatalf("lenient decode must ignore unknown fields: %v", err)
+	}
+	// Auth payloads stay strict so typos fail loudly.
+	var strict struct {
+		Email string `json:"email"`
+	}
+	strictRequest := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"a@b.c","pasword":"x"}`))
+	if err := decodeJSONStrict(strictRequest, &strict); err == nil {
+		t.Fatal("strict decode must reject unknown fields on auth payloads")
+	}
+}
+
+func TestCustomSchemeExactAllowlist(t *testing.T) {
+	for _, candidate := range []string{
+		"prior://evil/callback?code=123",
+		"prior://auth/other?code=123",
+		"prior://auth/callback.evil?code=123",
+		"javascript:alert(1)",
+		"not a url",
+	} {
+		if isCustomScheme(candidate) {
+			t.Errorf("isCustomScheme(%q) must be false", candidate)
+		}
+	}
+}
+
+func TestNormalizeDevicePlatformCaps(t *testing.T) {
+	device, platform, err := normalizeDevicePlatform(" Prior ", " web ")
+	if err != nil || device != "Prior" || platform != "web" {
+		t.Fatalf("expected trimmed values, got %q %q err %v", device, platform, err)
+	}
+	if _, _, err := normalizeDevicePlatform(strings.Repeat("x", 121), "web"); err == nil {
+		t.Fatal("overlong device must be rejected")
+	}
+	if _, _, err := normalizeDevicePlatform("Prior", strings.Repeat("y", 121)); err == nil {
+		t.Fatal("overlong platform must be rejected")
+	}
+}
+
+func TestAgentProxyAllowlistAndRedaction(t *testing.T) {
+	for _, model := range []string{"openrouter/free", "deepseek/deepseek-r1:free", "some-vendor/some-model:free"} {
+		if !agentModelAllowed(model) {
+			t.Errorf("model %q must be allowlisted", model)
+		}
+	}
+	for _, model := range []string{"", "openai/gpt-4o", "anthropic/claude-sonnet-4"} {
+		if agentModelAllowed(model) {
+			t.Errorf("model %q must not be allowlisted", model)
+		}
+	}
+	redacted := redactPII("contact me at jane.doe@example.com please")
+	if strings.Contains(redacted, "jane.doe@example.com") || !strings.Contains(redacted, "[redacted-email]") {
+		t.Fatalf("PII redaction failed: %q", redacted)
 	}
 }

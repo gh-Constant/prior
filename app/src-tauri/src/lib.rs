@@ -16,8 +16,8 @@ struct SessionState;
 
 #[cfg(desktop)]
 use codex::{
-    codex_account_read, codex_login_start, codex_login_wait, codex_logout, codex_model_list,
-    codex_run, CodexState,
+    codex_account_read, codex_binary_available, codex_cancel, codex_login_start, codex_login_wait,
+    codex_logout, codex_model_list, codex_run, codex_run_stream, CodexState,
 };
 
 #[cfg(all(not(desktop), not(target_os = "android")))]
@@ -208,6 +208,12 @@ pub fn run() {
             sql: include_str!("../migrations/006_account_scoped_local_data.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 7,
+            description: "account composite primary keys",
+            sql: include_str!("../migrations/007_account_composite_keys.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();
@@ -254,6 +260,8 @@ pub fn run() {
             #[cfg(desktop)]
             codex_account_read,
             #[cfg(desktop)]
+            codex_binary_available,
+            #[cfg(desktop)]
             codex_model_list,
             #[cfg(desktop)]
             codex_login_start,
@@ -263,6 +271,10 @@ pub fn run() {
             codex_logout,
             #[cfg(desktop)]
             codex_run,
+            #[cfg(desktop)]
+            codex_run_stream,
+            #[cfg(desktop)]
+            codex_cancel,
             #[cfg(target_os = "android")]
             widget_set_items,
             #[cfg(target_os = "android")]

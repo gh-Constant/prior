@@ -1,8 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
+import { isTauri } from "./platform";
 
 export async function getSecret(key: string): Promise<string | null> {
   if (isTauri() && key === "session_token") {

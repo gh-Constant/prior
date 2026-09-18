@@ -1,10 +1,11 @@
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { invoke } from "@tauri-apps/api/core";
-import { API_URL, api } from "./api";
+import { API_URL, api, isAuthError } from "./api";
 import { clearAgentSettings } from "./ai";
 import { claimAnonymousStorageForAccount, emitAccountScopeChange, migrateLegacyStorageForAccount } from "./accountScope";
 import { openExternalUrl } from "./browser";
 import { getSecret, removeSecret, setSecret } from "./secureStore";
+import { isAndroid, isTauri } from "./platform";
 
 const USER_KEY = "prior.session.user";
 
@@ -72,17 +73,43 @@ export async function signUpWithPassword(email: string, password: string, displa
 }
 
 export async function startGoogleLogin(): Promise<void> {
-  const returnTarget = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? "prior://auth/callback" : `${window.location.origin}/auth/callback`;
+  const returnTarget = isTauri() ? "prior://auth/callback" : `${window.location.origin}/auth/callback`;
   const returnTo = encodeURIComponent(returnTarget);
   const url = `${API_URL}/auth/google/start?return_to=${returnTo}`;
-  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) await openExternalUrl(url);
+  if (isTauri()) await openExternalUrl(url);
   else window.location.href = url;
 }
 
 export function isAndroidTauri(): boolean {
-  return typeof window !== "undefined" &&
-    "__TAURI_INTERNALS__" in window &&
-    navigator.userAgent.toLowerCase().includes("android");
+  return isAndroid();
+}
+
+/** Shared refresh() deduplication: concurrent callers share one Keychain read. */
+export function resetTokenCache(): void {
+  cachedToken = undefined;
+  tokenRead = null;
+}
+
+export const AUTH_REQUIRED_EVENT = "prior-auth-required";
+
+/**
+ * Central auth-failure handler. Clears the local session and notifies the UI
+ * (App opens AccountDialog + toast) so sync and assistant surfaces behave the
+ * same way. Returns true when the error was an auth failure.
+ */
+export async function handleAuthError(error: unknown): Promise<boolean> {
+  if (!isAuthError(error)) return false;
+  try {
+    await clearSession();
+  } catch (clearError) {
+    console.warn("Prior could not clear the expired session:", clearError);
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT, {
+      detail: { message: error instanceof Error ? error.message : "Your session has expired. Please sign in again." },
+    }));
+  }
+  return true;
 }
 
 // Native Android sign-in via the system account picker. Returns the
@@ -136,7 +163,7 @@ export function listenForAuth(onAuthenticated: (user: SessionUser) => void, onEr
     }
   };
   const attach = async () => {
-    if ("__TAURI_INTERNALS__" in window) {
+    if (isTauri()) {
       // Subscribe before reading startup URLs so a return cannot fall in between.
       unlisten = await onOpenUrl((urls) => { void handleUrls(urls); });
       if (disposed) { unlisten(); return; }

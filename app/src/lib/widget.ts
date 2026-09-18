@@ -1,11 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Habit, Task } from "../types";
 import { habitStatus } from "./habits";
+import { isAndroid } from "./platform";
 
 function isAndroidTauri(): boolean {
-  return typeof window !== "undefined" &&
-    "__TAURI_INTERNALS__" in window &&
-    navigator.userAgent.toLowerCase().includes("android");
+  return isAndroid();
 }
 
 function priority(task: Task): number {

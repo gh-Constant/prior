@@ -1,5 +1,6 @@
 import type { AgentChat, AgentMessage, AgentChatSummary, Area, Habit, Mutation, Project, Task } from "../types";
 import type { Note, NoteFolder } from "./notes";
+import { isTauri } from "./platform";
 
 export type WorkspaceSnapshot = {
   areas: Area[];
@@ -8,7 +9,7 @@ export type WorkspaceSnapshot = {
   notes: Note[];
 };
 
-const isNativeApp = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+const isNativeApp = isTauri();
 const productionApiUrl = "https://api.prior.constantsuchet.fr";
 const defaultApiUrl = isNativeApp ? productionApiUrl : "http://localhost:8080";
 const configuredApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
@@ -31,10 +32,27 @@ export const FALLBACK_API_URL = isNativeApp && API_URL !== productionApiUrl ? pr
 const REQUEST_TIMEOUT_MS = 15_000;
 
 class ApiRequestError extends Error {
-  constructor(public readonly kind: "network" | "timeout", message: string) {
+  constructor(public readonly kind: "network" | "timeout" | "server", message: string, public readonly status?: number) {
     super(message);
     this.name = "ApiRequestError";
   }
+}
+
+export class ApiAuthError extends Error {
+  readonly status = 401;
+  constructor(message = "Your session has expired. Please sign in again.") {
+    super(message);
+    this.name = "ApiAuthError";
+  }
+}
+
+export function isAuthError(error: unknown): boolean {
+  return error instanceof ApiAuthError;
+}
+
+export function isRetriableError(error: unknown): boolean {
+  if (error instanceof ApiRequestError) return error.kind === "network" || error.kind === "server";
+  return false;
 }
 
 function isNetworkFailure(error: unknown): boolean {
@@ -42,10 +60,19 @@ function isNetworkFailure(error: unknown): boolean {
 }
 
 type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
-type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }> };
-type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number };
+type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }>; results?: Array<{ mutationId: string; ok: boolean; revision?: number; entity?: string; task?: Task; habit?: Habit; error?: { code: string; message: string } }> };
+type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number; nextSince?: number; hasMore?: boolean; workspaceRevision?: number; profile?: { displayName: string; profileRevision: number; updatedAt: string } };
 export type ServerSettings = { openrouterApiKey: string; openaiApiKey: string; webSearch: boolean };
 export type ProfileUser = { id: string; email: string; displayName: string; avatarUrl?: string };
+export type SessionInfo = {
+  id: string;
+  deviceName: string;
+  platform: string;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  current: boolean;
+};
 
 async function requestOnce<T>(url: string, path: string, init: RequestInit, token: string | undefined, timeoutMs: number): Promise<T> {
   const controller = new AbortController();
@@ -70,13 +97,18 @@ async function requestOnce<T>(url: string, path: string, init: RequestInit, toke
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { error?: string };
-      throw new Error(body.error ?? `Prior API returned ${response.status}`);
+      const message = body.error ?? `Prior API returned ${response.status}`;
+      if (response.status === 401) throw new ApiAuthError(message);
+      if (response.status >= 500) throw new ApiRequestError("server", message, response.status);
+      throw new Error(message);
     }
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   } catch (error) {
+    if (error instanceof ApiAuthError) throw error;
     if (externalSignal?.aborted) throw error;
     if (controller.signal.aborted) throw new ApiRequestError("timeout", "Prior API request timed out. Check your connection and try again.");
+    if (error instanceof ApiRequestError) throw error;
     if (isNetworkFailure(error)) throw new ApiRequestError("network", "Prior could not reach the server. Check your connection and try again.");
     throw error;
   } finally {
@@ -85,15 +117,44 @@ async function requestOnce<T>(url: string, path: string, init: RequestInit, toke
   }
 }
 
+function backoffDelayMs(attempt: number): number {
+  const base = 500 * 2 ** attempt;
+  const capped = Math.min(base, 4000);
+  return capped + Math.floor(Math.random() * 250);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+async function requestWithRetry<T>(url: string, path: string, init: RequestInit, token: string | undefined, timeoutMs: number, maxRetries = 2): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      return await requestOnce<T>(url, path, init, token, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (error instanceof ApiAuthError) throw error;
+      // Only network failures and 5xx are retried with backoff. 4xx (validation,
+      // auth, rate-limit) must surface immediately so callers can react.
+      if (!isRetriableError(error) || attempt === maxRetries) throw error;
+      await delay(backoffDelayMs(attempt));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Prior could not reach the server. Check your connection and try again.");
+}
+
 async function request<T>(path: string, init: RequestInit = {}, token?: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const urls = FALLBACK_API_URL ? [API_URL, FALLBACK_API_URL] : [API_URL];
   let lastError: unknown;
   for (const url of urls) {
     try {
-      return await requestOnce<T>(url, path, init, token, timeoutMs);
+      return await requestWithRetry<T>(url, path, init, token, timeoutMs);
     } catch (error) {
       lastError = error;
-      if (!(error instanceof ApiRequestError) || error.kind !== "network" || url === urls.at(-1)) throw error;
+      // The fallback URL only helps when the primary is unreachable. Auth and
+      // client errors must not spill over to the production endpoint.
+      if (error instanceof ApiAuthError || !(error instanceof ApiRequestError) || error.kind !== "network" || url === urls.at(-1)) throw error;
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Prior could not reach the server. Check your connection and try again.");
@@ -127,6 +188,9 @@ export const api = {
   updateProfile(displayName: string, token: string): Promise<ProfileUser> {
     return request<ProfileUser>("/v1/me", { method: "PATCH", body: JSON.stringify({ displayName }) }, token);
   },
+  getProfile(token: string): Promise<ProfileUser> {
+    return request<ProfileUser>("/v1/me", {}, token);
+  },
   transcribe(audio: Blob, filename: string, token: string, signal?: AbortSignal): Promise<{ text: string }> {
     const form = new FormData();
     form.append("file", audio, filename);
@@ -158,5 +222,20 @@ export const api = {
   },
   saveSettings(settings: ServerSettings, token: string): Promise<ServerSettings> {
     return request<ServerSettings>("/v1/settings", { method: "POST", body: JSON.stringify(settings) }, token);
+  },
+  listSessions(token: string): Promise<SessionInfo[]> {
+    return request<SessionInfo[]>("/v1/sessions", {}, token);
+  },
+  revokeSession(sessionId: string, token: string): Promise<void> {
+    return request<void>(`/v1/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" }, token);
+  },
+  revokeAllSessions(token: string): Promise<void> {
+    return request<void>("/v1/sessions", { method: "DELETE" }, token);
+  },
+  agentComplete(
+    input: { model: string; prompt: string; system: string; history: Array<{ role: string; content: string }>; webSearch: boolean },
+    token: string,
+  ): Promise<{ content: string; actualModel: string }> {
+    return request<{ content: string; actualModel: string }>("/v1/agent/complete", { method: "POST", body: JSON.stringify(input) }, token, 90_000);
   },
 };

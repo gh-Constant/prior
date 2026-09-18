@@ -10,6 +10,8 @@
 //      preserves local data as long as the APK is signed with the same
 //      keystore as the installed one (true for our release workflow).
 
+import { supportsAndroidUpdates as supportsAndroidUpdatesPlatform } from "./platform";
+
 const LATEST_RELEASE_URL = "https://api.github.com/repos/gh-Constant/prior/releases/latest";
 
 export type AndroidUpdateInfo = {
@@ -33,8 +35,7 @@ type ReleasePayload = {
 };
 
 export function supportsAndroidUpdates(): boolean {
-  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return false;
-  return /Android/i.test(navigator.userAgent);
+  return supportsAndroidUpdatesPlatform();
 }
 
 export async function getAndroidAppVersion(): Promise<string | null> {

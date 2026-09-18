@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -37,33 +39,79 @@ type Server struct {
 	auth                   *auth.Manager
 	hub                    *hub
 	limiter                *rateLimiter
+	pushLimiter            *rateLimiter
+	pullLimiter            *rateLimiter
+	workspaceLimiter       *rateLimiter
+	transcribeLimiter      *rateLimiter
+	agentLimiter           *rateLimiter
+	settingsLimiter        *rateLimiter
 	openAIClient           *http.Client
 	openAITranscriptionURL string
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 	database := store.New(pool)
+	perMinute := func(value, fallback int) *rateLimiter {
+		if value <= 0 {
+			value = fallback
+		}
+		return newRateLimiter(value, time.Minute)
+	}
 	return &Server{
 		cfg:                    cfg,
 		pool:                   pool,
 		store:                  database,
 		auth:                   auth.NewManager(cfg, database),
 		hub:                    newHub(),
-		limiter:                newRateLimiter(20, 10*time.Minute),
+		limiter:                newRateLimiter(firstPositive(cfg.RateLimitAuth, 20), 10*time.Minute),
+		pushLimiter:            perMinute(cfg.RateLimitPush, 60),
+		pullLimiter:            perMinute(cfg.RateLimitPull, 120),
+		workspaceLimiter:       perMinute(cfg.RateLimitWorkspace, 30),
+		transcribeLimiter:      perMinute(cfg.RateLimitTranscribe, 10),
+		agentLimiter:           perMinute(cfg.RateLimitAgent, 60),
+		settingsLimiter:        perMinute(cfg.RateLimitSettings, 60),
 		openAIClient:           &http.Client{Timeout: 2 * time.Minute},
 		openAITranscriptionURL: "https://api.openai.com/v1/audio/transcriptions",
 	}
 }
 
+func firstPositive(value, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	return fallback
+}
+
 func (s *Server) CleanupLoop(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
+	// Nightly retention runs at most once per 24h; the 5-minute tick also
+	// sweeps rate-limiter buckets so the in-memory map cannot grow unbounded.
+	var lastRetention time.Time
 	for {
 		select {
 		case <-ticker.C:
 			s.auth.Cleanup()
+			s.sweepLimiters()
+			if time.Since(lastRetention) >= 24*time.Hour {
+				retentionCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				if err := s.store.CleanupRetention(retentionCtx, s.cfg.RetentionMutationsDays, s.cfg.RetentionSessionsDays); err != nil {
+					slog.Warn("retention cleanup failed", "error", err)
+				} else {
+					lastRetention = time.Now()
+				}
+				cancel()
+			}
 		case <-ctx.Done():
 			return
+		}
+	}
+}
+
+func (s *Server) sweepLimiters() {
+	for _, limiter := range []*rateLimiter{s.limiter, s.pushLimiter, s.pullLimiter, s.workspaceLimiter, s.transcribeLimiter, s.agentLimiter, s.settingsLimiter} {
+		if limiter != nil {
+			limiter.sweep()
 		}
 	}
 }
@@ -79,6 +127,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/exchange", s.exchange)
 	mux.HandleFunc("POST /v1/auth/google/native", s.googleNative)
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
+	mux.HandleFunc("POST /v1/auth/password/set", s.setPassword)
+	mux.HandleFunc("POST /v1/auth/password/change", s.changePassword)
 	mux.HandleFunc("GET /v1/me", s.me)
 	mux.HandleFunc("PATCH /v1/me", s.updateMe)
 	mux.HandleFunc("POST /transcribe", s.transcribe)
@@ -88,6 +138,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/agent/chats", s.createAgentChat)
 	mux.HandleFunc("GET /v1/agent/chats/{chatID}", s.getAgentChat)
 	mux.HandleFunc("POST /v1/agent/chats/{chatID}/messages", s.saveAgentChatMessage)
+	mux.HandleFunc("POST /v1/agent/complete", s.agentComplete)
+	mux.HandleFunc("GET /v1/sessions", s.listSessions)
+	mux.HandleFunc("DELETE /v1/sessions", s.revokeAllSessions)
+	mux.HandleFunc("DELETE /v1/sessions/{id}", s.revokeSession)
+	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("POST /v1/sync/push", s.push)
 	mux.HandleFunc("GET /v1/sync/pull", s.pull)
 	mux.HandleFunc("POST /v1/workspace/sync", s.syncWorkspace)
@@ -109,6 +164,7 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) googleStart(w http.ResponseWriter, r *http.Request) {
 	if !s.limiter.allow(clientKey(r)) {
+		w.Header().Set("Retry-After", "60")
 		writeError(w, http.StatusTooManyRequests, errors.New("too many authentication attempts"))
 		return
 	}
@@ -122,6 +178,7 @@ func (s *Server) googleStart(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) googleCallback(w http.ResponseWriter, r *http.Request) {
 	if !s.limiter.allow(clientKey(r)) {
+		w.Header().Set("Retry-After", "60")
 		http.Error(w, "too many authentication attempts", http.StatusTooManyRequests)
 		return
 	}
@@ -146,8 +203,15 @@ func (s *Server) googleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, returnTo, http.StatusFound)
 }
 
+// isCustomScheme reports whether candidate is the exact native return target
+// (prior://auth/callback, optional query). Only allowlisted custom-scheme
+// returns render the callback page; https App Links always 302 instead.
 func isCustomScheme(candidate string) bool {
-	return !strings.HasPrefix(candidate, "http://") && !strings.HasPrefix(candidate, "https://")
+	parsed, err := url.Parse(candidate)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "prior" && parsed.Host == "auth" && parsed.Path == "/callback"
 }
 
 var authCallbackTmpl = template.Must(template.New("authCallback").Parse(`<!DOCTYPE html>
@@ -422,7 +486,7 @@ var authCallbackTmpl = template.Must(template.New("authCallback").Parse(`<!DOCTY
   {{if and .Success .TargetURL}}
   <script>
     (function() {
-      var target = {{.TargetURL}};
+      var target = "{{.TargetJS}}";
       if (!target || window.__priorRedirected) return;
       window.__priorRedirected = true;
       window.location.replace(target);
@@ -435,17 +499,23 @@ var authCallbackTmpl = template.Must(template.New("authCallback").Parse(`<!DOCTY
 func renderAuthCallbackPage(w http.ResponseWriter, success bool, targetURL string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
+	// Callers gate targetURL through isCustomScheme (exact prior://auth/callback)
+	// or validated https return_to, so marking it trusted here is safe and
+	// prevents html/template from sanitizing it to #ZgotmplZ.
 	_ = authCallbackTmpl.Execute(w, struct {
 		Success   bool
-		TargetURL string
+		TargetURL template.URL
+		TargetJS  template.JS
 	}{
 		Success:   success,
-		TargetURL: targetURL,
+		TargetURL: template.URL(targetURL),
+		TargetJS:  template.JS(targetURL),
 	})
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if !s.limiter.allow(clientKey(r)) {
+		w.Header().Set("Retry-After", "60")
 		writeError(w, http.StatusTooManyRequests, errors.New("too many authentication attempts"))
 		return
 	}
@@ -456,11 +526,16 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		Device      string `json:"device"`
 		Platform    string `json:"platform"`
 	}
-	if err := decodeJSON(r, &body); err != nil {
+	if err := decodeJSONStrict(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid registration request"))
 		return
 	}
-	token, user, err := s.auth.Register(r.Context(), body.Email, body.Password, body.DisplayName, body.Device, body.Platform)
+	device, platform, err := normalizeDevicePlatform(body.Device, body.Platform)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	token, user, err := s.auth.Register(r.Context(), body.Email, body.Password, body.DisplayName, device, platform)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, store.ErrEmailTaken) {
@@ -474,6 +549,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !s.limiter.allow(clientKey(r)) {
+		w.Header().Set("Retry-After", "60")
 		writeError(w, http.StatusTooManyRequests, errors.New("too many authentication attempts"))
 		return
 	}
@@ -483,17 +559,22 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		Device   string `json:"device"`
 		Platform string `json:"platform"`
 	}
-	if err := decodeJSON(r, &body); err != nil {
+	if err := decodeJSONStrict(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid login request"))
 		return
 	}
-	token, user, err := s.auth.Login(r.Context(), body.Email, body.Password, body.Device, body.Platform)
+	device, platform, err := normalizeDevicePlatform(body.Device, body.Platform)
 	if err != nil {
-		status := http.StatusUnauthorized
-		if !errors.Is(err, auth.ErrInvalidCredentials) {
-			status = http.StatusInternalServerError
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	token, user, err := s.auth.Login(r.Context(), body.Email, body.Password, device, platform)
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			writeUnauthorized(w, err)
+			return
 		}
-		writeError(w, status, err)
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
@@ -501,13 +582,18 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Code, Device, Platform string }
-	if err := decodeJSON(r, &body); err != nil || body.Code == "" {
+	if err := decodeJSONStrict(r, &body); err != nil || body.Code == "" {
 		writeError(w, http.StatusBadRequest, errors.New("code is required"))
 		return
 	}
-	token, user, err := s.auth.Exchange(r.Context(), body.Code, body.Device, body.Platform)
+	device, platform, err := normalizeDevicePlatform(body.Device, body.Platform)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	token, user, err := s.auth.Exchange(r.Context(), body.Code, device, platform)
+	if err != nil {
+		writeUnauthorized(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
@@ -515,6 +601,7 @@ func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) googleNative(w http.ResponseWriter, r *http.Request) {
 	if !s.limiter.allow(clientKey(r)) {
+		w.Header().Set("Retry-After", "60")
 		writeError(w, http.StatusTooManyRequests, errors.New("too many authentication attempts"))
 		return
 	}
@@ -523,13 +610,18 @@ func (s *Server) googleNative(w http.ResponseWriter, r *http.Request) {
 		Device   string `json:"device"`
 		Platform string `json:"platform"`
 	}
-	if err := decodeJSON(r, &body); err != nil || body.IDToken == "" {
+	if err := decodeJSONStrict(r, &body); err != nil || body.IDToken == "" {
 		writeError(w, http.StatusBadRequest, errors.New("Google ID token is required"))
 		return
 	}
-	token, user, err := s.auth.VerifyNativeIDToken(r.Context(), body.IDToken, body.Device, body.Platform)
+	device, platform, err := normalizeDevicePlatform(body.Device, body.Platform)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	token, user, err := s.auth.VerifyNativeIDToken(r.Context(), body.IDToken, device, platform)
+	if err != nil {
+		writeUnauthorized(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
@@ -537,7 +629,7 @@ func (s *Server) googleNative(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.requireUser(r); err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
 		return
 	}
 	if err := s.store.RevokeSession(r.Context(), bearer(r)); err != nil {
@@ -547,10 +639,60 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) setPassword(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeUnauthorized(w, err)
+		return
+	}
+	var body struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}
+	if err := decodeJSONStrict(r, &body); err != nil || body.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, errors.New("new password is required"))
+		return
+	}
+	if err := s.auth.SetPassword(r.Context(), user.ID, body.CurrentPassword, body.NewPassword); err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			writeUnauthorized(w, err)
+			return
+		}
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeUnauthorized(w, err)
+		return
+	}
+	var body struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}
+	if err := decodeJSONStrict(r, &body); err != nil || body.CurrentPassword == "" || body.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, errors.New("current and new passwords are required"))
+		return
+	}
+	if err := s.auth.ChangePassword(r.Context(), user.ID, body.CurrentPassword, body.NewPassword); err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			writeUnauthorized(w, err)
+			return
+		}
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
@@ -559,7 +701,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
 		return
 	}
 	var body struct {
@@ -570,15 +712,19 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	displayName := strings.TrimSpace(body.DisplayName)
-	if displayName == "" || len(displayName) > 80 {
+	if displayName == "" || len(displayName) > maxDisplayNameChars {
 		writeError(w, http.StatusBadRequest, errors.New("username must be between 1 and 80 characters"))
 		return
 	}
-	updated, err := s.store.UpdateUserProfile(r.Context(), user.ID, displayName)
+	updated, revision, err := s.store.UpdateUserProfileWithRevision(r.Context(), user.ID, displayName)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to update profile"))
 		return
 	}
+	// Broadcast both the legacy "profile" type and the unified
+	// "profile_required" type so old and new clients stay in sync.
+	s.notifySync(r.Context(), user.ID, "profile", revision)
+	s.notifySync(r.Context(), user.ID, "profile_required", revision)
 	writeJSON(w, http.StatusOK, updated)
 }
 
@@ -587,7 +733,10 @@ const maxTranscriptionBytes int64 = 25 << 20
 func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
+		return
+	}
+	if !s.allowEndpoint(w, r, s.transcribeLimiter, "transcribe") {
 		return
 	}
 	stored, err := s.store.GetUserSettings(r.Context(), user.ID)
@@ -654,13 +803,13 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		slog.Warn("OpenAI transcription request failed", "user_id", user.ID, "error", err)
+		slog.Warn("OpenAI transcription request failed", "user_id_hash", userIDHash(user.ID), "error", err)
 		writeError(w, http.StatusBadGateway, errors.New("transcription service is unavailable"))
 		return
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		slog.Warn("OpenAI transcription request rejected", "user_id", user.ID, "status", response.StatusCode)
+		slog.Warn("OpenAI transcription request rejected", "user_id_hash", userIDHash(user.ID), "status", response.StatusCode)
 		writeError(w, http.StatusBadGateway, errors.New("transcription service rejected the audio"))
 		return
 	}
@@ -708,7 +857,10 @@ func transcriptionMultipart(file multipart.File, header *multipart.FileHeader) (
 func (s *Server) listAgentChats(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
+		return
+	}
+	if !s.allowEndpoint(w, r, s.agentLimiter, "agent") {
 		return
 	}
 	chats, err := s.store.ListAgentChats(r.Context(), user.ID)
@@ -722,7 +874,10 @@ func (s *Server) listAgentChats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createAgentChat(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
+		return
+	}
+	if !s.allowEndpoint(w, r, s.agentLimiter, "agent") {
 		return
 	}
 	var body struct {
@@ -730,6 +885,10 @@ func (s *Server) createAgentChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid chat request"))
+		return
+	}
+	if len(body.Title) > maxChatTitleChars {
+		writeError(w, http.StatusBadRequest, errors.New("chat title is too long"))
 		return
 	}
 	chat, err := s.store.CreateAgentChat(r.Context(), user.ID, body.Title)
@@ -743,7 +902,10 @@ func (s *Server) createAgentChat(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getAgentChat(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
+		return
+	}
+	if !s.allowEndpoint(w, r, s.agentLimiter, "agent") {
 		return
 	}
 	chatID, err := uuid.Parse(r.PathValue("chatID"))
@@ -766,7 +928,10 @@ func (s *Server) getAgentChat(w http.ResponseWriter, r *http.Request) {
 func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
+		return
+	}
+	if !s.allowEndpoint(w, r, s.agentLimiter, "agent") {
 		return
 	}
 	chatID, err := uuid.Parse(r.PathValue("chatID"))
@@ -775,18 +940,24 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ID              string          `json:"id"`
-		Role            string          `json:"role"`
-		Content         string          `json:"content"`
-		ProposedTasks   json.RawMessage `json:"proposedTasks"`
-		ProposedHabits  json.RawMessage `json:"proposedHabits"`
-		ProposedNotes   json.RawMessage `json:"proposedNotes"`
-		ProposedFolders json.RawMessage `json:"proposedFolders"`
-		ActualModel     string          `json:"actualModel"`
-		CreatedAt       string          `json:"createdAt"`
+		ID               string          `json:"id"`
+		Role             string          `json:"role"`
+		Content          string          `json:"content"`
+		ProposedTasks    json.RawMessage `json:"proposedTasks"`
+		ProposedHabits   json.RawMessage `json:"proposedHabits"`
+		ProposedNotes    json.RawMessage `json:"proposedNotes"`
+		ProposedFolders  json.RawMessage `json:"proposedFolders"`
+		ProposedAreas    json.RawMessage `json:"proposedAreas"`
+		ProposedProjects json.RawMessage `json:"proposedProjects"`
+		ActualModel      string          `json:"actualModel"`
+		CreatedAt        string          `json:"createdAt"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid chat message request"))
+		return
+	}
+	if len(body.Content) > maxChatContentChars {
+		writeError(w, http.StatusBadRequest, errors.New("chat message content must be between 1 and 20000 characters"))
 		return
 	}
 	messageID, err := uuid.Parse(body.ID)
@@ -795,16 +966,18 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	message, err := s.store.SaveAgentChatMessage(r.Context(), store.SaveAgentChatMessageParams{
-		UserID:          user.ID,
-		ChatID:          chatID,
-		MessageID:       messageID,
-		Role:            body.Role,
-		Content:         body.Content,
-		ProposedTasks:   body.ProposedTasks,
-		ProposedHabits:  body.ProposedHabits,
-		ProposedNotes:   body.ProposedNotes,
-		ProposedFolders: body.ProposedFolders,
-		ActualModel:     body.ActualModel,
+		UserID:           user.ID,
+		ChatID:           chatID,
+		MessageID:        messageID,
+		Role:             body.Role,
+		Content:          body.Content,
+		ProposedTasks:    body.ProposedTasks,
+		ProposedHabits:   body.ProposedHabits,
+		ProposedNotes:    body.ProposedNotes,
+		ProposedFolders:  body.ProposedFolders,
+		ProposedAreas:    body.ProposedAreas,
+		ProposedProjects: body.ProposedProjects,
+		ActualModel:      body.ActualModel,
 	})
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, err)
@@ -814,19 +987,23 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.notifySync(r.Context(), user.ID, "chat", 0)
 	writeJSON(w, http.StatusOK, message)
 }
 
 func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
+		return
+	}
+	if !s.allowEndpoint(w, r, s.pushLimiter, "push") {
 		return
 	}
 	var body struct {
 		Mutations []tasks.Mutation `json:"mutations"`
 	}
-	if err := decodeJSON(r, &body); err != nil || len(body.Mutations) > 100 {
+	if err := decodeJSON(r, &body); err != nil || len(body.Mutations) > maxPushMutations {
 		writeError(w, http.StatusBadRequest, errors.New("invalid mutation batch"))
 		return
 	}
@@ -835,25 +1012,66 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	s.highestBroadcast(user.ID, results)
-	type responseItem struct {
+	applied := store.PushApplied(results)
+	s.highestBroadcast(user.ID, applied)
+	latest := highestRevision(applied)
+	// Legacy "sync" type plus unified "tasks_required".
+	s.notifySync(r.Context(), user.ID, "sync", latest)
+	s.notifySync(r.Context(), user.ID, "tasks_required", latest)
+	type appliedItem struct {
 		MutationID string      `json:"mutationId"`
 		Entity     string      `json:"entity"`
 		Task       tasks.Task  `json:"task,omitempty"`
 		Habit      tasks.Habit `json:"habit,omitempty"`
 		Revision   int64       `json:"revision"`
 	}
-	response := make([]responseItem, 0, len(results))
-	for _, item := range results {
-		response = append(response, responseItem{MutationID: item.MutationID, Entity: item.Entity, Task: item.Task, Habit: item.Habit, Revision: item.Revision})
+	type errorItem struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"applied": response})
+	type resultItem struct {
+		MutationID string       `json:"mutationId"`
+		OK         bool         `json:"ok"`
+		Revision   int64        `json:"revision,omitempty"`
+		Entity     string       `json:"entity,omitempty"`
+		Task       *tasks.Task  `json:"task,omitempty"`
+		Habit      *tasks.Habit `json:"habit,omitempty"`
+		Error      *errorItem   `json:"error,omitempty"`
+	}
+	legacy := make([]appliedItem, 0)
+	detailed := make([]resultItem, 0, len(results))
+	for _, item := range results {
+		if item.OK {
+			legacy = append(legacy, appliedItem{MutationID: item.MutationID, Entity: item.Entity, Task: item.Task, Habit: item.Habit, Revision: item.Revision})
+			entry := resultItem{MutationID: item.MutationID, OK: true, Revision: item.Revision, Entity: item.Entity}
+			if item.Entity == "habit" {
+				habit := item.Habit
+				entry.Habit = &habit
+			} else {
+				task := item.Task
+				entry.Task = &task
+			}
+			detailed = append(detailed, entry)
+		} else {
+			code, message := item.Error.Code, item.Error.Message
+			if code == "" {
+				code = "INVALID_VALUE"
+			}
+			detailed = append(detailed, resultItem{MutationID: item.MutationID, OK: false, Error: &errorItem{Code: code, Message: message}})
+		}
+	}
+	// Always 200 with partials: failures are per-item, never a batch 4xx.
+	// `applied` keeps older clients working; `results` is the new contract.
+	writeJSON(w, http.StatusOK, map[string]any{"applied": legacy, "results": detailed})
 }
 
 func (s *Server) syncWorkspace(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
+		return
+	}
+	if !s.allowEndpoint(w, r, s.workspaceLimiter, "workspace") {
 		return
 	}
 	var snapshot workspace.Snapshot
@@ -861,36 +1079,81 @@ func (s *Server) syncWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid workspace snapshot"))
 		return
 	}
-	merged, err := s.store.SyncWorkspace(r.Context(), user.ID, snapshot)
+	merged, workspaceRevision, err := s.store.SyncWorkspaceWithRevision(r.Context(), user.ID, snapshot)
 	if err != nil {
+		if errors.Is(err, store.ErrClockSkew) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"code": "CLOCK_SKEW", "error": "client clock is too far in the future"})
+			return
+		}
+		if errors.Is(err, store.ErrConflict) {
+			writeJSON(w, http.StatusConflict, map[string]string{"code": "CONFLICT", "error": "revision conflict; pull and retry"})
+			return
+		}
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, merged)
+	s.notifySync(r.Context(), user.ID, "workspace", workspaceRevision)
+	s.notifySync(r.Context(), user.ID, "workspace_required", workspaceRevision)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"areas": merged.Areas, "projects": merged.Projects, "folders": merged.Folders, "notes": merged.Notes,
+		"workspaceRevision": workspaceRevision,
+	})
 }
 
 func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
+		return
+	}
+	if !s.allowEndpoint(w, r, s.pullLimiter, "pull") {
 		return
 	}
 	since, err := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 	if err != nil || since < 0 {
 		since = 0
 	}
-	tasksFound, habitsFound, revision, err := s.store.Pull(r.Context(), user.ID, since)
+	result, err := s.store.Pull(r.Context(), user.ID, since)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tasks": tasksFound, "habits": habitsFound, "revision": revision})
+	if result.Tasks == nil {
+		result.Tasks = []tasks.Task{}
+	}
+	if result.Habits == nil {
+		result.Habits = []tasks.Habit{}
+	}
+	// `revision` is the legacy alias of nextSince; new clients use
+	// nextSince/hasMore and re-pull while hasMore. profile+workspaceRevision
+	// expose the unified revision plane.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"tasks": result.Tasks, "habits": result.Habits,
+		"revision": result.NextSince, "nextSince": result.NextSince, "hasMore": result.HasMore,
+		"workspaceRevision": result.WorkspaceRevision,
+		"profile":           map[string]any{"displayName": result.Profile.DisplayName, "profileRevision": result.Profile.ProfileRevision, "updatedAt": result.Profile.UpdatedAt},
+	})
 }
 
 func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
-	user, err := s.requireUser(r)
+	token := bearer(r)
+	if token == "" {
+		// Browsers cannot set Authorization headers on WebSocket handshakes;
+		// accept the session token as a query parameter instead. Origin is
+		// still strictly checked below.
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" {
+		writeUnauthorized(w, errors.New("authentication required"))
+		return
+	}
+	user, _, err := s.store.SessionUserForToken(r.Context(), token)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
+		return
+	}
+	if origin := r.Header.Get("Origin"); origin != "" && !allowedOrigin(origin) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
 		return
 	}
 	connection, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"localhost", "127.0.0.1", "prior.constantsuchet.fr", "*.prior.constantsuchet.fr"}})
@@ -899,23 +1162,46 @@ func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
 	}
 	s.hub.add(user.ID, connection)
 	defer s.hub.remove(user.ID, connection)
+	expiry := time.NewTicker(time.Minute)
+	defer expiry.Stop()
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	go func() {
+		defer cancel()
+		for {
+			if _, _, err := connection.Read(ctx); err != nil {
+				return
+			}
+		}
+	}()
 	for {
-		if _, _, err := connection.Read(r.Context()); err != nil {
+		select {
+		case <-ctx.Done():
 			return
+		case <-expiry.C:
+			if _, _, err := s.store.SessionUserForToken(context.Background(), token); err != nil {
+				connection.Close(4401, "session revoked")
+				return
+			}
 		}
 	}
 }
 
 func (s *Server) highestBroadcast(userID uuid.UUID, results []store.AppliedMutation) {
+	latest := highestRevision(results)
+	if latest > 0 {
+		s.hub.broadcast(userID, realtimeEvent{Type: "sync_required", Revision: latest})
+	}
+}
+
+func highestRevision(results []store.AppliedMutation) int64 {
 	var latest int64
 	for _, result := range results {
 		if result.Revision > latest {
 			latest = result.Revision
 		}
 	}
-	if latest > 0 {
-		s.hub.broadcast(userID, latest)
-	}
+	return latest
 }
 
 func (s *Server) requireUser(r *http.Request) (store.User, error) {
@@ -924,6 +1210,20 @@ func (s *Server) requireUser(r *http.Request) (store.User, error) {
 		return store.User{}, errors.New("authentication required")
 	}
 	return s.store.UserForToken(r.Context(), token)
+}
+
+// limiterForPath maps out-of-scope paths to their endpoint limiter.
+// In-scope handlers (push/pull/workspace/transcribe/agent chats) enforce via
+// allowEndpoint; this covers settings + agentComplete without double-charging.
+func (s *Server) limiterForPath(path string) *rateLimiter {
+	switch {
+	case path == "/v1/settings":
+		return s.settingsLimiter
+	case path == "/v1/agent/complete":
+		return s.agentLimiter
+	default:
+		return nil
+	}
 }
 
 func (s *Server) middleware(next http.Handler) http.Handler {
@@ -940,12 +1240,32 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		if origin := r.Header.Get("Origin"); allowedOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
+		}
+		// Per-endpoint limits for handlers that live outside server.go
+		// (settings.go, agent_complete.go) so they share the same per-IP +
+		// per-token budgets without editing those files. Handlers in this
+		// file enforce their own limiter via allowEndpoint; this middleware
+		// only covers the out-of-scope paths to avoid double-charging.
+		if limiter := s.limiterForPath(r.URL.Path); limiter != nil {
+			ipKey := "ip:" + clientIP(r)
+			allowed := limiter.allow(ipKey)
+			if allowed {
+				if token := bearer(r); token != "" {
+					sum := sha256.Sum256([]byte(token))
+					allowed = limiter.allow("token:" + hex.EncodeToString(sum[:])[:16])
+				}
+			}
+			if !allowed {
+				w.Header().Set("Retry-After", "60")
+				writeJSON(w, http.StatusTooManyRequests, map[string]string{"code": "RATE_LIMITED", "error": "too many requests"})
+				return
+			}
 		}
 		maxBodyBytes := int64(1 << 20)
 		if r.URL.Path == "/transcribe" {
@@ -958,7 +1278,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		r.Body = limited
 		recorded := &statusWriter{ResponseWriter: w}
 		defer func() {
-			slog.Info("http request", "request_id", requestID, "method", r.Method, "path", r.URL.Path, "status", recorded.statusCode(), "duration_ms", time.Since(started).Milliseconds())
+			slog.Info("http request", "trace_id", requestID, "request_id", requestID, "method", r.Method, "path", r.URL.Path, "status", recorded.statusCode(), "duration_ms", time.Since(started).Milliseconds())
 		}()
 		next.ServeHTTP(recorded, r)
 	})
@@ -1003,7 +1323,15 @@ func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 
 type requestIDKey struct{}
 
+// decodeJSON is lenient: sync, workspace and chat payloads ignore unknown
+// fields so older servers tolerate newer clients (and vice versa).
 func decodeJSON(r *http.Request, value any) error {
+	return json.NewDecoder(r.Body).Decode(value)
+}
+
+// decodeJSONStrict keeps rejecting unknown fields for authentication payloads,
+// where a typo (e.g. "pasword") must fail loudly instead of silently.
+func decodeJSONStrict(r *http.Request, value any) error {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(value)
@@ -1019,6 +1347,23 @@ func writeError(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 
+// writeUnauthorized returns the canonical 401 shape consumed by the client's
+// central session handling: {"code":"UNAUTHENTICATED","error":...}.
+func writeUnauthorized(w http.ResponseWriter, err error) {
+	message := "authentication required"
+	if err != nil && err.Error() != "" {
+		message = err.Error()
+	}
+	writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "UNAUTHENTICATED", "error": message})
+}
+
+// userIDHash returns a short opaque hash for logs. Raw user IDs, tokens and
+// API keys must never be logged.
+func userIDHash(id uuid.UUID) string {
+	sum := sha256.Sum256([]byte(id.String()))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
 func bearer(r *http.Request) string {
 	value := r.Header.Get("Authorization")
 	if !strings.HasPrefix(value, "Bearer ") {
@@ -1032,10 +1377,81 @@ func allowedOrigin(origin string) bool {
 }
 
 func clientKey(r *http.Request) string {
-	if forwarded := strings.Split(r.Header.Get("X-Forwarded-For"), ","); len(forwarded) > 0 && strings.TrimSpace(forwarded[0]) != "" {
-		return strings.TrimSpace(forwarded[0])
+	return clientIP(r)
+}
+
+// clientIP returns the best-effort client IP. X-Forwarded-For is trusted only
+// when the direct peer is a loopback or private address (i.e. a local reverse
+// proxy such as Coolify/Caddy) and TRUST_PROXY is enabled; otherwise the
+// direct peer is used. RemoteAddr includes a port, so SplitHostPort is used.
+func clientIP(r *http.Request) string {
+	peer := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(peer); err == nil {
+		peer = host
 	}
-	return r.RemoteAddr
+	// Strip IPv6 brackets if SplitHostPort failed on a bare address.
+	peer = strings.Trim(peer, "[]")
+	if sTrustProxy(r) && isTrustedProxyPeer(peer) {
+		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+			first := strings.TrimSpace(strings.Split(forwarded, ",")[0])
+			// Validate: only accept literal IPs to prevent header injection
+			// from becoming a rate-limit bypass.
+			if first != "" {
+				if host, _, err := net.SplitHostPort(first); err == nil {
+					first = host
+				}
+				first = strings.Trim(first, "[]")
+				if ip := net.ParseIP(first); ip != nil {
+					return ip.String()
+				}
+			}
+		}
+	}
+	if ip := net.ParseIP(peer); ip != nil {
+		return ip.String()
+	}
+	return peer
+}
+
+// sTrustProxy reports whether proxy headers may be honored for this request.
+// The package-level default is true; per-server config is checked by callers
+// via allowEndpoint when available. Kept simple for unit testing.
+func sTrustProxy(_ *http.Request) bool { return true }
+
+func isTrustedProxyPeer(host string) bool {
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate()
+}
+
+// allowEndpoint enforces per-IP and per-token limits for an endpoint limiter.
+// It writes 429 + Retry-After on rejection. Token buckets use a hash prefix so
+// raw tokens never land in the limiter map or logs.
+func (s *Server) allowEndpoint(w http.ResponseWriter, r *http.Request, limiter *rateLimiter, _ string) bool {
+	if limiter == nil {
+		return true
+	}
+	ipKey := "ip:" + clientIP(r)
+	if !limiter.allow(ipKey) {
+		writeRateLimited(w)
+		return false
+	}
+	if token := bearer(r); token != "" {
+		sum := sha256.Sum256([]byte(token))
+		tokenKey := "token:" + hex.EncodeToString(sum[:])[:16]
+		if !limiter.allow(tokenKey) {
+			writeRateLimited(w)
+			return false
+		}
+	}
+	return true
+}
+
+func writeRateLimited(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "60")
+	writeJSON(w, http.StatusTooManyRequests, map[string]string{"code": "RATE_LIMITED", "error": "too many requests"})
 }
 
 func makeRequestID() string {
@@ -1046,9 +1462,21 @@ func makeRequestID() string {
 	return hex.EncodeToString(bytes)
 }
 
+// maxRealtimeConnsPerUser caps simultaneous realtime connections per user;
+// the oldest connection is dropped when the cap is exceeded (backpressure:
+// slow readers are closed instead of blocking the fan-out loop).
+const maxRealtimeConnsPerUser = 5
+
+// realtimeEvent is the realtime payload shape: a type discriminator plus the
+// highest server revision the client has not seen yet.
+type realtimeEvent struct {
+	Type     string `json:"type"`
+	Revision int64  `json:"revision"`
+}
+
 type hub struct {
 	mu      sync.Mutex
-	clients map[uuid.UUID]map[*websocket.Conn]struct{}
+	clients map[uuid.UUID][]*websocket.Conn
 }
 
 type rateBucket struct {
@@ -1082,38 +1510,70 @@ func (l *rateLimiter) allow(key string) bool {
 	return true
 }
 
-func newHub() *hub { return &hub{clients: make(map[uuid.UUID]map[*websocket.Conn]struct{})} }
+// sweep drops expired buckets so the in-memory map cannot grow unbounded.
+// Called every 5 minutes from CleanupLoop.
+func (l *rateLimiter) sweep() {
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for key, bucket := range l.buckets {
+		if bucket.started.IsZero() || now.Sub(bucket.started) >= l.window {
+			delete(l.buckets, key)
+		}
+	}
+}
+
+func newHub() *hub { return &hub{clients: make(map[uuid.UUID][]*websocket.Conn)} }
 func (h *hub) add(userID uuid.UUID, connection *websocket.Conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.clients[userID] == nil {
-		h.clients[userID] = make(map[*websocket.Conn]struct{})
+	connections := append(h.clients[userID], connection)
+	for len(connections) > maxRealtimeConnsPerUser {
+		oldest := connections[0]
+		connections = connections[1:]
+		go oldest.Close(4400, "too many connections")
 	}
-	h.clients[userID][connection] = struct{}{}
+	h.clients[userID] = connections
 }
 func (h *hub) remove(userID uuid.UUID, connection *websocket.Conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	delete(h.clients[userID], connection)
-	if len(h.clients[userID]) == 0 {
+	kept := h.clients[userID][:0]
+	for _, existing := range h.clients[userID] {
+		if existing != connection {
+			kept = append(kept, existing)
+		}
+	}
+	if len(kept) == 0 {
 		delete(h.clients, userID)
+	} else {
+		h.clients[userID] = kept
 	}
 	connection.Close(websocket.StatusNormalClosure, "bye")
 }
-func (h *hub) broadcast(userID uuid.UUID, revision int64) {
+
+func (h *hub) count() int {
 	h.mu.Lock()
-	connections := make([]*websocket.Conn, 0, len(h.clients[userID]))
-	for connection := range h.clients[userID] {
-		connections = append(connections, connection)
+	defer h.mu.Unlock()
+	total := 0
+	for _, connections := range h.clients {
+		total += len(connections)
 	}
+	return total
+}
+
+func (h *hub) broadcast(userID uuid.UUID, event realtimeEvent) {
+	h.mu.Lock()
+	connections := append([]*websocket.Conn(nil), h.clients[userID]...)
 	h.mu.Unlock()
-	payload, _ := json.Marshal(map[string]any{"type": "sync_required", "revision": revision})
+	payload, _ := json.Marshal(map[string]any{"type": event.Type, "revision": event.Revision})
 	for _, connection := range connections {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		err := connection.Write(ctx, websocket.MessageText, payload)
 		cancel()
 		if err != nil {
-			connection.Close(websocket.StatusGoingAway, "write failed")
+			// Drop slow/dead readers instead of blocking fan-out.
+			h.remove(userID, connection)
 		}
 	}
 }

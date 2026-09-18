@@ -3,7 +3,7 @@ import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { invoke } from "@tauri-apps/api/core";
 import { api } from "./api";
 import { clearSession, getToken, listenForAuth, startNativeGoogleLogin } from "./auth";
-import { getSecret, setSecret } from "./secureStore";
+import { getSecret, removeSecret, setSecret } from "./secureStore";
 
 vi.mock("@tauri-apps/plugin-deep-link", () => ({ getCurrent: vi.fn(), onOpenUrl: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
@@ -28,6 +28,26 @@ describe("Session token reads", () => {
     await expect(getToken()).resolves.toBe("session-token");
     expect(getSecret).toHaveBeenCalledOnce();
     await clearSession();
+  });
+
+  it("clears keys on sign-out: token secret, cached user, and agent settings", async () => {
+    const storageMap = new Map<string, string>([
+      ["prior.session.user", JSON.stringify(user)],
+      ["prior.ai.settings.v1", JSON.stringify({ apiKey: "sk-test" })],
+    ]);
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storageMap.get(key) ?? null,
+        setItem: (key: string, value: string) => { storageMap.set(key, value); },
+        removeItem: (key: string) => { storageMap.delete(key); },
+      },
+    });
+    vi.mocked(getSecret).mockResolvedValue(null);
+    await clearSession();
+    expect(removeSecret).toHaveBeenCalledWith("session_token");
+    expect(storageMap.has("prior.session.user")).toBe(false);
+    await expect(getToken()).resolves.toBeNull();
   });
 });
 

@@ -16,7 +16,8 @@ import type {
   TaskPriority,
   TaskStatus,
 } from "../types";
-import { runCodex } from "./codex";
+import { runCodex, runCodexStream } from "./codex";
+import { api, isAuthError } from "./api";
 import { readScopedStorage, removeScopedStorage, writeScopedStorage } from "./accountScope";
 import type { Note, NoteFolder } from "./notes";
 
@@ -876,6 +877,55 @@ export async function fetchAvailableModels(): Promise<AgentModelOption[]> {
 /** @deprecated Kept as a compatibility alias for callers that used the old free-only name. */
 export const fetchAvailableFreeModels = fetchAvailableModels;
 
+export type AskAgentStreamOptions = {
+  onDelta?: (delta: string) => void;
+  signal?: AbortSignal;
+};
+
+export async function askAgentStream(
+  prompt: string,
+  history: AgentMessage[],
+  existingTasks: Task[],
+  existingHabits: Habit[],
+  settings: AgentSettings,
+  existingNotes: Note[] = [],
+  existingFolders: NoteFolder[] = [],
+  existingAreas: Area[] = [],
+  existingProjects: Project[] = [],
+  codexThreadId: string | null = null,
+  options: AskAgentStreamOptions = {},
+): Promise<AgentResult> {
+  if (settings.provider === "codex") {
+    const result = await runCodexStream(
+      {
+        prompt,
+        history: history.slice(-8).map((message) => ({ role: message.role, content: message.content })),
+        systemPrompt: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
+        model: settings.codexModel || null,
+        threadId: codexThreadId,
+      },
+      options,
+    );
+    return {
+      ...parseAiResponse(result.text),
+      actualModel: result.actualModel ?? "Codex · ChatGPT subscription",
+      codexThreadId: result.threadId,
+    };
+  }
+  return askAgent(
+    prompt,
+    history,
+    existingTasks,
+    existingHabits,
+    settings,
+    existingNotes,
+    existingFolders,
+    existingAreas,
+    existingProjects,
+    codexThreadId,
+  );
+}
+
 export async function askAgent(
   prompt: string,
   history: AgentMessage[],
@@ -887,7 +937,35 @@ export async function askAgent(
   existingAreas: Area[] = [],
   existingProjects: Project[] = [],
   codexThreadId: string | null = null,
+  sessionToken: string | null = null,
 ): Promise<AgentResult> {
+  // Prefer the server-side proxy (POST /v1/agent/complete) when signed in: the
+  // stored OpenRouter key stays off the device. Auth failures propagate so the
+  // caller runs central session handling; any other proxy failure falls back
+  // to the client-direct OpenRouter path below.
+  if (sessionToken && settings.provider !== "codex") {
+    try {
+      const proxied = await api.agentComplete(
+        {
+          model: settings.model || DEFAULT_MODEL,
+          prompt,
+          system: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
+          history: history.slice(-8).map((message) => ({ role: message.role, content: message.content })),
+          webSearch: settings.webSearch !== false,
+        },
+        sessionToken,
+      );
+      return {
+        ...parseAiResponse(proxied.content),
+        actualModel: proxied.actualModel || settings.model || DEFAULT_MODEL,
+      };
+    } catch (error) {
+      if (isAuthError(error)) throw error;
+      // Fall through to client-direct when the proxy is unavailable and a
+      // local key exists; otherwise surface the proxy error.
+      if (!settings.apiKey) throw error;
+    }
+  }
   if (settings.provider === "codex") {
     const result = await runCodex({
       prompt,

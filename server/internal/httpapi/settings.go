@@ -98,7 +98,7 @@ func openSettingsValue(configured, stored string) (string, error) {
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
 		return
 	}
 	stored, err := s.store.GetUserSettings(r.Context(), user.ID)
@@ -126,7 +126,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err)
+		writeUnauthorized(w, err)
 		return
 	}
 	var body settingsPayload
@@ -136,7 +136,7 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	body.OpenRouterAPIKey = strings.TrimSpace(body.OpenRouterAPIKey)
 	body.OpenAIAPIKey = strings.TrimSpace(body.OpenAIAPIKey)
-	if len(body.OpenRouterAPIKey) > 2000 || len(body.OpenAIAPIKey) > 2000 {
+	if len(body.OpenRouterAPIKey) > maxSettingsKeyChars || len(body.OpenAIAPIKey) > maxSettingsKeyChars {
 		writeError(w, http.StatusBadRequest, errors.New("invalid settings request"))
 		return
 	}
@@ -165,5 +165,6 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to save settings"))
 		return
 	}
+	s.notifySync(r.Context(), user.ID, "settings", 0)
 	writeJSON(w, http.StatusOK, settingsPayload{OpenRouterAPIKey: openRouterAPIKey, OpenAIAPIKey: openAIAPIKey, WebSearch: stored.WebSearch})
 }

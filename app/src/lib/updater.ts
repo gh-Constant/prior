@@ -1,6 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { supportsDesktopUpdates as supportsDesktopUpdatesPlatform } from "./platform";
 
 export type UpdateInfo = {
   version: string;
@@ -11,8 +12,7 @@ export type UpdateInfo = {
 let pendingUpdate: Update | null = null;
 
 export function supportsDesktopUpdates(): boolean {
-  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return false;
-  return !/Android|iPhone|iPad/i.test(navigator.userAgent);
+  return supportsDesktopUpdatesPlatform();
 }
 
 export async function getAppVersion(): Promise<string | null> {

@@ -19,10 +19,10 @@ import type {
   Task,
   TaskDraft,
 } from "../types";
-import { askAgent, AGENT_SETTINGS_EVENT, DEFAULT_MODEL, fetchAvailableModels, getAgentSettings, notifyAgentSettingsChanged, POPULAR_FREE_MODELS, saveAgentSettings, type AgentModelOption } from "../lib/ai";
-import { fetchCodexModels, supportsCodexDesktop, type CodexModelOption } from "../lib/codex";
-import { getToken, type SessionUser } from "../lib/auth";
-import { api } from "../lib/api";
+import { askAgent, askAgentStream, AGENT_SETTINGS_EVENT, DEFAULT_MODEL, fetchAvailableModels, getAgentSettings, notifyAgentSettingsChanged, POPULAR_FREE_MODELS, saveAgentSettings, type AgentModelOption } from "../lib/ai";
+import { fetchCodexModels, getCachedCodexAccount, supportsCodexDesktop, type CodexModelOption } from "../lib/codex";
+import { getToken, handleAuthError, type SessionUser } from "../lib/auth";
+import { api, isAuthError } from "../lib/api";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
 import {
@@ -117,6 +117,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   const [chatLoading, setChatLoading] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addingIds, setAddingIds] = useState<Record<string, boolean>>({});
   const [dictationLanguage] = useState(() => typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US");
@@ -126,6 +127,8 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   const panelRef = useRef<HTMLDialogElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const streamingIdRef = useRef<string | null>(null);
   const isComposingRef = useRef(false);
   const isOverlay = useOverlayMode();
   const pendingDictationSelectionRef = useRef<{ start: number; end: number } | null>(null);
@@ -155,6 +158,9 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
 
   useEffect(() => {
     if (!supportsCodexDesktop() || settings.provider !== "codex") return undefined;
+    // Lazy: only hit the Codex server when the user opted into Codex AND has
+    // a fresh cached login. Otherwise opening the sidebar must not spawn it.
+    if (!getCachedCodexAccount()?.authenticated) return undefined;
     let cancelled = false;
     setCodexModelsLoading(true);
     void fetchCodexModels()
@@ -231,11 +237,25 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           setChatHistory([]);
           return;
         }
-        const chats = await api.listAgentChats(token);
-        if (!cancelled) setChatHistory(chats);
+        try {
+          const chats = await api.listAgentChats(token);
+          if (!cancelled) setChatHistory(chats);
+        } catch (error) {
+          if (await handleAuthError(error)) {
+            if (!cancelled) {
+              setError("Your session has expired. Please sign in again.");
+              setChatHistory([]);
+            }
+            return;
+          }
+          throw error;
+        }
       })
-      .catch(() => {
-        if (!cancelled) setChatHistory([]);
+      .catch((error) => {
+        if (!cancelled) {
+          if (isAuthError(error)) setError("Your session has expired. Please sign in again.");
+          setChatHistory([]);
+        }
       })
       .finally(() => {
         if (!cancelled) setHistoryLoading(false);
@@ -306,6 +326,14 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  useEffect(() => () => {
+    // Abort any in-flight Codex stream on unmount so turnId refs never leak.
+    abortRef.current?.abort();
+    abortRef.current = null;
+    streamingIdRef.current = null;
+    loadingRef.current = false;
+  }, []);
 
   useEffect(() => {
     // Hydrate $…$ / $$…$$ spans left by the chat markdown renderer.
@@ -391,7 +419,8 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       setActiveChatId(chat.id);
       setChatHistory((current) => [chat, ...current.filter((item) => item.id !== chat.id)]);
       return chat.id;
-    } catch {
+    } catch (error) {
+      if (await handleAuthError(error)) setError("Your session has expired. Please sign in again.");
       return null;
     }
   }
@@ -401,13 +430,33 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       await api.saveAgentChatMessage(chatId, message, token);
       const chats = await api.listAgentChats(token);
       setChatHistory(chats);
-    } catch {
+    } catch (error) {
+      if (await handleAuthError(error)) {
+        setError("Your session has expired. Please sign in again.");
+        return;
+      }
       // Keep the conversation usable when the sync API is temporarily unavailable.
     }
   }
 
+  function cancelStreaming(): void {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    streamingIdRef.current = null;
+    setStreamingMessageId(null);
+    loadingRef.current = false;
+    setLoading(false);
+  }
+
+  function handleStop(): void {
+    cancelStreaming();
+  }
+
   async function selectChat(chatId: string) {
-    if (!sessionToken || chatId === activeChatId || chatLoading || loading || dictation.isActive) return;
+    if (!sessionToken || chatId === activeChatId || chatLoading || dictation.isActive) return;
+    // Allow switching chats while a Codex stream runs: cancel first so the
+    // stale turn never clobbers the newly selected conversation.
+    if (loadingRef.current) cancelStreaming();
     setChatLoading(true);
     setError(null);
     try {
@@ -418,14 +467,21 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       setInput("");
       if (window.matchMedia("(max-width: 760px)").matches) setHistoryOpen(false);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Unable to load this conversation.");
+      if (await handleAuthError(err)) {
+        setError("Your session has expired. Please sign in again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Unable to load this conversation.");
+      }
     } finally {
       setChatLoading(false);
     }
   }
 
   function startNewChat() {
-    if (loading || chatLoading || dictation.isActive) return;
+    if (chatLoading || dictation.isActive) return;
+    // Allow starting a new chat while streaming: abort the turn and drop its
+    // placeholder so the old response cannot leak into the fresh thread.
+    if (loadingRef.current) cancelStreaming();
     setActiveChatId(null);
     setCodexThreadId(null);
     setMessages([]);
@@ -438,8 +494,15 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     if (!promptToSend || loadingRef.current || dictation.isActive) return;
 
     if (settings.provider !== "codex" && !settings.apiKey) {
-      setError("Add your OpenRouter API key in Settings to use the assistant.");
-      return;
+      // No local key: signed-in users can still use the server-side proxy
+      // (POST /v1/agent/complete) with their stored key. Only block when no
+      // session token is available either.
+      const existingToken = sessionToken ?? (user ? await getToken().catch(() => null) : null);
+      if (existingToken && !sessionToken) setSessionToken(existingToken);
+      if (!existingToken) {
+        setError("Add your OpenRouter API key in Settings to use the assistant.");
+        return;
+      }
     }
 
     setError(null);
@@ -463,26 +526,110 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       setMessages(nextMessages);
       if (chatId && token) await persistMessage(chatId, userMsg, token);
 
-      const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings, notesStore.list(), notesStore.listFolders(), areas, projects, codexThreadId);
-      if (response.codexThreadId) setCodexThreadId(response.codexThreadId);
-      const assistantMsg: AgentMessage = {
-        id: crypto.randomUUID(),
+      if (settings.provider !== "codex") {
+        const response = await askAgent(promptToSend, nextMessages, tasks, habits, settings, notesStore.list(), notesStore.listFolders(), areas, projects, codexThreadId, token);
+        if (response.codexThreadId) setCodexThreadId(response.codexThreadId);
+        const assistantMsg: AgentMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: response.reply,
+          proposedAreas: response.areas,
+          proposedProjects: response.projects,
+          proposedTasks: response.tasks,
+          proposedHabits: response.habits,
+          proposedNotes: response.notes,
+          proposedFolders: response.folders,
+          actualModel: response.actualModel,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages([...nextMessages, assistantMsg]);
+        if (chatId && token) await persistMessage(chatId, assistantMsg, token);
+        return;
+      }
+
+      // Codex path: stream in the background so the UI never freezes until
+      // the answer arrives. Deltas render into a live placeholder bubble.
+      const assistantId = crypto.randomUUID();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      streamingIdRef.current = assistantId;
+      setStreamingMessageId(assistantId);
+      let streamed = "";
+      const placeholder: AgentMessage = {
+        id: assistantId,
         role: "assistant",
-        content: response.reply,
-        proposedAreas: response.areas,
-        proposedProjects: response.projects,
-        proposedTasks: response.tasks,
-        proposedHabits: response.habits,
-        proposedNotes: response.notes,
-        proposedFolders: response.folders,
-        actualModel: response.actualModel,
+        content: "",
         createdAt: new Date().toISOString(),
       };
-      setMessages([...nextMessages, assistantMsg]);
-      if (chatId && token) await persistMessage(chatId, assistantMsg, token);
+      setMessages([...nextMessages, placeholder]);
+
+      try {
+        const response = await askAgentStream(
+          promptToSend,
+          nextMessages,
+          tasks,
+          habits,
+          settings,
+          notesStore.list(),
+          notesStore.listFolders(),
+          areas,
+          projects,
+          codexThreadId,
+          {
+            signal: controller.signal,
+            onDelta: (delta) => {
+              streamed += delta;
+              const snapshot = streamed;
+              setMessages((prev) => prev.map((message) => message.id === assistantId ? { ...message, content: snapshot } : message));
+            },
+          },
+        );
+        if (response.codexThreadId) setCodexThreadId(response.codexThreadId);
+        const assistantMsg: AgentMessage = {
+          id: assistantId,
+          role: "assistant",
+          content: response.reply,
+          proposedAreas: response.areas,
+          proposedProjects: response.projects,
+          proposedTasks: response.tasks,
+          proposedHabits: response.habits,
+          proposedNotes: response.notes,
+          proposedFolders: response.folders,
+          actualModel: response.actualModel,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages((prev) => {
+          if (!prev.some((message) => message.id === assistantId)) return prev;
+          return prev.map((message) => message.id === assistantId ? assistantMsg : message);
+        });
+        if (chatId && token) await persistMessage(chatId, assistantMsg, token);
+      } catch (streamError: unknown) {
+        if (streamError instanceof DOMException && streamError.name === "AbortError") {
+          // User-cancelled: keep partial text if any, drop the empty bubble.
+          if (!streamed) {
+            setMessages((prev) => prev.filter((message) => message.id !== assistantId));
+          }
+        } else {
+          const msg = streamError instanceof Error ? streamError.message : "Failed to generate tasks with AI";
+          setError(msg);
+          setMessages((prev) => {
+            const existing = prev.find((message) => message.id === assistantId);
+            if (existing && !existing.content) return prev.filter((message) => message.id !== assistantId);
+            return prev;
+          });
+        }
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null;
+        if (streamingIdRef.current === assistantId) streamingIdRef.current = null;
+        setStreamingMessageId(null);
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to generate tasks with AI";
-      setError(msg);
+      if (await handleAuthError(err)) {
+        setError("Your session has expired. Please sign in again.");
+      } else {
+        const msg = err instanceof Error ? err.message : "Failed to generate tasks with AI";
+        setError(msg);
+      }
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -726,7 +873,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             aria-label={chat.title}
             title={chat.title}
             onClick={() => void selectChat(chat.id)}
-            disabled={chatLoading || loading || dictation.isActive}
+            disabled={chatLoading || dictation.isActive}
           >
             <span>{chat.title}</span>
           </button>
@@ -772,13 +919,23 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
               <AssistantMessage key={msg.id} message={msg} handlers={messageHandlers} />
             ))}
 
-            {loading && (
+            {loading && !streamingMessageId && (
               <div className="agent-message-row assistant">
                 <div className="agent-message-avatar">
                   <AgentIdentity size="tiny" thinking />
                 </div>
                 <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
                   <span className="loading-text">Thinking through your priorities…</span>
+                </div>
+              </div>
+            )}
+            {loading && streamingMessageId && (
+              <div className="agent-message-row assistant">
+                <div className="agent-message-avatar">
+                  <AgentIdentity size="tiny" thinking />
+                </div>
+                <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
+                  <span className="loading-text">Receiving from Codex…</span>
                 </div>
               </div>
             )}
@@ -826,6 +983,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                 <input
                   autoFocus
                   type="search"
+                  autoComplete="off"
                   value={modelQuery}
                   onChange={(event) => setModelQuery(event.target.value)}
                   placeholder={settings.provider === "codex" ? "Search Codex models" : "Search all OpenRouter models"}
@@ -876,6 +1034,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           <textarea
             ref={textareaRef}
             value={input}
+            autoComplete="off"
             onChange={(e) => setInput(e.target.value)}
             readOnly={dictation.isActive}
             title={dictation.isActive ? "Stop dictation to edit" : undefined}
@@ -912,6 +1071,16 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
               disabled={!user}
               disabledTitle="Sign in to use voice input"
             />
+            {loading ? (
+              <button
+                type="button"
+                className="secondary-button agent-stop-btn"
+                onClick={handleStop}
+                aria-label="Stop Codex request"
+              >
+                Stop
+              </button>
+            ) : null}
             <button
               type="submit"
               className="primary-button agent-send-btn"

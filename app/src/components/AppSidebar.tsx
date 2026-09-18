@@ -14,6 +14,7 @@ type AppSidebarProps = {
   readonly agentOpen: boolean;
   readonly aiShortcut: string;
   readonly inert?: boolean;
+  readonly updateAvailable?: boolean;
   readonly onViewChange: (view: WorkspaceView) => void;
   readonly onAccount: () => void;
   readonly onToggle: () => void;
@@ -27,7 +28,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ view: WorkspaceView; lab
   { label: "Review", items: [{ view: "waiting", label: "Waiting", icon: "later" }, { view: "eisenhower", label: "Priority lens", icon: "grid" }, { view: "habits", label: "Habits", icon: "calendar-check" }, { view: "notes", label: "Notes", icon: "file-text" }] },
 ];
 
-export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen, aiShortcut, inert, onViewChange, onAccount, onToggle, onToggleAgent, onCloseMobile }: AppSidebarProps) {
+export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen, aiShortcut, inert, updateAvailable, onViewChange, onAccount, onToggle, onToggleAgent, onCloseMobile }: AppSidebarProps) {
   function go(view: WorkspaceView): void {
     onCloseMobile();
     onViewChange(view);
@@ -92,6 +93,17 @@ export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen,
             <AgentIdentity size="tiny" />
             <span className="prior-agent-label">Prior Agent</span>
             <kbd>{aiShortcut}</kbd>
+          </button>
+          <button
+            type="button"
+            className={`nav-item settings-nav-item ${activeView === "settings" ? "active" : ""}`}
+            data-view="settings"
+            aria-current={activeView === "settings" ? "page" : undefined}
+            title="Settings"
+            onClick={() => go("settings")}
+          >
+            <Icon name="folder" /><span>Settings</span>
+            {updateAvailable && <span className="update-badge-dot" aria-label="Update available" title="Update available" style={{ width: 8, height: 8, borderRadius: 999, background: "#fa654a", display: "inline-block", marginLeft: 6 }} />}
           </button>
           <button
             className="account-trigger"
