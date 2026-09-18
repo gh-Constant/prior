@@ -233,7 +233,7 @@ export const api = {
     return request<void>("/v1/sessions", { method: "DELETE" }, token);
   },
   agentComplete(
-    input: { model: string; prompt: string; system: string; history: Array<{ role: string; content: string }>; webSearch: boolean },
+    input: { model: string; prompt: string; system: string; history: Array<{ role: string; content: string }>; webSearch: boolean; reasoningEffort?: string },
     token: string,
   ): Promise<{ content: string; actualModel: string }> {
     return request<{ content: string; actualModel: string }>("/v1/agent/complete", { method: "POST", body: JSON.stringify(input) }, token, 90_000);

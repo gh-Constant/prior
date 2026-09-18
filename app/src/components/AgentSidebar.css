@@ -215,6 +215,34 @@
   font-weight: 700;
 }
 
+/* Reasoning effort sits under the model picker and only renders for models
+   that expose a reasoning control. */
+.agent-reasoning-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 10px;
+  background: #fffaf7;
+}
+
+.agent-reasoning-row label {
+  flex: 0 0 auto;
+  color: #776860;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.agent-reasoning-select {
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid #e8ddd6;
+  border-radius: 8px;
+  background: #fff;
+  color: #4a3932;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .agent-model-picker {
   position: relative;
   min-width: 0;

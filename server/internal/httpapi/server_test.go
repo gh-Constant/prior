@@ -180,3 +180,16 @@ func TestAgentProxyAllowlistAndRedaction(t *testing.T) {
 		t.Fatalf("PII redaction failed: %q", redacted)
 	}
 }
+
+func TestNormalizeReasoningEffort(t *testing.T) {
+	for _, effort := range []string{"low", "medium", "high", "xhigh", "minimal", "none", " HIGH "} {
+		if got := normalizeReasoningEffort(effort); got == "" {
+			t.Errorf("effort %q must be forwarded", effort)
+		}
+	}
+	for _, effort := range []string{"", "auto", "ultra", "max"} {
+		if got := normalizeReasoningEffort(effort); got != "" {
+			t.Errorf("effort %q must fall back to the provider default, got %q", effort, got)
+		}
+	}
+}

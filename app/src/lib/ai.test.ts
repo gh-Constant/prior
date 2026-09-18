@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { askAgent, buildSystemPrompt, fetchAvailableModels, getAgentSettings, parseAiResponse, saveAgentSettings } from "./ai";
+import { askAgent, buildSystemPrompt, fetchAvailableModels, getAgentSettings, modelSupportsReasoning, normalizeReasoningEffort, parseAiResponse, reasoningEffortParam, saveAgentSettings } from "./ai";
 import type { Habit, Task } from "../types";
 
 describe("ai engine", () => {
@@ -341,6 +341,45 @@ Hope this helps!`;
       .rejects.toThrow("could not reach OpenRouter");
   });
 
+  it("normalizes reasoning effort and detects reasoning-capable models", () => {
+    expect(normalizeReasoningEffort("high")).toBe("high");
+    expect(normalizeReasoningEffort("ultra")).toBe("auto");
+    expect(normalizeReasoningEffort(undefined)).toBe("auto");
+    expect(reasoningEffortParam({ apiKey: "", transcriptionApiKey: "", model: "x", webSearch: true, reasoningEffort: "medium" })).toBe("medium");
+    expect(reasoningEffortParam({ apiKey: "", transcriptionApiKey: "", model: "x", webSearch: true })).toBeNull();
+    expect(modelSupportsReasoning({ id: "deepseek/deepseek-r1:free" })).toBe(true);
+    expect(modelSupportsReasoning({ id: "x", supportsReasoning: true })).toBe(true);
+    expect(modelSupportsReasoning({ id: "meta-llama/llama-3.3-70b-instruct:free" })).toBe(false);
+  });
+
+  it("forwards reasoning effort to OpenRouter when set", async () => {
+    const bodies: string[] = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      bodies.push(String(init.body));
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Done." }) } }], model: "m" }),
+      };
+    }));
+    await askAgent("Hello", [], [], [], { apiKey: "test-key", transcriptionApiKey: "", model: "deepseek/deepseek-r1:free", webSearch: false, reasoningEffort: "high" });
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(JSON.parse(bodies[0])).toMatchObject({ reasoning: { effort: "high" } });
+  });
+
+  it("omits reasoning effort by default", async () => {
+    const bodies: string[] = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      bodies.push(String(init.body));
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify({ reply: "Done." }) } }], model: "m" }),
+      };
+    }));
+    await askAgent("Hello", [], [], [], { apiKey: "test-key", transcriptionApiKey: "", model: "openrouter/free", webSearch: false });
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(JSON.parse(bodies[0])).not.toHaveProperty("reasoning");
+  });
+
   it("loads paid and free OpenRouter models for searchable selection", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -376,6 +415,9 @@ Hope this helps!`;
       expect(loaded.transcriptionApiKey).toBe("sk-openai-test");
       expect(loaded.model).toBe("meta-llama/llama-3.3-70b-instruct:free");
       expect(loaded.webSearch).toBe(false);
+      expect(loaded.reasoningEffort).toBe("auto");
+      saveAgentSettings({ ...loaded, reasoningEffort: "high" });
+      expect(getAgentSettings().reasoningEffort).toBe("high");
     } finally {
       Object.defineProperty(globalThis, "localStorage", { value: original, configurable: true });
     }

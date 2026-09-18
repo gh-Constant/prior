@@ -58,4 +58,12 @@ describe("AccountDialog", () => {
     fireEvent.click(screen.getByText("Log out"));
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
+
+  it("offers settings alongside login when signed out", () => {
+    const onSettings = vi.fn();
+    render(<AccountDialog {...baseProps} onSettings={onSettings} />);
+    expect(screen.getByText("Sign in", { selector: "h2" })).toBeDefined();
+    fireEvent.click(screen.getByText("Settings"));
+    expect(onSettings).toHaveBeenCalledTimes(1);
+  });
 });

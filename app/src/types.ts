@@ -199,6 +199,11 @@ export type AgentMessage = {
 
 export type AgentProvider = "openrouter" | "codex";
 
+// Reasoning effort for models that expose a reasoning control (OpenRouter
+// `reasoning.effort`, Codex `modelReasoningEffort`). "auto" means the field
+// is omitted and the provider default applies.
+export type ReasoningEffort = "auto" | "low" | "medium" | "high";
+
 export type AgentChatSummary = {
   id: string;
   title: string;
@@ -218,4 +223,5 @@ export type AgentSettings = {
   codexModel?: string;
   webSearch: boolean;
   provider?: AgentProvider;
+  reasoningEffort?: ReasoningEffort;
 };

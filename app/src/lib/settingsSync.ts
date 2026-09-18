@@ -16,6 +16,7 @@ export function mergeServerSettings(local: AgentSettings, server: ServerSettings
   };
   if (local.codexModel !== undefined) merged.codexModel = local.codexModel;
   if (local.provider) merged.provider = local.provider;
+  if (local.reasoningEffort) merged.reasoningEffort = local.reasoningEffort;
   return {
     merged,
     shouldPush: (!server.openrouterApiKey && local.apiKey !== "") || (!server.openaiApiKey && local.transcriptionApiKey !== ""),

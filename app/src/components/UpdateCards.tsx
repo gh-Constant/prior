@@ -18,6 +18,7 @@ export function UpdateCard() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState>("idle");
+  const [installed, setInstalled] = useState(false);
 
   async function inspectUpdate() {
     setUpdateState("checking");
@@ -25,6 +26,7 @@ export function UpdateCard() {
       const [version, nextUpdate] = await Promise.all([getAppVersion(), checkForUpdate()]);
       setAppVersion(version);
       setUpdate(nextUpdate);
+      setInstalled(false);
       setUpdateState(nextUpdate ? "available" : "current");
     } catch {
       setUpdateState("error");
@@ -35,6 +37,12 @@ export function UpdateCard() {
     setUpdateState("installing");
     try {
       await installAvailableUpdate();
+      // Non-Windows relaunches inside installAvailableUpdate. Windows stays
+      // alive: the install is staged, the user restarts to finish.
+      if (/Windows/i.test(typeof navigator === "undefined" ? "" : navigator.userAgent)) {
+        setInstalled(true);
+        setUpdateState("available");
+      }
     } catch {
       setUpdateState("error");
     }
@@ -47,7 +55,18 @@ export function UpdateCard() {
     <div className="update-card">
       <div className="update-card-heading"><span>Updates</span>{appVersion && <small>v{appVersion}</small>}</div>
       {updateState === "available" && update
-        ? <button className="update-button" type="button" onClick={() => void installUpdate()}><Icon name="download" /> Update to v{update.version}</button>
+        ? (
+          <>
+            <button className="update-install" type="button" disabled={checking} onClick={() => void installUpdate()}>
+              <span className="update-install-icon" aria-hidden="true"><Icon name="download" /></span>
+              <span className="update-install-copy">
+                <strong>{checking ? "Installing…" : `Install v${update.version} & restart`}</strong>
+                <small>Downloads, installs and reopens Prior</small>
+              </span>
+            </button>
+            {installed && <p className="update-hint">Installed — restart the app to finish.</p>}
+          </>
+        )
         : (
           <button className="update-check" type="button" disabled={checking} onClick={() => void inspectUpdate()}>
             <Icon name="refresh" /> {updateCheckLabel(updateState)}

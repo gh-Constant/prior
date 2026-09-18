@@ -5,7 +5,7 @@ import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
 import { isDesktop } from "./lib/platform";
-import { checkForUpdate, type UpdateInfo } from "./lib/updater";
+import { checkForUpdate, installAvailableUpdate, type UpdateInfo } from "./lib/updater";
 import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
 import { Quadrant } from "./components/Quadrant";
@@ -162,6 +162,7 @@ export function App() {
   const realtimeClose = useRef<(() => Promise<void>) | undefined>(undefined);
   const realtimeGeneration = useRef(0);
   const [desktopUpdate, setDesktopUpdate] = useState<UpdateInfo | null>(null);
+  const [updateInstalling, setUpdateInstalling] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const { deadlines: completionExitDeadlines, retain: retainCompletionExit, release: releaseCompletionExit } = useCompletionExits();
   const [agentOpen, setAgentOpen] = useState(() => {
@@ -820,6 +821,23 @@ export function App() {
     setActiveView("waiting");
   }
 
+  // One-tap update install from the banner: downloads, installs and
+  // restarts the app (Windows stages the install and asks for a restart).
+  async function installDesktopUpdate() {
+    if (updateInstalling) return;
+    setUpdateInstalling(true);
+    try {
+      await installAvailableUpdate();
+      if (/Windows/i.test(typeof navigator === "undefined" ? "" : navigator.userAgent)) {
+        setToast("Update installed — restart the app to finish.");
+      }
+    } catch {
+      setToast("Update install failed — try again from Settings.");
+    } finally {
+      setUpdateInstalling(false);
+    }
+  }
+
   function changeView(view: WorkspaceView): void {
     if (view !== "project") setSelectedProjectId(null);
     if (view === "notes") setNotesProjectId(null);
@@ -946,7 +964,7 @@ export function App() {
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}
       {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>Notice</strong><small>{toast}</small></span><button type="button" aria-label="Dismiss" onClick={() => setToast(null)}>✕</button></div>}
-      {desktopUpdate && activeView !== "settings" && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>Update available</strong><small>v{desktopUpdate.version} is ready — see Settings → Updates.</small></span><button type="button" onClick={() => changeView("settings")}>View</button></div>}
+      {desktopUpdate && activeView !== "settings" && <div className="completion-celebration" role="status" aria-live="polite"><span className="update-install-icon update-install-icon-sm" aria-hidden="true"><Icon name="download" /></span><span><strong>Update available</strong><small>v{desktopUpdate.version} is ready.</small></span><button type="button" disabled={updateInstalling} onClick={() => void installDesktopUpdate()}>{updateInstalling ? "Installing…" : "Install & restart"}</button><button type="button" className="text-button" onClick={() => changeView("settings")}>Details</button></div>}
     </div>
   );
 }

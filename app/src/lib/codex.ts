@@ -36,6 +36,8 @@ export type CodexRunRequest = {
   systemPrompt: string;
   model?: string | null;
   threadId?: string | null;
+  /** OpenRouter-style effort (low/medium/high) forwarded as Codex modelReasoningEffort. Null = provider default. */
+  reasoningEffort?: string | null;
 };
 
 export type CodexBinaryStatus = {

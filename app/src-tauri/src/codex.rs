@@ -72,6 +72,29 @@ pub struct CodexRunRequest {
     pub system_prompt: String,
     pub model: Option<String>,
     pub thread_id: Option<String>,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+}
+
+/// Normalized reasoning effort ("low"/"medium"/"high") or None when the
+/// provider default applies. Unknown app-server versions ignore the
+/// `modelReasoningEffort` param, so this is only ever sent when set.
+fn reasoning_effort(request: &CodexRunRequest) -> Option<String> {
+    request
+        .reasoning_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|effort| matches!(*effort, "low" | "medium" | "high" | "xhigh" | "minimal"))
+        .map(str::to_string)
+}
+
+fn with_reasoning_effort(mut params: Value, request: &CodexRunRequest) -> Value {
+    if let Some(effort) = reasoning_effort(request) {
+        if let Some(object) = params.as_object_mut() {
+            object.insert("modelReasoningEffort".to_string(), Value::String(effort));
+        }
+    }
+    params
 }
 
 #[derive(Debug, Deserialize)]
@@ -583,14 +606,17 @@ impl CodexProcess {
             None => {
                 let result = self.request(
                     "thread/start",
-                    json!({
-                        "cwd": workspace,
-                        "approvalPolicy": "never",
-                        "sandbox": "read-only",
-                        "model": request.model.clone(),
-                        "personality": "friendly",
-                        "serviceName": "prior"
-                    }),
+                    with_reasoning_effort(
+                        json!({
+                            "cwd": workspace,
+                            "approvalPolicy": "never",
+                            "sandbox": "read-only",
+                            "model": request.model.clone(),
+                            "personality": "friendly",
+                            "serviceName": "prior"
+                        }),
+                        &request,
+                    ),
                 )?;
                 result
                     .get("thread")
@@ -604,19 +630,22 @@ impl CodexProcess {
 
         let turn = self.request(
             "turn/start",
-            json!({
-                "threadId": thread_id,
-                "input": [{ "type": "text", "text": build_turn_input(&request) }],
-                "model": request.model.clone(),
-                "cwd": workspace,
-                "approvalPolicy": "never",
-                "sandboxPolicy": {
-                    "type": "readOnly"
-                },
-                "summary": "concise",
-                "personality": "friendly",
-                "outputSchema": output_schema()
-            }),
+            with_reasoning_effort(
+                json!({
+                    "threadId": thread_id,
+                    "input": [{ "type": "text", "text": build_turn_input(&request) }],
+                    "model": request.model.clone(),
+                    "cwd": workspace,
+                    "approvalPolicy": "never",
+                    "sandboxPolicy": {
+                        "type": "readOnly"
+                    },
+                    "summary": "concise",
+                    "personality": "friendly",
+                    "outputSchema": output_schema()
+                }),
+                &request,
+            ),
         )?;
         let turn_id = turn
             .get("turn")
@@ -721,14 +750,17 @@ impl CodexProcess {
                 }
                 let result = self.request(
                     "thread/start",
-                    json!({
-                        "cwd": workspace,
-                        "approvalPolicy": "never",
-                        "sandbox": "read-only",
-                        "model": request.model.clone(),
-                        "personality": "friendly",
-                        "serviceName": "prior"
-                    }),
+                    with_reasoning_effort(
+                        json!({
+                            "cwd": workspace,
+                            "approvalPolicy": "never",
+                            "sandbox": "read-only",
+                            "model": request.model.clone(),
+                            "personality": "friendly",
+                            "serviceName": "prior"
+                        }),
+                        &request,
+                    ),
                 )?;
                 result
                     .get("thread")
@@ -745,19 +777,22 @@ impl CodexProcess {
         }
         let turn = self.request(
             "turn/start",
-            json!({
-                "threadId": thread_id,
-                "input": [{ "type": "text", "text": build_turn_input(&request) }],
-                "model": request.model.clone(),
-                "cwd": workspace,
-                "approvalPolicy": "never",
-                "sandboxPolicy": {
-                    "type": "readOnly"
-                },
-                "summary": "concise",
-                "personality": "friendly",
-                "outputSchema": output_schema()
-            }),
+            with_reasoning_effort(
+                json!({
+                    "threadId": thread_id,
+                    "input": [{ "type": "text", "text": build_turn_input(&request) }],
+                    "model": request.model.clone(),
+                    "cwd": workspace,
+                    "approvalPolicy": "never",
+                    "sandboxPolicy": {
+                        "type": "readOnly"
+                    },
+                    "summary": "concise",
+                    "personality": "friendly",
+                    "outputSchema": output_schema()
+                }),
+                &request,
+            ),
         )?;
         let turn_id = turn
             .get("turn")
@@ -1222,24 +1257,54 @@ fn find_codex_executable() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_turn_input, output_schema, CodexRunRequest};
+    use super::{
+        build_turn_input, output_schema, reasoning_effort, with_reasoning_effort, CodexRunRequest,
+    };
 
-    #[test]
-    fn turn_input_keeps_prior_context_and_recent_history() {
-        let request = CodexRunRequest {
+    fn test_request() -> CodexRunRequest {
+        CodexRunRequest {
             prompt: "Create a task".to_string(),
             system_prompt: "Prior rules".to_string(),
             model: Some("gpt-5.6-luna".to_string()),
             thread_id: None,
+            reasoning_effort: None,
             history: vec![super::CodexHistoryMessage {
                 role: "user".to_string(),
                 content: "Earlier".to_string(),
             }],
-        };
+        }
+    }
+
+    #[test]
+    fn turn_input_keeps_prior_context_and_recent_history() {
+        let request = test_request();
         let input = build_turn_input(&request);
         assert!(input.contains("Prior rules"));
         assert!(input.contains("Earlier"));
         assert!(input.contains("Create a task"));
+    }
+
+    #[test]
+    fn reasoning_effort_only_flows_when_explicitly_set() {
+        let request = test_request();
+        assert_eq!(reasoning_effort(&request), None);
+        let params = with_reasoning_effort(serde_json::json!({ "model": "x" }), &request);
+        assert!(params.get("modelReasoningEffort").is_none());
+
+        let mut request = test_request();
+        request.reasoning_effort = Some("high".to_string());
+        assert_eq!(reasoning_effort(&request), Some("high".to_string()));
+        let params = with_reasoning_effort(serde_json::json!({ "model": "x" }), &request);
+        assert_eq!(
+            params
+                .get("modelReasoningEffort")
+                .and_then(|value| value.as_str()),
+            Some("high")
+        );
+
+        let mut request = test_request();
+        request.reasoning_effort = Some("ultra".to_string());
+        assert_eq!(reasoning_effort(&request), None);
     }
 
     #[test]

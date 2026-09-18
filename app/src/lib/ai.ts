@@ -12,6 +12,7 @@ import type {
   ProposedNote,
   ProposedProject,
   ProposedTask,
+  ReasoningEffort,
   Task,
   TaskPriority,
   TaskStatus,
@@ -23,7 +24,7 @@ import type { Note, NoteFolder } from "./notes";
 
 export const DEFAULT_MODEL = "openrouter/free";
 
-export type AgentModelOption = { id: string; label: string; desc: string };
+export type AgentModelOption = { id: string; label: string; desc: string; supportsReasoning?: boolean };
 
 export const POPULAR_FREE_MODELS: AgentModelOption[] = [
   { id: "openrouter/free", label: "Auto (openrouter/free)", desc: "Automatically selects the best available free model" },
@@ -35,6 +36,32 @@ export const POPULAR_FREE_MODELS: AgentModelOption[] = [
 
 let modelCache: AgentModelOption[] | null = null;
 let modelRequest: Promise<AgentModelOption[]> | null = null;
+
+export const REASONING_EFFORTS: Array<{ id: ReasoningEffort; label: string }> = [
+  { id: "auto", label: "Auto" },
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+];
+
+// Models whose id advertises a reasoning control. Used as a fallback when the
+// OpenRouter catalog entry carries no supported_parameters metadata.
+const REASONING_MODEL_PATTERN = /r1|o[134](-mini|-preview)?\b|thinking|reason(ing|er)?|gpt-5|opus-4|sonnet-4|gemini-(2\.5|3)|qwen3|grok-4|deepseek-r/i;
+
+export function normalizeReasoningEffort(value: unknown): ReasoningEffort {
+  return value === "low" || value === "medium" || value === "high" ? value : "auto";
+}
+
+/** Raw OpenRouter `reasoning.effort` value, or null when the provider default applies. */
+export function reasoningEffortParam(settings: AgentSettings): string | null {
+  const effort = normalizeReasoningEffort(settings.reasoningEffort);
+  return effort === "auto" ? null : effort;
+}
+
+export function modelSupportsReasoning(option: Pick<AgentModelOption, "id" | "supportsReasoning">): boolean {
+  if (option.supportsReasoning) return true;
+  return REASONING_MODEL_PATTERN.test(option.id);
+}
 
 const SETTINGS_KEY = "prior.ai.settings.v1";
 
@@ -51,13 +78,14 @@ export function getAgentSettings(): AgentSettings {
           codexModel: parsed.codexModel || "",
           webSearch: parsed.webSearch ?? true,
           provider: parsed.provider === "codex" ? "codex" : "openrouter",
+          reasoningEffort: normalizeReasoningEffort(parsed.reasoningEffort),
         };
       }
     }
   } catch {
     // fallback below
   }
-  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: true, provider: "openrouter" };
+  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: true, provider: "openrouter", reasoningEffort: "auto" };
 }
 
 export function saveAgentSettings(settings: AgentSettings): void {
@@ -846,15 +874,17 @@ export async function fetchAvailableModels(): Promise<AgentModelOption[]> {
       const json = await res.json() as { data?: unknown };
       if (!Array.isArray(json.data)) return POPULAR_FREE_MODELS;
 
-      type RawModel = { id?: string; name?: string; description?: string; pricing?: { prompt?: string; completion?: string } };
+      type RawModel = { id?: string; name?: string; description?: string; pricing?: { prompt?: string; completion?: string }; supported_parameters?: unknown };
       const models = (json.data as RawModel[])
         .filter((model): model is RawModel & { id: string } => typeof model.id === "string" && model.id.length > 0)
         .map((model) => {
           const isFree = model.id.endsWith(":free") || (model.pricing?.prompt === "0" && model.pricing?.completion === "0");
+          const params = Array.isArray(model.supported_parameters) ? model.supported_parameters.filter((p): p is string => typeof p === "string") : [];
           return {
             id: model.id,
             label: model.name?.trim() || model.id,
             desc: `${shortenModelDescription(model.description)}${isFree ? " · Free" : " · Paid"}`,
+            supportsReasoning: params.includes("reasoning") || undefined,
           };
         });
       const seen = new Set<string>();
@@ -903,6 +933,7 @@ export async function askAgentStream(
         systemPrompt: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
         model: settings.codexModel || null,
         threadId: codexThreadId,
+        reasoningEffort: reasoningEffortParam(settings),
       },
       options,
     );
@@ -952,6 +983,7 @@ export async function askAgent(
           system: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
           history: history.slice(-8).map((message) => ({ role: message.role, content: message.content })),
           webSearch: settings.webSearch !== false,
+          reasoningEffort: reasoningEffortParam(settings) ?? undefined,
         },
         sessionToken,
       );
@@ -973,6 +1005,7 @@ export async function askAgent(
       systemPrompt: buildSystemPrompt(existingTasks, existingHabits, settings.webSearch !== false, existingNotes, existingFolders, existingAreas, existingProjects),
       model: settings.codexModel || null,
       threadId: codexThreadId,
+      reasoningEffort: reasoningEffortParam(settings),
     });
     return {
       ...parseAiResponse(result.text),
@@ -1004,6 +1037,7 @@ export async function askAgent(
     messages,
     temperature: 0.2,
     ...(webSearchEnabled ? { tools: [{ type: "openrouter:web_search" }] } : {}),
+    ...(reasoningEffortParam(settings) ? { reasoning: { effort: reasoningEffortParam(settings) } } : {}),
   };
 
   const headers: Record<string, string> = {

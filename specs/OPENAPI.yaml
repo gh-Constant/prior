@@ -106,6 +106,7 @@ paths:
   /v1/agent/complete:
     post:
       summary: Optional server-side OpenRouter proxy (allowlisted models only)
+      description: Accepts model, prompt, system, history, webSearch and an optional reasoningEffort (none/minimal/low/medium/high/xhigh; omitted or auto means the provider default).
       responses:
         '200':
           description: completion

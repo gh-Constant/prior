@@ -95,25 +95,15 @@ export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen,
             <kbd>{aiShortcut}</kbd>
           </button>
           <button
-            type="button"
-            className={`nav-item settings-nav-item ${activeView === "settings" ? "active" : ""}`}
-            data-view="settings"
-            aria-current={activeView === "settings" ? "page" : undefined}
-            title="Settings"
-            onClick={() => go("settings")}
-          >
-            <Icon name="folder" /><span>Settings</span>
-            {updateAvailable && <span className="update-badge-dot" aria-label="Update available" title="Update available" style={{ width: 8, height: 8, borderRadius: 999, background: "#fa654a", display: "inline-block", marginLeft: 6 }} />}
-          </button>
-          <button
             className="account-trigger"
             type="button"
-            aria-label="Account"
+            aria-label={updateAvailable ? "Account, update available" : "Account"}
             title="Account"
             onClick={openAccount}
           >
             <span className="account-trigger-avatar">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}</span>
             <span className="account-trigger-label">{user?.displayName || "Account"}</span>
+            {updateAvailable && <span className="update-badge-dot" aria-label="Update available" title="Update available" style={{ width: 8, height: 8, borderRadius: 999, background: "#fa654a", display: "inline-block", marginLeft: "auto" }} />}
           </button>
         </div>
       </aside>

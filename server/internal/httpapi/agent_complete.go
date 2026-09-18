@@ -36,6 +36,18 @@ var emailRedactor = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Z
 
 func redactPII(value string) string { return emailRedactor.ReplaceAllString(value, "[redacted-email]") }
 
+// normalizeReasoningEffort allowlists the OpenRouter reasoning.effort values
+// the proxy forwards. Anything else (including "auto") means the provider
+// default applies and nothing is forwarded.
+func normalizeReasoningEffort(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "none", "minimal", "low", "medium", "high", "xhigh":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return ""
+	}
+}
+
 func agentModelAllowed(model string) bool {
 	model = strings.TrimSpace(model)
 	if model == "" {
@@ -62,7 +74,8 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"history"`
-		WebSearch bool `json:"webSearch"`
+		WebSearch       bool   `json:"webSearch"`
+		ReasoningEffort string `json:"reasoningEffort"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid agent request"))
@@ -117,6 +130,10 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 	if body.WebSearch {
 		payload["tools"] = []map[string]string{{"type": "openrouter:web_search"}}
 	}
+	reasoningEffort := normalizeReasoningEffort(body.ReasoningEffort)
+	if reasoningEffort != "" {
+		payload["reasoning"] = map[string]string{"effort": reasoningEffort}
+	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to prepare completion"))
@@ -125,6 +142,7 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 	slog.Info("agent proxy request",
 		"user_id_hash", userIDHash(user.ID),
 		"model", model,
+		"reasoning_effort", reasoningEffort,
 		"prompt_chars", len(prompt),
 		"history_messages", len(body.History))
 

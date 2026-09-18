@@ -19,7 +19,7 @@ import type {
   Task,
   TaskDraft,
 } from "../types";
-import { askAgent, askAgentStream, AGENT_SETTINGS_EVENT, DEFAULT_MODEL, fetchAvailableModels, getAgentSettings, notifyAgentSettingsChanged, POPULAR_FREE_MODELS, saveAgentSettings, type AgentModelOption } from "../lib/ai";
+import { askAgent, askAgentStream, AGENT_SETTINGS_EVENT, DEFAULT_MODEL, fetchAvailableModels, getAgentSettings, modelSupportsReasoning, normalizeReasoningEffort, notifyAgentSettingsChanged, POPULAR_FREE_MODELS, REASONING_EFFORTS, saveAgentSettings, type AgentModelOption } from "../lib/ai";
 import { fetchCodexModels, getCachedCodexAccount, supportsCodexDesktop, type CodexModelOption } from "../lib/codex";
 import { getToken, handleAuthError, type SessionUser } from "../lib/auth";
 import { api, isAuthError } from "../lib/api";
@@ -128,7 +128,6 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
-  const streamingIdRef = useRef<string | null>(null);
   const isComposingRef = useRef(false);
   const isOverlay = useOverlayMode();
   const pendingDictationSelectionRef = useRef<{ start: number; end: number } | null>(null);
@@ -331,7 +330,6 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     // Abort any in-flight Codex stream on unmount so turnId refs never leak.
     abortRef.current?.abort();
     abortRef.current = null;
-    streamingIdRef.current = null;
     loadingRef.current = false;
   }, []);
 
@@ -365,6 +363,13 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     notifyAgentSettingsChanged();
   }
 
+  function handleReasoningChange(effort: string): void {
+    const updated: AgentSettings = { ...settings, reasoningEffort: normalizeReasoningEffort(effort) };
+    setSettings(updated);
+    saveAgentSettings(updated);
+    notifyAgentSettingsChanged();
+  }
+
   function handleClose(): void {
     dictation.stop();
     onClose();
@@ -390,6 +395,12 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     return modelOptions.filter((model) => `${model.label} ${model.id} ${model.desc}`.toLowerCase().includes(deferredModelQuery)).slice(0, 80);
   }, [deferredModelQuery, modelOptions]);
   const selectedModel = modelOptions.find((model) => model.id === activeModelId) ?? modelOptions[0];
+  // Reasoning control: always offered for Codex (ChatGPT subscription
+  // models honor modelReasoningEffort); for OpenRouter only when the catalog
+  // entry or the model id advertises reasoning support.
+  const showReasoning = settings.provider === "codex"
+    || (selectedModel ? modelSupportsReasoning(selectedModel) : false);
+  const activeReasoning = normalizeReasoningEffort(settings.reasoningEffort);
 
   function startDictation(): void {
     const textarea = textareaRef.current;
@@ -442,7 +453,6 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   function cancelStreaming(): void {
     abortRef.current?.abort();
     abortRef.current = null;
-    streamingIdRef.current = null;
     setStreamingMessageId(null);
     loadingRef.current = false;
     setLoading(false);
@@ -548,13 +558,13 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       }
 
       // Codex path: stream in the background so the UI never freezes until
-      // the answer arrives. Deltas render into a live placeholder bubble.
+      // the answer arrives. The stream carries the raw JSON contract, which
+      // is not markdown — so deltas stay silent and the single placeholder
+      // bubble shows a working indicator until the parsed answer swaps in.
       const assistantId = crypto.randomUUID();
       const controller = new AbortController();
       abortRef.current = controller;
-      streamingIdRef.current = assistantId;
       setStreamingMessageId(assistantId);
-      let streamed = "";
       const placeholder: AgentMessage = {
         id: assistantId,
         role: "assistant",
@@ -575,14 +585,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           areas,
           projects,
           codexThreadId,
-          {
-            signal: controller.signal,
-            onDelta: (delta) => {
-              streamed += delta;
-              const snapshot = streamed;
-              setMessages((prev) => prev.map((message) => message.id === assistantId ? { ...message, content: snapshot } : message));
-            },
-          },
+          { signal: controller.signal },
         );
         if (response.codexThreadId) setCodexThreadId(response.codexThreadId);
         const assistantMsg: AgentMessage = {
@@ -605,22 +608,16 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         if (chatId && token) await persistMessage(chatId, assistantMsg, token);
       } catch (streamError: unknown) {
         if (streamError instanceof DOMException && streamError.name === "AbortError") {
-          // User-cancelled: keep partial text if any, drop the empty bubble.
-          if (!streamed) {
-            setMessages((prev) => prev.filter((message) => message.id !== assistantId));
-          }
+          // User-cancelled: the placeholder only ever held raw stream bytes,
+          // never a parsed answer — always drop it.
+          setMessages((prev) => prev.filter((message) => message.id !== assistantId));
         } else {
           const msg = streamError instanceof Error ? streamError.message : "Failed to generate tasks with AI";
           setError(msg);
-          setMessages((prev) => {
-            const existing = prev.find((message) => message.id === assistantId);
-            if (existing && !existing.content) return prev.filter((message) => message.id !== assistantId);
-            return prev;
-          });
+          setMessages((prev) => prev.filter((message) => message.id !== assistantId));
         }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
-        if (streamingIdRef.current === assistantId) streamingIdRef.current = null;
         setStreamingMessageId(null);
       }
     } catch (err: unknown) {
@@ -916,7 +913,18 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         ) : (
           <div className="agent-messages">
             {messages.map((msg) => (
-              <AssistantMessage key={msg.id} message={msg} handlers={messageHandlers} />
+              msg.id === streamingMessageId
+                ? (
+                  <div className="agent-message-row assistant" key={msg.id}>
+                    <div className="agent-message-avatar">
+                      <AgentIdentity size="tiny" thinking />
+                    </div>
+                    <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
+                      <span className="loading-text">Working with Codex…</span>
+                    </div>
+                  </div>
+                )
+                : <AssistantMessage key={msg.id} message={msg} handlers={messageHandlers} />
             ))}
 
             {loading && !streamingMessageId && (
@@ -926,16 +934,6 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                 </div>
                 <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
                   <span className="loading-text">Thinking through your priorities…</span>
-                </div>
-              </div>
-            )}
-            {loading && streamingMessageId && (
-              <div className="agent-message-row assistant">
-                <div className="agent-message-avatar">
-                  <AgentIdentity size="tiny" thinking />
-                </div>
-                <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
-                  <span className="loading-text">Receiving from Codex…</span>
                 </div>
               </div>
             )}
@@ -1012,6 +1010,22 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             </div>
           )}
         </div>
+        {showReasoning && (
+          <div className="agent-reasoning-row">
+            <label htmlFor="prior-agent-reasoning">Reasoning</label>
+            <select
+              id="prior-agent-reasoning"
+              className="agent-reasoning-select"
+              value={activeReasoning}
+              onChange={(event) => handleReasoningChange(event.target.value)}
+              aria-label="Model reasoning effort"
+            >
+              {REASONING_EFFORTS.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {settings.provider !== "codex" && !settings.apiKey && (

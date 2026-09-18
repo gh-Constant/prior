@@ -49,7 +49,12 @@ export function AccountDialog({ user, authError, onClose, onAuthenticated, onGoo
             </button>
           </div>
         ) : (
-          <SignInPanel mode={mode} onModeChange={setMode} authError={authError} onAuthenticated={onAuthenticated} onGoogle={onGoogle} />
+          <div className="account-choice">
+            <SignInPanel mode={mode} onModeChange={setMode} authError={authError} onAuthenticated={onAuthenticated} onGoogle={onGoogle} />
+            <button type="button" className="secondary-button account-choice-btn" onClick={onSettings}>
+              <Icon name="gear" /><span>Settings</span>
+            </button>
+          </div>
         )}
       </dialog>
     </>
