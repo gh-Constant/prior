@@ -105,6 +105,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   const [codexModelList, setCodexModelList] = useState<CodexModelOption[]>([]);
   const [codexModelsLoading, setCodexModelsLoading] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [reasoningPickerOpen, setReasoningPickerOpen] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
 
   const [messages, setMessages] = useState<AgentMessage[]>([]);
@@ -126,6 +127,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDialogElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
+  const reasoningPickerRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const isComposingRef = useRef(false);
@@ -182,12 +184,17 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   }, [settings.provider]);
 
   useEffect(() => {
-    if (!modelPickerOpen) return undefined;
+    if (!modelPickerOpen && !reasoningPickerOpen) return undefined;
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (modelPickerRef.current && !modelPickerRef.current.contains(event.target as Node)) setModelPickerOpen(false);
+      const target = event.target as Node;
+      if (modelPickerRef.current && !modelPickerRef.current.contains(target)) setModelPickerOpen(false);
+      if (reasoningPickerRef.current && !reasoningPickerRef.current.contains(target)) setReasoningPickerOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setModelPickerOpen(false);
+      if (event.key === "Escape") {
+        setModelPickerOpen(false);
+        setReasoningPickerOpen(false);
+      }
     };
     document.addEventListener("pointerdown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
@@ -195,7 +202,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [modelPickerOpen]);
+  }, [modelPickerOpen, reasoningPickerOpen]);
 
   useEffect(() => {
     // The API key and web search live in Settings now: reload whenever the
@@ -958,7 +965,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         </div>
       )}
       <div className="agent-model-row">
-        <label id="prior-agent-model-label">{settings.provider === "codex" ? "Codex model" : "Model"}</label>
+        <label id="prior-agent-model-label">{settings.provider === "codex" ? "Codex" : "Model"}</label>
         <div className="agent-model-picker" ref={modelPickerRef}>
           <button
             type="button"
@@ -966,11 +973,13 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             aria-haspopup="listbox"
             aria-expanded={modelPickerOpen}
             aria-labelledby="prior-agent-model-label prior-agent-model-value"
-            onClick={() => setModelPickerOpen((open) => !open)}
+            onClick={() => {
+              setModelPickerOpen((open) => !open);
+              setReasoningPickerOpen(false);
+            }}
           >
             <span id="prior-agent-model-value" className="agent-model-trigger-copy">
               <strong>{selectedModel?.label ?? shortModelName(settings.model)}</strong>
-              <small>{selectedModel?.id ?? settings.model}</small>
             </span>
             <Icon name="chevron-down" />
           </button>
@@ -1001,8 +1010,8 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                     className={`agent-model-option ${model.id === activeModelId ? "active" : ""}`}
                     onClick={() => { handleModelChange(model.id); setModelPickerOpen(false); setModelQuery(""); }}
                   >
-                    <span className="agent-model-option-copy"><strong>{model.label}</strong><small>{model.id}</small></span>
-                    <span className="agent-model-option-description">{model.desc}</span>
+                    <span className="agent-model-name">{model.label}</span>
+                    {model.id === activeModelId && <Icon name="check" className="agent-model-check" />}
                   </button>
                 ))}
                 {filteredModelOptions.length === 80 && <span className="agent-model-note">Showing the first 80 matches. Refine your search for more.</span>}
@@ -1011,19 +1020,42 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           )}
         </div>
         {showReasoning && (
-          <div className="agent-reasoning-row">
-            <label htmlFor="prior-agent-reasoning">Reasoning</label>
-            <select
-              id="prior-agent-reasoning"
-              className="agent-reasoning-select"
-              value={activeReasoning}
-              onChange={(event) => handleReasoningChange(event.target.value)}
+          <div className="agent-reasoning-picker" ref={reasoningPickerRef}>
+            <button
+              type="button"
+              className="agent-reasoning-trigger"
+              aria-haspopup="listbox"
+              aria-expanded={reasoningPickerOpen}
               aria-label="Model reasoning effort"
+              onClick={() => {
+                setReasoningPickerOpen((open) => !open);
+                setModelPickerOpen(false);
+              }}
             >
-              {REASONING_EFFORTS.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
+              <span className="agent-reasoning-label">Reasoning:</span>
+              <strong>{REASONING_EFFORTS.find((o) => o.id === activeReasoning)?.label ?? activeReasoning}</strong>
+              <Icon name="chevron-down" />
+            </button>
+            {reasoningPickerOpen && (
+              <div className="agent-reasoning-popover" role="listbox" aria-label="Model reasoning effort">
+                {REASONING_EFFORTS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="option"
+                    aria-selected={option.id === activeReasoning}
+                    className={`agent-reasoning-option ${option.id === activeReasoning ? "active" : ""}`}
+                    onClick={() => {
+                      handleReasoningChange(option.id);
+                      setReasoningPickerOpen(false);
+                    }}
+                  >
+                    <span>{option.label}</span>
+                    {option.id === activeReasoning && <Icon name="check" className="agent-model-check" />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
