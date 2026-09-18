@@ -117,11 +117,13 @@ export function getFolderPath(folderId: string | null, folders: NoteFolder[]): s
   return names.join(" / ");
 }
 
+const SEED_WELCOME_NOTE_ID = "prior-seed-welcome-note";
+
 function ensureSeed(): void {
   if (readScopedStorage(NOTES_KEY) === null) {
     const timestamp = now();
     const welcome: Note = {
-      id: uid(), title: "Welcome to Notes", folderId: null, projectId: null, favorite: true,
+      id: SEED_WELCOME_NOTE_ID, title: "Welcome to Notes", folderId: null, projectId: null, favorite: true,
       body: "# Welcome to Prior Notes\n\nA calm space for your ideas. Start writing in **Markdown**.\n\n- Use `[[Note title]]` to link notes.\n- Add a `#tag` to organize thoughts.\n- Try `$E = mc^2$` for inline math.\n\n```mermaid\ngraph LR\n  Ideas --> Notes\n  Notes --> Action\n```\n",
       createdAt: timestamp, updatedAt: timestamp, deletedAt: null,
     };
