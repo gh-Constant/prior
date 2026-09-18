@@ -57,6 +57,7 @@ export type IconName =
   | "rocket"
   | "home"
   | "book"
+  | "flag"
   | "heart";
 
 const calendarCheckPath = Array.isArray(faCalendarCheck.icon[4])
@@ -66,6 +67,7 @@ const calendarCheckPath = Array.isArray(faCalendarCheck.icon[4])
 export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconName }) {
   const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, ...props };
   const paths: Record<IconName, ReactElement> = {
+    flag: <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7" />,
     plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
     check: <path d="m5 12 4.5 4.5L19 7" />,
     "check-circle": <><circle cx="12" cy="12" r="8.5" /><path d="m8.5 12 2.4 2.4 4.8-5" /></>,

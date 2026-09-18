@@ -94,10 +94,10 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false }:
         {editing ? <input className="edit-input" value={title} autoFocus onChange={(event) => setTitle(event.target.value)} onBlur={() => void saveTitle()} onKeyDown={handleTitleKeyDown} /> : <button className="task-title" onDoubleClick={startEditing} onClick={startEditing}>{task.title}</button>}
         {task.description && <p className="task-description">{task.description}</p>}
         <div className="task-meta" aria-label="Task details">
-          <span className={`task-priority priority-${task.priority ?? 4}`}>P{task.priority ?? 4}</span>
+          <span className={`task-priority priority-${task.priority ?? 4}`}><Icon name="flag" /> P{task.priority ?? 4}</span>
           {task.dueDate && <span className="task-due-date"><Icon name="calendar-check" /> {formatDueDate(task.dueDate)}</span>}
           {statusLabel(task.status) && <span className="task-status-meta">{statusLabel(task.status)}</span>}
-          {task.assigneeName && <span className="task-assignee-meta">{task.assigneeName}</span>}
+          {task.assigneeName && <span className="task-assignee-meta"><Icon name="user" /> {task.assigneeName}</span>}
         </div>
       </div>
       <div className="task-actions">
