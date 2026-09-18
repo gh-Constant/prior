@@ -792,12 +792,10 @@ impl CodexProcess {
                                 .and_then(Value::as_str)
                                 .unwrap_or_default();
                             if method == "turn/completed" {
-                                let params =
-                                    message.get("params").cloned().unwrap_or(Value::Null);
+                                let params = message.get("params").cloned().unwrap_or(Value::Null);
                                 let completed_turn =
                                     params.get("turn").cloned().unwrap_or(Value::Null);
-                                let completed_id =
-                                    completed_turn.get("id").and_then(Value::as_str);
+                                let completed_id = completed_turn.get("id").and_then(Value::as_str);
                                 if turn_id
                                     .as_deref()
                                     .is_some_and(|id| completed_id != Some(id))
