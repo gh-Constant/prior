@@ -2,7 +2,7 @@ import type { Project, TaskPriority } from "../../types";
 
 // Presentation contracts only. These are not persisted Task/Project fields.
 export type ProjectRole = "owner" | "editor" | "viewer";
-export type Person = { id: string; name: string; email?: string };
+export type Person = { id: string; name: string; email?: string; avatarUrl?: string | null };
 export type ProjectMember = Person & { role: ProjectRole };
 export type ProjectInvite = { id: string; email: string; role: Exclude<ProjectRole, "owner"> };
 export type TaskPerson = Person & { role: "owner" | "assignee" | "collaborator" };
@@ -14,7 +14,7 @@ export type PlanningField = {
   options: readonly PlanningOption[];
   selectedIds: readonly string[];
 };
-export type WorkflowState = PlanningOption & { category: "triage" | "backlog" | "unstarted" | "started" | "completed" | "canceled" };
+export type WorkflowState = PlanningOption & { category: "backlog" | "unstarted" | "started" | "completed" | "canceled" };
 export type ProjectIssue = {
   id: string;
   title: string;
@@ -32,6 +32,27 @@ export type ProjectCycle = {
   issueCount: number;
   completedCount: number;
   capacity?: number;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  issueIds?: string[];
+};
+export type EditableProject = Project & {
+  health?: "On track" | "At risk" | "Off track" | null;
+  startDate?: string | null;
+  targetDate?: string | null;
+};
+export type ProjectEditorProps = {
+  project: EditableProject;
+  avatarUrl?: string | null;
+  onSave: (project: EditableProject) => Promise<void>;
+  onClose: () => void;
+};
+export type ProjectCycleDraft = { name: string; startsOn: string; endsOn: string; issueIds: string[] };
+export type ProjectCycleEditorProps = {
+  cycle?: { id?: string; name: string; startsOn?: string | null; endsOn?: string | null; issueIds?: string[] };
+  issues: readonly ProjectIssue[];
+  onSave: (draft: ProjectCycleDraft) => Promise<void>;
+  onClose: () => void;
 };
 export type ProjectOverview = {
   lead?: Person;
@@ -57,7 +78,7 @@ export type ProjectSharingProps = {
   onCopyLink?: () => void;
 };
 export type ProjectCollaborationProps = {
-  project: Pick<Project, "id" | "name" | "description" | "status">;
+  project: Pick<Project, "id" | "name" | "description" | "status" | "icon">;
   issues: readonly ProjectIssue[];
   states: readonly WorkflowState[];
   cycles: readonly ProjectCycle[];
@@ -66,8 +87,14 @@ export type ProjectCollaborationProps = {
   loading?: boolean;
   readOnly?: boolean;
   onCreateIssue?: () => void;
+  onEditProject?: () => void;
+  onMoveIssue?: (issueId: string, stateId: string) => Promise<void>;
+  onCreateCycle?: () => void;
+  onEditCycle?: (cycleId: string) => void;
   /** Opens a detail surface; the caller must honor readOnly there too. */
   onOpenIssue?: (issueId: string) => void;
+  /** Deletes the backing task; omitted for read-only projects. */
+  onDeleteIssue?: (issueId: string) => void;
   onOpenNotes?: () => void;
 };
 export type TaskPlanningProps = {

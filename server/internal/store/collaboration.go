@@ -124,7 +124,7 @@ func authorizeTaskMutationTx(ctx context.Context, tx pgx.Tx, actorID, taskID uui
 
 func (s *Store) ListCollaborativeProjects(ctx context.Context, userID uuid.UUID) ([]CollaborationProject, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT p.id::text, p.area_id::text, p.name, p.description, p.icon, p.status,
+		SELECT p.id::text, p.area_id::text, p.name, p.description, p.icon, p.status, p.metadata,
 			p.created_at, p.updated_at, p.deleted_at
 		FROM projects p
 		WHERE p.deleted_at IS NULL AND (p.user_id = $1 OR EXISTS (
@@ -139,7 +139,11 @@ func (s *Store) ListCollaborativeProjects(ctx context.Context, userID uuid.UUID)
 	projects := make([]CollaborationProject, 0)
 	for rows.Next() {
 		var project workspace.Project
-		if err := rows.Scan(&project.ID, &project.AreaID, &project.Name, &project.Description, &project.Icon, &project.Status, &project.CreatedAt, &project.UpdatedAt, &project.DeletedAt); err != nil {
+		var metadata []byte
+		if err := rows.Scan(&project.ID, &project.AreaID, &project.Name, &project.Description, &project.Icon, &project.Status, &metadata, &project.CreatedAt, &project.UpdatedAt, &project.DeletedAt); err != nil {
+			return nil, err
+		}
+		if err := applyProjectMetadata(&project, metadata); err != nil {
 			return nil, err
 		}
 		projectID, err := uuid.Parse(project.ID)
@@ -164,6 +168,47 @@ func (s *Store) ListCollaborativeProjects(ctx context.Context, userID uuid.UUID)
 		projects = append(projects, CollaborationProject{Project: project, Role: role, Members: members, PendingInvites: pending})
 	}
 	return projects, rows.Err()
+}
+
+func (s *Store) GetCollaborativeProject(ctx context.Context, userID, projectID uuid.UUID) (CollaborationProject, error) {
+	var project workspace.Project
+	var metadata []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT p.id::text, p.area_id::text, p.name, p.description, p.icon, p.status, p.metadata,
+			p.created_at, p.updated_at, p.deleted_at
+		FROM projects p
+		WHERE p.id = $1 AND p.deleted_at IS NULL AND (p.user_id = $2 OR EXISTS (
+			SELECT 1 FROM project_members pm
+			WHERE pm.project_id = p.id AND pm.user_id = $2 AND pm.status = 'active'
+		))`, projectID, userID).Scan(
+		&project.ID, &project.AreaID, &project.Name, &project.Description, &project.Icon, &project.Status, &metadata,
+		&project.CreatedAt, &project.UpdatedAt, &project.DeletedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return CollaborationProject{}, ErrNotFound
+	}
+	if err != nil {
+		return CollaborationProject{}, err
+	}
+	if err := applyProjectMetadata(&project, metadata); err != nil {
+		return CollaborationProject{}, err
+	}
+	role, err := s.projectRoleFromPool(ctx, userID, projectID)
+	if err != nil {
+		return CollaborationProject{}, err
+	}
+	members, err := s.listProjectMembers(ctx, projectID)
+	if err != nil {
+		return CollaborationProject{}, err
+	}
+	pending := []ProjectInvite{}
+	if role == "owner" {
+		pending, err = s.listPendingProjectInvites(ctx, projectID)
+		if err != nil {
+			return CollaborationProject{}, err
+		}
+	}
+	return CollaborationProject{Project: project, Role: role, Members: members, PendingInvites: pending}, nil
 }
 
 func (s *Store) listProjectMembers(ctx context.Context, projectID uuid.UUID) ([]ProjectMember, error) {

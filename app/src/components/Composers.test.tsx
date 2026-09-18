@@ -15,6 +15,7 @@ describe("TaskComposer", () => {
 
     fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "  Buy milk  " } });
     fireEvent.change(screen.getByLabelText("Priority"), { target: { value: "1" } });
+    fireEvent.click(screen.getByText(/More options/));
     fireEvent.click(screen.getByText("Important"));
     fireEvent.click(screen.getByText("Create task", { selector: "button.primary-button" }));
 
@@ -41,6 +42,31 @@ describe("TaskComposer", () => {
     expect(screen.getByLabelText("Task title")).toHaveProperty("value", "Old");
     fireEvent.click(screen.getByText("Save task"));
     expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the project field inside a project but keeps it for a personal task", async () => {
+    const scopedSave = vi.fn(async (_input: TaskDraft) => undefined);
+    render(<TaskComposer initialContext={{ projectId: "p1" }} onSave={scopedSave} onCancel={() => undefined} />);
+    expect(screen.queryByLabelText("Project")).not.toBeInTheDocument();
+    expect(screen.queryByText("No project")).not.toBeInTheDocument();
+    const details = screen.getByText(/More options/).closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    expect(screen.getByLabelText("Assignee").closest("details")).not.toHaveAttribute("open");
+    fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "Scoped" } });
+    fireEvent.click(screen.getByText("Create task"));
+    expect(scopedSave).toHaveBeenCalledWith(expect.objectContaining({ title: "Scoped", projectId: "p1" }));
+    cleanup();
+
+    const personalSave = vi.fn(async (_input: TaskDraft) => undefined);
+    render(<TaskComposer onSave={personalSave} onCancel={() => undefined} />);
+    expect(screen.getByLabelText("Project")).toBeInTheDocument();
+    expect(screen.getByLabelText("Status")).toBeInTheDocument();
+  });
+
+  it("hides the area field when locked by context", () => {
+    render(<TaskComposer initialContext={{ areaId: "a" }} onSave={vi.fn()} onCancel={() => undefined} />);
+    expect(screen.queryByLabelText("Area")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Project")).toBeInTheDocument();
   });
 });
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Icon, type IconName } from "./Icon";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { DEFAULT_AREA_ICON, DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import { NOTE_FOLDER_COLORS, getFolderDescendants, getFolderPath, notesStore, type Note, type NoteAttachment, type NoteFolder } from "../lib/notes";
 import { applySlashInsert, filterSlashCommands, matchSlashToken, type SlashCommand } from "../lib/noteSlash";
@@ -243,8 +244,6 @@ function FolderTree({
     </>
   );
 }
-
-type ContextMenuItem = { icon: IconName; label: string; danger?: boolean; run: () => void };
 
 function FolderNameModal({
   title,
@@ -584,7 +583,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 });
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem("prior.notes.collapsed") ?? "[]") as string[]); } catch { return new Set<string>(); } });
   const [modal, setModal] = useState<NoteModalState>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
+  const { menu, openMenu: showMenu, closeMenu } = useContextMenu();
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const renderedRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | undefined>(undefined);
@@ -604,12 +603,6 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   useEffect(() => { try { localStorage.setItem("prior.notes.tabs", JSON.stringify(openIds)); } catch { /* storage unavailable */ } }, [openIds]);
   useEffect(() => { try { localStorage.setItem("prior.notes.library", String(libraryOpen)); } catch { /* storage unavailable */ } }, [libraryOpen]);
   useEffect(() => { try { localStorage.setItem("prior.notes.collapsed", JSON.stringify([...collapsedIds])); } catch { /* storage unavailable */ } }, [collapsedIds]);
-  useEffect(() => {
-    if (!menu) return undefined;
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setMenu(null); };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [menu]);
   useEffect(() => {
     let cancelled = false;
     for (const meta of notesStore.attachmentMeta()) {
@@ -696,15 +689,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   function moveSelected(): void { if (selected) setModal({ kind: "move-note", note: selected }); }
   function trashSelected(): void { if (selected) setModal({ kind: "confirm-note-delete", note: selected }); }
   function openMenu(event: React.MouseEvent, items: ContextMenuItem[]): void {
-    event.preventDefault();
-    event.stopPropagation();
-    const width = 230;
-    const height = items.length * 36 + 16;
-    setMenu({
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
-      items,
-    });
+    showMenu(event, items);
   }
   function openFolderMenu(event: React.MouseEvent, folder: NoteFolder): void {
     const items: ContextMenuItem[] = [
@@ -876,7 +861,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
         {inspectorOpen && <aside className="notes-inspector"><div><span className="notes-inspector-label">OUTLINE</span>{headings.length ? headings.map((heading) => <button type="button" key={heading}>{heading}</button>) : <p>No headings yet</p>}</div><div><span className="notes-inspector-label">BACKLINKS</span>{backlinks.length ? backlinks.map((note) => <button type="button" key={note.id} onClick={() => selectNote(note)}>{note.title}</button>) : <p>No backlinks</p>}</div><div><span className="notes-inspector-label">DETAILS</span><p>{selected.body.trim().split(/\s+/).filter(Boolean).length} words</p><p>Edited {new Date(selected.updatedAt).toLocaleDateString()}</p></div></aside>}
       </div>{graphOpen && <NoteGraph notes={notes} selected={selected} onSelect={(note) => { selectNote(note); setGraphOpen(false); }} onClose={() => setGraphOpen(false)} />}</> : <div className="notes-empty"><div className="notes-empty-mark"><Icon name="file-text" /></div><h2>Your thinking space</h2><p>Create a note to capture an idea, plan a project, or connect a thought.</p><button type="button" className="primary-button" onClick={newNote}><Icon name="plus" />New note</button></div>}
     </div>
-    {menu && <div className="note-context-overlay" onClick={() => setMenu(null)} onContextMenu={(event) => { event.preventDefault(); setMenu(null); }}><div className="note-context-menu" role="menu" style={{ top: menu.y, left: menu.x }} onClick={(event) => event.stopPropagation()}>{menu.items.map((item) => <button key={item.label} type="button" role="menuitem" className={item.danger ? "danger" : ""} onClick={() => { setMenu(null); item.run(); }}><Icon name={item.icon} /><span>{item.label}</span></button>)}</div></div>}
+    {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
     {modal?.kind === "folder-name" && <FolderNameModal title={modal.mode === "create" ? "New folder" : `Rename folder`} initialName={modal.mode === "create" ? "" : modal.folder.name} initialColor={modal.mode === "create" ? null : modal.folder.color} submitLabel={modal.mode === "create" ? "Create folder" : "Rename"} onSubmit={(name, color) => submitFolderName(name, color, modal.mode === "create" ? { mode: "create", parentId: modal.parentId } : { mode: "rename", folder: modal.folder })} onClose={() => setModal(null)} />}
     {modal?.kind === "move-note" && <MoveNoteModal note={modal.note} folders={folders} onMove={(folderId) => { notesStore.move(modal.note.id, folderId); setNotes(scopedNotes()); setModal(null); }} onClose={() => setModal(null)} />}
     {modal?.kind === "move-folder" && <MoveFolderModal folder={modal.folder} folders={folders} onMove={(parentId) => { notesStore.moveFolder(modal.folder.id, parentId); setFolders(notesStore.listFolders()); setModal(null); }} onClose={() => setModal(null)} />}

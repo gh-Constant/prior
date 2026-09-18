@@ -1,9 +1,11 @@
 package workspace
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,15 +33,134 @@ type Area struct {
 }
 
 type Project struct {
-	ID          string     `json:"id"`
-	AreaID      *string    `json:"areaId"`
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Icon        *string    `json:"icon"`
-	Status      string     `json:"status"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
-	DeletedAt   *time.Time `json:"deletedAt"`
+	ID          string         `json:"id"`
+	AreaID      *string        `json:"areaId"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Icon        *string        `json:"icon"`
+	Status      string         `json:"status"`
+	Health      *string        `json:"health"`
+	StartDate   *string        `json:"startDate"`
+	TargetDate  *string        `json:"targetDate"`
+	Cycles      []ProjectCycle `json:"cycles,omitempty"`
+	CreatedAt   time.Time      `json:"createdAt"`
+	UpdatedAt   time.Time      `json:"updatedAt"`
+	DeletedAt   *time.Time     `json:"deletedAt"`
+
+	planningFieldsPresent bool
+}
+
+type ProjectCycle struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	StartsOn string   `json:"startsOn"`
+	EndsOn   string   `json:"endsOn"`
+	IssueIDs []string `json:"issueIds,omitempty"`
+}
+
+const (
+	ProjectHealthOnTrack  = "On track"
+	ProjectHealthAtRisk   = "At risk"
+	ProjectHealthOffTrack = "Off track"
+	MaxProjectCycles      = 100
+	MaxProjectCycleIssues = MaxItemsPerCollection
+)
+
+// UnmarshalJSON records whether planning fields were present in the payload.
+// That lets workspace sync preserve planning metadata from older clients that
+// only know the original project fields.
+func (project *Project) UnmarshalJSON(data []byte) error {
+	type projectAlias Project
+	var decoded projectAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*project = Project(decoded)
+	_, healthPresent := fields["health"]
+	_, startDatePresent := fields["startDate"]
+	_, targetDatePresent := fields["targetDate"]
+	_, cyclesPresent := fields["cycles"]
+	project.planningFieldsPresent = healthPresent || startDatePresent || targetDatePresent || cyclesPresent
+	return nil
+}
+
+func (project Project) PlanningFieldsPresent() bool { return project.planningFieldsPresent }
+
+func (project Project) ValidatePlanning() error {
+	if project.Health != nil && *project.Health != ProjectHealthOnTrack && *project.Health != ProjectHealthAtRisk && *project.Health != ProjectHealthOffTrack {
+		return errors.New("invalid project health")
+	}
+	if err := validateProjectDate(project.StartDate, "start date"); err != nil {
+		return err
+	}
+	if err := validateProjectDate(project.TargetDate, "target date"); err != nil {
+		return err
+	}
+	if project.StartDate != nil && project.TargetDate != nil && *project.TargetDate < *project.StartDate {
+		return errors.New("invalid project target date: must be on or after the start date")
+	}
+	if len(project.Cycles) > MaxProjectCycles {
+		return errors.New("invalid project cycles: too many cycles")
+	}
+	seenCycleIDs := make(map[string]struct{}, len(project.Cycles))
+	for index, cycle := range project.Cycles {
+		cycleID := strings.TrimSpace(cycle.ID)
+		if cycleID == "" || len(cycleID) > 128 {
+			return fmt.Errorf("invalid project cycle %d id", index)
+		}
+		if _, exists := seenCycleIDs[cycleID]; exists {
+			return fmt.Errorf("invalid project cycle %q: duplicate id", cycleID)
+		}
+		seenCycleIDs[cycleID] = struct{}{}
+		if name := strings.TrimSpace(cycle.Name); name == "" || len(name) > 400 {
+			return fmt.Errorf("invalid project cycle %q name", cycleID)
+		}
+		if err := validateProjectDateValue(cycle.StartsOn, "cycle start date"); err != nil {
+			return fmt.Errorf("project cycle %q: %w", cycleID, err)
+		}
+		if err := validateProjectDateValue(cycle.EndsOn, "cycle end date"); err != nil {
+			return fmt.Errorf("project cycle %q: %w", cycleID, err)
+		}
+		if cycle.EndsOn < cycle.StartsOn {
+			return fmt.Errorf("invalid project cycle %q: end date must be on or after the start date", cycleID)
+		}
+		if len(cycle.IssueIDs) > MaxProjectCycleIssues {
+			return fmt.Errorf("invalid project cycle %q: too many issues", cycleID)
+		}
+		seenIssueIDs := make(map[string]struct{}, len(cycle.IssueIDs))
+		for _, issueID := range cycle.IssueIDs {
+			parsed, err := uuid.Parse(strings.TrimSpace(issueID))
+			if err != nil || parsed == uuid.Nil {
+				return fmt.Errorf("invalid project cycle %q issue id", cycleID)
+			}
+			if _, exists := seenIssueIDs[parsed.String()]; exists {
+				return fmt.Errorf("invalid project cycle %q: duplicate issue id", cycleID)
+			}
+			seenIssueIDs[parsed.String()] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateProjectDate(value *string, field string) error {
+	if value == nil {
+		return nil
+	}
+	return validateProjectDateValue(*value, field)
+}
+
+func validateProjectDateValue(value, field string) error {
+	if value == "" {
+		return fmt.Errorf("invalid project %s", field)
+	}
+	if _, err := time.Parse("2006-01-02", value); err != nil {
+		return fmt.Errorf("invalid project %s", field)
+	}
+	return nil
 }
 
 type NoteFolder struct {
@@ -100,6 +221,9 @@ func (snapshot Snapshot) Validate() error {
 		}
 		if project.Status != "planned" && project.Status != "active" && project.Status != "paused" && project.Status != "completed" {
 			return errors.New("invalid project status")
+		}
+		if err := project.ValidatePlanning(); err != nil {
+			return fmt.Errorf("projects[%d]: %w", index, err)
 		}
 	}
 	for index, folder := range snapshot.Folders {

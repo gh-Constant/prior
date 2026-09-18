@@ -31,6 +31,8 @@ import { workspaceSync } from "./lib/workspaceSync";
 import { workspaceStore } from "./lib/workspaceStore";
 import { collaborationStore } from "./lib/collaborationStore";
 import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
+import { ProjectEditor } from "./components/collaboration/ProjectEditor";
+import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
 
 type Layout = "list" | "board";
@@ -138,6 +140,9 @@ export function App() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [newTaskContext, setNewTaskContext] = useState<Pick<TaskDraft, "areaId" | "projectId" | "status"> | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [composerProjectId, setComposerProjectId] = useState<string | null | undefined>(undefined);
+  const [projectEditor, setProjectEditor] = useState<Project | null>(null);
+  const [cycleEditor, setCycleEditor] = useState<{ projectId: string; cycleId?: string } | null>(null);
   const [habitComposerOpen, setHabitComposerOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
@@ -499,6 +504,27 @@ export function App() {
     };
   }, [attachRealtime, refresh, refreshWorkspace, syncNow]);
 
+  useEffect(() => {
+    // Local dev seed (Workstream 6): DEV-only, anonymous account, empty
+    // stores only. Never runs in prod and never overwrites real user data.
+    // Dynamic import keeps the seed out of the production bundle.
+    if (!import.meta.env.DEV) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { seedDevDataIfEmpty } = await import("./lib/devSeed");
+        const result = await seedDevDataIfEmpty();
+        if (!cancelled && result.seeded) {
+          refreshWorkspace();
+          await refresh();
+        }
+      } catch (error) {
+        console.warn("Prior dev seed failed:", error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [refresh, refreshWorkspace]);
+
   useEffect(() => workspaceStore.subscribe(() => {
     refreshWorkspace();
     scheduleWorkspaceSync();
@@ -603,11 +629,13 @@ export function App() {
 
   function openNewTask(context?: Pick<TaskDraft, "areaId" | "projectId" | "status">): void {
     setNewTaskContext(context);
+    setComposerProjectId(context?.projectId ?? null);
     setComposerOpen(true);
   }
 
   async function saveTask(input: TaskDraft) {
-    await localStore.saveTask({ ...newTaskContext, ...input, peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
+    if (input.projectId && collaborationStore.role(input.projectId) === "viewer") throw new Error("You have view-only access to this project.");
+    await localStore.saveTask({ ...newTaskContext, ...input, completed: input.status === "done", peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
     setComposerOpen(false);
     setNewTaskContext(undefined);
     await refresh();
@@ -616,7 +644,8 @@ export function App() {
 
   async function saveEditedTask(input: TaskDraft) {
     if (!editingTask) return;
-    await localStore.updateTask({ ...editingTask, ...input, description: input.description ?? "", dueDate: input.dueDate ?? null, priority: input.priority ?? 4 });
+    if (editingTask.projectId && collaborationStore.role(editingTask.projectId) === "viewer") throw new Error("You have view-only access to this project.");
+    await localStore.updateTask({ ...editingTask, ...input, completed: input.status ? input.status === "done" : editingTask.completed, description: input.description ?? "", dueDate: input.dueDate ?? null, priority: input.priority ?? 4 });
     setEditingTask(null);
     await refresh();
     void syncNow();
@@ -752,6 +781,7 @@ export function App() {
   }
 
   async function changeTask(task: Task) {
+    if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error("You have view-only access to this project.");
     const previous = tasks.find((item) => item.id === task.id);
     const savedTask = await localStore.updateTask(task);
     if (previous && !previous.completed && task.completed) {
@@ -766,6 +796,7 @@ export function App() {
   }
 
   async function deleteTask(task: Task) {
+    if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error("You have view-only access to this project.");
     await localStore.removeTask(task);
     releaseCompletionExit(task.id);
     await refresh();
@@ -796,11 +827,27 @@ export function App() {
   async function changeHabit(habit: Habit) { await localStore.updateHabit(habit); await refresh(); void syncNow(); }
   async function deleteHabit(habit: Habit) { await localStore.removeHabit(habit); await refresh(); void syncNow(); }
 
+  async function saveProjectDetails(project: Project): Promise<void> {
+    const entry = collaborationStore.get(project.id);
+    if (entry?.role === "viewer") throw new Error("You have view-only access to this project.");
+    if (entry && entry.role !== "owner") {
+      const token = await getToken();
+      if (!token) throw new Error("Sign in to update this shared project.");
+      await api.updateCollaborativeProject(project.id, project, token);
+      await collaborationStore.sync(token);
+    } else {
+      workspaceStore.updateProject(project);
+    }
+    refreshWorkspace();
+    void syncNow();
+  }
+
   const collaborationByProject = useMemo<CollaborationByProject>(() => {
     const stateOptions = [
-      { id: "inbox", name: "Triage", category: "triage" as const },
+      { id: "backlog", name: "Backlog", category: "backlog" as const },
       { id: "next", name: "Todo", category: "unstarted" as const },
       { id: "in_progress", name: "In progress", category: "started" as const },
+      { id: "waiting", name: "Waiting", category: "started" as const },
       { id: "done", name: "Done", category: "completed" as const },
     ];
     const result: Record<string, Omit<ProjectCollaborationProps, "project">> = {};
@@ -810,25 +857,50 @@ export function App() {
       // need to render the same workspace before the first authenticated sync.
       const entry = collaborationStore.get(project.id);
       const readOnly = entry?.role === "viewer";
-      const members = entry?.members.map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email, role: member.role })) ?? (user ? [{ id: user.id, name: user.displayName || user.email, email: user.email, role: "owner" as const }] : []);
+      const members = entry?.members.map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email, avatarUrl: member.avatarUrl, role: member.role })) ?? (user ? [{ id: user.id, name: user.displayName || user.email, email: user.email, avatarUrl: user.avatarUrl, role: "owner" as const }] : []);
       const memberById = new Map(members.map((member) => [member.id, member]));
-      const projectIssues = tasks.filter((task) => task.projectId === project.id).map((task) => ({
+      const projectIssues = tasks.filter((task) => task.projectId === project.id).map((task) => {
+        const rawState = task.completed ? "done" : task.status ?? "backlog";
+        return {
         id: task.id,
         title: task.title,
-        stateId: task.completed ? "done" : task.status ?? "inbox",
+        stateId: rawState === "inbox" ? "backlog" : rawState,
         priority: task.priority,
         people: (task.peopleIds ?? []).map((personId): TaskPerson | null => {
           const person = memberById.get(personId);
-          return person ? { id: person.id, name: person.name, email: person.email, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator" } : null;
+          return person ? { id: person.id, name: person.name, email: person.email, avatarUrl: person.avatarUrl, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator" } : null;
         }).filter((person): person is TaskPerson => Boolean(person)),
         properties: [],
-      }));
+      };
+      });
       result[project.id] = {
         issues: projectIssues,
         states: stateOptions,
-        cycles: [],
+        cycles: (project.cycles ?? []).map((cycle) => {
+          const assigned = projectIssues.filter((issue) => cycle.issueIds?.includes(issue.id));
+          const now = new Date();
+          const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+          return { ...cycle, phase: cycle.endsOn < today ? "past" as const : cycle.startsOn > today ? "upcoming" as const : "current" as const, dateLabel: `${cycle.startsOn} – ${cycle.endsOn}`, issueCount: assigned.length, completedCount: assigned.filter((issue) => issue.stateId === "done").length };
+        }),
         readOnly,
-        onCreateIssue: readOnly ? undefined : () => openNewTask({ projectId: project.id, status: "next" }),
+        onCreateIssue: readOnly ? undefined : () => openNewTask({ projectId: project.id, status: "backlog" }),
+        onEditProject: readOnly ? undefined : () => setProjectEditor(project),
+        onCreateCycle: readOnly ? undefined : () => setCycleEditor({ projectId: project.id }),
+        onEditCycle: readOnly ? undefined : (cycleId) => setCycleEditor({ projectId: project.id, cycleId }),
+        onOpenNotes: () => openNotes(project.id),
+        onOpenIssue: (id) => {
+          const task = tasks.find((item) => item.id === id && item.projectId === project.id);
+          if (task) { setComposerProjectId(task.projectId ?? null); setEditingTask(task); }
+        },
+        onDeleteIssue: readOnly ? undefined : (id) => {
+          const task = tasks.find((item) => item.id === id && item.projectId === project.id);
+          if (task) void deleteTask(task);
+        },
+        onMoveIssue: readOnly ? undefined : async (id, stateId) => {
+          const task = tasks.find((item) => item.id === id && item.projectId === project.id);
+          if (!task || !stateOptions.some((state) => state.id === stateId)) throw new Error("Unable to move this task.");
+          await changeTask({ ...task, status: stateId as Task["status"], completed: stateId === "done" });
+        },
         sharing: {
           members,
           invites: (entry?.pendingInvites ?? []).map((invite) => ({ id: invite.id, email: invite.email, role: invite.role })),
@@ -906,20 +978,18 @@ export function App() {
             })();
           },
         },
-        overview: { lead: members.find((member) => member.role === "owner") },
+        overview: { lead: members.find((member) => member.role === "owner"), health: project.health ?? undefined, startDate: project.startDate ?? undefined, targetDate: project.targetDate ?? undefined },
       };
     }
     return result;
   }, [openNewTask, projects, tasks, user, refreshWorkspace]);
 
   const taskPlanning = useMemo<TaskPlanningProps | undefined>(() => {
-    const projectId = editingTask?.projectId ?? newTaskContext?.projectId;
-    if (!projectId) return undefined;
-    const entry = collaborationStore.get(projectId);
-    if (!entry) return undefined;
-    const availablePeople: Person[] = entry.members.map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email }));
-    if (user && !availablePeople.some((person) => person.id === user.id)) availablePeople.unshift({ id: user.id, name: user.displayName || user.email, email: user.email });
-    const selectedIds = editingTask?.peopleIds?.length ? editingTask.peopleIds : user ? [user.id] : [];
+    const projectId = composerProjectId !== undefined ? composerProjectId : editingTask?.projectId ?? newTaskContext?.projectId;
+    const entry = projectId ? collaborationStore.get(projectId) : undefined;
+    const availablePeople: Person[] = (entry?.members ?? []).map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email, avatarUrl: member.avatarUrl }));
+    if (user && !availablePeople.some((person) => person.id === user.id)) availablePeople.unshift({ id: user.id, name: user.displayName || user.email, email: user.email, avatarUrl: user.avatarUrl });
+    const selectedIds = editingTask && editingTask.projectId === projectId ? editingTask.peopleIds ?? [] : user ? [user.id] : [];
     const people: TaskPerson[] = selectedIds.map((personId) => {
       const person = availablePeople.find((item) => item.id === personId) ?? { id: personId, name: "Unknown person" };
       return { ...person, role: personId === user?.id ? "owner" : "collaborator" };
@@ -927,12 +997,12 @@ export function App() {
     return {
       people,
       availablePeople,
-      readOnly: entry.role === "viewer",
+      readOnly: entry?.role === "viewer" || Boolean(editingTask?.projectId && collaborationStore.role(editingTask.projectId) === "viewer"),
       fields: [
-        { key: "state", label: "Workflow state", options: [{ id: "inbox", name: "Triage" }, { id: "next", name: "Todo" }, { id: "in_progress", name: "In progress" }, { id: "done", name: "Done" }], selectedIds: [editingTask?.status ?? newTaskContext?.status ?? "inbox"] },
+        { key: "state", label: "Workflow state", options: [{ id: "backlog", name: "Backlog" }, { id: "next", name: "Todo" }, { id: "in_progress", name: "In progress" }, { id: "done", name: "Done" }], selectedIds: [(() => { const raw = editingTask?.status ?? newTaskContext?.status ?? "backlog"; return raw === "inbox" ? "backlog" : raw; })()] },
       ],
     };
-  }, [editingTask, newTaskContext, user]);
+  }, [editingTask, newTaskContext, composerProjectId, user, projects]);
 
   async function logout() {
     const token = await getToken().catch(() => null);
@@ -1060,7 +1130,7 @@ export function App() {
         agentOpen={agentOpen}
         aiShortcut={aiShortcut}
         updateAvailable={desktopUpdate !== null}
-        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}
+        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
         onViewChange={changeView}
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
@@ -1068,7 +1138,7 @@ export function App() {
         onCloseMobile={() => setMobileNavOpen(false)}
       />
 
-      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}>
+      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}>
         <MobileTopBar
           activeView={activeView}
           projectName={projects.find((project) => project.id === selectedProjectId)?.name}
@@ -1104,7 +1174,7 @@ export function App() {
             onHabitEdit={(habit) => { setEditingHabit(habit); setHabitComposerOpen(true); }}
             onTaskChange={changeTask}
             onTaskDelete={deleteTask}
-            onTaskEdit={(task) => setEditingTask(task)}
+            onTaskEdit={(task) => { setComposerProjectId(task.projectId ?? null); setEditingTask(task); }}
             areas={areas}
             projects={projects}
             selectedProjectId={selectedProjectId}
@@ -1117,12 +1187,12 @@ export function App() {
             collaborationByProject={collaborationByProject}
           />
         </CompletionExitProvider>
-        {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => setComposerOpen(true)}><Icon name="plus" /> New task</button>}
+        {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => openNewTask()}><Icon name="plus" /> New task</button>}
       </main>
 
       <AgentSidebar
         open={agentOpen}
-        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen}
+        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
         onClose={() => setAgentOpen(false)}
         tasks={tasks}
         habits={habits}
@@ -1138,7 +1208,22 @@ export function App() {
         onOpenSettings={() => { setAgentOpen(false); changeView("settings"); }}
       />
 
-      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); }} />}
+      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onProjectChange={setComposerProjectId} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); setComposerProjectId(undefined); }} />}
+      {projectEditor && <ProjectEditor project={projectEditor} avatarUrl={user?.avatarUrl} onClose={() => setProjectEditor(null)} onSave={async (project) => { await saveProjectDetails(project); setProjectEditor(null); }} />}
+      {cycleEditor && <ProjectCycleEditor
+        cycle={projects.find((project) => project.id === cycleEditor.projectId)?.cycles?.find((cycle) => cycle.id === cycleEditor.cycleId)}
+        issues={collaborationByProject[cycleEditor.projectId]?.issues ?? []}
+        onClose={() => setCycleEditor(null)}
+        onSave={async (draft) => {
+          const project = projects.find((item) => item.id === cycleEditor.projectId);
+          if (!project) throw new Error("Project no longer available.");
+          if (!draft.startsOn || !draft.endsOn) throw new Error("Choose a start and end date.");
+          const cycle = { ...draft, startsOn: draft.startsOn, endsOn: draft.endsOn, id: cycleEditor.cycleId ?? crypto.randomUUID() };
+          const cycles = cycleEditor.cycleId ? (project.cycles ?? []).map((item) => item.id === cycle.id ? cycle : item) : [...(project.cycles ?? []), cycle];
+          await saveProjectDetails({ ...project, cycles });
+          setCycleEditor(null);
+        }}
+      />}
       {habitComposerOpen && <HabitComposer habit={editingHabit ?? undefined} onSave={saveHabit} onCancel={() => { setHabitComposerOpen(false); setEditingHabit(null); }} />}
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>Completed</strong><small>{completionCelebration.title}</small></span></div>}

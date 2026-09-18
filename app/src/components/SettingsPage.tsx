@@ -9,6 +9,7 @@ import { getAndroidAppVersion, supportsAndroidUpdates } from "../lib/androidUpda
 import { getAppVersion, supportsDesktopUpdates } from "../lib/updater";
 import { UpdateCards } from "./UpdateCards";
 import { Icon } from "./Icon";
+import { EditableAvatar, IconUpload } from "./IconPicker";
 import "./SettingsPage.css";
 
 type SettingsTab = "general" | "profile" | "assistant";
@@ -31,6 +32,60 @@ async function fetchLatestReleaseVersion(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function DevSeedPanel() {
+  if (!import.meta.env.DEV) return null;
+  return <DevSeedPanelInner />;
+}
+
+function DevSeedPanelInner() {
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function run(action: "load" | "reset") {
+    if (busy) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      const seed = await import("../lib/devSeed");
+      if (action === "reset") {
+        await seed.clearDevSeedData({ dev: true });
+      }
+      const result = await seed.seedDevDataIfEmpty({ dev: true, force: true, requireAnonymous: false });
+      if (result.seeded) {
+        setStatus(`Demo data ready (${result.tasks} tasks, ${result.projects} projects). Reloading…`);
+        window.setTimeout(() => window.location.reload(), 600);
+      } else {
+        setStatus(`Demo seed skipped (${result.reason}).`);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to load demo data.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="settings-codex" aria-label="Demo data (dev only)">
+      <div className="settings-codex-heading">
+        <div className="settings-codex-icon"><Icon name="sparkles" /></div>
+        <div>
+          <div className="settings-codex-title"><strong>Demo data</strong><span>Dev only</span></div>
+          <p>Loads sample tasks, projects, and icons when local stores are empty. Never runs in production builds.</p>
+        </div>
+      </div>
+      <div className="settings-page-row">
+        <button type="button" className="secondary-button" disabled={busy} onClick={() => void run("load")}>
+          {busy ? "Loading…" : "Load demo data"}
+        </button>
+        <button type="button" className="secondary-button" disabled={busy} onClick={() => void run("reset")}>
+          Reset demo data
+        </button>
+      </div>
+      {status && <p className="settings-hint" role="status">{status}</p>}
+    </section>
+  );
 }
 
 function GeneralSettings() {
@@ -66,6 +121,7 @@ function GeneralSettings() {
         <strong>{versionLabel}{!version && latest ? " · latest" : ""}</strong>
       </div>
       <UpdateCards />
+      <DevSeedPanel />
     </div>
   );
 }
@@ -75,6 +131,7 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
 
   useEffect(() => {
     setUsername(user?.displayName ?? "");
@@ -107,16 +164,36 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
     return <p className="settings-hint">Sign in to update your profile.</p>;
   }
 
+  function focusAvatarUpload() {
+    document.querySelector<HTMLInputElement>(".settings-profile .icon-upload-drop input[type=file]")?.click();
+  }
+
   return (
     <form className="settings-profile" onSubmit={(event) => void handleSave(event)}>
       <div className="settings-profile-summary">
-        <div className="settings-profile-avatar">
-          {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}
-        </div>
+        <EditableAvatar
+          person={{ id: user.id, name: user.displayName || user.email, avatarUrl: user.avatarUrl }}
+          canEdit
+          label="Edit profile photo"
+          className="settings-profile-avatar-wrap"
+          avatarClassName="settings-profile-avatar"
+          onOpen={focusAvatarUpload}
+        />
         <div>
           <strong>{user.displayName || "Prior account"}</strong>
           <span>{user.email}</span>
         </div>
+      </div>
+      <div className="settings-page-field">
+        <span>Profile photo</span>
+        <IconUpload
+          currentIcon={user.avatarUrl || "user"}
+          fallback="user"
+          disabled={avatarBusy}
+          onBusyChange={setAvatarBusy}
+          onUploaded={(avatarUrl) => onUserUpdated({ ...user, avatarUrl })}
+        />
+        <small className="settings-help">Click your photo to change it. Custom photos stay on this device; your Google photo is managed by Google.</small>
       </div>
       <label className="settings-page-field">
         <span>Username</span>

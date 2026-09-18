@@ -213,6 +213,7 @@ describe("Task people and planning", () => {
   it("integrates optional planning without changing the existing task save payload", () => {
     const onSave = vi.fn(async (_draft: TaskDraft) => undefined);
     render(<TaskComposer planning={{ people: [owner], availablePeople: [owner], fields: [] }} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByText(/More options/));
     expect(screen.getByRole("region", { name: "Task people" })).toBeVisible();
     fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "Draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));

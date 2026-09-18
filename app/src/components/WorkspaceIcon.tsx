@@ -3,8 +3,26 @@ import { Icon, type IconName } from "./Icon";
 export const DEFAULT_AREA_ICON: IconName = "briefcase";
 export const DEFAULT_PROJECT_ICON: IconName = "folder";
 
-export const AREA_ICON_OPTIONS: IconName[] = ["briefcase", "home", "heart", "book", "grid", "focus"];
-export const PROJECT_ICON_OPTIONS: IconName[] = ["folder", "rocket", "target", "code", "sparkles", "bolt"];
+export const AREA_ICON_OPTIONS: IconName[] = [
+  "briefcase", "home", "heart", "book", "grid", "focus",
+  "folder", "inbox", "plan", "star", "flag", "tag",
+  "calendar-check", "check-circle", "list", "list-todo",
+  "sparkles", "bolt", "rocket", "target", "code", "user",
+  "cloud", "palette", "file-text", "link",
+];
+export const PROJECT_ICON_OPTIONS: IconName[] = [
+  "folder", "folder-plus", "rocket", "target", "flag", "star",
+  "bolt", "sparkles", "code", "file-text", "file", "file-plus",
+  "list-todo", "list-ordered", "list", "grid", "columns",
+  "calendar-check", "check-circle", "inbox", "plan", "tag",
+  "link", "palette", "briefcase", "book", "cloud", "gear",
+];
+export const PROFILE_ICON_OPTIONS: IconName[] = [
+  "user", "star", "heart", "sparkles", "bolt", "rocket",
+  "target", "flag", "book", "briefcase", "home", "palette",
+  "code", "cloud", "plan", "focus", "grid", "list",
+  "check-circle", "calendar-check", "inbox", "tag", "file-text", "gear",
+];
 
 const ICON_NAMES = new Set<IconName>([
   "plus", "check", "check-circle", "star", "bolt", "trash", "arrow", "cloud", "user", "inbox", "focus",
@@ -21,7 +39,7 @@ type Props = {
 };
 
 function isImageIcon(icon: string | null | undefined): boolean {
-  return Boolean(icon?.startsWith("data:image/"));
+  return Boolean(icon?.startsWith("data:image/") || icon?.startsWith("https://"));
 }
 
 function isIconName(icon: string | null | undefined): icon is IconName {

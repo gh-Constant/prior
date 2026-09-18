@@ -1,0 +1,52 @@
+.task-composer-modal.modal {
+  width: min(calc(100% - 24px), 600px);
+  max-height: calc(100dvh - 24px);
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+.task-composer-modal .modal-header { padding: 12px 18px 8px; }
+.task-composer-modal .modal-header h2 { font-size: 16px; }
+.task-composer-modal .task-composer-body { min-width: 0; margin: 0; padding: 0 18px; border: 0; }
+.task-composer-modal .composer-input-row { margin: 0; padding: 8px 0; border: 0; background: transparent; }
+.task-composer-modal .composer-input-row input { font-size: 18px; font-weight: 550; }
+.task-composer-modal .composer-description { width: 100%; min-height: 36px; max-height: 180px; margin: 0 0 10px; padding: 7px 0; border: 0; background: transparent; }
+.task-composer-modal .task-composer-primary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.task-composer-modal .task-composer-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; color: var(--muted); font-size: 10px; }
+.task-composer-modal .task-composer-field > span { padding-left: 2px; }
+.task-composer-modal .task-composer-field select,
+.task-composer-modal .task-composer-field input { width: 100%; min-width: 0; min-height: 34px; padding: 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); font: inherit; font-size: 12px; }
+.task-composer-modal .task-composer-field select[multiple] { min-height: 80px; }
+.task-composer-modal .task-composer-secondary,
+.task-composer-modal .task-composer-people { margin-top: 10px; }
+.task-composer-modal summary { width: fit-content; padding: 5px 0; color: var(--muted); font-size: 12px; cursor: pointer; }
+.task-composer-modal .task-composer-secondary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-top: 6px; }
+.task-composer-modal .task-composer-description-field { grid-column: 1 / -1; }
+.task-composer-modal .task-composer-more-heading { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.task-composer-modal .task-composer-planning { margin-top: 4px; }
+.task-composer-modal .task-composer-flags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.task-composer-modal .option-button { min-height: 32px; padding: 0 9px; }
+.task-composer-modal .task-composer-people > summary { display: flex; align-items: center; gap: 8px; list-style: none; }
+.task-composer-modal .task-composer-people > summary::-webkit-details-marker { display: none; }
+.task-composer-modal .task-composer-people > summary::after { content: "+"; }
+.task-composer-modal .task-composer-people[open] > summary::after { content: "−"; }
+.task-composer-modal .task-composer-avatars { display: flex; align-items: center; }
+.task-composer-modal .task-composer-avatars .collab-avatar + .collab-avatar { margin-left: -5px; border: 2px solid var(--panel); }
+.task-composer-modal .collab-people-picker { padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.task-composer-modal .task-composer-feedback { margin: 10px 18px 0; color: var(--muted); font-size: 12px; }
+.task-composer-modal .task-composer-feedback:empty { display: none; }
+.task-composer-modal .task-composer-error { color: #b43b25; }
+.task-composer-modal .modal-footer { margin: 14px 18px 0; }
+.task-composer-modal :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.task-composer-modal button:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 480px) {
+  .task-composer-modal .task-composer-primary,
+  .task-composer-modal .task-composer-secondary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .task-composer-modal .task-composer-field input,
+  .task-composer-modal .task-composer-field select,
+  .task-composer-modal .composer-description { font-size: 16px; }
+}
+@media (pointer: coarse) {
+  .task-composer-modal .task-composer-field input,
+  .task-composer-modal .task-composer-field select,
+  .task-composer-modal .option-button,
+  .task-composer-modal summary { min-height: 44px; }
+}

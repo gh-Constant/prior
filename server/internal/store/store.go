@@ -444,6 +444,11 @@ func syncProjects(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []w
 		if !applyIfNewer(project.UpdatedAt, current, project.ID) {
 			continue
 		}
+		var existingOwner uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT user_id FROM projects WHERE id = $1`, project.ID).Scan(&existingOwner)
+		if err == nil && existingOwner != userID {
+			continue
+		}
 		createdAt := project.CreatedAt
 		if createdAt.IsZero() {
 			createdAt = project.UpdatedAt
@@ -452,14 +457,19 @@ func syncProjects(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []w
 		if err != nil {
 			return err
 		}
+		metadata, err := metadataForProject(project)
+		if err != nil {
+			return err
+		}
 		result, err := tx.Exec(ctx, `
-			INSERT INTO projects (id, user_id, area_id, name, description, icon, status, created_at, updated_at, deleted_at, revision)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			INSERT INTO projects (id, user_id, area_id, name, description, icon, status, metadata, created_at, updated_at, deleted_at, revision)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			ON CONFLICT (user_id, id) DO UPDATE SET area_id = EXCLUDED.area_id, name = EXCLUDED.name,
 			description = EXCLUDED.description, icon = EXCLUDED.icon, status = EXCLUDED.status,
+			metadata = CASE WHEN $13 THEN EXCLUDED.metadata ELSE projects.metadata END,
 			updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
 			WHERE projects.updated_at IS NULL OR EXCLUDED.updated_at >= projects.updated_at`,
-			project.ID, userID, project.AreaID, project.Name, project.Description, project.Icon, project.Status, createdAt, project.UpdatedAt, project.DeletedAt, revision)
+			project.ID, userID, project.AreaID, project.Name, project.Description, project.Icon, project.Status, metadata, createdAt, project.UpdatedAt, project.DeletedAt, revision, project.PlanningFieldsPresent())
 		if err != nil {
 			return err
 		}
@@ -568,13 +578,18 @@ func loadWorkspace(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (workspace.
 	}
 	areaRows.Close()
 
-	projectRows, err := tx.Query(ctx, `SELECT id::text, area_id::text, name, description, icon, status, created_at, updated_at, deleted_at FROM projects WHERE user_id = $1 ORDER BY id`, userID)
+	projectRows, err := tx.Query(ctx, `SELECT id::text, area_id::text, name, description, icon, status, metadata, created_at, updated_at, deleted_at FROM projects WHERE user_id = $1 ORDER BY id`, userID)
 	if err != nil {
 		return workspace.Snapshot{}, err
 	}
 	for projectRows.Next() {
 		var project workspace.Project
-		if err := projectRows.Scan(&project.ID, &project.AreaID, &project.Name, &project.Description, &project.Icon, &project.Status, &project.CreatedAt, &project.UpdatedAt, &project.DeletedAt); err != nil {
+		var metadata []byte
+		if err := projectRows.Scan(&project.ID, &project.AreaID, &project.Name, &project.Description, &project.Icon, &project.Status, &metadata, &project.CreatedAt, &project.UpdatedAt, &project.DeletedAt); err != nil {
+			projectRows.Close()
+			return workspace.Snapshot{}, err
+		}
+		if err := applyProjectMetadata(&project, metadata); err != nil {
 			projectRows.Close()
 			return workspace.Snapshot{}, err
 		}
@@ -1619,7 +1634,7 @@ func validateTask(task *tasks.Task) error {
 	if task.Status == "" {
 		task.Status = "inbox"
 	}
-	if task.Status != "inbox" && task.Status != "next" && task.Status != "in_progress" && task.Status != "waiting" && task.Status != "done" {
+	if task.Status != "inbox" && task.Status != "backlog" && task.Status != "next" && task.Status != "in_progress" && task.Status != "waiting" && task.Status != "done" {
 		return errors.New("invalid task status")
 	}
 	if task.Completed {

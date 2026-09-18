@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Icon, type IconName } from "../Icon";
 import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
+import { PersonAvatar } from "./PersonAvatar";
 import type { Person, PlanningKey, ProjectIssue, TaskPerson, TaskPlanningProps } from "./types";
 import "./Collaboration.css";
 
@@ -9,10 +10,11 @@ const propertyIcons: Record<PlanningKey, IconName> = {
 };
 
 export function PeopleChips({ people }: { people: readonly Person[] }) {
+  if (!people.length) return null;
   return <div className="collab-chips" aria-label="People">
-    {people.length ? people.map((person) => <span className="collab-chip" key={person.id}>
-      <span className="collab-avatar" aria-hidden="true">{person.name.trim().slice(0, 1).toUpperCase() || "?"}</span>{person.name}
-    </span>) : <span className="collab-muted">No people assigned</span>}
+    {people.map((person) => <span className="collab-chip" key={person.id}>
+      <PersonAvatar person={person} />{person.name}
+    </span>)}
   </div>;
 }
 
@@ -45,6 +47,7 @@ export function TaskPeoplePicker({ people, availablePeople, readOnly = false, lo
       {people.length > 0 && <ul className="collab-members">{people.map((person) => {
         const lastOwner = person.role === "owner" && ownerCount === 1;
         return <li key={person.id}>
+          <PersonAvatar person={person} />
           <div className="collab-person-copy"><strong>{person.name}</strong>{lastOwner && <small>At least one owner must remain</small>}</div>
           <select aria-label={`Task role for ${person.name}`} value={person.role} disabled={!editable || lastOwner} onChange={(event) => changeRole(person, event.target.value as TaskPerson["role"])}>
             <option value="owner">Owner</option><option value="assignee">Assignee</option><option value="collaborator">Collaborator</option>

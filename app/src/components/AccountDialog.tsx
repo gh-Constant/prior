@@ -3,6 +3,7 @@ import type { SessionUser } from "../lib/auth";
 import { useModalDialog } from "../hooks/useModalDialog";
 import { SignInPanel, type AuthMode } from "./SignInPanel";
 import { Icon } from "./Icon";
+import { EditableAvatar } from "./IconPicker";
 
 type Props = {
   readonly user: SessionUser | null;
@@ -35,7 +36,11 @@ export function AccountDialog({ user, authError, onClose, onAuthenticated, onGoo
         {user ? (
           <div className="account-choice">
             <div className="account-dialog-summary">
-              <div className="account-avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}</div>
+              <EditableAvatar
+                person={{ id: user.id, name: user.displayName || user.email, avatarUrl: user.avatarUrl }}
+                readOnly
+                avatarClassName="account-avatar"
+              />
               <div>
                 <p className="account-panel-name">{user.displayName || "Prior account"}</p>
                 <p className="account-panel-email">{user.email}</p>
