@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="grad-c-sweep" x1="18" y1="20" x2="88" y2="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ff7e65" />
+      <stop offset="35%" stop-color="#fa654a" />
+      <stop offset="70%" stop-color="#fdbb72" />
+      <stop offset="100%" stop-color="#e8caa9" />
+    </linearGradient>
+  </defs>
+  <path d="M 28 84 V 28 C 28 20, 36 15, 48 15 C 68 15, 84 26, 84 44 C 84 62, 68 71, 50 71 H 28" 
+    stroke="url(#grad-c-sweep)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="28" cy="83" r="6" fill="#fa654a" />
+</svg>

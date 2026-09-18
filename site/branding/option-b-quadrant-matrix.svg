@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="grad-b-stem" x1="20" y1="16" x2="40" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2d2825" />
+      <stop offset="100%" stop-color="#181514" />
+    </linearGradient>
+    <linearGradient id="grad-b-pill" x1="36" y1="16" x2="88" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ff795e" />
+      <stop offset="60%" stop-color="#fa654a" />
+      <stop offset="100%" stop-color="#d63f25" />
+    </linearGradient>
+    <linearGradient id="grad-b-dot" x1="42" y1="64" x2="64" y2="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fbe4d0" />
+      <stop offset="100%" stop-color="#e8caa9" />
+    </linearGradient>
+  </defs>
+  <rect x="22" y="16" width="16" height="68" rx="8" fill="url(#grad-b-stem)" />
+  <path d="M 38 16 H 64 C 76.15 16, 86 25.85, 86 38 C 86 50.15, 76.15 60, 64 60 H 38 V 16 Z" fill="url(#grad-b-pill)" />
+  <rect x="38" y="28" width="22" height="20" rx="6" fill="#0d0c0a" />
+  <circle cx="58" cy="74" r="8" fill="url(#grad-b-dot)" />
+</svg>

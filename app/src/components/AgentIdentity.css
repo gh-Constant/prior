@@ -1,5 +1,5 @@
 .agent-identity {
-  --identity-size: 36px;
+  --identity-size: 34px;
   position: relative;
   display: inline-grid;
   place-items: center;
@@ -7,121 +7,130 @@
   height: var(--identity-size);
   flex: 0 0 auto;
   isolation: isolate;
+  border-radius: 50%;
 }
 
 .agent-identity-tiny { --identity-size: 28px; }
 .agent-identity-small { --identity-size: 34px; }
 .agent-identity-hero { --identity-size: 118px; }
 
-.agent-symbol,
-.agent-symbol-aura {
+/* Fluid background container */
+.agent-fluid-wrapper {
   position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 3px 12px rgba(250, 101, 74, 0.32), inset 0 1px 1.5px rgba(255, 255, 255, 0.38);
+  background: #fa654a;
+  z-index: 1;
 }
 
-.agent-symbol { overflow: visible; filter: drop-shadow(0 6px 8px #d76a5230); }
+.agent-identity-hero .agent-fluid-wrapper {
+  box-shadow: 0 12px 32px rgba(250, 101, 74, 0.45), inset 0 1.5px 2px rgba(255, 255, 255, 0.5);
+}
 
-.agent-symbol-aura {
-  inset: 16%;
+.agent-fluid-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+}
+
+/* Fallback animated CSS fluid gradient */
+.agent-fluid-css-fallback {
+  position: absolute;
+  inset: -20%;
+  width: 140%;
+  height: 140%;
+  background: conic-gradient(from 140deg at 50% 50%, #ff884d, #fa654a, #b8381f, #fdbb68, #ff884d);
+  filter: blur(8px);
+  opacity: 0.95;
+  animation: agent-fluid-drift 8s ease-in-out infinite;
   z-index: -1;
-  width: 68%;
-  height: 68%;
-  border-radius: 40% 60% 55% 45%;
-  background: conic-gradient(from 120deg, #ff8067, #f8b878, #96d8d0, #9e91e9, #eb85b4, #ff8067);
-  filter: blur(10px);
-  opacity: .38;
-  transform: rotate(10deg);
-  animation: none;
 }
 
-.agent-symbol-shape { transform-box: fill-box; transform-origin: center; }
-.agent-symbol-highlight { opacity: .72; mix-blend-mode: screen; }
-.agent-symbol-glint { fill: #fffdf5d4; opacity: .82; transform-box: fill-box; transform-origin: center; }
-
-.agent-symbol-stop-one,
-.agent-symbol-stop-two,
-.agent-symbol-stop-three { animation: none; }
-
-.agent-identity.is-thinking .agent-symbol-aura {
-  opacity: .72;
-  filter: blur(12px);
-  animation: agent-symbol-aura-thinking 1.45s ease-in-out infinite;
+.agent-identity.is-thinking .agent-fluid-css-fallback {
+  animation: agent-fluid-drift 2.5s ease-in-out infinite;
 }
 
-.agent-identity.is-thinking .agent-symbol { filter: drop-shadow(0 7px 15px #d95e4a70); }
-.agent-identity.is-thinking .agent-symbol-shape { animation: agent-symbol-thinking 1.35s ease-in-out infinite; }
-.agent-identity.is-thinking .agent-symbol-highlight { animation: agent-symbol-highlight-thinking .7s ease-in-out infinite; }
-.agent-identity.is-thinking .agent-symbol-glint { animation: agent-symbol-glint-thinking .8s ease-in-out infinite; }
-.agent-identity.is-thinking .agent-symbol-stop-one { animation-duration: 1.2s; }
-.agent-identity.is-thinking .agent-symbol-stop-two { animation-duration: 1.35s; }
-.agent-identity.is-thinking .agent-symbol-stop-three { animation-duration: 1.5s; }
-
-.agent-identity-hero .agent-symbol { filter: drop-shadow(0 12px 22px #d76a5248); }
-.agent-identity-hero .agent-symbol-aura { filter: blur(17px); }
-
-@keyframes agent-symbol-idle {
-  0%, 100% { transform: translate3d(-1%, 1%, 0) rotate(-4deg) scale(.97); }
-  50% { transform: translate3d(1%, -2%, 0) rotate(4deg) scale(1); }
+/* Floating White Prior Logo Mark */
+.agent-white-symbol {
+  position: absolute;
+  inset: 18%;
+  width: 64%;
+  height: 64%;
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.28)) drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
+  transform-origin: center;
 }
 
-@keyframes agent-symbol-aura-idle {
-  0%, 100% { transform: rotate(10deg) scale(.9); opacity: .3; }
-  50% { transform: rotate(75deg) scale(1.14); opacity: .52; }
+.agent-identity.is-idle .agent-white-symbol {
+  animation: agent-logo-float 3.5s ease-in-out infinite;
 }
 
-@keyframes agent-symbol-highlight-idle {
-  0%, 100% { opacity: .55; transform: translate(-2%, 0); }
-  50% { opacity: .92; transform: translate(4%, 3%); }
+.agent-identity.is-thinking .agent-white-symbol {
+  animation: agent-logo-thinking 1.25s ease-in-out infinite;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.38)) drop-shadow(0 0 16px rgba(255, 255, 255, 0.7));
 }
 
-@keyframes agent-symbol-glint-idle {
-  0%, 100% { opacity: .62; transform: scale(.85) rotate(-8deg); }
-  50% { opacity: 1; transform: scale(1.05) rotate(8deg); }
+.agent-identity.is-thinking .agent-fluid-wrapper {
+  box-shadow: 0 4px 20px rgba(250, 101, 74, 0.6), 0 0 12px rgba(255, 140, 90, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.6);
+  animation: agent-fluid-pulse 1.25s ease-in-out infinite;
 }
 
-@keyframes agent-symbol-thinking {
-  0%, 100% { transform: scale(.93) rotate(0deg); }
-  50% { transform: scale(1.08) rotate(180deg); }
+/* Smooth organic floating animations */
+@keyframes agent-logo-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) rotate(1.5deg) scale(1.03);
+  }
 }
 
-@keyframes agent-symbol-aura-thinking {
-  0%, 100% { transform: rotate(0deg) scale(.82); opacity: .46; }
-  50% { transform: rotate(180deg) scale(1.2); opacity: .88; }
+@keyframes agent-logo-thinking {
+  0%, 100% {
+    transform: translateY(0px) rotate(-2deg) scale(0.97);
+  }
+  50% {
+    transform: translateY(-4px) rotate(3deg) scale(1.06);
+  }
 }
 
-@keyframes agent-symbol-highlight-thinking {
-  0%, 100% { opacity: .42; transform: translate(-8%, -2%) scale(.88); }
-  50% { opacity: 1; transform: translate(8%, 5%) scale(1.1); }
+@keyframes agent-fluid-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
 }
 
-@keyframes agent-symbol-glint-thinking {
-  0%, 100% { opacity: .45; transform: scale(.7) rotate(-20deg); }
-  50% { opacity: 1; transform: scale(1.2) rotate(20deg); }
-}
-
-@keyframes agent-symbol-stop-one {
-  from { stop-color: #ff725d; }
-  to { stop-color: #f08eb2; }
-}
-
-@keyframes agent-symbol-stop-two {
-  from { stop-color: #f6ba72; }
-  to { stop-color: #f7d797; }
-}
-
-@keyframes agent-symbol-stop-three {
-  from { stop-color: #8ecbc9; }
-  to { stop-color: #9e91e9; }
+@keyframes agent-fluid-drift {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.15);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .agent-identity,
   .agent-identity *,
-  .agent-identity *::before,
-  .agent-identity *::after {
+  .agent-white-symbol,
+  .agent-fluid-wrapper,
+  .agent-fluid-css-fallback {
     animation: none !important;
     transition: none !important;
   }
-
 }
