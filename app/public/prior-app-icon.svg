@@ -1,48 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
   <defs>
-    <!-- macOS elevation shadow -->
-    <filter id="mac-drop-shadow" x="-10%" y="-10%" width="125%" height="130%">
-      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000000" flood-opacity="0.36" />
-      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.22" />
-    </filter>
-    <!-- Background Gradient (Obsidian to deep espresso) -->
-    <linearGradient id="mac-bg-grad" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#2a2622" />
-      <stop offset="100%" stop-color="#12100f" />
+    <linearGradient id="mac-bg" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2e2825" />
+      <stop offset="1" stop-color="#100e0d" />
     </linearGradient>
-    <!-- Rim Highlight -->
-    <linearGradient id="mac-rim-grad" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28" />
-      <stop offset="50%" stop-color="#ffffff" stop-opacity="0.05" />
-      <stop offset="100%" stop-color="#000000" stop-opacity="0.4" />
+    <linearGradient id="mac-rim" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".26" />
+      <stop offset=".5" stop-color="#ffffff" stop-opacity=".05" />
+      <stop offset="1" stop-color="#000000" stop-opacity=".42" />
     </linearGradient>
-    <linearGradient id="mac-mark-obsidian" x1="300" y1="300" x2="650" y2="750" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#3c3632" />
-      <stop offset="100%" stop-color="#1a1715" />
+    <linearGradient id="mac-sheen" x1="512" y1="100" x2="512" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".09" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
     </linearGradient>
-    <linearGradient id="mac-mark-coral" x1="200" y1="200" x2="800" y2="700" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#ff7b62" />
-      <stop offset="50%" stop-color="#fa654a" />
-      <stop offset="100%" stop-color="#d63f25" />
-    </linearGradient>
-    <linearGradient id="mac-mark-cream" x1="300" y1="500" x2="500" y2="850" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#f8eee0" />
-      <stop offset="100%" stop-color="#ebd4bc" />
-    </linearGradient>
-    <filter id="mac-fold-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="-6" dy="12" stdDeviation="12" flood-color="#000000" flood-opacity="0.45" />
-    </filter>
   </defs>
-
-  <!-- Apple HIG 824x824 squircle centered in 1024x1024 (radius ~185) -->
-  <rect filter="url(#mac-drop-shadow)" x="100" y="100" width="824" height="824" rx="185" fill="url(#mac-bg-grad)" />
-  <!-- Inner rim stroke -->
-  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" stroke="url(#mac-rim-grad)" stroke-width="2" />
-
-  <!-- Logo Mark centered and scaled ~0.66 (footprint 660x660) -->
-  <g transform="translate(182, 182) scale(0.66)">
-    <path d="M 320 200 C 320 200, 520 200, 680 200 C 820 200, 880 320, 880 440 C 880 560, 800 660, 640 660 C 520 660, 420 660, 420 660 L 420 500 C 420 500, 500 500, 600 500 C 680 500, 720 460, 720 430 C 720 400, 680 360, 600 360 L 320 360 Z" fill="url(#mac-mark-obsidian)" />
-    <path d="M 320 500 C 370 500, 420 540, 420 600 L 420 800 C 420 850, 370 880, 320 880 C 270 880, 240 850, 240 800 L 240 600 C 240 540, 280 500, 320 500 Z" fill="url(#mac-mark-cream)" />
-    <path filter="url(#mac-fold-shadow)" d="M 280 200 C 220 200, 180 250, 180 320 C 180 420, 260 500, 380 560 L 560 650 C 620 680, 660 640, 660 580 C 660 520, 600 480, 520 440 L 380 360 C 320 320, 320 240, 380 220 C 410 210, 350 200, 280 200 Z" fill="url(#mac-mark-coral)" />
-  </g>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#mac-bg)" />
+  <rect x="100" y="100" width="824" height="500" rx="185" fill="url(#mac-sheen)" />
+  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" stroke="url(#mac-rim)" stroke-width="2" />
+  <svg x="177" y="192" width="640" height="640" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="mac-v1l-cream" x1="80" y1="30" x2="190" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#faf0e2" />
+      <stop offset=".6" stop-color="#f0dcc4" />
+      <stop offset="1" stop-color="#e3c5a4" />
+    </linearGradient>
+    <linearGradient id="mac-v1l-coral" x1="62" y1="178" x2="98" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff8a72" />
+      <stop offset=".5" stop-color="#fa654a" />
+      <stop offset="1" stop-color="#d63f25" />
+    </linearGradient>
+  </defs>
+  <!-- Bowl -->
+  <path d="M80 48 H132 C166 48 188 70 188 104 C188 138 166 160 132 160 H80" stroke="url(#mac-v1l-cream)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Stem -->
+  <path d="M80 48 V198" stroke="url(#mac-v1l-cream)" stroke-width="36" stroke-linecap="round" />
+  <!-- Coral foot: the priority accent -->
+  <path d="M80 196 V208" stroke="url(#mac-v1l-coral)" stroke-width="36" stroke-linecap="round" />
+</svg>
 </svg>

@@ -1,40 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 500" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 512" fill="none">
+  <svg x="40" y="56" width="400" height="400" viewBox="0 0 256 256">
   <defs>
-    <linearGradient id="prior-lockup-obsidian" x1="200" y1="200" x2="600" y2="900" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#2a2522" />
-      <stop offset="100%" stop-color="#141211" />
+    <linearGradient id="lock-v1-obs" x1="80" y1="30" x2="190" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#35302b" />
+      <stop offset=".55" stop-color="#211d1a" />
+      <stop offset="1" stop-color="#12100f" />
     </linearGradient>
-    <linearGradient id="prior-lockup-coral" x1="160" y1="180" x2="820" y2="600" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#ff7b62" />
-      <stop offset="45%" stop-color="#fa654a" />
-      <stop offset="100%" stop-color="#d63f25" />
+    <linearGradient id="lock-v1-coral" x1="62" y1="178" x2="98" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff7b62" />
+      <stop offset=".5" stop-color="#fa654a" />
+      <stop offset="1" stop-color="#d63f25" />
     </linearGradient>
-    <linearGradient id="prior-lockup-cream" x1="250" y1="500" x2="450" y2="850" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#f6ebd9" />
-      <stop offset="100%" stop-color="#ebd1b5" />
-    </linearGradient>
-    <filter id="prior-lockup-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="-4" dy="8" stdDeviation="8" flood-color="#000000" flood-opacity="0.32" />
-    </filter>
   </defs>
-  <!-- Mark translated to x=50, y=50, scaled 0.4 -->
-  <g transform="translate(50, 50) scale(0.4)">
-    <path d="M 320 200 C 320 200, 520 200, 680 200 C 820 200, 880 320, 880 440 C 880 560, 800 660, 640 660 C 520 660, 420 660, 420 660 L 420 500 C 420 500, 500 500, 600 500 C 680 500, 720 460, 720 430 C 720 400, 680 360, 600 360 L 320 360 Z" fill="url(#prior-lockup-obsidian)" />
-    <path d="M 320 500 C 370 500, 420 540, 420 600 L 420 800 C 420 850, 370 880, 320 880 C 270 880, 240 850, 240 800 L 240 600 C 240 540, 280 500, 320 500 Z" fill="url(#prior-lockup-cream)" />
-    <path filter="url(#prior-lockup-shadow)" d="M 280 200 C 220 200, 180 250, 180 320 C 180 420, 260 500, 380 560 L 560 650 C 620 680, 660 640, 660 580 C 660 520, 600 480, 520 440 L 380 360 C 320 320, 320 240, 380 220 C 410 210, 350 200, 280 200 Z" fill="url(#prior-lockup-coral)" />
-  </g>
-  <!-- Vector Wordmark: "Prior" -->
-  <g fill="#1a1715">
-    <!-- P -->
-    <path d="M 520 120 H 670 C 730 120, 780 160, 780 225 C 780 290, 730 330, 670 330 H 575 V 400 H 520 V 120 Z M 575 168 V 282 H 665 C 700 282, 725 260, 725 225 C 725 190, 700 168, 665 168 H 575 Z" />
-    <!-- r -->
-    <path d="M 835 200 H 885 V 235 C 900 210, 930 195, 965 195 C 980 195, 990 198, 998 202 L 980 250 C 970 246, 958 245, 946 245 C 910 245, 888 272, 888 320 V 400 H 835 V 200 Z" />
-    <!-- i -->
-    <circle cx="1060" cy="140" r="28" />
-    <rect x="1034" y="200" width="52" height="200" rx="4" />
-    <!-- o -->
-    <path d="M 1250 195 C 1315 195, 1365 245, 1365 305 C 1365 365, 1315 405, 1250 405 C 1185 405, 1135 365, 1135 305 C 1135 245, 1185 195, 1250 195 Z M 1250 245 C 1215 245, 1188 272, 1188 305 C 1188 338, 1215 360, 1250 360 C 1285 360, 1312 338, 1312 305 C 1312 272, 1285 245, 1250 245 Z" />
-    <!-- r -->
-    <path d="M 1420 200 H 1470 V 235 C 1485 210, 1515 195, 1550 195 C 1565 195, 1575 198, 1583 202 L 1565 250 C 1555 246, 1543 245, 1531 245 C 1495 245, 1473 272, 1473 320 V 400 H 1420 V 200 Z" />
-  </g>
+  <!-- Bowl -->
+  <path d="M80 48 H132 C166 48 188 70 188 104 C188 138 166 160 132 160 H80" stroke="url(#lock-v1-obs)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Stem -->
+  <path d="M80 48 V198" stroke="url(#lock-v1-obs)" stroke-width="36" stroke-linecap="round" />
+  <!-- Coral foot: the priority accent -->
+  <path d="M80 196 V208" stroke="url(#lock-v1-coral)" stroke-width="36" stroke-linecap="round" />
+</svg>
+  <text x="505" y="332" font-family="DM Sans, Inter, -apple-system, 'Segoe UI', sans-serif" font-size="218" font-weight="700" letter-spacing="-9" fill="#1d1917">Prior</text>
 </svg>

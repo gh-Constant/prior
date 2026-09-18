@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <linearGradient id="v3-obs" x1="60" y1="32" x2="178" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#35302b" />
+      <stop offset=".55" stop-color="#211d1a" />
+      <stop offset="1" stop-color="#12100f" />
+    </linearGradient>
+    <linearGradient id="v3-coral" x1="161" y1="173" x2="211" y2="223" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff7b62" />
+      <stop offset=".5" stop-color="#fa654a" />
+      <stop offset="1" stop-color="#d63f25" />
+    </linearGradient>
+  </defs>
+  <!-- Block P: stem + two arms + right connector -->
+  <rect x="60" y="32" width="38" height="192" rx="19" fill="url(#v3-obs)" />
+  <rect x="60" y="32" width="118" height="38" rx="19" fill="url(#v3-obs)" />
+  <rect x="60" y="117" width="98" height="38" rx="19" fill="url(#v3-obs)" />
+  <rect x="136" y="51" width="38" height="104" rx="19" fill="url(#v3-obs)" />
+  <!-- Priority dot -->
+  <circle cx="186" cy="198" r="25" fill="url(#v3-coral)" />
+</svg>

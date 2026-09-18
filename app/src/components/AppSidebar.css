@@ -54,7 +54,7 @@
 
 /* Prior Agent: gradient-bordered entry point next to the account button. */
 .prior-agent-button {
-  --agent-gradient: linear-gradient(135deg, #ff725d 0%, #f6ba72 48%, #8ecbc9 100%);
+  --agent-gradient: linear-gradient(135deg, #ff8a72 0%, #fa654a 48%, #c93820 100%);
   display: flex;
   align-items: center;
   gap: 11px;
@@ -87,7 +87,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: linear-gradient(92deg, #ff9a86 0%, #f6ba72 48%, #8ecbc9 100%);
+  background: linear-gradient(92deg, #ffb59f 0%, #ff8d75 48%, #f6b878 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
