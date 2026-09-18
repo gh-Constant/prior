@@ -1,4 +1,4 @@
-import type { AgentChat, AgentMessage, AgentChatSummary, Area, Habit, Mutation, Project, Task } from "../types";
+import type { AgentChat, AgentMessage, AgentChatSummary, Area, Habit, Mutation, Project, ProjectCycle, ProjectHealth, Task } from "../types";
 import type { Note, NoteFolder } from "./notes";
 import { isTauri } from "./platform";
 
@@ -67,6 +67,10 @@ export type ProfileUser = { id: string; email: string; displayName: string; avat
 export type CollaborationMember = { userId: string; email: string; displayName: string; avatarUrl?: string; role: "owner" | "editor" | "viewer"; status: "active" | "revoked"; createdAt: string };
 export type CollaborationInvite = { id: string; email: string; role: "editor" | "viewer"; expiresAt: string; inviteToken?: string; projectId: string };
 export type CollaborationProject = { project: Project; role: "owner" | "editor" | "viewer"; members: CollaborationMember[]; pendingInvites?: CollaborationInvite[] };
+export type CollaborativeProjectUpdate = Pick<Project, "health" | "startDate" | "targetDate" | "cycles"> & {
+  health?: ProjectHealth | null;
+  cycles?: ProjectCycle[];
+};
 export type SessionInfo = {
   id: string;
   deviceName: string;
@@ -210,6 +214,15 @@ export const api = {
   },
   listCollaborativeProjects(token: string): Promise<{ projects: CollaborationProject[] }> {
     return request<{ projects: CollaborationProject[] }>("/v1/collaboration/projects", {}, token, 30_000);
+  },
+  updateCollaborativeProject(projectId: string, project: CollaborativeProjectUpdate | Project, token: string): Promise<CollaborationProject> {
+    const planning = {
+      health: project.health ?? null,
+      startDate: project.startDate ?? null,
+      targetDate: project.targetDate ?? null,
+      cycles: project.cycles ?? [],
+    };
+    return request<CollaborationProject>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}`, { method: "PATCH", body: JSON.stringify(planning) }, token);
   },
   listProjectMembers(projectId: string, token: string): Promise<{ members: CollaborationMember[]; pendingInvites: CollaborationInvite[]; role: CollaborationProject["role"] }> {
     return request<{ members: CollaborationMember[]; pendingInvites: CollaborationInvite[]; role: CollaborationProject["role"] }>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members`, {}, token);

@@ -2,6 +2,7 @@ import type { CollaborationInvite, CollaborationMember, CollaborationProject } f
 import { api } from "./api";
 import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import type { Project } from "../types";
+import { normalizeProjectPlanning } from "./projectPlanning";
 
 const KEY = "prior.collaboration.projects.v1";
 const CHANGE_EVENT = "prior-collaboration-change";
@@ -23,7 +24,8 @@ function write(projects: CachedCollaborationProject[]): void {
 }
 
 function normalizeProject(project: Project): Project {
-  return { ...project, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || "folder", status: project.status ?? "active", deletedAt: project.deletedAt ?? null };
+  const planning = normalizeProjectPlanning(project);
+  return { ...project, ...planning, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || "folder", status: project.status ?? "active", deletedAt: project.deletedAt ?? null };
 }
 
 function normalizeProjects(incoming: CachedCollaborationProject[]): CachedCollaborationProject[] {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Icon } from "../Icon";
 import { Modal } from "../Modal";
+import { PersonAvatar } from "./PersonAvatar";
 import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
 import type { ProjectInvite, ProjectSharingProps } from "./types";
 import "./Collaboration.css";
@@ -35,7 +36,7 @@ export function ProjectShareDialog({ projectName, onClose, members, invites, can
       {loading ? <CollaborationState title="Loading project members…" loading /> : <>
         <section aria-label="Project members"><h3>Members <span className="collab-muted">{members.length}</span></h3>
           {members.length ? <ul className="collab-members">{members.map((member) => <li key={member.id}>
-            <span className="collab-avatar" aria-hidden="true">{member.name.slice(0, 1).toUpperCase()}</span>
+            <PersonAvatar person={member} />
             <div className="collab-person-copy"><strong>{member.name}</strong>{member.email && <small>{member.email}</small>}</div>
             {member.role === "owner" ? <span className="collab-chip">Owner</span> : <><select aria-label={`Project role for ${member.name}`} value={member.role} disabled={!editable || !onRoleChange} onChange={(event) => onRoleChange?.(member.id, event.target.value as ProjectInvite["role"])}><option value="editor">Editor</option><option value="viewer">Viewer</option></select>{canManage && <button type="button" className="secondary-button" disabled={!editable || !onRemoveMember} onClick={() => onRemoveMember?.(member.id)} aria-label={`Remove ${member.name} from project`}>Remove</button>}</>}
           </li>)}</ul> : <p className="collab-muted">No members to display.</p>}

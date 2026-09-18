@@ -91,7 +91,7 @@ function normalizePriority(value: unknown): TaskPriority {
 
 function normalizeStatus(value: unknown, completed = false): TaskStatus {
   if (completed) return "done";
-  return value === "inbox" || value === "next" || value === "in_progress" || value === "waiting" ? value : "inbox";
+  return value === "inbox" || value === "backlog" || value === "next" || value === "in_progress" || value === "waiting" ? value : "inbox";
 }
 
 function normalizeDueDate(value: unknown): string | null {
@@ -160,15 +160,15 @@ export function buildTask(
     id,
     title: input.title.trim(),
     description: input.description?.trim() ?? previous?.description ?? "",
-    dueDate: normalizeDueDate(input.dueDate ?? previous?.dueDate),
+    dueDate: normalizeDueDate(input.dueDate !== undefined ? input.dueDate : previous?.dueDate),
     priority: normalizePriority(input.priority ?? previous?.priority),
-    areaId: input.areaId ?? previous?.areaId ?? null,
-    projectId: input.projectId ?? previous?.projectId ?? null,
+    areaId: input.areaId !== undefined ? input.areaId : previous?.areaId ?? null,
+    projectId: input.projectId !== undefined ? input.projectId : previous?.projectId ?? null,
     status: normalizeStatus(input.status ?? previous?.status, Boolean(input.completed ?? previous?.completed ?? false)),
-    scheduledDate: normalizeDueDate(input.scheduledDate ?? previous?.scheduledDate),
+    scheduledDate: normalizeDueDate(input.scheduledDate !== undefined ? input.scheduledDate : previous?.scheduledDate),
     assigneeName: input.assigneeName?.trim() ?? previous?.assigneeName ?? "",
     peopleIds: Array.isArray(input.peopleIds) ? [...new Set(input.peopleIds)] : previous?.peopleIds ?? [],
-    followUpDate: normalizeDueDate(input.followUpDate ?? previous?.followUpDate),
+    followUpDate: normalizeDueDate(input.followUpDate !== undefined ? input.followUpDate : previous?.followUpDate),
     completed: Boolean(input.completed ?? previous?.completed ?? false),
     important: Boolean(input.important),
     urgent: Boolean(input.urgent),

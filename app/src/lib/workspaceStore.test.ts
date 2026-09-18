@@ -46,4 +46,44 @@ describe("workspaceStore", () => {
     expect(workspaceStore.exportAll().areas.find((item) => item.id === area.id)?.name).toBe(local.areas.find((item) => item.id === area.id)?.name);
     expect(workspaceStore.exportAll().projects.find((item) => item.id === project.id)?.name).toBe("Remote project");
   });
+
+  it("persists and normalizes project planning fields (health, dates, cycles)", () => {
+    const project = workspaceStore.createProject("Sprint alpha");
+    const updated = workspaceStore.updateProject({
+      ...project,
+      health: "On track",
+      startDate: "2026-09-01",
+      targetDate: "2026-09-30",
+      cycles: [
+        {
+          id: "cycle-1",
+          name: "Cycle 1",
+          startsOn: "2026-09-01",
+          endsOn: "2026-09-14",
+          issueIds: ["task-1", "task-2"],
+        },
+      ],
+    });
+    expect(updated).toMatchObject({
+      health: "On track",
+      startDate: "2026-09-01",
+      targetDate: "2026-09-30",
+      cycles: [
+        {
+          id: "cycle-1",
+          name: "Cycle 1",
+          startsOn: "2026-09-01",
+          endsOn: "2026-09-14",
+          issueIds: ["task-1", "task-2"],
+        },
+      ],
+    });
+
+    const retrieved = workspaceStore.listProjects().find((p) => p.id === project.id);
+    expect(retrieved?.health).toBe("On track");
+    expect(retrieved?.startDate).toBe("2026-09-01");
+    expect(retrieved?.targetDate).toBe("2026-09-30");
+    expect(retrieved?.cycles).toHaveLength(1);
+    expect(retrieved?.cycles?.[0]?.issueIds).toEqual(["task-1", "task-2"]);
+  });
 });

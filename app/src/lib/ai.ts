@@ -733,7 +733,7 @@ function buildProposedProject(item: Record<string, unknown>): ProposedProject {
 function sanitizeTaskStatus(value: unknown): TaskStatus | undefined {
   if (typeof value !== "string") return undefined;
   const s = value.trim().toLowerCase();
-  if (s === "inbox" || s === "next" || s === "in_progress" || s === "waiting" || s === "done") {
+  if (s === "inbox" || s === "backlog" || s === "next" || s === "in_progress" || s === "waiting" || s === "done") {
     return s;
   }
   return undefined;

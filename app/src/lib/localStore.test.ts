@@ -62,6 +62,22 @@ describe("localStore browser fallback", () => {
     expect((await localStore.getSyncState()).lastServerRevision).toBe(0);
   });
 
+  it("persists board moves, completion and reopening through the outbox", async () => {
+    let task = await localStore.saveTask({ title: "Plan release", status: "backlog", important: false, urgent: false });
+    expect((await localStore.listTasks())[0].status).toBe("backlog");
+    for (const status of ["in_progress", "done", "backlog"] as const) {
+      task = await localStore.updateTask({ ...task, status, completed: status === "done" });
+      expect((await localStore.listTasks())[0]).toMatchObject({ status, completed: status === "done" });
+      expect((await localStore.pendingMutations()).at(-1)).toMatchObject({ task: { status, completed: status === "done" } });
+    }
+  });
+
+  it("clears project and dates explicitly when editing a task", async () => {
+    const task = await localStore.saveTask({ title: "Clear fields", projectId: "project-1", areaId: "area-1", dueDate: "2026-09-22", followUpDate: "2026-09-21", important: false, urgent: false });
+    await localStore.updateTask({ ...task, projectId: null, areaId: null, dueDate: null, followUpDate: null });
+    expect((await localStore.listTasks())[0]).toMatchObject({ projectId: null, areaId: null, dueDate: null, followUpDate: null });
+  });
+
   it("offers legacy local data for the first account sync only", async () => {
     const task = await localStore.saveTask({ title: "Legacy task", important: false, urgent: false });
     const mutations = await localStore.legacyMutations("account-1", new Set(), new Set());

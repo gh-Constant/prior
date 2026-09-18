@@ -243,6 +243,7 @@ function FlagToggles({ important, urgent, disabled, importantLabel, urgentLabel,
 function statusLabel(status: string | undefined): string | null {
   switch (status) {
     case "inbox": return "Inbox";
+    case "backlog": return "Backlog";
     case "next": return "Next action";
     case "in_progress": return "In progress";
     case "waiting": return "Waiting";

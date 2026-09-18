@@ -37,6 +37,30 @@ func (s *Server) collaborationProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"projects": projects})
 }
 
+func (s *Server) updateCollaborativeProject(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeUnauthorized(w, err)
+		return
+	}
+	projectID, err := uuid.Parse(r.PathValue("projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid project id"))
+		return
+	}
+	var patch store.ProjectPlanningPatch
+	if err := decodeJSON(r, &patch); err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid project planning update"))
+		return
+	}
+	project, err := s.store.UpdateCollaborativeProjectPlanning(r.Context(), user.ID, projectID, patch)
+	if err != nil {
+		writeError(w, collaborationStatus(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, project)
+}
+
 func (s *Server) collaborationProjectMembers(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {

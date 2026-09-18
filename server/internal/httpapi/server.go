@@ -147,6 +147,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sync/pull", s.pull)
 	mux.HandleFunc("POST /v1/workspace/sync", s.syncWorkspace)
 	mux.HandleFunc("GET /v1/collaboration/projects", s.collaborationProjects)
+	mux.HandleFunc("PATCH /v1/collaboration/projects/{projectID}", s.updateCollaborativeProject)
 	mux.HandleFunc("GET /v1/collaboration/projects/{projectID}/members", s.collaborationProjectMembers)
 	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/members", s.shareProject)
 	mux.HandleFunc("PATCH /v1/collaboration/projects/{projectID}/members/{userID}", s.updateProjectMember)

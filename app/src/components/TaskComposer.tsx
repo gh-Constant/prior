@@ -173,7 +173,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
             />
           </div>}
           {extraFields.length > 0 && <div className="task-composer-planning"><p className="task-composer-more-heading">Planning</p><div className="task-composer-secondary-grid">
-            {extraFields.map((field) => <label className="task-composer-field" key={field.key}><span>{field.label}</span><select disabled={planningDisabled || !planning.onFieldChange} multiple={field.key === "labels"} value={field.key === "labels" ? [...field.selectedIds] : field.selectedIds[0] ?? ""} onChange={(event) => planning.onFieldChange?.(field.key, Array.from(event.currentTarget.selectedOptions, (option) => option.value).filter(Boolean))}>
+            {extraFields.map((field) => <label className="task-composer-field" key={field.key}><span>{field.label}</span><select disabled={planningDisabled || !planning?.onFieldChange} multiple={field.key === "labels"} value={field.key === "labels" ? [...field.selectedIds] : field.selectedIds[0] ?? ""} onChange={(event) => planning?.onFieldChange?.(field.key, Array.from(event.currentTarget.selectedOptions, (option) => option.value).filter(Boolean))}>
               {field.key !== "labels" && <option value="">None</option>}{field.options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
             </select></label>)}
           </div></div>}

@@ -1,6 +1,7 @@
 import type { Area, Project, ProjectStatus } from "../types";
 import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import { notesStore } from "./notes";
+import { normalizeProjectPlanning } from "./projectPlanning";
 
 const AREAS_KEY = "prior.areas.v1";
 const PROJECTS_KEY = "prior.projects.v1";
@@ -34,7 +35,8 @@ function normalizeArea(area: Area): Area {
 
 function normalizeProject(project: Project): Project {
   const status: ProjectStatus = ["planned", "active", "paused", "completed"].includes(project.status) ? project.status : "active";
-  return { ...project, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || DEFAULT_PROJECT_ICON, status, deletedAt: project.deletedAt ?? null };
+  const planning = normalizeProjectPlanning(project);
+  return { ...project, ...planning, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || DEFAULT_PROJECT_ICON, status, deletedAt: project.deletedAt ?? null };
 }
 
 function mergeByUpdatedAt<T extends { id: string; updatedAt: string }>(local: T[], remote: T[]): T[] {

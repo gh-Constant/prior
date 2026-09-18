@@ -1,6 +1,6 @@
 export type TaskPriority = 1 | 2 | 3 | 4;
 
-export type TaskStatus = "inbox" | "next" | "in_progress" | "waiting" | "done";
+export type TaskStatus = "inbox" | "backlog" | "next" | "in_progress" | "waiting" | "done";
 
 export type Area = {
   id: string;
@@ -14,6 +14,16 @@ export type Area = {
 
 export type ProjectStatus = "planned" | "active" | "paused" | "completed";
 
+export type ProjectHealth = "On track" | "At risk" | "Off track";
+
+export type ProjectCycle = {
+  id: string;
+  name: string;
+  startsOn: string;
+  endsOn: string;
+  issueIds?: string[];
+};
+
 export type Project = {
   id: string;
   areaId: string | null;
@@ -21,6 +31,10 @@ export type Project = {
   description: string;
   icon?: string | null;
   status: ProjectStatus;
+  health?: ProjectHealth | null;
+  startDate?: string | null;
+  targetDate?: string | null;
+  cycles?: ProjectCycle[];
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
