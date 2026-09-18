@@ -92,6 +92,28 @@ export function migrateLegacyStorageForAccount(accountId = getAccountId()): void
   }
 }
 
+/**
+ * Claim data written while signed out (anonymous) into the authenticated account.
+ */
+export function claimAnonymousStorageForAccount(accountId: string): void {
+  if (!accountId || accountId === ANONYMOUS_ACCOUNT_ID) return;
+  const store = storage();
+  if (!store) return;
+  for (const baseKey of LEGACY_STORAGE_KEYS) {
+    try {
+      const anonKey = accountStorageKey(baseKey, ANONYMOUS_ACCOUNT_ID);
+      const anonRaw = store.getItem(anonKey);
+      if (anonRaw === null) continue;
+      const scopedKey = accountStorageKey(baseKey, accountId);
+      const existingRaw = store.getItem(scopedKey);
+      store.setItem(scopedKey, existingRaw === null ? anonRaw : mergeLegacyCollections(existingRaw, anonRaw));
+      store.removeItem(anonKey);
+    } catch {
+      // Storage can be unavailable or full.
+    }
+  }
+}
+
 /** Resolve a collection key for the current account. */
 export function scopedStorageKey(baseKey: string): string {
   const accountId = getAccountId();
@@ -99,14 +121,12 @@ export function scopedStorageKey(baseKey: string): string {
   return accountStorageKey(baseKey, accountId);
 }
 
-/** Read a scoped value, with a temporary legacy fallback for signed-out users. */
+/** Read a scoped value for the current account. */
 export function readScopedStorage(baseKey: string): string | null {
   const store = storage();
   if (!store) return null;
   const scopedKey = scopedStorageKey(baseKey);
-  const scoped = store.getItem(scopedKey);
-  if (scoped !== null) return scoped;
-  return getAccountId() === ANONYMOUS_ACCOUNT_ID ? store.getItem(baseKey) : null;
+  return store.getItem(scopedKey);
 }
 
 export function writeScopedStorage(baseKey: string, value: string): void {
@@ -122,5 +142,9 @@ export function removeScopedStorage(baseKey: string): void {
 }
 
 export function emitAccountScopeChange(): void {
-  if (typeof window !== "undefined") window.dispatchEvent(new Event("prior-auth-change"));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("prior-auth-change"));
+    window.dispatchEvent(new CustomEvent("prior-notes-change"));
+    window.dispatchEvent(new CustomEvent("prior-workspace-change"));
+  }
 }

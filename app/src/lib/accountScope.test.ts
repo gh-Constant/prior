@@ -61,4 +61,26 @@ describe("account-scoped local data", () => {
     expect(JSON.parse(localStorage.getItem(scopedStorageKey("prior.projects.v1"))!)).toHaveLength(2);
     expect(localStorage.getItem("prior.projects.v1")).toBeNull();
   });
+
+  it("claims anonymous data when a user signs in and isolates the anonymous scope on logout", async () => {
+    // User is logged out (anonymous) and creates a task and area
+    await localStore.saveTask({ title: "Guest task", important: false, urgent: false });
+    workspaceStore.createArea("Guest area");
+    expect((await localStore.listTasks()).map((t) => t.title)).toEqual(["Guest task"]);
+    expect(workspaceStore.listAreas().map((a) => a.name)).toEqual(["Guest area"]);
+
+    // User signs in as account-c
+    localStorage.setItem("prior.session.user", JSON.stringify({ id: "account-c" }));
+    const { claimAnonymousStorageForAccount } = await import("./accountScope");
+    claimAnonymousStorageForAccount("account-c");
+
+    expect((await localStore.listTasks()).map((t) => t.title)).toEqual(["Guest task"]);
+    expect(workspaceStore.listAreas().map((a) => a.name)).toEqual(["Guest area"]);
+
+    // User signs out (removes session user)
+    localStorage.removeItem("prior.session.user");
+    expect(getAccountId()).toBe("anonymous");
+    expect(await localStore.listTasks()).toEqual([]);
+    expect(workspaceStore.listAreas()).toEqual([]);
+  });
 });

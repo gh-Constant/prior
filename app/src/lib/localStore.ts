@@ -39,13 +39,13 @@ async function prepareDatabaseAccount(db: SqlDatabase, accountId: string): Promi
     }
     const preparation = (async () => {
       if (accountId !== "anonymous") {
-        // Rows created by versions before v0.3.50 have the temporary legacy
-        // scope. Claim them only for the account that is currently signed in.
-        await db.execute("UPDATE tasks SET account_id = ? WHERE account_id = 'legacy'", [accountId]);
-        await db.execute("UPDATE habits SET account_id = ? WHERE account_id = 'legacy'", [accountId]);
-        await db.execute("UPDATE outbox SET account_id = ? WHERE account_id = 'legacy'", [accountId]);
+        // Rows created by pre-v0.3.50 versions (legacy) or while signed out (anonymous)
+        // are claimed for the account that signs in.
+        await db.execute("UPDATE tasks SET account_id = ? WHERE account_id IN ('legacy', 'anonymous')", [accountId]);
+        await db.execute("UPDATE habits SET account_id = ? WHERE account_id IN ('legacy', 'anonymous')", [accountId]);
+        await db.execute("UPDATE outbox SET account_id = ? WHERE account_id IN ('legacy', 'anonymous')", [accountId]);
         await db.execute(
-          "INSERT OR IGNORE INTO sync_state (account_id, last_server_revision) SELECT ?, last_server_revision FROM sync_state WHERE account_id = 'legacy'",
+          "INSERT OR IGNORE INTO sync_state (account_id, last_server_revision) SELECT ?, last_server_revision FROM sync_state WHERE account_id IN ('legacy', 'anonymous')",
           [accountId],
         );
       }
@@ -148,7 +148,7 @@ async function mergeRemoteTasksIntoDb(db: SqlDatabase, pendingIds: Set<string>, 
     const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM tasks WHERE id = ? AND account_id = ?", [task.id, accountId]);
     if (isRemoteStale(task.serverRevision, current[0]?.server_revision ?? undefined)) continue;
     await db.execute(
-      "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+      "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
       [accountId, task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.assigneeName ?? "", task.followUpDate ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
     );
   }
@@ -171,7 +171,7 @@ async function mergeRemoteHabitsIntoDb(db: SqlDatabase, pendingIds: Set<string>,
     const current = await db.select<{ server_revision: number | null }>("SELECT server_revision FROM habits WHERE id = ? AND account_id = ?", [habit.id, accountId]);
     if (isRemoteStale(habit.serverRevision, current[0]?.server_revision ?? undefined)) continue;
     await db.execute(
-      "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
+      "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
       [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
     );
   }
@@ -267,7 +267,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       await db.execute(
-        "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+        "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
         [accountId, task.id, task.title, task.description, task.dueDate, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.assigneeName, task.followUpDate, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
       );
     } else {
@@ -348,7 +348,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       await db.execute(
-        "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
+        "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
         [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, null, habit.serverRevision ?? null],
       );
     } else {

@@ -2,7 +2,7 @@ import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { invoke } from "@tauri-apps/api/core";
 import { API_URL, api } from "./api";
 import { clearAgentSettings } from "./ai";
-import { emitAccountScopeChange, migrateLegacyStorageForAccount } from "./accountScope";
+import { claimAnonymousStorageForAccount, emitAccountScopeChange, migrateLegacyStorageForAccount } from "./accountScope";
 import { openExternalUrl } from "./browser";
 import { getSecret, removeSecret, setSecret } from "./secureStore";
 
@@ -58,6 +58,7 @@ async function saveSession(result: { token: string; user: SessionUser }): Promis
   tokenRead = null;
   saveUser(result.user);
   migrateLegacyStorageForAccount(result.user.id);
+  claimAnonymousStorageForAccount(result.user.id);
   emitAccountScopeChange();
   return result.user;
 }

@@ -348,6 +348,15 @@ export function App() {
 
   useEffect(() => notesStore.subscribe(scheduleWorkspaceSync), [scheduleWorkspaceSync]);
 
+  useEffect(() => {
+    const onAuthChange = () => {
+      refreshWorkspace();
+      void refresh().catch((error) => console.warn("Prior could not refresh on auth change:", error));
+    };
+    window.addEventListener("prior-auth-change", onAuthChange);
+    return () => window.removeEventListener("prior-auth-change", onAuthChange);
+  }, [refresh, refreshWorkspace]);
+
   useEffect(() => () => {
     if (workspaceSyncTimer.current !== undefined) window.clearTimeout(workspaceSyncTimer.current);
   }, []);
@@ -585,6 +594,10 @@ export function App() {
     await localStore.resetSyncRevision().catch((error) => console.warn("Prior could not reset sync state:", error));
     setUser(null);
     setAuthOpen(false);
+    setSelectedProjectId(null);
+    setNotesProjectId(null);
+    setTasks([]);
+    setHabits([]);
     refreshWorkspace();
     await refresh().catch((error) => console.warn("Prior could not refresh after sign-out:", error));
     if (token) void api.logout(token).catch(() => undefined);
@@ -704,6 +717,7 @@ export function App() {
 
         <CompletionExitProvider deadlines={completionExitDeadlines}>
           <WorkspaceContent
+            key={user?.id ?? "anonymous"}
             activeView={activeView}
             user={user}
             onUserUpdated={handleUserUpdated}

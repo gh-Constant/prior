@@ -152,7 +152,14 @@ func (m *Manager) Start(ctx context.Context, returnTo string) (string, error) {
 	m.mu.Lock()
 	m.states[state] = stateValue{returnTo: safeReturnTo, verifier: verifier, nonce: nonce, expiresAt: time.Now().Add(10 * time.Minute)}
 	m.mu.Unlock()
-	return m.oauth.AuthCodeURL(state, oauth2.AccessTypeOnline, oauth2.SetAuthURLParam("code_challenge", challenge), oauth2.SetAuthURLParam("code_challenge_method", "S256"), oauth2.SetAuthURLParam("nonce", nonce)), nil
+	return m.oauth.AuthCodeURL(
+		state,
+		oauth2.AccessTypeOnline,
+		oauth2.SetAuthURLParam("code_challenge", challenge),
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+		oauth2.SetAuthURLParam("nonce", nonce),
+		oauth2.SetAuthURLParam("prompt", "select_account"),
+	), nil
 }
 
 func (m *Manager) Callback(ctx context.Context, code, state string) (string, error) {
