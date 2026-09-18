@@ -466,7 +466,7 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
   background: var(--panel);
   border-left: 1px solid var(--line);
   color: var(--ink);
-  overflow: hidden;
+  overflow: visible;
   animation: fade-in .15s ease-out;
 }
 .agent-header {

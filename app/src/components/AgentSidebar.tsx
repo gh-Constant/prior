@@ -186,9 +186,8 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   useEffect(() => {
     if (!modelPickerOpen && !reasoningPickerOpen) return undefined;
     const closeOnOutsideClick = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (modelPickerRef.current && !modelPickerRef.current.contains(target)) setModelPickerOpen(false);
-      if (reasoningPickerRef.current && !reasoningPickerRef.current.contains(target)) setReasoningPickerOpen(false);
+      if (modelPickerRef.current && !modelPickerRef.current.contains(event.target as Node)) setModelPickerOpen(false);
+      if (reasoningPickerRef.current && !reasoningPickerRef.current.contains(event.target as Node)) setReasoningPickerOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -965,7 +964,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         </div>
       )}
       <div className="agent-model-row">
-        <label id="prior-agent-model-label">{settings.provider === "codex" ? "Codex" : "Model"}</label>
+        <label id="prior-agent-model-label">{settings.provider === "codex" ? "Codex model" : "Model"}</label>
         <div className="agent-model-picker" ref={modelPickerRef}>
           <button
             type="button"
@@ -974,8 +973,8 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             aria-expanded={modelPickerOpen}
             aria-labelledby="prior-agent-model-label prior-agent-model-value"
             onClick={() => {
-              setModelPickerOpen((open) => !open);
               setReasoningPickerOpen(false);
+              setModelPickerOpen((open) => !open);
             }}
           >
             <span id="prior-agent-model-value" className="agent-model-trigger-copy">
@@ -1028,32 +1027,36 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
               aria-expanded={reasoningPickerOpen}
               aria-label="Model reasoning effort"
               onClick={() => {
-                setReasoningPickerOpen((open) => !open);
                 setModelPickerOpen(false);
+                setReasoningPickerOpen((open) => !open);
               }}
             >
-              <span className="agent-reasoning-label">Reasoning:</span>
-              <strong>{REASONING_EFFORTS.find((o) => o.id === activeReasoning)?.label ?? activeReasoning}</strong>
+              <span className="agent-reasoning-trigger-copy">
+                <small>Reasoning</small>
+                <strong>{REASONING_EFFORTS.find((r) => r.id === activeReasoning)?.label ?? activeReasoning}</strong>
+              </span>
               <Icon name="chevron-down" />
             </button>
             {reasoningPickerOpen && (
-              <div className="agent-reasoning-popover" role="listbox" aria-label="Model reasoning effort">
-                {REASONING_EFFORTS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    role="option"
-                    aria-selected={option.id === activeReasoning}
-                    className={`agent-reasoning-option ${option.id === activeReasoning ? "active" : ""}`}
-                    onClick={() => {
-                      handleReasoningChange(option.id);
-                      setReasoningPickerOpen(false);
-                    }}
-                  >
-                    <span>{option.label}</span>
-                    {option.id === activeReasoning && <Icon name="check" className="agent-model-check" />}
-                  </button>
-                ))}
+              <div className="agent-reasoning-popover" role="dialog" aria-label="Choose reasoning effort">
+                <div className="agent-reasoning-results" role="listbox">
+                  {REASONING_EFFORTS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="option"
+                      aria-selected={option.id === activeReasoning}
+                      className={`agent-reasoning-option ${option.id === activeReasoning ? "active" : ""}`}
+                      onClick={() => {
+                        handleReasoningChange(option.id);
+                        setReasoningPickerOpen(false);
+                      }}
+                    >
+                      <span>{option.label}</span>
+                      {option.id === activeReasoning && <Icon name="check" className="agent-model-check" />}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
