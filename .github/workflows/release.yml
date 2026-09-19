@@ -203,14 +203,17 @@ jobs:
           fi
 
           if [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ]; then
-            printf 'APPLE_ID=%s\n' "$APPLE_ID" >> "$GITHUB_ENV"
-            printf 'APPLE_PASSWORD=%s\n' "$APPLE_PASSWORD" >> "$GITHUB_ENV"
+            printf 'NOTARY_APPLE_ID=%s\n' "$APPLE_ID" >> "$GITHUB_ENV"
+            printf 'NOTARY_APPLE_PASSWORD=%s\n' "$APPLE_PASSWORD" >> "$GITHUB_ENV"
+            if [ -n "$team_id" ]; then
+              printf 'NOTARY_APPLE_TEAM_ID=%s\n' "$team_id" >> "$GITHUB_ENV"
+            fi
           elif [ -n "$APPLE_API_KEY" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_KEY_BASE64" ]; then
             api_key_path="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY.p8"
             printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$api_key_path"
-            printf 'APPLE_API_KEY=%s\n' "$APPLE_API_KEY" >> "$GITHUB_ENV"
-            printf 'APPLE_API_ISSUER=%s\n' "$APPLE_API_ISSUER" >> "$GITHUB_ENV"
-            printf 'APPLE_API_KEY_PATH=%s\n' "$api_key_path" >> "$GITHUB_ENV"
+            printf 'NOTARY_APPLE_API_KEY=%s\n' "$APPLE_API_KEY" >> "$GITHUB_ENV"
+            printf 'NOTARY_APPLE_API_ISSUER=%s\n' "$APPLE_API_ISSUER" >> "$GITHUB_ENV"
+            printf 'NOTARY_APPLE_API_KEY_PATH=%s\n' "$api_key_path" >> "$GITHUB_ENV"
           elif [ "$ALLOW_UNSIGNED_MACOS" = "true" ]; then
             echo "::warning::Notarization secrets are missing; the macOS app is signed but macOS will still warn on first launch."
             printf 'MACOS_REQUIRE_NOTARIZATION=0\n' >> "$GITHUB_ENV"
@@ -229,6 +232,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          # Prevent Tauri from notarizing before widgets are embedded.
+          # Full bundle notarization is performed by embed-widgets.sh.
+          APPLE_ID: ''
+          APPLE_PASSWORD: ''
+          APPLE_API_KEY: ''
+          APPLE_API_ISSUER: ''
+          APPLE_API_KEY_PATH: ''
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
       # WidgetKit widgets ship inside the macOS bundle (PlugIns). They must be
@@ -258,7 +268,7 @@ jobs:
           [ -n "$app_path" ] || die "no .app found under $bundle_dir/macos"
           verify_app_bundle "$app_path" "${MACOS_REQUIRE_NOTARIZATION:-1}"
           for dmg in "$bundle_dir"/dmg/*.dmg; do
-            [ -f "$dmg" ] && verify_dmg "$dmg"
+            [ -f "$dmg" ] && verify_dmg "$dmg" "${MACOS_REQUIRE_NOTARIZATION:-1}"
           done
       - name: Collect desktop release files
         shell: bash

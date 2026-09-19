@@ -54,18 +54,23 @@ info "signing identity: $identity"
 if [ "$notarize" = "1" ]; then
   if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ]; then
     export APPLE_TEAM_ID="${APPLE_TEAM_ID:-$(team_id_from_identity "$identity")}"
+    export NOTARY_APPLE_ID="$APPLE_ID"
+    export NOTARY_APPLE_PASSWORD="$APPLE_PASSWORD"
+    export NOTARY_APPLE_TEAM_ID="$APPLE_TEAM_ID"
     info "notarizing as $APPLE_ID (team $APPLE_TEAM_ID)"
   elif [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ] && [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+    export NOTARY_APPLE_API_KEY="$APPLE_API_KEY"
+    export NOTARY_APPLE_API_ISSUER="$APPLE_API_ISSUER"
+    export NOTARY_APPLE_API_KEY_PATH="$APPLE_API_KEY_PATH"
     info "notarizing with App Store Connect API key $APPLE_API_KEY"
   else
     warn "no notarization credentials (APPLE_ID/APPLE_PASSWORD or APPLE_API_KEY/APPLE_API_ISSUER/APPLE_API_KEY_PATH); building signed-only"
     notarize=0
   fi
 fi
-if [ "$notarize" = "0" ]; then
-  # Tauri notarizes whenever these are set; make sure a stale shell export cannot leak in.
-  unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
-fi
+export MACOS_REQUIRE_NOTARIZATION="$notarize"
+# Tauri notarizes whenever APPLE_ID/APPLE_API_KEY are set; unset them so Tauri does not notarize prematurely
+unset APPLE_ID APPLE_PASSWORD APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
 
 build_args=()
 target_dir="$repo_root/app/src-tauri/target"

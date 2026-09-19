@@ -109,11 +109,17 @@ if [ -n "$old_dmg" ]; then
   hdiutil create -volname "Prior" -srcfolder "$app" -ov -format UDZO "$tmp_dmg" >/dev/null
   mv -f "$tmp_dmg" "$old_dmg"
   tmp_dmg=""
-  codesign --force --sign "$identity" "$old_dmg"
+  codesign --force --sign "$identity" --timestamp "$old_dmg"
   codesign --verify "$old_dmg"
 fi
 
+# Submit to Apple notarytool and staple tickets to .app and .dmg before packaging the updater
+if [ "$identity" != "-" ]; then
+  notarize_and_staple "$app" "$old_dmg"
+fi
+
 # Rebuild the updater tarball (same layout Tauri uses) and re-sign it.
+# Because $app was stapled above, the updater tarball packages the stapled app.
 old_tar="$(find "$bundle_dir/macos" -maxdepth 1 -name '*.app.tar.gz' 2>/dev/null | head -n 1 || true)"
 if [ -n "$old_tar" ]; then
   if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
