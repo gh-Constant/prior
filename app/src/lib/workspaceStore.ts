@@ -37,7 +37,8 @@ function normalizeArea(area: Area): Area {
 function normalizeProject(project: Project): Project {
   const status: ProjectStatus = ["planned", "active", "paused", "completed"].includes(project.status) ? project.status : "active";
   const planning = normalizeProjectPlanning(project);
-  return { ...project, ...planning, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || DEFAULT_PROJECT_ICON, status, deletedAt: project.deletedAt ?? null };
+  const projectType = project.projectType === "software" || (project.cycles && project.cycles.length > 0) ? "software" : (project.projectType || "standard");
+  return { ...project, ...planning, projectType, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || DEFAULT_PROJECT_ICON, status, deletedAt: project.deletedAt ?? null };
 }
 
 function mergeByUpdatedAt<T extends { id: string; updatedAt: string }>(local: T[], remote: T[]): T[] {
@@ -96,9 +97,9 @@ export const workspaceStore = {
     detachedProjects.forEach((project) => ensureProjectNotes({ ...project, areaId: null, updatedAt: timestamp }, workspaceStore.listAreas()));
     notesStore.removeWorkspaceFolder("area", area.id);
   },
-  createProject(name: string, areaId: string | null = null, description = "", icon?: string | null): Project {
+  createProject(name: string, areaId: string | null = null, description = "", icon?: string | null, projectType?: import("../types").ProjectType): Project {
     const timestamp = now();
-    const project: Project = { id: uid(), areaId, name: name.trim() || translateStored("collab.workspace.newProject"), description: description.trim(), icon: icon || DEFAULT_PROJECT_ICON, status: "active", createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
+    const project: Project = { id: uid(), areaId, name: name.trim() || translateStored("collab.workspace.newProject"), description: description.trim(), icon: icon || DEFAULT_PROJECT_ICON, projectType: projectType || "standard", status: "active", createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
     write(PROJECTS_KEY, [...read<Project[]>(PROJECTS_KEY, []), project]);
     ensureProjectNotes(project);
     return project;

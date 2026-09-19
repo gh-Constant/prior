@@ -5,6 +5,11 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-internal-toggle-maximize",
     "opener:default",
     {
       "identifier": "opener:allow-open-url",
@@ -16,11 +21,19 @@
     "deep-link:default",
     {
       "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior/**" }]
+      "allow": [
+        { "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior" },
+        { "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior/*" },
+        { "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior/**" }
+      ]
     },
     {
       "identifier": "fs:allow-mkdir",
-      "allow": [{ "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior/**" }]
+      "allow": [
+        { "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior" },
+        { "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior/*" },
+        { "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior/**" }
+      ]
     },
     "process:default",
     "sql:default",

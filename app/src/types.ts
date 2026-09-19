@@ -24,6 +24,8 @@ export type ProjectCycle = {
   issueIds?: string[];
 };
 
+export type ProjectType = "standard" | "software";
+
 export type Project = {
   id: string;
   areaId: string | null;
@@ -34,6 +36,7 @@ export type Project = {
   health?: ProjectHealth | null;
   startDate?: string | null;
   targetDate?: string | null;
+  projectType?: ProjectType;
   cycles?: ProjectCycle[];
   createdAt: string;
   updatedAt: string;
@@ -135,6 +138,7 @@ export type ProposedProject = {
   status?: ProjectStatus;
   targetDate?: string | null;
   icon?: string | null;
+  projectType?: ProjectType;
   reasoning: string;
   selected: boolean;
   added?: boolean;

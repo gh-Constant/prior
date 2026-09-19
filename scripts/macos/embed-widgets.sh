@@ -34,12 +34,16 @@ done
 [ -d "$app" ] || die "app bundle not found: $app"
 [ -n "$identity" ] || die "--identity <Developer ID Application ...> is required"
 
-if ! command -v xcodebuild >/dev/null; then
+if ! command -v xcodebuild >/dev/null || ! xcodebuild -version >/dev/null 2>&1; then
   if [ "$require" = "1" ]; then
     die "xcodebuild is required to build the widgets (macOS + Xcode)"
   fi
-  warn "xcodebuild not found: skipping widgets (desktop app still works)"
+  warn "xcodebuild not found or Xcode not active: skipping widgets (desktop app still works)"
   exit 0
+fi
+
+if [ -z "$team" ] && [ -n "$identity" ] && [ "$identity" != "-" ]; then
+  team="$(team_id_from_identity "$identity")"
 fi
 
 if [ -z "$version" ]; then
@@ -51,26 +55,34 @@ project="$repo_root/app/src-tauri/macos-widgets/PriorWidgets.xcodeproj"
 [ -d "$project" ] || die "widget project not found: $project"
 
 derived="$(mktemp -d "${TMPDIR:-/tmp}/prior-widgets.XXXXXX")"
-trap 'rm -rf "$derived"' EXIT
+tmp_dmg=""
+cleanup() {
+  local exit_status=$?
+  rm -rf "$derived" ${tmp_dmg:+"$tmp_dmg"}
+  exit $exit_status
+}
+trap cleanup EXIT INT TERM
 
-team_args=()
+xcode_cmd=(
+  xcodebuild -project "$project"
+  -target PriorWidgets
+  -configuration Release
+  -derivedDataPath "$derived"
+  -destination "generic/platform=macOS"
+  ARCHS="arm64 x86_64"
+  ONLY_ACTIVE_ARCH=NO
+  CODE_SIGN_STYLE=Manual
+  CODE_SIGN_IDENTITY="$identity"
+  PROVISIONING_PROFILE_SPECIFIER=
+  MARKETING_VERSION="$version"
+  CURRENT_PROJECT_VERSION=1
+  OTHER_CODE_SIGN_FLAGS="--options=runtime --timestamp"
+)
 if [ -n "$team" ]; then
-  team_args+=(DEVELOPMENT_TEAM="$team")
+  xcode_cmd+=(DEVELOPMENT_TEAM="$team")
 fi
-xcodebuild -project "$project" \
-  -target PriorWidgets \
-  -configuration Release \
-  -derivedDataPath "$derived" \
-  -destination 'generic/platform=macOS' \
-  ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
-  CODE_SIGN_STYLE=Manual \
-  CODE_SIGN_IDENTITY="$identity" \
-  "${team_args[@]}" \
-  PROVISIONING_PROFILE_SPECIFIER= \
-  MARKETING_VERSION="$version" \
-  CURRENT_PROJECT_VERSION=1 \
-  OTHER_CODE_SIGN_FLAGS="--options=runtime --timestamp" \
-  build
+
+"${xcode_cmd[@]}" build
 
 appex="$(find "$derived/Build/Products/Release" -maxdepth 1 -name '*.appex' | head -n 1)"
 [ -n "$appex" ] || die "no .appex produced by xcodebuild"
@@ -80,8 +92,13 @@ mkdir -p "$plugins_dir"
 rm -rf "$plugins_dir/PriorWidgets.appex"
 cp -R "$appex" "$plugins_dir/PriorWidgets.appex"
 
+entitlements="$project/../PriorWidgets/PriorWidgets.entitlements"
 info "signing embedded appex"
-codesign --force --sign "$identity" --options runtime --timestamp "$plugins_dir/PriorWidgets.appex"
+if [ -f "$entitlements" ]; then
+  codesign --force --sign "$identity" --entitlements "$entitlements" --options runtime --timestamp "$plugins_dir/PriorWidgets.appex"
+else
+  codesign --force --sign "$identity" --preserve-metadata=entitlements --options runtime --timestamp "$plugins_dir/PriorWidgets.appex"
+fi
 
 info "re-sealing app bundle"
 codesign --force --sign "$identity" --options runtime --timestamp "$app"
@@ -94,9 +111,9 @@ old_dmg="$(find "$bundle_dir/dmg" -maxdepth 1 -name '*.dmg' 2>/dev/null | head -
 if [ -n "$old_dmg" ]; then
   info "rebuilding dmg $old_dmg"
   tmp_dmg="$(mktemp "${TMPDIR:-/tmp}/prior.XXXXXX.dmg")"
-  trap 'rm -rf "$derived" "$tmp_dmg"' EXIT
   hdiutil create -volname "Prior" -srcfolder "$app" -ov -format UDZO "$tmp_dmg" >/dev/null
   mv -f "$tmp_dmg" "$old_dmg"
+  tmp_dmg=""
   codesign --force --sign "$identity" "$old_dmg"
   codesign --verify "$old_dmg"
 fi

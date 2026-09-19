@@ -23,14 +23,6 @@ type Props = { readonly task?: Task; readonly areas?: Area[]; readonly projects?
 
 export function TaskComposer({ task, areas = [], projects = [], initialContext, planning, onProjectChange, onSave, onCancel }: Props) {
   const { t, lang } = useI18n();
-  const workflowOptions: { id: TaskStatus; name: string }[] = [
-    { id: "inbox", name: t("tasks.composer.statusInbox") },
-    { id: "backlog", name: t("tasks.composer.statusBacklog") },
-    { id: "next", name: t("tasks.composer.statusTodo") },
-    { id: "in_progress", name: t("tasks.composer.statusInProgress") },
-    { id: "waiting", name: t("tasks.composer.statusWaiting") },
-    { id: "done", name: t("tasks.composer.statusDone") },
-  ];
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
@@ -40,10 +32,37 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [urgent, setUrgent] = useState(task?.urgent ?? false);
   const [areaId, setAreaId] = useState(task?.areaId ?? initialContext?.areaId ?? null);
   const [projectId, setProjectId] = useState(task?.projectId ?? initialContext?.projectId ?? planning?.fields.find((field) => field.key === "project")?.selectedIds[0] ?? null);
+
+  const currentProject = projects.find((p) => p.id === (projectId ?? initialContext?.projectId));
+  const isSoftwareProject = currentProject?.projectType === "software" || Boolean(planning);
+
+  const workflowOptions = useMemo<{ id: TaskStatus; name: string }[]>(() => {
+    if (isSoftwareProject) {
+      return [
+        { id: "inbox", name: t("tasks.composer.statusInbox") },
+        { id: "backlog", name: t("tasks.composer.statusBacklog") },
+        { id: "next", name: t("tasks.composer.statusTodo") },
+        { id: "in_progress", name: t("tasks.composer.statusInProgress") },
+        { id: "waiting", name: t("tasks.composer.statusWaiting") },
+        { id: "done", name: t("tasks.composer.statusDone") },
+      ];
+    }
+    const options: { id: TaskStatus; name: string }[] = [
+      { id: "next", name: t("tasks.composer.statusTodo") },
+      { id: "in_progress", name: t("tasks.composer.statusInProgress") },
+      { id: "waiting", name: t("tasks.composer.statusWaiting") },
+      { id: "done", name: t("tasks.composer.statusDone") },
+    ];
+    if (task?.status === "inbox" || initialContext?.status === "inbox") options.unshift({ id: "inbox", name: t("tasks.composer.statusInbox") });
+    if (task?.status === "backlog" || initialContext?.status === "backlog") options.unshift({ id: "backlog", name: t("tasks.composer.statusBacklog") });
+    return options;
+  }, [initialContext?.status, isSoftwareProject, t, task?.status]);
+
   const [status, setStatus] = useState<TaskStatus>(() => {
     const plannedStatus = planning?.fields.find((field) => field.key === "state")?.selectedIds[0];
-    return task?.status ?? (task?.completed ? "done" : undefined) ?? initialContext?.status
-      ?? workflowOptions.find((option) => option.id === plannedStatus)?.id ?? "inbox";
+    const explicit = task?.status ?? (task?.completed ? "done" : undefined) ?? initialContext?.status
+      ?? (plannedStatus as TaskStatus | undefined);
+    return explicit ?? "next";
   });
   const [assigneeName, setAssigneeName] = useState(task?.assigneeName ?? "");
   const [followUpDate, setFollowUpDate] = useState(task?.followUpDate ?? "");
@@ -98,7 +117,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
       case "dueDate": setDueDate(""); break;
       case "dueTime": setDueTime(null); break;
       case "priority": setPriority(4); break;
-      case "status": setStatus("inbox"); break;
+      case "status": setStatus("next"); break;
       case "projectId": setProjectId(null); onProjectChange?.(null); break;
       case "areaId": setAreaId(null); break;
       case "assigneeName": setAssigneeName(""); break;
@@ -158,6 +177,9 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     setProjectId(id);
     const project = projects.find((item) => item.id === id);
     if (project?.areaId) setAreaId(project.areaId);
+    if (project?.projectType !== "software" && status === "backlog") {
+      setStatus("next");
+    }
     planning?.onFieldChange?.("project", id ? [id] : []);
     onProjectChange?.(id);
   }
@@ -198,7 +220,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
           onProjectChange?.(null);
         }
         setProjectId(null);
-        setStatus("inbox");
+        setStatus("next");
         setAssigneeName("");
         setFollowUpDate("");
         setFollowUpTime(null);

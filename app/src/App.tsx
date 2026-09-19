@@ -5,7 +5,7 @@ import { useI18n } from "./lib/i18n";
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
-import { isDesktop, isTauri } from "./lib/platform";
+import { isDesktop, isMac, isTauri } from "./lib/platform";
 import { checkForUpdate, installAvailableUpdate, type UpdateInfo } from "./lib/updater";
 import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
@@ -1235,7 +1235,7 @@ export function App() {
   }
 
   return (
-    <div className={`app-shell ${agentOpen ? "agent-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${isDesktop() ? "tauri-desktop" : ""}`}>
+    <div className={`app-shell ${agentOpen ? "agent-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${isDesktop() ? "tauri-desktop" : ""} ${isMac() ? "platform-mac" : ""}`}>
       <DesktopTitleBar />
       <AppSidebar
         activeView={activeView}

@@ -69,6 +69,18 @@ export function ProjectEditor({ project, avatarUrl, onSave, onClose }: ProjectEd
         />
       </label>
       <label className="collab-field">
+        <span>{t("common.workhub.formType")}</span>
+        <CustomSelect
+          ariaLabel={t("common.workhub.formType")}
+          value={draft.projectType || "standard"}
+          onChange={(val) => setDraft({ ...draft, projectType: val as import("../../types").ProjectType })}
+          options={[
+            { value: "standard", label: t("common.workhub.typeStandard") },
+            { value: "software", label: t("common.workhub.typeSoftware") },
+          ]}
+        />
+      </label>
+      <label className="collab-field">
         <span>{t("collab.editor.health")}</span>
         <CustomSelect
           ariaLabel={t("collab.editor.health")}

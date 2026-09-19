@@ -13,8 +13,8 @@ export function DesktopTitleBar() {
   if (!isDesktop()) return null;
   const showCaption = !isMac();
   return (
-    <div className="window-dragbar" data-tauri-drag-region onDoubleClick={() => void toggleMaximize()}>
-      <div className="window-drag-fill" data-tauri-drag-region onDoubleClick={() => void toggleMaximize()} aria-hidden="true" />
+    <div className="window-dragbar" data-tauri-drag-region="deep" onDoubleClick={() => void toggleMaximize()}>
+      <div className="window-drag-fill" data-tauri-drag-region="deep" onDoubleClick={() => void toggleMaximize()} aria-hidden="true" />
       {showCaption && <WindowCaptionButtons t={t} />}
     </div>
   );

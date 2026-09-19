@@ -197,11 +197,14 @@ jobs:
           printf 'APPLE_SIGNING_IDENTITY=%s\n' "$signing_identity" >> "$GITHUB_ENV"
           echo "Signing with: $signing_identity"
 
+          team_id="${APPLE_TEAM_ID:-$(team_id_from_identity "$signing_identity")}"
+          if [ -n "$team_id" ]; then
+            printf 'APPLE_TEAM_ID=%s\n' "$team_id" >> "$GITHUB_ENV"
+          fi
+
           if [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ]; then
-            team_id="${APPLE_TEAM_ID:-$(team_id_from_identity "$signing_identity")}"
             printf 'APPLE_ID=%s\n' "$APPLE_ID" >> "$GITHUB_ENV"
             printf 'APPLE_PASSWORD=%s\n' "$APPLE_PASSWORD" >> "$GITHUB_ENV"
-            printf 'APPLE_TEAM_ID=%s\n' "$team_id" >> "$GITHUB_ENV"
           elif [ -n "$APPLE_API_KEY" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_KEY_BASE64" ]; then
             api_key_path="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY.p8"
             printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$api_key_path"
@@ -238,7 +241,8 @@ jobs:
           bundle_dir="app/src-tauri/target/universal-apple-darwin/release/bundle"
           app_path="$(find "$bundle_dir/macos" -maxdepth 1 -name '*.app' | head -n 1)"
           [ -n "$app_path" ] || { echo "::error::no .app found under $bundle_dir/macos" >&2; exit 1; }
-          sh scripts/macos/embed-widgets.sh --app "$app_path" --identity "$APPLE_SIGNING_IDENTITY" --require
+          bash scripts/macos/embed-widgets.sh --app "$app_path" --identity "$APPLE_SIGNING_IDENTITY" --require
+          [ -d "$app_path/Contents/PlugIns/PriorWidgets.appex" ] || { echo "::error::PriorWidgets.appex was not embedded into $app_path" >&2; exit 1; }
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

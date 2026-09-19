@@ -42,7 +42,7 @@ function dayKey(date = new Date()): string {
 }
 
 function isLive(task: Task): boolean {
-  return !task.completed && task.deletedAt == null && task.status !== "waiting" && task.status !== "done";
+  return !task.completed && task.deletedAt == null && task.status !== "waiting" && task.status !== "done" && task.status !== "backlog";
 }
 
 function isTodayTask(task: Task, today: string): boolean {
@@ -99,12 +99,20 @@ export async function refreshWidgetSnapshot(tasks: Task[]): Promise<void> {
   const now = Date.now();
   if (now - lastSnapshotAt < SNAPSHOT_MIN_INTERVAL_MS) return;
   lastSnapshotAt = now;
+  const snapshotJson = JSON.stringify(buildWidgetSnapshot(tasks));
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("widget_refresh_snapshot", { snapshotJson });
+    return;
+  } catch {
+    // Fallback to plugin-fs
+  }
   try {
     const { homeDir, join } = await import("@tauri-apps/api/path");
     const { mkdir, writeTextFile } = await import("@tauri-apps/plugin-fs");
     const dir = await join(await homeDir(), "Library", "Group Containers", WIDGET_APP_GROUP);
     await mkdir(dir, { recursive: true });
-    await writeTextFile(await join(dir, WIDGET_SNAPSHOT_FILE), JSON.stringify(buildWidgetSnapshot(tasks)));
+    await writeTextFile(await join(dir, WIDGET_SNAPSHOT_FILE), snapshotJson);
   } catch {
     // Widgets are best-effort: never break the app for them.
   }

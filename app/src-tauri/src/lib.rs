@@ -145,6 +145,23 @@ async fn session_clear<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     run_android_plugin(app, "clear", serde_json::json!({})).await
 }
 
+#[cfg(desktop)]
+#[tauri::command]
+async fn widget_refresh_snapshot(snapshot_json: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+        let dir = std::path::PathBuf::from(home)
+            .join("Library/Group Containers/group.fr.constantsuchet.prior");
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::write(dir.join("prior-widget-snapshot.json"), snapshot_json)
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = snapshot_json;
+    Ok(())
+}
+
 #[cfg(target_os = "android")]
 #[tauri::command]
 async fn widget_set_items<R: Runtime>(app: AppHandle<R>, items: Vec<String>) -> Result<(), String> {
@@ -288,6 +305,8 @@ pub fn run() {
             codex_run_stream,
             #[cfg(desktop)]
             codex_cancel,
+            #[cfg(desktop)]
+            widget_refresh_snapshot,
             #[cfg(target_os = "android")]
             widget_set_items,
             #[cfg(target_os = "android")]
@@ -314,5 +333,13 @@ mod tests {
             keyring::default::default_credential_builder().persistence(),
             keyring::credential::CredentialPersistence::UntilDelete
         ));
+    }
+
+    #[test]
+    fn widget_refresh_snapshot_creates_file() {
+        let rt = tauri::async_runtime::block_on(async {
+            super::widget_refresh_snapshot("{\"test\":true}".into()).await
+        });
+        assert!(rt.is_ok());
     }
 }

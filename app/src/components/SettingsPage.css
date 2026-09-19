@@ -1,4 +1,4 @@
-.settings-page { width: 100%; max-width: var(--content-width); margin: 0 auto; }
+.settings-page { width: 100%; max-width: 860px; margin: 0; }
 .settings-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; width: min(100%, 520px); margin-bottom: 16px; padding: 3px; border-radius: 9px; background: #f3f2ef; border: 1px solid var(--line); }
 .settings-tabs button { min-height: 38px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #817b73; font-size: 12.5px; font-weight: 600; }
 .settings-tabs button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 4px #2725220a; }
