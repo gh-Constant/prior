@@ -1,0 +1,30 @@
+export const mail = {
+  title: "Bandeja de entrada",
+  searchPlaceholder: "Buscar correo…",
+  folders: { inbox: "Bandeja de entrada", starred: "Destacados", sent: "Enviados", all: "Todo el correo", trash: "Papelera" },
+  labels: "Etiquetas",
+  actions: {
+    refresh: "Actualizar", archive: "Archivar", unarchive: "Mover a la bandeja",
+    star: "Añadir estrella", unstar: "Quitar estrella", markRead: "Marcar como leído", markUnread: "Marcar como no leído",
+    delete: "Eliminar", addToTask: "Añadir a tarea", addToTaskAI: "Añadir a tarea con IA",
+    manageTags: "Etiquetas", loadMore: "Cargar más", select: "Seleccionar", selectAll: "Seleccionar todo",
+    deselectAll: "Borrar selección", connect: "Conectar Gmail", disconnect: "Desconectar", back: "Atrás", openOriginal: "Abrir en Gmail",
+  },
+  empty: { title: "Nada por aquí", inbox: "Estás al día.", search: "Ningún correo coincide con “{query}”." },
+  reading: { noSelection: "Selecciona un mensaje para leer", to: "para {list}", attachments: "{count} adjunto", attachments_plural: "{count} adjuntos" },
+  connect: {
+    demoBanner: "Buzón de demostración", demoHint: "Estás viendo un buzón de ejemplo. Conecta Gmail para ver tu correo real.",
+    title: "Conecta tu Gmail", body: "Lee, archiva, destaca y etiqueta tu correo sin salir de Prior. Haz clic derecho en cualquier mensaje para convertirlo en tarea.",
+    permissionTitle: "Google te pedirá:", permissionRead: "Leer y modificar tu correo (archivar, destacar, marcar leído)", permissionLabels: "Gestionar etiquetas",
+    button: "Continuar con Google", secure: "Tu contraseña nunca se comparte. Prior solo obtiene el acceso que apruebas y puedes desconectar cuando quieras.",
+    connecting: "Conectando…", connectedAs: "Conectado como {email}",
+  },
+  menu: {
+    addToTask: "Añadir a tarea", addToTaskAI: "Añadir a tarea con IA", tags: "Etiquetas",
+    archive: "Archivar", unarchive: "Mover a la bandeja", star: "Añadir estrella", unstar: "Quitar estrella",
+    markRead: "Marcar como leído", markUnread: "Marcar como no leído", delete: "Eliminar",
+  },
+  tags: { title: "Etiquetas", apply: "Aplicar", remove: "Quitar", empty: "Aún no hay etiquetas" },
+  ai: { generating: "Redactando tarea…", failed: "No se pudo redactar una tarea desde este correo." },
+  toasts: { archived: "Conversación archivada", unarchived: "Movido a la bandeja", deleted: "Movido a la papelera", updated: "Actualizado", taskCreated: "Tarea creada desde el correo" },
+};

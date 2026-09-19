@@ -1,0 +1,30 @@
+export const mail = {
+  title: "Posteingang",
+  searchPlaceholder: "E-Mails durchsuchen…",
+  folders: { inbox: "Posteingang", starred: "Markiert", sent: "Gesendet", all: "Alle E-Mails", trash: "Papierkorb" },
+  labels: "Labels",
+  actions: {
+    refresh: "Aktualisieren", archive: "Archivieren", unarchive: "In den Posteingang",
+    star: "Stern hinzufügen", unstar: "Stern entfernen", markRead: "Als gelesen markieren", markUnread: "Als ungelesen markieren",
+    delete: "Löschen", addToTask: "Zu Aufgabe hinzufügen", addToTaskAI: "Mit KI zu Aufgabe",
+    manageTags: "Labels", loadMore: "Mehr laden", select: "Auswählen", selectAll: "Alle auswählen",
+    deselectAll: "Auswahl aufheben", connect: "Gmail verbinden", disconnect: "Trennen", back: "Zurück", openOriginal: "In Gmail öffnen",
+  },
+  empty: { title: "Nichts hier", inbox: "Du bist auf dem neuesten Stand.", search: "Keine E-Mail passt zu „{query}“." },
+  reading: { noSelection: "Wähle eine Nachricht zum Lesen", to: "an {list}", attachments: "{count} Anhang", attachments_plural: "{count} Anhänge" },
+  connect: {
+    demoBanner: "Demo-Postfach", demoHint: "Du siehst ein Beispiel-Postfach. Verbinde Gmail für deine echten E-Mails.",
+    title: "Verbinde dein Gmail", body: "Lies, archiviere, markiere und label deine E-Mails, ohne Prior zu verlassen. Rechtsklick auf eine Nachricht macht sie zur Aufgabe.",
+    permissionTitle: "Google fragt nach:", permissionRead: "E-Mails lesen und ändern (archivieren, markieren, als gelesen markieren)", permissionLabels: "Labels verwalten",
+    button: "Mit Google fortfahren", secure: "Dein Passwort wird nie geteilt. Prior erhält nur den Zugriff, den du erlaubst – jederzeit trennbar.",
+    connecting: "Verbinden…", connectedAs: "Verbunden als {email}",
+  },
+  menu: {
+    addToTask: "Zu Aufgabe hinzufügen", addToTaskAI: "Mit KI zu Aufgabe", tags: "Labels",
+    archive: "Archivieren", unarchive: "In den Posteingang", star: "Stern hinzufügen", unstar: "Stern entfernen",
+    markRead: "Als gelesen markieren", markUnread: "Als ungelesen markieren", delete: "Löschen",
+  },
+  tags: { title: "Labels", apply: "Anwenden", remove: "Entfernen", empty: "Noch keine Labels" },
+  ai: { generating: "Aufgabe wird erstellt…", failed: "Aus dieser E-Mail konnte keine Aufgabe erstellt werden." },
+  toasts: { archived: "Unterhaltung archiviert", unarchived: "In den Posteingang verschoben", deleted: "In den Papierkorb verschoben", updated: "Aktualisiert", taskCreated: "Aufgabe aus E-Mail erstellt" },
+};

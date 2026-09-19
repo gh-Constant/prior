@@ -1,0 +1,30 @@
+export const mail = {
+  title: "Caixa de entrada",
+  searchPlaceholder: "Pesquisar e-mails…",
+  folders: { inbox: "Caixa de entrada", starred: "Com estrela", sent: "Enviados", all: "Todos os e-mails", trash: "Lixeira" },
+  labels: "Marcadores",
+  actions: {
+    refresh: "Atualizar", archive: "Arquivar", unarchive: "Mover para a caixa de entrada",
+    star: "Adicionar estrela", unstar: "Remover estrela", markRead: "Marcar como lido", markUnread: "Marcar como não lido",
+    delete: "Eliminar", addToTask: "Adicionar à tarefa", addToTaskAI: "Adicionar à tarefa com IA",
+    manageTags: "Marcadores", loadMore: "Carregar mais", select: "Selecionar", selectAll: "Selecionar tudo",
+    deselectAll: "Limpar seleção", connect: "Conectar Gmail", disconnect: "Desconectar", back: "Voltar", openOriginal: "Abrir no Gmail",
+  },
+  empty: { title: "Nada aqui", inbox: "Está tudo em dia.", search: "Nenhum e-mail corresponde a “{query}”." },
+  reading: { noSelection: "Selecione uma mensagem para ler", to: "para {list}", attachments: "{count} anexo", attachments_plural: "{count} anexos" },
+  connect: {
+    demoBanner: "Caixa de demonstração", demoHint: "Está a ver uma caixa de exemplo. Conecte o Gmail para ver os seus e-mails reais.",
+    title: "Conecte o seu Gmail", body: "Leia, arquive, marque com estrela e etiquete os seus e-mails sem sair do Prior. Clique com o botão direito numa mensagem para a transformar numa tarefa.",
+    permissionTitle: "O Google vai pedir:", permissionRead: "Ler e modificar os seus e-mails (arquivar, estrela, marcar lido)", permissionLabels: "Gerir marcadores",
+    button: "Continuar com o Google", secure: "A sua palavra-passe nunca é partilhada. O Prior só obtém o acesso que aprova, e pode desconectar a qualquer momento.",
+    connecting: "A conectar…", connectedAs: "Conectado como {email}",
+  },
+  menu: {
+    addToTask: "Adicionar à tarefa", addToTaskAI: "Adicionar à tarefa com IA", tags: "Marcadores",
+    archive: "Arquivar", unarchive: "Mover para a caixa de entrada", star: "Adicionar estrela", unstar: "Remover estrela",
+    markRead: "Marcar como lido", markUnread: "Marcar como não lido", delete: "Eliminar",
+  },
+  tags: { title: "Marcadores", apply: "Aplicar", remove: "Remover", empty: "Ainda sem marcadores" },
+  ai: { generating: "A redigir tarefa…", failed: "Não foi possível redigir uma tarefa a partir deste e-mail." },
+  toasts: { archived: "Conversa arquivada", unarchived: "Movido para a caixa de entrada", deleted: "Movido para a lixeira", updated: "Atualizado", taskCreated: "Tarefa criada a partir do e-mail" },
+};

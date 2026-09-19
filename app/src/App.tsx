@@ -5,7 +5,7 @@ import { useI18n } from "./lib/i18n";
 import { localStore } from "./lib/localStore";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
-import { isDesktop } from "./lib/platform";
+import { isDesktop, isTauri } from "./lib/platform";
 import { checkForUpdate, installAvailableUpdate, type UpdateInfo } from "./lib/updater";
 import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
@@ -32,9 +32,13 @@ import { workspaceSync } from "./lib/workspaceSync";
 import { workspaceStore } from "./lib/workspaceStore";
 import { collaborationStore } from "./lib/collaborationStore";
 import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
+import { MailView } from "./components/MailView";
 import { ProjectEditor } from "./components/collaboration/ProjectEditor";
 import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
+import { generateTaskFromMail } from "./lib/mailTask";
+import { saveMailAccount } from "./lib/mailAuth";
+import type { MailMessage } from "./types";
 
 type Layout = "list" | "board";
 
@@ -106,14 +110,17 @@ type WorkspaceContentProps = {
   readonly onNewTask: (context?: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void;
   readonly onWorkspaceChange: () => void;
   readonly collaborationByProject: Readonly<Record<string, Omit<ProjectCollaborationProps, "project">>>;
+  readonly onMailCreateTask: (draft: TaskDraft) => Promise<void>;
+  readonly onMailCreateTaskAI: (message: MailMessage) => Promise<void>;
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange, collaborationByProject }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI }: WorkspaceContentProps) {
   const { t } = useI18n();
   if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
-  if (["today", "inbox", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} />;
+  if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
+  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
   }
@@ -144,6 +151,9 @@ export function App() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [newTaskContext, setNewTaskContext] = useState<Pick<TaskDraft, "areaId" | "projectId" | "status"> | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [mailDraft, setMailDraft] = useState<TaskDraft | null>(null);
+  const [mailComposerOpen, setMailComposerOpen] = useState(false);
+  const [mailAiBusy, setMailAiBusy] = useState(false);
   const [composerProjectId, setComposerProjectId] = useState<string | null | undefined>(undefined);
   const [projectEditor, setProjectEditor] = useState<Project | null>(null);
   const [cycleEditor, setCycleEditor] = useState<{ projectId: string; cycleId?: string } | null>(null);
@@ -233,6 +243,44 @@ export function App() {
       // ignore
     }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    // Gmail OAuth returns to #/mail-connected?email=… after the server binds
+    // the grant to this account. Record the connection and open the inbox.
+    // Native shells arrive via the deep link (prior://…) instead of the hash.
+    const handleMailConnected = (email: string | null) => {
+      if (!email) return;
+      saveMailAccount({ email, connectedAt: new Date().toISOString() });
+      setToast(t("mail.toasts.updated"));
+      setActiveView("inbox");
+    };
+    const handleHash = () => {
+      const hash = window.location.hash;
+      if (!hash.startsWith("#/mail-connected")) return;
+      const email = new URLSearchParams(hash.split("?")[1] ?? "").get("email");
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      handleMailConnected(email);
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    let unlistenNative: (() => void) | undefined;
+    void (async () => {
+      if (!isTauri()) return;
+      const { onOpenUrl } = await import("@tauri-apps/plugin-deep-link");
+      const { parseMailConnectedUrl } = await import("./lib/mailAuth");
+      unlistenNative = await onOpenUrl((urls) => {
+        for (const url of urls) {
+          const email = parseMailConnectedUrl(url);
+          if (email) handleMailConnected(email);
+        }
+      });
+    })();
+    return () => {
+      window.removeEventListener("hashchange", handleHash);
+      unlistenNative?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!completionCelebration) return undefined;
@@ -651,6 +699,45 @@ export function App() {
     if (editingTask.projectId && collaborationStore.role(editingTask.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
     await localStore.updateTask({ ...editingTask, ...input, completed: input.status ? input.status === "done" : editingTask.completed, description: input.description ?? "", dueDate: input.dueDate ?? null, priority: input.priority ?? 4 });
     setEditingTask(null);
+    await refresh();
+    void syncNow();
+  }
+
+  /* Mail → task. Direct opens the composer pre-filled; AI drafts the fields
+     from the email body first, then opens the composer for review. */
+  function openMailTask(draft: TaskDraft): void {
+    setMailDraft(draft);
+    setMailComposerOpen(true);
+  }
+
+  async function createMailTaskAI(message: MailMessage): Promise<void> {
+    if (mailAiBusy) return;
+    setMailAiBusy(true);
+    try {
+      const token = await getToken();
+      const draft = await generateTaskFromMail(message, token);
+      setMailDraft(draft);
+      setMailComposerOpen(true);
+    } catch (error) {
+      console.warn("Prior could not draft a task from mail:", error);
+      setToast(t("mail.ai.failed"));
+      setMailDraft({
+        title: message.subject === "(no subject)" ? t("mail.title") : message.subject,
+        description: [message.snippet, "", `${message.from.name} <${message.from.email}>`].join("\n").trim(),
+        important: false, urgent: false, status: "inbox", priority: 4,
+      });
+      setMailComposerOpen(true);
+    } finally {
+      setMailAiBusy(false);
+    }
+  }
+
+  async function saveMailTask(input: TaskDraft): Promise<void> {
+    if (input.projectId && collaborationStore.role(input.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+    await localStore.saveTask({ ...input, completed: input.status === "done", peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
+    setMailComposerOpen(false);
+    setMailDraft(null);
+    setToast(t("mail.toasts.taskCreated"));
     await refresh();
     void syncNow();
   }
@@ -1149,7 +1236,7 @@ export function App() {
         updateAvailable={desktopUpdate !== null}
         updateInstalling={updateInstalling}
         onInstallUpdate={() => void installDesktopUpdate()}
-        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
+        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
         onViewChange={changeView}
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
@@ -1157,7 +1244,7 @@ export function App() {
         onCloseMobile={() => setMobileNavOpen(false)}
       />
 
-      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}>
+      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}>
         <MobileTopBar
           activeView={activeView}
           projectName={projects.find((project) => project.id === selectedProjectId)?.name}
@@ -1204,6 +1291,8 @@ export function App() {
             onNewTask={openNewTask}
             onWorkspaceChange={refreshWorkspace}
             collaborationByProject={collaborationByProject}
+            onMailCreateTask={(draft) => { openMailTask(draft); return Promise.resolve(); }}
+            onMailCreateTaskAI={createMailTaskAI}
           />
         </CompletionExitProvider>
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => openNewTask()}><Icon name="plus" /> {t("common.header.newTask")}</button>}
@@ -1211,7 +1300,7 @@ export function App() {
 
       <AgentSidebar
         open={agentOpen}
-        inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
+        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
         onClose={() => setAgentOpen(false)}
         tasks={tasks}
         habits={habits}
@@ -1228,6 +1317,22 @@ export function App() {
       />
 
       {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onProjectChange={setComposerProjectId} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); setComposerProjectId(undefined); }} />}
+      {mailComposerOpen && mailDraft && (
+        <TaskComposer
+          key="mail-task"
+          areas={areas}
+          projects={projects}
+          initialContext={{ status: "inbox" }}
+          task={{
+            id: "", title: mailDraft.title, description: mailDraft.description ?? "",
+            dueDate: mailDraft.dueDate ?? null, priority: mailDraft.priority ?? 4,
+            completed: false, important: mailDraft.important, urgent: mailDraft.urgent,
+            status: "inbox", createdAt: "", updatedAt: "", deletedAt: null,
+          }}
+          onSave={saveMailTask}
+          onCancel={() => { setMailComposerOpen(false); setMailDraft(null); }}
+        />
+      )}
       {projectEditor && <ProjectEditor project={projectEditor} avatarUrl={user?.avatarUrl} onClose={() => setProjectEditor(null)} onSave={async (project) => { await saveProjectDetails(project); setProjectEditor(null); }} />}
       {cycleEditor && <ProjectCycleEditor
         cycle={projects.find((project) => project.id === cycleEditor.projectId)?.cycles?.find((cycle) => cycle.id === cycleEditor.cycleId)}

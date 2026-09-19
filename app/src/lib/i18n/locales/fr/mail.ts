@@ -1,0 +1,30 @@
+export const mail = {
+  title: "Boîte de réception",
+  searchPlaceholder: "Rechercher dans les mails…",
+  folders: { inbox: "Boîte de réception", starred: "Suivis", sent: "Envoyés", all: "Tous les mails", trash: "Corbeille" },
+  labels: "Libellés",
+  actions: {
+    refresh: "Actualiser", archive: "Archiver", unarchive: "Déplacer vers la boîte de réception",
+    star: "Ajouter une étoile", unstar: "Retirer l'étoile", markRead: "Marquer comme lu", markUnread: "Marquer comme non lu",
+    delete: "Supprimer", addToTask: "Ajouter en tâche", addToTaskAI: "Ajouter en tâche avec l'IA",
+    manageTags: "Libellés", loadMore: "Charger plus", select: "Sélectionner", selectAll: "Tout sélectionner",
+    deselectAll: "Tout désélectionner", connect: "Connecter Gmail", disconnect: "Déconnecter", back: "Retour", openOriginal: "Ouvrir dans Gmail",
+  },
+  empty: { title: "Rien ici", inbox: "Vous êtes à jour.", search: "Aucun mail ne correspond à « {query} »." },
+  reading: { noSelection: "Sélectionnez un message à lire", to: "à {list}", attachments: "{count} pièce jointe", attachments_plural: "{count} pièces jointes" },
+  connect: {
+    demoBanner: "Boîte de démo", demoHint: "Vous parcourez une boîte d'exemple. Connectez Gmail pour voir vos vrais mails.",
+    title: "Connectez votre Gmail", body: "Lisez, archivez, suivez et étiquetez vos mails sans quitter Prior. Faites un clic droit sur un message pour en faire une tâche.",
+    permissionTitle: "Google vous demandera :", permissionRead: "Lire et modifier vos mails (archiver, suivre, marquer lu)", permissionLabels: "Gérer les libellés (tags)",
+    button: "Continuer avec Google", secure: "Votre mot de passe n'est jamais partagé. Prior n'obtient que l'accès que vous approuvez, et vous pouvez déconnecter à tout moment.",
+    connecting: "Connexion…", connectedAs: "Connecté en tant que {email}",
+  },
+  menu: {
+    addToTask: "Ajouter en tâche", addToTaskAI: "Ajouter en tâche avec l'IA", tags: "Libellés",
+    archive: "Archiver", unarchive: "Déplacer vers la boîte de réception", star: "Ajouter une étoile", unstar: "Retirer l'étoile",
+    markRead: "Marquer comme lu", markUnread: "Marquer comme non lu", delete: "Supprimer",
+  },
+  tags: { title: "Libellés", apply: "Appliquer", remove: "Retirer", empty: "Aucun libellé" },
+  ai: { generating: "Rédaction de la tâche…", failed: "Impossible de rédiger une tâche depuis ce mail." },
+  toasts: { archived: "Conversation archivée", unarchived: "Déplacé vers la boîte de réception", deleted: "Déplacé vers la corbeille", updated: "Mis à jour", taskCreated: "Tâche créée depuis le mail" },
+};

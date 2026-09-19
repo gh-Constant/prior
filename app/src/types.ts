@@ -249,3 +249,56 @@ export type AgentSettings = {
   provider?: AgentProvider;
   reasoningEffort?: ReasoningEffort;
 };
+
+/* ------------------------------------------------------------------------ */
+/* Mail inbox                                                                */
+/* ------------------------------------------------------------------------ */
+
+export type MailAddress = { name: string; email: string };
+
+/** A Gmail-style label/tag. Colors are Gmail-compatible hex values. */
+export type MailLabel = {
+  id: string;
+  name: string;
+  /** Gmail system labels: INBOX, SENT, STARRED, UNREAD, TRASH, SPAM, CATEGORY_*. */
+  system: boolean;
+  color?: string;
+  textColor?: string;
+};
+
+export type MailMessage = {
+  id: string;
+  threadId: string;
+  from: MailAddress;
+  to: MailAddress[];
+  subject: string;
+  /** Plain-text snippet, ~1 line. */
+  snippet: string;
+  /** Decoded plain-text body (HTML stripped to text for safety). */
+  body: string;
+  /** ISO 8601 timestamp. */
+  date: string;
+  labelIds: string[];
+  unread: boolean;
+  starred: boolean;
+  archived: boolean;
+  hasAttachment: boolean;
+};
+
+export type MailFolder = {
+  id: string;
+  labelKey: string;
+  icon: "inbox" | "star" | "send" | "archive" | "trash";
+  /** Gmail query used to list this folder's messages. */
+  labelFilter: string;
+};
+
+export type MailTaskSuggestion = {
+  title: string;
+  description: string;
+  dueDate: string | null;
+  priority: TaskPriority;
+  important: boolean;
+  urgent: boolean;
+  reasoning: string;
+};

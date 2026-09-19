@@ -142,6 +142,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sessions", s.listSessions)
 	mux.HandleFunc("DELETE /v1/sessions", s.revokeAllSessions)
 	mux.HandleFunc("DELETE /v1/sessions/{id}", s.revokeSession)
+	mux.HandleFunc("GET /v1/mail/connect/start", s.mailConnectStart)
+	mux.HandleFunc("GET /v1/mail/google/callback", s.mailGoogleCallback)
+	mux.HandleFunc("GET /v1/mail/accounts", s.mailAccounts)
+	mux.HandleFunc("GET /v1/mail/token", s.mailToken)
+	mux.HandleFunc("DELETE /v1/mail/accounts/{id}", s.mailDisconnect)
 	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("POST /v1/sync/push", s.push)
 	mux.HandleFunc("GET /v1/sync/pull", s.pull)
@@ -1229,10 +1234,16 @@ func (s *Server) limiterForPath(path string) *rateLimiter {
 		return s.settingsLimiter
 	case path == "/v1/agent/complete":
 		return s.agentLimiter
+	case path == "/v1/mail/accounts" || path == "/v1/mail/token":
+		return s.settingsLimiter
 	default:
 		return nil
 	}
 }
+
+// authLimiter exposes the shared auth rate limiter for the mail OAuth
+// endpoints, which live in mail.go.
+func (s *Server) authLimiter() *rateLimiter { return s.limiter }
 
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
