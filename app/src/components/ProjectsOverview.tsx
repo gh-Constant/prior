@@ -62,7 +62,6 @@ export function ProjectsOverview({ areas, projects, query, onQueryChange, onOpen
     <header className="projects-overview-header">
       <div className="projects-overview-intro">
         <h2>{t("common.views.projects")}</h2>
-        <p className="projects-overview-description">{tp("common.workhub.overviewProjectCount", projects.length)}<span aria-hidden="true"> · </span>{tp("common.workhub.overviewAreaCount", areas.length)}</p>
       </div>
       <div className="projects-overview-actions">
         <button type="button" className="secondary-button" onClick={onNewArea}><Icon name="layers" />{t("common.workhub.newArea")}</button>
