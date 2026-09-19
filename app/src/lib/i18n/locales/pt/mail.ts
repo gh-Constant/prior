@@ -26,5 +26,5 @@ export const mail = {
   },
   tags: { title: "Marcadores", apply: "Aplicar", remove: "Remover", empty: "Ainda sem marcadores" },
   ai: { generating: "A redigir tarefa…", failed: "Não foi possível redigir uma tarefa a partir deste e-mail." },
-  toasts: { archived: "Conversa arquivada", unarchived: "Movido para a caixa de entrada", deleted: "Movido para a lixeira", updated: "Atualizado", updateFailed: "Não foi possível atualizar a mensagem", newMail: "{count} nova mensagem", newMail_plural: "{count} novas mensagens", taskCreated: "Tarefa criada a partir do e-mail" },
+  toasts: { archived: "Conversa arquivada", unarchived: "Movido para a caixa de entrada", deleted: "Movido para a lixeira", updated: "Atualizado", updateFailed: "Não foi possível atualizar a mensagem", newMail: "{count} nova mensagem", newMail_plural: "{count} novas mensagens", connected: "Gmail conectado como {email}", taskCreated: "Tarefa criada a partir do e-mail" },
 };

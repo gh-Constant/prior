@@ -26,5 +26,5 @@ export const mail = {
   },
   tags: { title: "Labels", apply: "Anwenden", remove: "Entfernen", empty: "Noch keine Labels" },
   ai: { generating: "Aufgabe wird erstellt…", failed: "Aus dieser E-Mail konnte keine Aufgabe erstellt werden." },
-  toasts: { archived: "Unterhaltung archiviert", unarchived: "In den Posteingang verschoben", deleted: "In den Papierkorb verschoben", updated: "Aktualisiert", updateFailed: "Nachricht konnte nicht aktualisiert werden", newMail: "{count} neue Nachricht", newMail_plural: "{count} neue Nachrichten", taskCreated: "Aufgabe aus E-Mail erstellt" },
+  toasts: { archived: "Unterhaltung archiviert", unarchived: "In den Posteingang verschoben", deleted: "In den Papierkorb verschoben", updated: "Aktualisiert", updateFailed: "Nachricht konnte nicht aktualisiert werden", newMail: "{count} neue Nachricht", newMail_plural: "{count} neue Nachrichten", connected: "Gmail verbunden als {email}", taskCreated: "Aufgabe aus E-Mail erstellt" },
 };

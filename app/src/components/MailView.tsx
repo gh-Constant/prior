@@ -9,7 +9,7 @@ import { mailCacheKey, readMailCache, writeMailCache } from "../lib/mailCache";
 import { sanitizeMailHtml } from "../lib/mailHtml";
 import { openExternalUrl } from "../lib/browser";
 import { isTauri } from "../lib/platform";
-import { clearMailAccount, disconnectMailAccount, getMailAccount, listMailAccounts, makeGmailTokenGetter, saveMailAccount, startGmailConnect } from "../lib/mailAuth";
+import { clearMailAccount, disconnectMailAccount, emitMailAccountChange, getMailAccount, listMailAccounts, makeGmailTokenGetter, saveMailAccount, startGmailConnect, MAIL_ACCOUNT_EVENT } from "../lib/mailAuth";
 import { getToken } from "../lib/auth";
 import type { SessionUser } from "../lib/auth";
 import "./MailView.css";
@@ -83,6 +83,10 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
   const [connectOpen, setConnectOpen] = useState(false);
   const [mobilePane, setMobilePane] = useState<"list" | "read">("list");
   const [account, setAccount] = useState(getMailAccount());
+  /* Bumped when the Gmail connection changes (OAuth return, disconnect).
+     Native shells never reload on return, so the provider resolution below
+     must re-run from this instead of a page load. */
+  const [accountNonce, setAccountNonce] = useState(0);
 
   const currentFolder = FOLDERS.find((f) => f.id === folder) ?? FOLDERS[0];
   const labelById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
@@ -141,7 +145,16 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
       }
     })();
     return () => { cancelled = true; };
-  }, [user?.id]);
+  }, [user?.id, accountNonce]);
+
+  useEffect(() => {
+    const onAccountChange = () => {
+      setConnectOpen(false);
+      setAccountNonce((n) => n + 1);
+    };
+    window.addEventListener(MAIL_ACCOUNT_EVENT, onAccountChange);
+    return () => window.removeEventListener(MAIL_ACCOUNT_EVENT, onAccountChange);
+  }, []);
 
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedQuery(query), 280);
@@ -345,6 +358,7 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
       clearMailAccount();
       setAccount(null);
       setProvider(null);
+      emitMailAccountChange();
     })();
   }, []);
 

@@ -37,7 +37,7 @@ import { ProjectEditor } from "./components/collaboration/ProjectEditor";
 import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
 import { generateTaskFromMail } from "./lib/mailTask";
-import { saveMailAccount } from "./lib/mailAuth";
+import { emitMailAccountChange, saveMailAccount } from "./lib/mailAuth";
 import type { MailMessage } from "./types";
 
 type Layout = "list" | "board";
@@ -251,8 +251,9 @@ export function App() {
     const handleMailConnected = (email: string | null) => {
       if (!email) return;
       saveMailAccount({ email, connectedAt: new Date().toISOString() });
-      setToast(t("mail.toasts.updated"));
+      setToast(t("mail.toasts.connected", { email }));
       setActiveView("inbox");
+      emitMailAccountChange();
     };
     const handleHash = () => {
       const hash = window.location.hash;

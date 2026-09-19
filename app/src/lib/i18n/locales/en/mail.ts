@@ -84,6 +84,7 @@ export const mail = {
     updateFailed: "Couldn't update the message",
     newMail: "{count} new message",
     newMail_plural: "{count} new messages",
+    connected: "Gmail connected as {email}",
     taskCreated: "Task created from mail",
   },
 };

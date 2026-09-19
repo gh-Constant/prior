@@ -26,5 +26,5 @@ export const mail = {
   },
   tags: { title: "Libellés", apply: "Appliquer", remove: "Retirer", empty: "Aucun libellé" },
   ai: { generating: "Rédaction de la tâche…", failed: "Impossible de rédiger une tâche depuis ce mail." },
-  toasts: { archived: "Conversation archivée", unarchived: "Déplacé vers la boîte de réception", deleted: "Déplacé vers la corbeille", updated: "Mis à jour", updateFailed: "Mise à jour du message impossible", newMail: "{count} nouveau message", newMail_plural: "{count} nouveaux messages", taskCreated: "Tâche créée depuis le mail" },
+  toasts: { archived: "Conversation archivée", unarchived: "Déplacé vers la boîte de réception", deleted: "Déplacé vers la corbeille", updated: "Mis à jour", updateFailed: "Mise à jour du message impossible", newMail: "{count} nouveau message", newMail_plural: "{count} nouveaux messages", connected: "Gmail connecté : {email}", taskCreated: "Tâche créée depuis le mail" },
 };

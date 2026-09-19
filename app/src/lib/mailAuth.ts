@@ -41,6 +41,19 @@ export function clearMailAccount(): void {
   removeScopedStorage(ACCOUNT_KEY);
 }
 
+/** Fired when the Gmail connection changes (connect, reconnect, disconnect).
+ * Native shells never reload on OAuth return, so views must refresh their
+ * provider from this instead of relying on a page load. */
+export const MAIL_ACCOUNT_EVENT = "prior-mail-account-changed";
+
+export function emitMailAccountChange(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(MAIL_ACCOUNT_EVENT));
+  } catch {
+    // Non-DOM context: nothing is listening.
+  }
+}
+
 export type MailServerAccount = { id: string; email: string; connectedAt: string };
 
 export async function listMailAccounts(sessionToken: string): Promise<MailServerAccount[]> {
