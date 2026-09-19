@@ -148,6 +148,13 @@
   padding: 4px 0 2px;
 }
 
+/* Keep the date pill as a real flex item on narrow sheets. Without an
+   intrinsic minimum it can collapse to zero after the priority pill wraps. */
+.task-composer-toolbar .date-time-picker.pill {
+  flex: 0 0 auto;
+  min-width: max-content;
+}
+
 /* Date pill */
 .task-composer-date-pill-wrap {
   position: relative;
@@ -556,20 +563,14 @@
     font-size: 17px;
   }
 
-  /* Horizontal swipe chip carousel on mobile */
+  /* Let the date chip wrap instead of hiding it off the right edge on phones. */
   .task-composer-toolbar {
     display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    flex-wrap: wrap;
+    overflow-x: visible;
     gap: 8px;
     margin: 0 -18px;
     padding: 4px 18px 8px;
-    scrollbar-width: none;
-  }
-
-  .task-composer-toolbar::-webkit-scrollbar {
-    display: none;
   }
 
   .task-composer-toolbar .custom-select-wrap.custom-select-pill,

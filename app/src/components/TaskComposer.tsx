@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Area, Project, Task, TaskDraft, TaskPriority, TaskStatus } from "../types";
 import { useModalDialog } from "../hooks/useModalDialog";
 import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
 import { CustomSelect } from "./CustomSelect";
 import { DateTimePicker } from "./DateTimePicker";
+import { TaskTitleInput } from "./TaskTitleInput";
 import { TaskPeoplePicker } from "./collaboration/TaskPlanning";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { TaskPlanningProps } from "./collaboration/types";
+import { parseTaskTitle, type TaskTitleField, type TaskTitleToken } from "../lib/taskTitleParser";
 import "./TaskComposer.css";
 
 const PRIORITY_COLORS: Record<number, string> = {
@@ -20,7 +22,7 @@ const PRIORITY_COLORS: Record<number, string> = {
 type Props = { readonly task?: Task; readonly areas?: Area[]; readonly projects?: Project[]; readonly initialContext?: Pick<TaskDraft, "areaId" | "projectId" | "status">; readonly planning?: TaskPlanningProps; readonly onProjectChange?: (projectId: string | null) => void; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
 
 export function TaskComposer({ task, areas = [], projects = [], initialContext, planning, onProjectChange, onSave, onCancel }: Props) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const workflowOptions: { id: TaskStatus; name: string }[] = [
     { id: "inbox", name: t("tasks.composer.statusInbox") },
     { id: "backlog", name: t("tasks.composer.statusBacklog") },
@@ -52,8 +54,10 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [ignoredTitleTokens, setIgnoredTitleTokens] = useState<string[]>([]);
   const submitting = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const autoTitleValues = useRef<Partial<Record<TaskTitleField, string | number | boolean>>>({});
   const dialogRef = useRef<HTMLDialogElement>(null);
   useModalDialog(dialogRef);
   const planningDisabled = Boolean(planning?.readOnly || planning?.loading);
@@ -70,6 +74,71 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const isStatusLocked = Boolean(!task && initialContext?.status);
   const effectiveAreaId = areaId ?? (isAreaLocked ? initialContext?.areaId ?? lockedProject?.areaId ?? null : null);
   const hasOptionalDetail = Boolean(description.trim() || assigneeName.trim() || followUpDate || important || urgent || (!isAreaLocked && areaId) || planningPeople.length || extraFields.some((field) => field.selectedIds.length > 0));
+  const parsedTitle = useMemo(() => parseTaskTitle(title, {
+    lang,
+    projects: isProjectLocked ? [] : projects,
+    areas: isAreaLocked ? [] : areas,
+  }, ignoredTitleTokens), [areas, ignoredTitleTokens, isAreaLocked, isProjectLocked, lang, projects, title]);
+  const parsedFieldSignature = JSON.stringify(parsedTitle.fields);
+
+  const currentTitleFieldValues: Partial<Record<TaskTitleField, string | number | boolean>> = {
+    dueDate,
+    dueTime: dueTime ?? "",
+    priority,
+    status,
+    projectId: projectId ?? "",
+    areaId: areaId ?? "",
+    assigneeName,
+    important,
+    urgent,
+  };
+
+  function clearParsedField(field: TaskTitleField) {
+    switch (field) {
+      case "dueDate": setDueDate(""); break;
+      case "dueTime": setDueTime(null); break;
+      case "priority": setPriority(4); break;
+      case "status": setStatus("inbox"); break;
+      case "projectId": setProjectId(null); onProjectChange?.(null); break;
+      case "areaId": setAreaId(null); break;
+      case "assigneeName": setAssigneeName(""); break;
+      case "important": setImportant(false); break;
+      case "urgent": setUrgent(false); break;
+    }
+  }
+
+  function applyParsedField(field: TaskTitleField, value: string | number | boolean) {
+    switch (field) {
+      case "dueDate": setDueDate(String(value)); break;
+      case "dueTime": setDueTime(String(value)); break;
+      case "priority": setPriority(Number(value) as TaskPriority); break;
+      case "status": setStatus(value as TaskStatus); break;
+      case "projectId": changeProject(String(value)); break;
+      case "areaId": setAreaId(String(value)); break;
+      case "assigneeName": setAssigneeName(String(value)); break;
+      case "important": setImportant(Boolean(value)); break;
+      case "urgent": setUrgent(Boolean(value)); break;
+    }
+  }
+
+  useEffect(() => {
+    const nextFields = parsedTitle.fields;
+    const previousFields = autoTitleValues.current;
+    for (const [field, value] of Object.entries(nextFields) as [TaskTitleField, string | number | boolean][]) {
+      if (previousFields[field] !== value) applyParsedField(field, value);
+      previousFields[field] = value;
+    }
+    for (const field of Object.keys(previousFields) as TaskTitleField[]) {
+      if (field in nextFields) continue;
+      const previousValue = previousFields[field];
+      const currentValue = currentTitleFieldValues[field];
+      if (String(currentValue ?? "") === String(previousValue ?? "")) clearParsedField(field);
+      delete previousFields[field];
+    }
+    // The signature is intentionally consumed here so this effect only reacts
+    // to recognized title changes, not to every unrelated composer render.
+    void parsedFieldSignature;
+  }, [parsedFieldSignature]);
 
   useEffect(() => {
     if (awaitingProjectPeople.current && planning?.people !== peopleSource.current) {
@@ -104,7 +173,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   }, []);
 
   async function submit() {
-    const clean = title.trim();
+    const clean = parsedTitle.cleanTitle.trim();
     if (!clean || submitting.current || planningDisabled) return;
     submitting.current = true;
     setSaving(true);
@@ -133,6 +202,8 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
         setAssigneeName("");
         setFollowUpDate("");
         setFollowUpTime(null);
+        setIgnoredTitleTokens([]);
+        autoTitleValues.current = {};
       }
     } catch {
       setError(t("tasks.composer.saveError"));
@@ -170,14 +241,20 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
           {planning?.readOnly && <p className="task-composer-feedback">{t("tasks.composer.readOnly")}</p>}
           <div className="task-composer-body">
             <div className="task-composer-hero">
-              <input
-                ref={inputRef}
+              <TaskTitleInput
+                inputRef={inputRef}
                 value={title}
                 disabled={saving || planningDisabled}
-                onChange={(event) => setTitle(event.target.value)}
+                onChange={(nextTitle) => setTitle(nextTitle)}
+                parsed={parsedTitle}
+                onTokenClick={(token: TaskTitleToken) => {
+                  setIgnoredTitleTokens((current) => current.includes(token.key) ? current : [...current, token.key]);
+                  clearParsedField(token.field);
+                }}
+                projects={isProjectLocked ? [] : projects}
+                areas={isAreaLocked ? [] : areas}
                 placeholder={t("tasks.composer.titlePlaceholder")}
-                aria-label={t("tasks.composer.titleLabel")}
-                className="task-composer-title-input"
+                ariaLabel={t("tasks.composer.titleLabel")}
               />
             </div>
 
@@ -413,7 +490,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
             <button type="button" className="secondary-button" disabled={saving} onClick={onCancel}>
               {t("tasks.composer.cancel")}
             </button>
-            <button className="primary-button" type="submit" disabled={!title.trim() || saving || planningDisabled}>
+            <button className="primary-button" type="submit" disabled={!parsedTitle.cleanTitle.trim() || saving || planningDisabled}>
               {saving ? t("tasks.composer.saving") : task ? t("tasks.composer.save") : t("tasks.composer.create")}
             </button>
           </div>

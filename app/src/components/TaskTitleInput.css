@@ -1,0 +1,22 @@
+.task-title-input-wrap { position: relative; min-width: 0; }
+.task-title-highlight-layer, .task-title-input-control { box-sizing: border-box; width: 100%; min-height: 31px; padding: 2px 0; font: inherit; font-size: 18px; font-weight: 600; line-height: 1.35; letter-spacing: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-title-highlight-layer { position: absolute; inset: 0; z-index: 2; overflow: hidden; color: var(--ink, #272522); pointer-events: none; }
+.task-title-input-control { position: relative; z-index: 1; color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--accent, #fa654a); background: transparent; }
+.task-title-input-control::placeholder { color: transparent; }
+.task-title-placeholder { color: #b0aca3; font-weight: 450; }
+.task-title-token { position: relative; display: inline; border-radius: 4px; padding: 1px 3px; margin: 0 -1px; cursor: pointer; pointer-events: auto; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.task-title-token:hover { filter: brightness(.96); }
+.task-title-token::after { position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 7px); width: max-content; max-width: 240px; padding: 5px 8px; border-radius: 6px; background: #302d29; color: #fff; content: attr(data-tooltip); font-size: 11px; font-weight: 550; line-height: 1.2; opacity: 0; pointer-events: none; transform: translate(-50%, 3px); transition: opacity .12s ease, transform .12s ease; white-space: nowrap; }
+.task-title-token::before { position: absolute; z-index: 5; left: 50%; bottom: calc(100% + 2px); border: 5px solid transparent; border-top-color: #302d29; content: ""; opacity: 0; transform: translateX(-50%); transition: opacity .12s ease; }
+.task-title-token:hover::after, .task-title-token:hover::before { opacity: 1; transform: translate(-50%, 0); }
+.task-title-token:hover::before { transform: translateX(-50%); }
+.task-title-token-dueDate { background: #fff0e8; color: #b95022; }
+.task-title-token-dueTime { background: #ffedd5; color: #c2410c; }
+.task-title-token-priority { background: #fff4c2; color: #956f00; }
+.task-title-token-status { background: #e9e5ff; color: #6555b8; }
+.task-title-token-projectId { background: #e4f3ff; color: #2674a8; }
+.task-title-token-areaId { background: #e5f7ec; color: #287a4d; }
+.task-title-token-assigneeName { background: #f3e8ff; color: #7840a8; }
+.task-title-token-important { background: #ffe4ef; color: #af3562; }
+.task-title-token-urgent { background: #ffe2df; color: #b73d35; }
+@media (max-width: 560px) { .task-title-highlight-layer, .task-title-input-control { font-size: 17px; } .task-title-token::after { left: 0; transform: translate(0, 3px); } .task-title-token:hover::after { transform: translate(0, 0); } .task-title-token::before { left: 12px; } }

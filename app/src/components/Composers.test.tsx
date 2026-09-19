@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { TaskComposer } from "./TaskComposer";
 import type { Habit, Task, TaskDraft } from "../types";
 import { HabitComposer } from "./HabitComposer";
@@ -21,6 +21,22 @@ describe("TaskComposer", () => {
 
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave.mock.calls.at(0)?.[0]).toMatchObject({ title: "Buy milk", priority: 1, important: true, urgent: false });
+  });
+
+  it("prefills task fields from natural title tokens and removes them on save", async () => {
+    const onSave = vi.fn(async (_input: TaskDraft) => undefined);
+    render(<TaskComposer onSave={onSave} onCancel={() => undefined} />);
+
+    fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "Do homework tomorrow at 3pm p1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create task" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Do homework",
+      dueDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      dueTime: "15:00",
+      priority: 1,
+    })));
   });
 
   it("edits an existing task without clearing the form", async () => {
