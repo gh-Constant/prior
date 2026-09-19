@@ -1272,13 +1272,13 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		// file enforce their own limiter via allowEndpoint; this middleware
 		// only covers the out-of-scope paths to avoid double-charging.
 		if limiter := s.limiterForPath(r.URL.Path); limiter != nil {
-			ipKey := "ip:" + clientIP(r)
-			allowed := limiter.allow(ipKey)
-			if allowed {
-				if token := bearer(r); token != "" {
-					sum := sha256.Sum256([]byte(token))
-					allowed = limiter.allow("token:" + hex.EncodeToString(sum[:])[:16])
-				}
+			var allowed bool
+			if token := bearer(r); token != "" {
+				sum := sha256.Sum256([]byte(token))
+				allowed = limiter.allow("token:" + hex.EncodeToString(sum[:])[:16])
+			} else {
+				ipKey := "ip:" + clientIP(r)
+				allowed = limiter.allow(ipKey)
 			}
 			if !allowed {
 				w.Header().Set("Retry-After", "60")
@@ -1452,11 +1452,6 @@ func (s *Server) allowEndpoint(w http.ResponseWriter, r *http.Request, limiter *
 	if limiter == nil {
 		return true
 	}
-	ipKey := "ip:" + clientIP(r)
-	if !limiter.allow(ipKey) {
-		writeRateLimited(w)
-		return false
-	}
 	if token := bearer(r); token != "" {
 		sum := sha256.Sum256([]byte(token))
 		tokenKey := "token:" + hex.EncodeToString(sum[:])[:16]
@@ -1464,6 +1459,12 @@ func (s *Server) allowEndpoint(w http.ResponseWriter, r *http.Request, limiter *
 			writeRateLimited(w)
 			return false
 		}
+		return true
+	}
+	ipKey := "ip:" + clientIP(r)
+	if !limiter.allow(ipKey) {
+		writeRateLimited(w)
+		return false
 	}
 	return true
 }

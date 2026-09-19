@@ -16,14 +16,50 @@ type SqlDatabase = {
 };
 
 let sqlDatabase: SqlDatabase | null = null;
+let sqlDatabasePromise: Promise<SqlDatabase> | null = null;
 let preparedAccountId: string | null = null;
 let accountPreparation: Promise<void> | null = null;
+
+let dbWriteLock = Promise.resolve();
+
+/**
+ * Serializes write operations dispatched to the SQLite pool from JavaScript.
+ * Prevents concurrent transactions/writes from conflicting and causing SQLITE_BUSY.
+ */
+async function withDbLock<T>(action: () => Promise<T>): Promise<T> {
+  const previous = dbWriteLock;
+  let release: () => void = () => {};
+  dbWriteLock = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous.catch(() => {});
+  try {
+    return await action();
+  } finally {
+    release();
+  }
+}
 
 async function getSqlDatabase(): Promise<SqlDatabase | null> {
   if (!isTauri()) return null;
   if (!sqlDatabase) {
-    const module = await import("@tauri-apps/plugin-sql");
-    sqlDatabase = (await module.default.load("sqlite:prior.db")) as unknown as SqlDatabase;
+    if (!sqlDatabasePromise) {
+      sqlDatabasePromise = (async () => {
+        const module = await import("@tauri-apps/plugin-sql");
+        const db = (await module.default.load("sqlite:prior.db")) as unknown as SqlDatabase;
+        try {
+          // WAL mode allows concurrent readers and writers without file lock collisions.
+          await db.execute("PRAGMA journal_mode = WAL;");
+          // Busy timeout waits up to 5s if the database is busy instead of failing immediately with code 5.
+          await db.execute("PRAGMA busy_timeout = 5000;");
+          await db.execute("PRAGMA synchronous = NORMAL;");
+        } catch {
+          // Best-effort PRAGMA setup for environments/mocks that do not support it.
+        }
+        return db;
+      })();
+    }
+    sqlDatabase = await sqlDatabasePromise;
   }
   await prepareDatabaseAccount(sqlDatabase, getAccountId());
   return sqlDatabase;
@@ -35,7 +71,7 @@ async function prepareDatabaseAccount(db: SqlDatabase, accountId: string): Promi
       await accountPreparation;
       continue;
     }
-    const preparation = (async () => {
+    const preparation = withDbLock(async () => {
       if (accountId !== "anonymous") {
         // Rows created by pre-v0.3.50 versions (legacy) or while signed out (anonymous)
         // are claimed for the account that signs in.
@@ -47,7 +83,7 @@ async function prepareDatabaseAccount(db: SqlDatabase, accountId: string): Promi
           [accountId],
         );
       }
-    })();
+    });
     accountPreparation = preparation;
     try {
       await preparation;
@@ -61,6 +97,7 @@ async function prepareDatabaseAccount(db: SqlDatabase, accountId: string): Promi
 /** Test hook: reset cached SQLite handle between isolated test cases. */
 export function __resetSqlDatabaseForTests(): void {
   sqlDatabase = null;
+  sqlDatabasePromise = null;
   preparedAccountId = null;
   accountPreparation = null;
 }
@@ -257,17 +294,6 @@ function habitFromRow(row: HabitRow): Habit {
   return normalizeHabit({ ...row, startDate: row.start_date, timeOfDay: row.time_of_day, endDate: row.end_date, daysOfWeek, completedDates });
 }
 
-async function withTransaction(db: SqlDatabase, work: () => Promise<void>): Promise<void> {
-  await db.execute("BEGIN");
-  try {
-    await work();
-    await db.execute("COMMIT");
-  } catch (error) {
-    try { await db.execute("ROLLBACK"); } catch { /* transaction already failed; surface the original error */ }
-    throw error;
-  }
-}
-
 // Adapter-aware previous lookups: SQLite rows are scoped by (account_id, id) so
 // two accounts can reuse the same entity id without seeing each other.
 async function findPreviousTask(db: SqlDatabase | null, accountId: string, id: string | undefined): Promise<Task | undefined> {
@@ -300,7 +326,7 @@ async function mergeRemoteTasksIntoDb(db: SqlDatabase, pendingIds: Set<string>, 
   const accountId = getAccountId();
   const candidates = tasks.filter((task) => !pendingIds.has(task.id));
   if (!candidates.length) return;
-  await withTransaction(db, async () => {
+  await withDbLock(async () => {
     // Bulk-load local revisions once so a large pull does not pay per-row SELECT latency.
     const placeholders = candidates.map(() => "?").join(",");
     const existing = await db.select<{ id: string; server_revision: number | null }>(
@@ -332,7 +358,7 @@ async function mergeRemoteHabitsIntoDb(db: SqlDatabase, pendingIds: Set<string>,
   const accountId = getAccountId();
   const candidates = habits.filter((habit) => !pendingIds.has(habit.id));
   if (!candidates.length) return;
-  await withTransaction(db, async () => {
+  await withDbLock(async () => {
     const placeholders = candidates.map(() => "?").join(",");
     const existing = await db.select<{ id: string; server_revision: number | null }>(
       `SELECT id, server_revision FROM habits WHERE account_id = ? AND id IN (${placeholders})`,
@@ -406,9 +432,11 @@ export const localStore = {
     const previous = await findPreviousTask(db, accountId, input.id);
     const task = buildTask(input, previous, timestamp, input.id ?? uuid());
     if (db) {
-      await db.execute(
-        "INSERT INTO tasks (account_id, id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, people_ids, follow_up_date, follow_up_time, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, due_time=excluded.due_time, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, follow_up_time=excluded.follow_up_time, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
-        [accountId, task.id, task.title, task.description, task.dueDate, task.dueTime, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.scheduledTime, task.assigneeName, JSON.stringify(task.peopleIds ?? []), task.followUpDate, task.followUpTime, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
+      await withDbLock(() =>
+        db.execute(
+          "INSERT INTO tasks (account_id, id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, people_ids, follow_up_date, follow_up_time, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, due_time=excluded.due_time, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, follow_up_time=excluded.follow_up_time, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+          [accountId, task.id, task.title, task.description, task.dueDate, task.dueTime, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.scheduledTime, task.assigneeName, JSON.stringify(task.peopleIds ?? []), task.followUpDate, task.followUpTime, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
+        )
       );
     } else {
       const tasks = read<Task[]>(TASKS_KEY, []).filter((item) => item.id !== task.id);
@@ -427,7 +455,9 @@ export const localStore = {
     const tombstone = { ...task, deletedAt, updatedAt: deletedAt };
     const db = await getSqlDatabase();
     if (db) {
-      await db.execute("UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND account_id = ?", [deletedAt, deletedAt, task.id, getAccountId()]);
+      await withDbLock(() =>
+        db.execute("UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND account_id = ?", [deletedAt, deletedAt, task.id, getAccountId()])
+      );
     } else {
       const tasks = read<Task[]>(TASKS_KEY, []).map((item) => (item.id === task.id ? tombstone : item));
       write(TASKS_KEY, tasks);
@@ -455,9 +485,11 @@ export const localStore = {
     const existing = await findPreviousHabit(db, accountId, input.id);
     const habit = buildHabit(input, existing, timestamp, input.id ?? uuid());
     if (db) {
-      await db.execute(
-        "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, time_of_day=excluded.time_of_day, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
-        [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.timeOfDay ?? null, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, null, habit.serverRevision ?? null],
+      await withDbLock(() =>
+        db.execute(
+          "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, time_of_day=excluded.time_of_day, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
+          [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.timeOfDay ?? null, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, null, habit.serverRevision ?? null],
+        )
       );
     } else {
       write(HABITS_KEY, [...read<Habit[]>(HABITS_KEY, []).filter((item) => item.id !== habit.id), habit]);
@@ -475,7 +507,9 @@ export const localStore = {
     const tombstone = { ...habit, deletedAt, updatedAt: deletedAt };
     const db = await getSqlDatabase();
     if (db) {
-      await db.execute("UPDATE habits SET deleted_at = ?, updated_at = ? WHERE id = ? AND account_id = ?", [deletedAt, deletedAt, habit.id, getAccountId()]);
+      await withDbLock(() =>
+        db.execute("UPDATE habits SET deleted_at = ?, updated_at = ? WHERE id = ? AND account_id = ?", [deletedAt, deletedAt, habit.id, getAccountId()])
+      );
     } else {
       write(HABITS_KEY, read<Habit[]>(HABITS_KEY, []).map((item) => item.id === habit.id ? tombstone : item));
     }
@@ -485,9 +519,11 @@ export const localStore = {
   async enqueue(mutation: Mutation): Promise<void> {
     const db = await getSqlDatabase();
     if (db) {
-      await db.execute(
-        "INSERT INTO outbox (account_id, id, entity, kind, payload, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO NOTHING",
-        [getAccountId(), mutation.id, mutation.entity ?? "task", mutation.kind, JSON.stringify("habit" in mutation ? mutation.habit : mutation.task), mutation.createdAt],
+      await withDbLock(() =>
+        db.execute(
+          "INSERT INTO outbox (account_id, id, entity, kind, payload, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO NOTHING",
+          [getAccountId(), mutation.id, mutation.entity ?? "task", mutation.kind, JSON.stringify("habit" in mutation ? mutation.habit : mutation.task), mutation.createdAt],
+        )
       );
       return;
     }
@@ -548,8 +584,12 @@ export const localStore = {
     const db = await getSqlDatabase();
     if (db) {
       const accountId = getAccountId();
-      await withTransaction(db, async () => {
-        for (const id of ids) await db.execute("DELETE FROM outbox WHERE id = ? AND account_id = ?", [id, accountId]);
+      await withDbLock(async () => {
+        for (let i = 0; i < ids.length; i += 100) {
+          const chunk = ids.slice(i, i + 100);
+          const placeholders = chunk.map(() => "?").join(",");
+          await db.execute(`DELETE FROM outbox WHERE account_id = ? AND id IN (${placeholders})`, [accountId, ...chunk]);
+        }
       });
       return;
     }
@@ -570,9 +610,11 @@ export const localStore = {
   async setSyncRevision(revision: number): Promise<void> {
     const db = await getSqlDatabase();
     if (db) {
-      await db.execute(
-        "INSERT INTO sync_state (account_id, last_server_revision) VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET last_server_revision = excluded.last_server_revision",
-        [getAccountId(), revision],
+      await withDbLock(() =>
+        db.execute(
+          "INSERT INTO sync_state (account_id, last_server_revision) VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET last_server_revision = excluded.last_server_revision",
+          [getAccountId(), revision],
+        )
       );
       return;
     }
@@ -605,7 +647,9 @@ export const localStore = {
   async resetSyncRevision(): Promise<void> {
     const db = await getSqlDatabase();
     if (db) {
-      await db.execute("INSERT INTO sync_state (account_id, last_server_revision) VALUES (?, 0) ON CONFLICT(account_id) DO UPDATE SET last_server_revision = 0", [getAccountId()]);
+      await withDbLock(() =>
+        db.execute("INSERT INTO sync_state (account_id, last_server_revision) VALUES (?, 0) ON CONFLICT(account_id) DO UPDATE SET last_server_revision = 0", [getAccountId()])
+      );
       return;
     }
     const current = await this.getSyncState();

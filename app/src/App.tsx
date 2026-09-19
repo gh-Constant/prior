@@ -184,6 +184,7 @@ export function App() {
   const celebrationKey = useRef(0);
   const syncInFlight = useRef<Promise<void> | null>(null);
   const syncQueued = useRef(false);
+  const lastActiveSyncAt = useRef(0);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const workspaceSyncTimer = useRef<number | undefined>(undefined);
   const workspaceSyncFirstQueuedAt = useRef<number | undefined>(undefined);
@@ -529,6 +530,13 @@ export function App() {
     return run;
   }, [refresh]);
 
+  const syncOnActive = useCallback(() => {
+    const nowMs = Date.now();
+    if (nowMs - lastActiveSyncAt.current < 15_000) return;
+    lastActiveSyncAt.current = nowMs;
+    void syncNow();
+  }, [syncNow]);
+
   const scheduleWorkspaceSync = useCallback(() => {
     if (workspaceSync.isApplyingRemote()) return;
     const nowMs = Date.now();
@@ -678,21 +686,21 @@ export function App() {
     };
   }, []);
 
-  // Periodic sync every 60s while visible, plus an immediate sync when the
-  // tab becomes visible again.
+  // Periodic sync every 60s while visible, plus a throttled sync when the
+  // tab becomes visible again or regains focus.
   useEffect(() => {
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") void syncNow();
     }, 60_000);
     const onVisibility = () => {
-      if (document.visibilityState === "visible") void syncNow();
+      if (document.visibilityState === "visible") syncOnActive();
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [syncNow]);
+  }, [syncNow, syncOnActive]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -726,9 +734,9 @@ export function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("online", syncNow);
-    window.addEventListener("focus", syncNow);
-    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("online", syncNow); window.removeEventListener("focus", syncNow); };
-  }, [activeView, syncNow]);
+    window.addEventListener("focus", syncOnActive);
+    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("online", syncNow); window.removeEventListener("focus", syncOnActive); };
+  }, [activeView, syncNow, syncOnActive]);
 
   function openNewTask(context?: Pick<TaskDraft, "areaId" | "projectId" | "status">): void {
     setNewTaskContext(context);

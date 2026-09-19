@@ -228,3 +228,48 @@ func TestNormalizeReasoningEffort(t *testing.T) {
 		}
 	}
 }
+
+func TestAllowEndpointPerTokenIsolation(t *testing.T) {
+	server := &Server{}
+	limiter := newRateLimiter(2, time.Minute)
+
+	// Two devices sharing the same remote IP (e.g. home/office NAT)
+	reqDeviceA := httptest.NewRequest(http.MethodGet, "/v1/workspace", nil)
+	reqDeviceA.RemoteAddr = "203.0.113.10:1234"
+	reqDeviceA.Header.Set("Authorization", "Bearer token-device-a")
+
+	reqDeviceB := httptest.NewRequest(http.MethodGet, "/v1/workspace", nil)
+	reqDeviceB.RemoteAddr = "203.0.113.10:5678"
+	reqDeviceB.Header.Set("Authorization", "Bearer token-device-b")
+
+	// Device A uses its 2 requests
+	rec := httptest.NewRecorder()
+	if !server.allowEndpoint(rec, reqDeviceA, limiter, "workspace") {
+		t.Fatal("device A request 1 should be allowed")
+	}
+	rec = httptest.NewRecorder()
+	if !server.allowEndpoint(rec, reqDeviceA, limiter, "workspace") {
+		t.Fatal("device A request 2 should be allowed")
+	}
+	rec = httptest.NewRecorder()
+	if server.allowEndpoint(rec, reqDeviceA, limiter, "workspace") {
+		t.Fatal("device A request 3 should be rate limited")
+	}
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d", rec.Code)
+	}
+
+	// Device B on the same IP must NOT be blocked by Device A's requests
+	rec = httptest.NewRecorder()
+	if !server.allowEndpoint(rec, reqDeviceB, limiter, "workspace") {
+		t.Fatal("device B request 1 should be allowed despite sharing IP with device A")
+	}
+	rec = httptest.NewRecorder()
+	if !server.allowEndpoint(rec, reqDeviceB, limiter, "workspace") {
+		t.Fatal("device B request 2 should be allowed")
+	}
+	rec = httptest.NewRecorder()
+	if server.allowEndpoint(rec, reqDeviceB, limiter, "workspace") {
+		t.Fatal("device B request 3 should be rate limited")
+	}
+}

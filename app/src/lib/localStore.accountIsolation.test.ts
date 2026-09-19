@@ -146,8 +146,6 @@ describe("two-account same-id isolation (SQLite adapter)", () => {
     await localStore.applyRemoteTasks([
       { id: "shared-id", title: "Remote B", description: "", dueDate: null, priority: 4, completed: false, important: false, urgent: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z", deletedAt: null, serverRevision: 7 },
     ]);
-    expect(executed.some((s) => s.query === "BEGIN")).toBe(true);
-    expect(executed.some((s) => s.query === "COMMIT")).toBe(true);
     const remoteUpsert = executed.find((s) => s.query.includes("INSERT INTO tasks"));
     expect(remoteUpsert?.query).toContain("ON CONFLICT(account_id, id)");
     expect(remoteUpsert?.bindValues?.[0]).toBe("account-b");

@@ -32,8 +32,8 @@ export const API_URL = useConfiguredApiUrl ? (configuredApiUrl ?? defaultApiUrl)
 export const FALLBACK_API_URL = isNativeApp && API_URL !== productionApiUrl ? productionApiUrl : undefined;
 const REQUEST_TIMEOUT_MS = 15_000;
 
-class ApiRequestError extends Error {
-  constructor(public readonly kind: "network" | "timeout" | "server", message: string, public readonly status?: number) {
+export class ApiRequestError extends Error {
+  constructor(public readonly kind: "network" | "timeout" | "server" | "rate_limited", message: string, public readonly status?: number) {
     super(message);
     this.name = "ApiRequestError";
   }
@@ -49,6 +49,10 @@ export class ApiAuthError extends Error {
 
 export function isAuthError(error: unknown): boolean {
   return error instanceof ApiAuthError;
+}
+
+export function isRateLimitedError(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.kind === "rate_limited";
 }
 
 export function isRetriableError(error: unknown): boolean {
@@ -107,6 +111,7 @@ async function requestOnce<T>(url: string, path: string, init: RequestInit, toke
       const body = await response.json().catch(() => ({})) as { error?: string };
       const message = body.error ?? `Prior API returned ${response.status}`;
       if (response.status === 401) throw new ApiAuthError(message);
+      if (response.status === 429) throw new ApiRequestError("rate_limited", message, response.status);
       if (response.status >= 500) throw new ApiRequestError("server", message, response.status);
       throw new Error(message);
     }
