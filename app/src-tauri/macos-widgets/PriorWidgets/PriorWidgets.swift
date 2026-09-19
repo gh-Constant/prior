@@ -1,3 +1,4 @@
+import SwiftUI
 import WidgetKit
 
 /// Prior macOS widgets: Today, Eisenhower matrix and Inbox. Data comes from

@@ -180,6 +180,7 @@ struct InboxWidget: Widget {
 
 // MARK: - Previews
 
+#if DEBUG
 #Preview(as: .systemMedium) {
     TodayWidget()
 } timeline: {
@@ -197,3 +198,4 @@ struct InboxWidget: Widget {
 } timeline: {
     SnapshotEntry(date: Date(), snapshot: SnapshotStore.sample)
 }
+#endif
