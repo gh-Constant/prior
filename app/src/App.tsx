@@ -40,7 +40,10 @@ import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps }
 import { generateTaskFromMail } from "./lib/mailTask";
 import { emitMailAccountChange, saveMailAccount } from "./lib/mailAuth";
 import { parseWidgetUrl, refreshWidgetSnapshot } from "./lib/widgetSnapshot";
+import { logger } from "./lib/logger";
 import type { MailMessage } from "./types";
+
+logger.init();
 
 type Layout = "list" | "board";
 
@@ -306,8 +309,15 @@ export function App() {
     if (refreshInFlight.current) return refreshInFlight.current;
     const run = (async () => {
       const [nextTasks, nextHabits] = await Promise.all([localStore.listTasks(), localStore.listHabits()]);
-      const accessibleProjectIds = new Set([...workspaceStore.listProjects(), ...collaborationStore.listProjects()].map((project) => project.id));
-      setTasks(nextTasks.filter((task) => !task.projectId || accessibleProjectIds.has(task.projectId)));
+      const accessibleProjects = [...workspaceStore.listProjects(), ...collaborationStore.listProjects()];
+      const accessibleProjectIds = new Set(accessibleProjects.map((project) => project.id));
+      // Only filter by projectId if we have accessible projects loaded;
+      // if accessibleProjectIds is empty, we must not hide all tasks!
+      setTasks(
+        accessibleProjectIds.size === 0
+          ? nextTasks
+          : nextTasks.filter((task) => !task.projectId || accessibleProjectIds.has(task.projectId))
+      );
       setHabits(nextHabits);
       void updateAndroidWidget(nextTasks, nextHabits).catch(() => undefined);
       void refreshWidgetSnapshot(nextTasks).catch(() => undefined);
@@ -331,6 +341,9 @@ export function App() {
         const generation = sessionGeneration.current;
         const token = await getToken();
         if (!token || generation !== sessionGeneration.current) return;
+
+        logger.info("sync", "Starting sync cycle");
+
         // Profile first: the server copy wins so a rename on another device
         // converges locally. Failures are non-fatal for task data.
         try {
@@ -350,8 +363,10 @@ export function App() {
             setToast(t("common.toasts.sessionExpired"));
             return;
           }
+          logger.warn("sync", "Profile sync failed", { error: String(profileError) });
           console.warn("Prior profile sync failed:", profileError);
         }
+
         // navigator.onLine is unreliable in Tauri webviews. The API request has
         // its own timeout and is the source of truth for connectivity.
         const state = await localStore.getSyncState();
@@ -365,6 +380,7 @@ export function App() {
           await localStore.removeMutations(pushed.applied.map((item) => item.mutationId));
           highestPushedRevision = pushed.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
         }
+
         // Paged pull: server caps a single response at PullPageSize (200
         // revisions). Follow nextSince/hasMore so large histories converge.
         async function pullAll(since: number) {
@@ -385,10 +401,13 @@ export function App() {
           }
           return combined;
         }
+
         let pulled = await pullAll(state.lastServerRevision);
         if (generation !== sessionGeneration.current) return;
+
         const accountId = getUser()?.id;
         if (accountId && localStore.needsLegacySync(accountId)) {
+          logger.info("sync", "Running legacy migration for account", { accountId });
           const fullHistory = state.lastServerRevision === 0 ? pulled : await pullAll(0);
           if (generation !== sessionGeneration.current) return;
           const legacy = await localStore.legacyMutations(
@@ -403,26 +422,47 @@ export function App() {
             highestPushedRevision = pushedLegacy.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
           }
           localStore.markLegacySyncComplete(accountId);
+          logger.info("sync", "Legacy migration completed", { mutationsCount: legacy.length });
           if (legacy.length) {
             pulled = await pullAll(state.lastServerRevision);
             if (generation !== sessionGeneration.current) return;
           }
         }
+
         // Snapshot pending ids once per sync so remote merges skip exactly the
         // edits that were still queued when this sync started.
         const pendingSnapshot = await localStore.pendingIdsSnapshot();
         await localStore.applyRemoteTasks(pulled.tasks, pendingSnapshot.tasks);
         await localStore.applyRemoteHabits(pulled.habits ?? [], pendingSnapshot.habits);
-        await workspaceSync.sync(token, () => generation === sessionGeneration.current);
+
+        // Update task/habit revision and refresh UI immediately
+        const finalRevision = Math.max(pulled.revision, highestPushedRevision);
+        await localStore.setSyncRevision(finalRevision);
+        await refresh();
+
+        // Workspace sync in an isolated try/catch so a workspace snapshot issue never halts tasks/habits
+        try {
+          await workspaceSync.sync(token, () => generation === sessionGeneration.current);
+          if (generation === sessionGeneration.current) {
+            refreshWorkspace();
+            await refresh();
+          }
+        } catch (workspaceError) {
+          logger.error("sync", "Workspace sync failed", { error: String(workspaceError) });
+          console.warn("Prior workspace sync failed:", workspaceError);
+        }
+
         if (generation !== sessionGeneration.current) return;
+
+        // Collaboration sync in an isolated try/catch
         let collaborationChanged = false;
         try {
           collaborationChanged = (await collaborationStore.sync(token)).changed;
         } catch (collaborationError) {
-          // The cache remains usable when the collaboration endpoint is not
-          // deployed yet or the account has no shared projects.
+          logger.warn("sync", "Collaboration sync failed", { error: String(collaborationError) });
           console.warn("Prior collaboration sync failed:", collaborationError);
         }
+
         const inviteToken = typeof window !== "undefined" ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("invite") : null;
         if (inviteToken) {
           try {
@@ -431,9 +471,11 @@ export function App() {
             collaborationChanged = (await collaborationStore.sync(token)).changed || collaborationChanged;
             setToast(t("common.toasts.inviteAccepted"));
           } catch (inviteError) {
+            logger.warn("sync", "Project invite could not be accepted", { error: String(inviteError) });
             console.warn("Prior project invite could not be accepted:", inviteError);
           }
         }
+
         // A newly accepted/shared project may contain task revisions older than
         // this account's normal sync cursor. Pull the authorized history once
         // when the project ACL changes so the member sees the existing work.
@@ -441,12 +483,15 @@ export function App() {
           const collaborationHistory = await pullAll(0);
           if (generation !== sessionGeneration.current) return;
           await localStore.applyRemoteTasks(collaborationHistory.tasks, pendingSnapshot.tasks);
-          pulled = { ...pulled, revision: Math.max(pulled.revision, collaborationHistory.revision) };
+          const updatedRevision = Math.max(finalRevision, collaborationHistory.revision);
+          await localStore.setSyncRevision(updatedRevision);
+          await refresh();
         }
+
         // Assistant settings follow the account after workspace data.
         try {
           const settingsOk = await pullAssistantSettings();
-          if (!settingsOk) console.warn("Prior assistant settings not yet synced; will retry on the next sync.");
+          if (!settingsOk) logger.warn("sync", "Assistant settings not yet synced; will retry on next sync");
         } catch (settingsError) {
           if (await handleAuthError(settingsError)) {
             if (generation !== sessionGeneration.current) return;
@@ -456,16 +501,13 @@ export function App() {
             setToast(t("common.toasts.sessionExpired"));
             return;
           }
+          logger.warn("sync", "Assistant settings sync failed", { error: String(settingsError) });
           console.warn("Prior assistant settings sync failed:", settingsError);
         }
-        // A remote merge may not write anything when the local copy is already
-        // current. Refresh explicitly so a newly authenticated account cannot
-        // keep rendering the previous account's in-memory workspace.
-        refreshWorkspace();
-        const finalRevision = Math.max(pulled.revision, highestPushedRevision);
-        await localStore.setSyncRevision(finalRevision);
-        await refresh();
+
+        logger.info("sync", "Sync cycle completed successfully", { revision: finalRevision });
       } catch (error) {
+        logger.error("sync", "Prior sync failed", { error: String(error) });
         if (await handleAuthError(error)) {
           setUser(null);
           setAuthError(error instanceof Error ? error.message : t("common.session.expired"));
@@ -474,7 +516,6 @@ export function App() {
           return;
         }
         console.warn("Prior sync failed:", error);
-        // Local data remains authoritative until the next successful sync.
       }
     })();
     syncInFlight.current = run;

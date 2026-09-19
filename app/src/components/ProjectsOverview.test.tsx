@@ -28,8 +28,17 @@ function setup(input: Partial<{ areas: Area[]; projects: Project[] }> = {}) {
   render(<Harness />);
   return actions;
 }
-beforeEach(() => localStorage.setItem("prior.language", "en"));
-afterEach(() => { cleanup(); localStorage.clear(); });
+beforeEach(() => {
+  if (typeof localStorage !== "undefined" && typeof localStorage.setItem === "function") {
+    localStorage.setItem("prior.language", "en");
+  }
+});
+afterEach(() => {
+  cleanup();
+  if (typeof localStorage !== "undefined" && typeof localStorage.clear === "function") {
+    localStorage.clear();
+  }
+});
 
 describe("ProjectsOverview", () => {
   it("keeps complete names and both kinds of metadata, with separate open and edit actions", () => {

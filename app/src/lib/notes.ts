@@ -1,4 +1,5 @@
 import { readScopedStorage, writeScopedStorage } from "./accountScope";
+import { generateUuid, isValidUuid } from "./uuid";
 
 export type NoteFolder = {
   id: string;
@@ -51,7 +52,7 @@ const ATTACHMENTS_KEY = "prior.note-attachments.v1";
 const CHANGE_EVENT = "prior-notes-change";
 
 function uid(): string {
-  return typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return generateUuid();
 }
 
 function now(): string { return new Date().toISOString(); }
@@ -59,7 +60,45 @@ function now(): string { return new Date().toISOString(); }
 function read<T>(key: string, fallback: T): T {
   try {
     const value = readScopedStorage(key);
-    return value ? JSON.parse(value) as T : fallback;
+    if (!value) return fallback;
+    const parsed = JSON.parse(value) as T;
+
+    // Seamless migration for legacy non-UUID note IDs
+    if (key === NOTES_KEY && Array.isArray(parsed)) {
+      let changed = false;
+      const notes = (parsed as Note[]).map((note) => {
+        if (note.id === LEGACY_SEED_WELCOME_NOTE_ID) {
+          changed = true;
+          return { ...note, id: SEED_WELCOME_NOTE_ID };
+        }
+        if (!isValidUuid(note.id)) {
+          changed = true;
+          return { ...note, id: generateUuid() };
+        }
+        return note;
+      });
+      if (changed) {
+        writeScopedStorage(NOTES_KEY, JSON.stringify(notes));
+        return notes as unknown as T;
+      }
+    }
+
+    if (key === FOLDERS_KEY && Array.isArray(parsed)) {
+      let changed = false;
+      const folders = (parsed as NoteFolder[]).map((folder) => {
+        if (!isValidUuid(folder.id)) {
+          changed = true;
+          return { ...folder, id: generateUuid() };
+        }
+        return folder;
+      });
+      if (changed) {
+        writeScopedStorage(FOLDERS_KEY, JSON.stringify(folders));
+        return folders as unknown as T;
+      }
+    }
+
+    return parsed;
   } catch { return fallback; }
 }
 
@@ -117,7 +156,8 @@ export function getFolderPath(folderId: string | null, folders: NoteFolder[]): s
   return names.join(" / ");
 }
 
-const SEED_WELCOME_NOTE_ID = "prior-seed-welcome-note";
+export const LEGACY_SEED_WELCOME_NOTE_ID = "prior-seed-welcome-note";
+export const SEED_WELCOME_NOTE_ID = "e0000000-0000-4000-8000-000000000001";
 
 function ensureSeed(): void {
   if (readScopedStorage(NOTES_KEY) === null) {

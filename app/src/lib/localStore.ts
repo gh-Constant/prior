@@ -2,12 +2,13 @@ import type { Habit, HabitMutation, HabitUnit, Mutation, SyncState, Task, TaskDr
 import { getAccountId, readScopedStorage, writeScopedStorage } from "./accountScope";
 import { dateKey } from "./habits";
 import { isTauri } from "./platform";
+import { generateUuid } from "./uuid";
 
 const TASKS_KEY = "prior.tasks.v1";
 const HABITS_KEY = "prior.habits.v1";
 const OUTBOX_KEY = "prior.outbox.v1";
 const SYNC_KEY = "prior.sync.v1";
-const LEGACY_SYNC_KEY = "prior.legacy-sync.v1";
+const LEGACY_SYNC_KEY = "prior.legacy-sync.v2";
 
 type SqlDatabase = {
   select<T>(query: string, bindValues?: unknown[]): Promise<T[]>;
@@ -42,7 +43,7 @@ async function prepareDatabaseAccount(db: SqlDatabase, accountId: string): Promi
         await db.execute("UPDATE habits SET account_id = ? WHERE account_id IN ('legacy', 'anonymous')", [accountId]);
         await db.execute("UPDATE outbox SET account_id = ? WHERE account_id IN ('legacy', 'anonymous')", [accountId]);
         await db.execute(
-          "INSERT OR IGNORE INTO sync_state (account_id, last_server_revision) SELECT ?, last_server_revision FROM sync_state WHERE account_id IN ('legacy', 'anonymous')",
+          "INSERT OR IGNORE INTO sync_state (account_id, last_server_revision) VALUES (?, 0)",
           [accountId],
         );
       }
@@ -82,7 +83,7 @@ function now(): string {
 }
 
 function uuid(): string {
-  return crypto.randomUUID();
+  return generateUuid();
 }
 
 function normalizePriority(value: unknown): TaskPriority {
@@ -498,12 +499,12 @@ export const localStore = {
     const [tasks, habits] = await Promise.all([this.listAllTasks(), this.listAllHabits()]);
     const mutations: Mutation[] = [];
     for (const task of tasks) {
-      if (task.serverRevision === undefined && !serverTaskIds.has(task.id)) {
+      if ((task.serverRevision == null || task.serverRevision === 0) && !serverTaskIds.has(task.id)) {
         mutations.push(buildTaskMutation(task, task.deletedAt ? "delete" : "upsert", task.updatedAt, uuid()));
       }
     }
     for (const habit of habits) {
-      if (habit.serverRevision === undefined && !serverHabitIds.has(habit.id)) {
+      if ((habit.serverRevision == null || habit.serverRevision === 0) && !serverHabitIds.has(habit.id)) {
         mutations.push(buildHabitMutation(habit, habit.deletedAt ? "delete" : "upsert", habit.updatedAt, uuid()));
       }
     }

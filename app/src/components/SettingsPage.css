@@ -61,6 +61,29 @@
 .settings-codex-use small { color: var(--muted); font-size: 10px; line-height: 1.4; }
 .settings-codex-connect { min-height: 32px; padding: 0 12px; }
 .settings-codex-disconnect { flex: 0 0 auto; padding: 4px 0; color: #a14f3b; font-size: 10.5px; }
+.settings-diagnostics { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #faf9f7; }
+.settings-diagnostics-heading { display: flex; align-items: center; gap: 10px; }
+.settings-diagnostics-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 8px; background: #e8ecf1; color: #4a6582; }
+.settings-diagnostics-icon svg { width: 16px; height: 16px; }
+.settings-diagnostics-heading > div:last-child { min-width: 0; }
+.settings-diagnostics-title { display: flex; align-items: center; gap: 7px; }
+.settings-diagnostics-title strong { color: var(--ink); font-size: 12.5px; }
+.settings-diagnostics-heading p { margin: 3px 0 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+.settings-diagnostics-meta { display: flex; flex-wrap: wrap; gap: 12px; padding: 6px 10px; border-radius: 6px; background: #f0eee9; font-size: 11px; color: #69635b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.settings-diagnostics-clear { color: #a14f3b; }
+.settings-diagnostics-viewer-toggle { margin-top: 4px; }
+.settings-diagnostics-viewer-toggle button { font-size: 11px; color: var(--accent-dark); background: none; border: none; cursor: pointer; padding: 2px 0; text-decoration: underline; }
+.settings-diagnostics-viewer { border: 1px solid var(--line); border-radius: 8px; background: #232220; color: #e2dfd9; overflow: hidden; }
+.settings-diagnostics-empty { margin: 0; padding: 12px; color: #9c9790; font-size: 11px; text-align: center; }
+.settings-diagnostics-logs { margin: 0; padding: 10px; max-height: 220px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+.settings-log-line { display: block; margin-bottom: 2px; }
+.settings-log-time { color: #8e8a83; margin-right: 6px; }
+.settings-log-error { color: #ff7b72; }
+.settings-log-warn { color: #ffa657; }
+.settings-log-info { color: #79c0ff; }
+.settings-log-cat { color: #d2a8ff; margin: 0 4px; }
+.settings-log-msg { color: inherit; }
+.settings-log-data { color: #a5d6ff; opacity: 0.85; }
 @media (max-width: 760px) {
   .settings-card { padding: 16px; }
   .settings-tabs { width: 100%; }

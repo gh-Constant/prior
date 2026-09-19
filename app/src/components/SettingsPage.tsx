@@ -12,6 +12,8 @@ import { Icon } from "./Icon";
 import { LANGUAGES, useI18n, type Language } from "../lib/i18n";
 import { EditableAvatar, IconUpload } from "./IconPicker";
 import { CustomSelect } from "./CustomSelect";
+import { logger } from "../lib/logger";
+import { localStore } from "../lib/localStore";
 import "./SettingsPage.css";
 
 type SettingsTab = "general" | "profile" | "assistant";
@@ -94,6 +96,126 @@ function DevSeedPanelInner() {
   );
 }
 
+function DiagnosticsPanel() {
+  const { t } = useI18n();
+  const [logs, setLogs] = useState(() => logger.getEntries());
+  const [showLogs, setShowLogs] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [syncState, setSyncState] = useState<{ revision: number; pendingCount: number } | null>(null);
+
+  useEffect(() => {
+    return logger.subscribe(() => {
+      setLogs(logger.getEntries());
+    });
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const [state, pending] = await Promise.all([
+          localStore.getSyncState(),
+          localStore.pendingMutations(),
+        ]);
+        if (live) {
+          setSyncState({
+            revision: state.lastServerRevision,
+            pendingCount: pending.length,
+          });
+        }
+      } catch {
+        // Safe to ignore in settings preview
+      }
+    })();
+    return () => { live = false; };
+  }, []);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(logger.getLogText());
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback
+    }
+  }
+
+  function handleDownload() {
+    void logger.openLogFile();
+  }
+
+  function handleClear() {
+    logger.clear();
+    setLogs([]);
+  }
+
+  return (
+    <section className="settings-diagnostics" aria-label={t("settings.diagnostics.title")}>
+      <div className="settings-diagnostics-heading">
+        <div className="settings-diagnostics-icon"><Icon name="terminal" /></div>
+        <div>
+          <div className="settings-diagnostics-title">
+            <strong>{t("settings.diagnostics.title")}</strong>
+          </div>
+          <p>{t("settings.diagnostics.description")}</p>
+        </div>
+      </div>
+
+      {syncState && (
+        <div className="settings-diagnostics-meta">
+          <span>{t("settings.diagnostics.lastSyncRevision", { revision: syncState.revision })}</span>
+          <span>{t("settings.diagnostics.pendingMutations", { count: syncState.pendingCount })}</span>
+        </div>
+      )}
+
+      <div className="settings-page-row">
+        <button type="button" className="secondary-button" onClick={handleDownload}>
+          <Icon name="download" /> {t("settings.diagnostics.downloadLog")}
+        </button>
+        <button type="button" className="secondary-button" onClick={() => void handleCopy()}>
+          <Icon name="clipboard" /> {copied ? t("settings.diagnostics.copied") : t("settings.diagnostics.copyLogs")}
+        </button>
+        {logs.length > 0 && (
+          <button type="button" className="secondary-button settings-diagnostics-clear" onClick={handleClear}>
+            {t("settings.diagnostics.clearLogs")}
+          </button>
+        )}
+      </div>
+
+      <div className="settings-diagnostics-viewer-toggle">
+        <button
+          type="button"
+          onClick={() => setShowLogs(!showLogs)}
+        >
+          {showLogs
+            ? t("settings.diagnostics.hideLogs")
+            : t("settings.diagnostics.showLogs", { count: logs.length })}
+        </button>
+      </div>
+
+      {showLogs && (
+        <div className="settings-diagnostics-viewer" role="region" aria-label="Recent Logs">
+          {logs.length === 0 ? (
+            <p className="settings-diagnostics-empty">{t("settings.diagnostics.empty")}</p>
+          ) : (
+            <pre className="settings-diagnostics-logs">
+              {logs.slice(-50).map((log) => (
+                <div key={log.id} className={`settings-log-line settings-log-${log.level}`}>
+                  <span className="settings-log-time">{log.timestamp.slice(11, 19)}</span>
+                  <span className="settings-log-level">[{log.level.toUpperCase()}]</span>
+                  <span className="settings-log-cat">[{log.category}]</span>
+                  <span className="settings-log-msg">{log.message}</span>
+                  {log.details && <span className="settings-log-data"> {log.details}</span>}
+                </div>
+              ))}
+            </pre>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function GeneralSettings() {
   const { t, lang, setLang } = useI18n();
   const [version, setVersion] = useState<string | null>(null);
@@ -140,6 +262,7 @@ function GeneralSettings() {
         <strong>{versionLabel}{!version && latest ? t("settings.general.latestSuffix") : ""}</strong>
       </div>
       <UpdateCards />
+      <DiagnosticsPanel />
       <DevSeedPanel />
     </div>
   );

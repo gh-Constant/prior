@@ -101,4 +101,17 @@ export const settings = {
     skipped: "Seed de demonstração ignorado ({reason}).",
     loadFailed: "Não foi possível carregar os dados de demonstração.",
   },
+  diagnostics: {
+    title: "Diagnóstico e registos",
+    description: "Exporte os registos da aplicação para diagnosticar problemas de sincronização.",
+    downloadLog: "Descarregar latest.log",
+    copyLogs: "Copiar registos",
+    copied: "Copiado!",
+    clearLogs: "Limpar registos",
+    showLogs: "Mostrar registos recentes ({count})",
+    hideLogs: "Ocultar registos",
+    empty: "Nenhum registo gravado até ao momento.",
+    lastSyncRevision: "Última revisão: {revision}",
+    pendingMutations: "Mutações pendentes: {count}",
+  },
 };

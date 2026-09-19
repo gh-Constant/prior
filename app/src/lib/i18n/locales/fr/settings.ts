@@ -101,4 +101,17 @@ export const settings = {
     skipped: "Seed démo ignoré ({reason}).",
     loadFailed: "Impossible de charger les données démo.",
   },
+  diagnostics: {
+    title: "Diagnostics et journaux",
+    description: "Exportez les journaux de l'application pour diagnostiquer un problème de synchronisation.",
+    downloadLog: "Télécharger latest.log",
+    copyLogs: "Copier les journaux",
+    copied: "Copié !",
+    clearLogs: "Effacer les journaux",
+    showLogs: "Afficher les journaux récents ({count})",
+    hideLogs: "Masquer les journaux",
+    empty: "Aucun journal enregistré pour l'instant.",
+    lastSyncRevision: "Dernière révision : {revision}",
+    pendingMutations: "Mutations en attente : {count}",
+  },
 };

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { invoke } from "@tauri-apps/api/core";
 import { api } from "./api";
@@ -10,6 +10,11 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("./api", () => ({ API_URL: "https://api.prior.constantsuchet.fr", api: { exchange: vi.fn(), googleNative: vi.fn() } }));
 vi.mock("./secureStore", () => ({ getSecret: vi.fn(), setSecret: vi.fn(), removeSecret: vi.fn() }));
+
+const originalLocalStorage = globalThis.localStorage;
+afterAll(() => {
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: originalLocalStorage });
+});
 
 const user = { id: "user-1", email: "test@example.com", displayName: "Test" };
 

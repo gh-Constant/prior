@@ -101,4 +101,17 @@ export const settings = {
     skipped: "Demo-Seed übersprungen ({reason}).",
     loadFailed: "Demo-Daten konnten nicht geladen werden.",
   },
+  diagnostics: {
+    title: "Diagnose & Protokolle",
+    description: "Exportieren Sie Anwendungsprotokolle zur Diagnose von Synchronisierungsproblemen.",
+    downloadLog: "latest.log herunterladen",
+    copyLogs: "Protokolle kopieren",
+    copied: "Kopiert!",
+    clearLogs: "Protokolle löschen",
+    showLogs: "Aktuelle Protokolle anzeigen ({count})",
+    hideLogs: "Protokolle ausblenden",
+    empty: "Noch keine Protokolle vorhanden.",
+    lastSyncRevision: "Letzte Synchronisationsrevision: {revision}",
+    pendingMutations: "Ausstehende Mutationen: {count}",
+  },
 };

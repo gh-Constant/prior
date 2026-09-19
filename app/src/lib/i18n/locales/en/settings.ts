@@ -101,4 +101,17 @@ export const settings = {
     skipped: "Demo seed skipped ({reason}).",
     loadFailed: "Unable to load demo data.",
   },
+  diagnostics: {
+    title: "Diagnostics & Logs",
+    description: "Export application logs to diagnose sync or operational issues.",
+    downloadLog: "Download latest.log",
+    copyLogs: "Copy logs",
+    copied: "Copied!",
+    clearLogs: "Clear logs",
+    showLogs: "Show recent logs ({count})",
+    hideLogs: "Hide logs",
+    empty: "No logs recorded yet.",
+    lastSyncRevision: "Last sync revision: {revision}",
+    pendingMutations: "Pending mutations: {count}",
+  },
 };

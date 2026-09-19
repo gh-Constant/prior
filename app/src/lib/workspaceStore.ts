@@ -3,6 +3,7 @@ import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import { translateStored } from "./i18n";
 import { notesStore } from "./notes";
 import { normalizeProjectPlanning } from "./projectPlanning";
+import { generateUuid } from "./uuid";
 
 const AREAS_KEY = "prior.areas.v1";
 const PROJECTS_KEY = "prior.projects.v1";
@@ -13,7 +14,7 @@ export const DEFAULT_AREA_ICON = "briefcase";
 export const DEFAULT_PROJECT_ICON = "folder";
 
 function uid(): string {
-  return typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return generateUuid();
 }
 
 function now(): string { return new Date().toISOString(); }
@@ -21,7 +22,8 @@ function now(): string { return new Date().toISOString(); }
 function read<T>(key: string, fallback: T): T {
   try {
     const value = readScopedStorage(key);
-    return value ? JSON.parse(value) as T : fallback;
+    if (!value) return fallback;
+    return JSON.parse(value) as T;
   } catch { return fallback; }
 }
 
