@@ -1,5 +1,6 @@
 .calendar-page { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 100%; }
 .workspace.calendar-workspace-page { display: flex; flex-direction: column; height: 100dvh; max-height: 100dvh; padding: 0; overflow: hidden; }
+.calendar-workspace-page .workspace-header { flex: 0 0 auto; padding: 24px 32px 0; margin-bottom: 0; }
 .calendar-workspace-page .calendar-page { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 24px 32px 64px; }
 .calendar-workspace-page .calendar-layout { flex: 1 1 auto; }
 .calendar-workspace-page .calendar-board { min-height: 100%; }
@@ -66,6 +67,7 @@
 .calendar-event-chip.habit { border-left-style: dashed; }
 .calendar-event-chip.completed, .calendar-timed-event.completed { opacity: .54; text-decoration: line-through; }
 .calendar-time-body { position: relative; }
+.calendar-time-body .calendar-day-columns { grid-column: 2 / -1; }
 .calendar-time-labels { display: flex; flex-direction: column; align-items: center; color: var(--muted); font-size: 9px; }
 .calendar-time-labels span { height: 64px; transform: translateY(-6px); }
 .calendar-day-columns { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-height: calc(var(--calendar-hours) * 64px); flex: 1; }

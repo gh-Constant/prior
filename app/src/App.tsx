@@ -48,6 +48,20 @@ logger.init();
 
 type Layout = "list" | "board";
 
+function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
+  if (view === "today") return t("common.views.today");
+  if (view === "inbox") return t("common.views.inbox");
+  if (view === "calendar") return t("common.views.calendar");
+  if (view === "projects") return t("common.views.projects");
+  if (view === "project") return t("common.views.project");
+  if (view === "waiting") return t("common.views.waiting");
+  if (view === "eisenhower") return t("common.views.eisenhower");
+  if (view === "habits") return t("common.views.habits");
+  if (view === "notes") return t("common.views.notes");
+  if (view === "settings") return t("common.views.settings");
+  return t("common.views.allTasks");
+}
+
 type WorkspaceHeaderProps = {
   readonly activeView: WorkspaceView;
   readonly layout: Layout;
@@ -59,18 +73,19 @@ type WorkspaceHeaderProps = {
 
 function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
   const { t } = useI18n();
-  if (["today", "inbox", "calendar", "projects", "project", "waiting", "notes", "settings"].includes(activeView)) return null;
+  if (["today", "inbox", "projects", "project", "waiting", "notes", "settings"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
     <header className="workspace-header">
-      <div className="workspace-actions">
+      <h1>{viewTitle(activeView, t)}</h1>
+      {activeView !== "calendar" && <div className="workspace-actions">
         {activeView === "all" && <div className="layout-switch" role="toolbar" aria-label={t("common.header.layout")}>
           <button type="button" className={layout === "list" ? "active" : ""} aria-label={t("common.header.listView")} aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /></button>
           <button type="button" className={layout === "board" ? "active" : ""} aria-label={t("common.header.columnView")} title={t("common.header.columnView")} aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /></button>
         </div>}
         <button className="primary-button new-task-button" type="button" aria-label={newTaskLabel} title={t("common.header.newActionTitle", { label: newTaskLabel, shortcut })} aria-keyshortcuts={shortcutKey} onClick={onNewTask}><Icon name="plus" /><span>{newTaskLabel}</span><kbd>{shortcut}</kbd></button>
-      </div>
+      </div>}
     </header>
   );
 }
