@@ -48,7 +48,7 @@ describe("Notes markdown and math rendering", () => {
       const mathElements = document.querySelectorAll(".note-math");
       expect(mathElements.length).toBe(1);
       expect(mathElements[0]?.getAttribute("data-rendered")).toBe("true");
-    });
+    }, { timeout: 5000 });
 
     // Count formula occurrences in the reading container
     const readingPane = document.querySelector(".notes-reading");

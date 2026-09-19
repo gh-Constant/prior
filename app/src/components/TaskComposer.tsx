@@ -185,11 +185,12 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
             </button>
           </div>
           {planning?.readOnly && <p className="task-composer-feedback">{t("tasks.composer.readOnly")}</p>}
-          <fieldset className="task-composer-body" disabled={saving || planningDisabled}>
+          <div className="task-composer-body">
             <div className="task-composer-hero">
               <input
                 ref={inputRef}
                 value={title}
+                disabled={saving || planningDisabled}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder={t("tasks.composer.titlePlaceholder")}
                 aria-label={t("tasks.composer.titleLabel")}
@@ -202,7 +203,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                 <CustomSelect
                   ariaLabel={t("tasks.composer.project")}
                   className="custom-select-pill"
-                  disabled={planningDisabled}
+                  disabled={planningDisabled || saving}
                   value={projectId ?? ""}
                   onChange={(val) => changeProject(val ? String(val) : null)}
                   options={[
@@ -219,7 +220,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                 <CustomSelect
                   ariaLabel={t("tasks.composer.status")}
                   className="custom-select-pill"
-                  disabled={planningDisabled}
+                  disabled={planningDisabled || saving}
                   value={status}
                   onChange={(val) => {
                     const next = val as TaskStatus;
@@ -236,6 +237,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
               <CustomSelect
                 ariaLabel={t("tasks.composer.priority")}
                 className="custom-select-pill"
+                disabled={planningDisabled || saving}
                 value={priority}
                 onChange={(val) => setPriority(Number(val) as TaskPriority)}
                 options={[1, 2, 3, 4].map((value) => ({
@@ -252,6 +254,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                     type="date"
                     aria-label={t("tasks.composer.dueDate")}
                     value={dueDate}
+                    disabled={saving || planningDisabled}
                     onChange={(event) => setDueDate(event.target.value)}
                     className="task-composer-date-native"
                   />
@@ -261,6 +264,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                     type="button"
                     className="task-composer-date-clear"
                     aria-label="Clear date"
+                    disabled={saving || planningDisabled}
                     onClick={() => setDueDate("")}
                   >
                     <Icon name="close" />
@@ -280,6 +284,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                   <textarea
                     className="task-composer-desc-input"
                     value={description}
+                    disabled={saving || planningDisabled}
                     onChange={(event) => setDescription(event.target.value)}
                     placeholder={t("tasks.composer.descriptionPlaceholder")}
                     aria-label={t("tasks.composer.descriptionLabel")}
@@ -292,7 +297,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                       <span>{t("tasks.composer.area")}</span>
                       <CustomSelect
                         ariaLabel={t("tasks.composer.area")}
-                        disabled={planningDisabled}
+                        disabled={planningDisabled || saving}
                         value={areaId ?? ""}
                         onChange={(val) => {
                           const next = val ? String(val) : null;
@@ -314,6 +319,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                     <span>{t("tasks.composer.assignee")}</span>
                     <input
                       value={assigneeName}
+                      disabled={saving || planningDisabled}
                       onChange={(event) => setAssigneeName(event.target.value)}
                       placeholder={t("tasks.composer.assigneePlaceholder")}
                       aria-label={t("tasks.composer.assignee")}
@@ -328,6 +334,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                         <input
                           type="date"
                           value={followUpDate}
+                          disabled={saving || planningDisabled}
                           onChange={(event) => setFollowUpDate(event.target.value)}
                           aria-label={t("tasks.composer.followUp")}
                           className="task-composer-date-native"
@@ -338,6 +345,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                           type="button"
                           className="task-composer-date-clear"
                           aria-label="Clear follow up date"
+                          disabled={saving || planningDisabled}
                           onClick={() => setFollowUpDate("")}
                         >
                           <Icon name="close" />
@@ -350,6 +358,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                 <div className="task-composer-flags">
                   <button
                     type="button"
+                    disabled={saving || planningDisabled}
                     className={`task-composer-flag-btn ${important ? "selected important" : ""}`}
                     aria-pressed={important}
                     onClick={() => setImportant((value) => !value)}
@@ -359,6 +368,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                   </button>
                   <button
                     type="button"
+                    disabled={saving || planningDisabled}
                     className={`task-composer-flag-btn ${urgent ? "selected urgent" : ""}`}
                     aria-pressed={urgent}
                     onClick={() => setUrgent((value) => !value)}
@@ -405,7 +415,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                                     <button
                                       key={option.id}
                                       type="button"
-                                      disabled={planningDisabled || !planning?.onFieldChange}
+                                      disabled={planningDisabled || saving || !planning?.onFieldChange}
                                       className={`collab-chip-btn ${isSelected ? "selected" : ""}`}
                                       aria-pressed={isSelected}
                                       onClick={() => {
@@ -424,7 +434,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                               <select
                                 aria-label={field.label}
                                 className="custom-select-native-hidden"
-                                disabled={planningDisabled || !planning?.onFieldChange}
+                                disabled={planningDisabled || saving || !planning?.onFieldChange}
                                 multiple
                                 tabIndex={-1}
                                 value={[...field.selectedIds]}
@@ -445,7 +455,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                           ) : (
                             <CustomSelect
                               ariaLabel={field.label}
-                              disabled={planningDisabled || !planning?.onFieldChange}
+                              disabled={planningDisabled || saving || !planning?.onFieldChange}
                               value={field.selectedIds[0] ?? ""}
                               onChange={(val) => planning?.onFieldChange?.(field.key, val ? [String(val)] : [])}
                               options={[
@@ -461,7 +471,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                 )}
               </div>
             </details>
-          </fieldset>
+          </div>
           {error && <p className="task-composer-feedback task-composer-error" role="alert">{error}</p>}
           <p className="task-composer-feedback" role="status">{saving ? t("tasks.composer.savingStatus") : notice}</p>
           <div className="task-composer-footer">
