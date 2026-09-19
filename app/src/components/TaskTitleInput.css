@@ -1,5 +1,5 @@
 .task-title-input-wrap { position: relative; min-width: 0; }
-.task-title-highlight-layer, .task-title-input-control { box-sizing: border-box; width: 100%; min-height: 31px; padding: 2px 0; font: inherit; font-size: 18px; font-weight: 600; line-height: 1.35; letter-spacing: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-title-highlight-layer, .task-title-input-control { box-sizing: border-box; width: 100%; min-height: 31px; padding: 2px 0; font: inherit; font-size: 18px; font-weight: 600; line-height: 1.35; letter-spacing: inherit; white-space: pre; }
 .task-title-highlight-layer { position: absolute; inset: 0; z-index: 2; overflow: hidden; color: var(--ink, #272522); pointer-events: none; }
 .task-title-input-control { position: relative; z-index: 1; color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--accent, #fa654a); background: transparent; }
 .task-title-input-control::placeholder { color: transparent; }
