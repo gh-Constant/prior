@@ -133,14 +133,18 @@ function flagLabel(value: boolean, positive: string, negative: string): string {
 }
 
 function describeAreaForPrompt(area: Area): string {
-  return `- "${area.name}"`;
+  const icon = area.icon ? ` [icon: ${area.icon}]` : "";
+  return `- "${area.name}"${icon}`;
 }
 
-function describeProjectForPrompt(project: Project, areas: Area[]): string {
+function describeProjectForPrompt(project: Project, areas: Area[] = []): string {
   const area = areas.find((item) => item.id === project.areaId);
   const areaLabel = area ? `in Area "${area.name}", ` : "";
+  const icon = project.icon ? ` [icon: ${project.icon}]` : "";
+  const target = project.targetDate ? `, target: ${project.targetDate}` : "";
+  const health = project.health ? `, health: ${project.health}` : "";
   const details = project.description ? `, details: ${project.description.slice(0, 100)}` : "";
-  return `- "${project.name}" (${areaLabel}status: ${project.status}${details})`;
+  return `- "${project.name}"${icon} (${areaLabel}status: ${project.status}${health}${target}${details})`;
 }
 
 function describeTaskForPrompt(task: Task, areas: Area[] = [], projects: Project[] = []): string {
@@ -159,12 +163,32 @@ function describeTaskForPrompt(task: Task, areas: Area[] = [], projects: Project
   return `- "${task.title}" (P${task.priority ?? 4}, ${importance}, ${urgency}${status}${projectLabel}${areaLabel}${due}${scheduled}${assignee}${followUp}${details})`;
 }
 
+const PROMPT_WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+export function describeHabitScheduleForPrompt(habit: Pick<Habit, "interval" | "unit" | "daysOfWeek">): string {
+  const { interval = 1, unit = "day", daysOfWeek = [] } = habit;
+  if (unit === "day" && interval <= 1 && (!daysOfWeek || daysOfWeek.length === 0)) {
+    return "daily";
+  }
+  if (unit === "week" && daysOfWeek && daysOfWeek.length > 0) {
+    const isWorkdays = daysOfWeek.length === 5 && [1, 2, 3, 4, 5].every((d) => daysOfWeek.includes(d));
+    const isWeekend = daysOfWeek.length === 2 && [6, 0].every((d) => daysOfWeek.includes(d));
+    const isAll = daysOfWeek.length === 7;
+    let daysLabel = daysOfWeek.map((d) => PROMPT_WEEKDAY_NAMES[d] ?? d).join(",");
+    if (isWorkdays) daysLabel = "Mon-Fri (weekdays)";
+    else if (isWeekend) daysLabel = "Sat,Sun (weekend)";
+    else if (isAll) daysLabel = "every day";
+    return interval <= 1 ? `weekly on ${daysLabel}` : `every ${interval} weeks on ${daysLabel}`;
+  }
+  return `every ${interval} ${unit}${interval > 1 ? "s" : ""}`;
+}
+
 function describeHabitForPrompt(habit: Habit): string {
   const importance = flagLabel(habit.important, "Important", "Not important");
   const urgency = flagLabel(habit.urgent, "Urgent", "Not urgent");
-  const days = habit.unit === "week" && habit.daysOfWeek?.length ? ` on weekdays ${habit.daysOfWeek.join(",")}` : "";
+  const cadence = describeHabitScheduleForPrompt(habit);
   const end = habit.endDate ? `, ends ${habit.endDate}` : "";
-  return `- "${habit.title}" (every ${habit.interval} ${habit.unit}${days}, ${importance}, ${urgency}${end})`;
+  return `- "${habit.title}" (${cadence}, ${importance}, ${urgency}${end})`;
 }
 
 function folderPathForPrompt(folder: NoteFolder, all: NoteFolder[]): string {
@@ -274,10 +298,14 @@ PRIOR CAPABILITIES (use these exact names when the user asks what tools you have
 - list_folders: inspect the note folder tree already provided in this prompt.
 - list_areas: inspect the areas of responsibility already provided in this prompt.
 - list_projects: inspect the projects already provided in this prompt.
-- create_area: prepare one or more high-level Areas (e.g. Work, Personal, Health, Finance). The app shows them as an approval card; they are saved when the user clicks Add.
-- create_project: prepare one or more outcome-oriented Projects optionally tied to an Area. The app shows them as an approval card; they are saved when the user clicks Add.
+- create_area: prepare one or more high-level Areas (e.g. Work, Personal, Health, Finance) with optional icon (e.g. "briefcase", "heart", "home", "dollar-sign", "user") and color. The app shows them as an approval card; they are saved when the user clicks Add.
+- create_project: prepare one or more outcome-oriented Projects optionally tied to an Area, with optional status ("planned", "active", "paused", "completed"), optional targetDate (YYYY-MM-DD), and optional icon (e.g. "folder", "rocket", "target", "star", "check-circle"). The app shows them as an approval card; they are saved when the user clicks Add.
 - create_task: prepare one or more one-off tasks with optional area, project, status, scheduled date, assignee, and follow-up date. The app shows them as an approval card; they are saved when the user clicks Add.
-- create_habit: prepare one or more recurring habits with a repeat interval (day, week, month, or year), an optional endDate (YYYY-MM-DD), and optional daysOfWeek (0 = Sunday through 6 = Saturday; use for weekly habits such as every Saturday). The app shows them as an approval card; they are saved when the user clicks Add.
+- create_habit: prepare one or more recurring habits following Prior's 3 frequency modes:
+  1) Daily: repeats every day (interval: 1, unit: "day", daysOfWeek: []).
+  2) Specific days / Weekdays: repeats weekly on chosen days of the week (interval: 1, unit: "week", daysOfWeek: [0..6 where 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday]). Use presets [1, 2, 3, 4, 5] for workdays/weekdays, [6, 0] for weekend, or specific days like [1, 3, 5] for Mon/Wed/Fri.
+  3) Custom cadence: repeats every N days, weeks, months, or years (e.g. interval: 2, unit: "day" for every 2 days; interval: 1, unit: "month" for monthly; interval: 3, unit: "month" for quarterly; interval: 1, unit: "year" for yearly).
+  - Optional endDate (YYYY-MM-DD) for time-limited routines or sprints. The app shows them as an approval card; they are saved when the user clicks Add.
 - create_note: prepare one or more Markdown notes with an optional folder and project. The app shows them as an approval card; they are saved when the user clicks Add.
 - create_folder: prepare one or more note folders with an optional parent. The app shows them as an approval card; they are saved when the user clicks Add.
 - prioritize_tasks: classify tasks by importance and urgency and explain the trade-off.
@@ -290,8 +318,8 @@ Prior follows a clean 3-level structure:
       └── Task
 Notes keep their own folder library and may also belong to a Project.
 
-- Area: Broad domain of responsibility or life area (e.g. "Work", "Personal", "Health", "Home", "Finance"). Never ends.
-- Project: Specific, outcome-driven effort with a defined finish line (e.g. "Website Redesign", "Tax Return 2026", "Apartment Move"). Belongs to an Area.
+- Area: Broad domain of responsibility or life area (e.g. "Work", "Personal", "Health", "Home", "Finance"). Never ends. Can specify an optional icon and color.
+- Project: Specific, outcome-driven effort with a defined finish line (e.g. "Website Redesign", "Tax Return 2026", "Apartment Move"). Belongs to an Area. Supports status ("planned", "active", "paused", "completed"), optional targetDate (YYYY-MM-DD), and optional icon.
 - Task: Atomic, actionable next step that belongs to a Project and/or Area.
 - Project Notes: Notes that belong to a Project provide background, meeting notes, specifications, or reference. Set projectName to the name of the Project.
 
@@ -322,7 +350,11 @@ CAPABILITY BOUNDARIES:
 - You cannot edit or delete existing notes directly. You only propose new notes and folders; the user reviews and saves them. Never claim an item was saved before the user confirms the card.
 - Tasks support an optional description, due date, priority 1–4, importance, urgency, areaName, projectName, status, scheduledDate, assigneeName, and followUpDate. When a user gives a date such as "tomorrow", resolve it to YYYY-MM-DD using the current date and put it in dueDate.
 - Priority is a separate Todoist-style scale: P1 is highest and P4 is lowest. Do not confuse priority with importance; use important and urgent for the Eisenhower matrix.
-- Habits support title, importance, urgency, interval, unit, optional endDate, and optional daysOfWeek. Use endDate for time-limited routines (for example a research sprint); use daysOfWeek for weekly routines such as every Saturday. New habits start today. Do not invent reminders, streak goals, tags, notifications, or calendar events.
+- Habits follow Prior's 3 frequency modes:
+  - "daily": every day (interval: 1, unit: "day", daysOfWeek: []). Use for routines like daily meditation, journaling, or reading.
+  - "weekdays" / specific days: weekly on chosen days (interval: 1, unit: "week", daysOfWeek: [0..6 where 0=Sunday, 1=Monday...6=Saturday]). For "weekdays/jours ouvrés" use [1, 2, 3, 4, 5], for "weekend" use [6, 0], for "tous les lundis et jeudis" use [1, 4], for single days like "every Saturday" use [6].
+  - "custom": custom recurrence cadence (e.g. every 2 days -> interval: 2, unit: "day"; every month / chaque mois -> interval: 1, unit: "month"; every quarter -> interval: 3, unit: "month"; every year -> interval: 1, unit: "year").
+  - Support title, importance, urgency, interval, unit, optional endDate (YYYY-MM-DD), and optional daysOfWeek. New habits start today. Do not invent reminders, streak goals, tags, notifications, or calendar events.
 - You cannot send emails, edit an external calendar, modify files, or control other accounts. Say so only when relevant, after listing the capabilities you do have.
 
 WHEN THE USER ASKS ABOUT YOUR TOOLS:
@@ -394,6 +426,7 @@ OUTPUT CONTRACT:
   "areas": [
     {
       "name": "Area name (e.g. Work, Personal, Health)",
+      "icon": "briefcase",
       "reasoning": "Why this area organizes their work"
     }
   ],
@@ -403,6 +436,8 @@ OUTPUT CONTRACT:
       "areaName": "Work",
       "description": "Short project outcome or goal",
       "status": "active",
+      "targetDate": "2026-06-30",
+      "icon": "rocket",
       "reasoning": "Why this project is defined"
     }
   ],
@@ -425,7 +460,7 @@ OUTPUT CONTRACT:
   ],
   "habits": [
     {
-      "title": "Recurring habit",
+      "title": "Recurring habit (e.g. Morning stretch, Gym on weekdays, Monthly review)",
       "important": false,
       "urgent": false,
       "interval": 1,
@@ -517,9 +552,9 @@ function taskDueDate(value: unknown): string | null {
 
 function habitUnit(value: unknown): HabitUnit {
   const normalized = typeof value === "string" || typeof value === "number" ? String(value).toLowerCase() : "day";
-  if (normalized.includes("week") || normalized.includes("semaine")) return "week";
-  if (normalized.includes("month") || normalized.includes("mois")) return "month";
-  if (normalized.includes("year") || normalized.includes("an") || normalized.includes("année")) return "year";
+  if (normalized.includes("week") || normalized.includes("semaine") || normalized.includes("semana") || normalized.includes("woche") || normalized.includes("hebdo")) return "week";
+  if (normalized.includes("month") || normalized.includes("mois") || normalized.includes("mes") || normalized.includes("mês") || normalized.includes("monat") || normalized.includes("mensuel")) return "month";
+  if (normalized.includes("year") || normalized.includes("an") || normalized.includes("année") || normalized.includes("año") || normalized.includes("ano") || normalized.includes("jahr") || normalized.includes("annuel")) return "year";
   return "day";
 }
 
@@ -564,36 +599,96 @@ async function requestOpenRouter(init: RequestInit, timeoutMs: number): Promise<
   }
 }
 
-function habitDaysOfWeek(value: unknown): number[] {
+export function habitDaysOfWeek(value: unknown): number[] {
   const names: Record<string, number> = {
-    sunday: 0, sun: 0, dimanche: 0,
-    monday: 1, mon: 1, lundi: 1,
-    tuesday: 2, tue: 2, mardi: 2,
-    wednesday: 3, wed: 3, mercredi: 3,
-    thursday: 4, thu: 4, thurs: 4, jeudi: 4,
-    friday: 5, fri: 5, vendredi: 5,
-    saturday: 6, sat: 6, samedi: 6,
+    // Sunday (0)
+    sunday: 0, sun: 0, dimanche: 0, dim: 0, domingo: 0, dom: 0, sonntag: 0, so: 0,
+    // Monday (1)
+    monday: 1, mon: 1, lundi: 1, lun: 1, lunes: 1, segunda: 1, seg: 1, montag: 1, mo: 1,
+    // Tuesday (2)
+    tuesday: 2, tue: 2, mardi: 2, mar: 2, martes: 2, terca: 2, terça: 2, ter: 2, dienstag: 2, di: 2,
+    // Wednesday (3)
+    wednesday: 3, wed: 3, mercredi: 3, mer: 3, miercoles: 3, miércoles: 3, mie: 3, mié: 3, quarta: 3, qua: 3, mittwoch: 3, mi: 3,
+    // Thursday (4)
+    thursday: 4, thu: 4, thurs: 4, jeudi: 4, jeu: 4, jueves: 4, jue: 4, quinta: 4, qui: 4, donnerstag: 4, do: 4,
+    // Friday (5)
+    friday: 5, fri: 5, vendredi: 5, ven: 5, viernes: 5, vie: 5, sexta: 5, sex: 5, freitag: 5, fr: 5,
+    // Saturday (6)
+    saturday: 6, sat: 6, samedi: 6, sam: 6, sabado: 6, sábado: 6, sab: 6, sáb: 6, samstag: 6, sa: 6,
   };
-  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[,.\s]+/) : [];
+
+  const WORKDAYS = [1, 2, 3, 4, 5];
+  const WEEKEND = [6, 0];
+
+  const presets: Record<string, number[]> = {
+    weekdays: WORKDAYS,
+    workdays: WORKDAYS,
+    semaine: WORKDAYS,
+    "jours ouvrés": WORKDAYS,
+    "jours ouvres": WORKDAYS,
+    "dias laborables": WORKDAYS,
+    "días laborables": WORKDAYS,
+    werktage: WORKDAYS,
+    "dias úteis": WORKDAYS,
+    "dias uteis": WORKDAYS,
+    weekend: WEEKEND,
+    "week-end": WEEKEND,
+    "fin de semaine": WEEKEND,
+    "fin de semana": WEEKEND,
+    wochenende: WEEKEND,
+    "fim de semana": WEEKEND,
+  };
+
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed in presets) return [...presets[trimmed]];
+  }
+
+  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[,.\s/]+/) : [];
   return [...new Set(values.flatMap((entry) => {
     if (typeof entry === "number" && Number.isInteger(entry) && entry >= 0 && entry <= 6) return [entry];
     if (typeof entry === "string") {
       const normalized = entry.trim().toLowerCase();
       if (/^[0-6]$/.test(normalized)) return [Number(normalized)];
+      if (normalized in presets) return presets[normalized];
       if (normalized in names) return [names[normalized]];
     }
     return [];
   }))].sort((left, right) => left - right);
 }
 
-function habitRecurrence(item: RawAction): { interval: number; unit: HabitUnit; endDate: string | null; daysOfWeek: number[] } {
+export function habitRecurrence(item: RawAction): { interval: number; unit: HabitUnit; endDate: string | null; daysOfWeek: number[] } {
   const recurrence = item.recurrence ?? item.repeat ?? item.schedule;
   const recurrenceObject = recurrence && typeof recurrence === "object" ? recurrence as RawAction : undefined;
+  const modeVal = String(item.frequencyMode ?? item.frequency_mode ?? item.mode ?? item.type ?? recurrenceObject?.frequencyMode ?? recurrenceObject?.mode ?? "").trim().toLowerCase();
+
+  const daysOfWeek = habitDaysOfWeek(
+    item.daysOfWeek ?? item.days_of_week ?? item.weekdays ?? item.days ?? item.onDays ?? item.on_days ??
+    recurrenceObject?.daysOfWeek ?? recurrenceObject?.days_of_week ?? recurrenceObject?.weekdays ?? recurrenceObject?.days
+  );
+
+  const rawUnit = item.unit ?? item.period ?? item.frequencyUnit ?? recurrenceObject?.unit ?? recurrenceObject?.period ?? recurrence;
   const intervalValue = item.interval ?? item.every ?? item.frequency ?? recurrenceObject?.interval ?? recurrenceObject?.every;
-  const unitValue = item.unit ?? item.period ?? item.frequencyUnit ?? recurrenceObject?.unit ?? recurrenceObject?.period ?? recurrence;
   const endDate = taskDueDate(item.endDate ?? item.end_date ?? recurrenceObject?.endDate ?? recurrenceObject?.end_date);
-  const daysOfWeek = habitDaysOfWeek(item.daysOfWeek ?? item.days_of_week ?? item.weekdays ?? recurrenceObject?.daysOfWeek ?? recurrenceObject?.days_of_week ?? recurrenceObject?.weekdays);
-  return { interval: habitInterval(intervalValue), unit: habitUnit(unitValue), endDate, daysOfWeek };
+
+  // 1) Daily mode
+  if (modeVal === "daily" || rawUnit === "daily" || intervalValue === "daily" || rawUnit === "quotidien") {
+    return { interval: 1, unit: "day", endDate, daysOfWeek: [] };
+  }
+
+  // 2) Weekdays / specific days mode
+  if (modeVal === "weekdays" || rawUnit === "weekdays" || intervalValue === "weekdays" || modeVal === "workdays") {
+    return { interval: 1, unit: "week", endDate, daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : [1, 2, 3, 4, 5] };
+  }
+
+  // 3) Custom or inferred mode
+  let unit = habitUnit(rawUnit);
+  if (daysOfWeek.length > 0 && (!rawUnit || unit === "day")) {
+    unit = "week";
+  }
+
+  const interval = habitInterval(intervalValue);
+  return { interval, unit, endDate, daysOfWeek: unit === "week" ? daysOfWeek : [] };
 }
 
 function stripFenceLanguageTag(inner: string): string {
@@ -712,9 +807,13 @@ function sanitizeNoteBody(value: unknown): string {
 
 function buildProposedArea(item: Record<string, unknown>): ProposedArea {
   const name = typeof item.name === "string" ? item.name.trim() : (typeof item.title === "string" ? item.title.trim() : "New area");
+  const icon = typeof item.icon === "string" && item.icon.trim() ? item.icon.trim() : undefined;
+  const color = typeof item.color === "string" && item.color.trim() ? item.color.trim() : undefined;
   return {
     id: crypto.randomUUID(),
     name,
+    icon,
+    color,
     reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
     selected: true,
     added: false,
@@ -731,12 +830,16 @@ function buildProposedProject(item: Record<string, unknown>): ProposedProject {
   const name = typeof item.name === "string" ? item.name.trim() : (typeof item.title === "string" ? item.title.trim() : "New project");
   const areaName = typeof item.areaName === "string" ? item.areaName.trim() : (typeof item.area === "string" ? item.area.trim() : null);
   const description = typeof item.description === "string" ? item.description.trim() : "";
+  const icon = typeof item.icon === "string" && item.icon.trim() ? item.icon.trim() : undefined;
+  const targetDate = taskDueDate(item.targetDate ?? item.target_date ?? item.deadline);
   return {
     id: crypto.randomUUID(),
     name,
     areaName: areaName || null,
     description,
     status: sanitizeProjectStatus(item.status),
+    icon,
+    targetDate,
     reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
     selected: true,
     added: false,

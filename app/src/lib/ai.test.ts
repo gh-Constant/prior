@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { askAgent, buildSystemPrompt, fetchAvailableModels, getAgentSettings, modelSupportsReasoning, normalizeReasoningEffort, parseAiResponse, reasoningEffortParam, saveAgentSettings } from "./ai";
+import { askAgent, buildSystemPrompt, describeHabitScheduleForPrompt, fetchAvailableModels, getAgentSettings, habitDaysOfWeek, modelSupportsReasoning, normalizeReasoningEffort, parseAiResponse, reasoningEffortParam, saveAgentSettings } from "./ai";
 import type { Habit, Task } from "../types";
 
 describe("ai engine", () => {
@@ -421,5 +421,72 @@ Hope this helps!`;
     } finally {
       Object.defineProperty(globalThis, "localStorage", { value: original, configurable: true });
     }
+  });
+
+  it("parses 3 frequency modes for habits: daily, weekdays, and custom", () => {
+    // 1) Daily
+    const dailyParsed = parseAiResponse(JSON.stringify({
+      reply: "Daily habit",
+      habits: [{ title: "Meditate", frequencyMode: "daily" }],
+    }));
+    expect(dailyParsed.habits[0]).toMatchObject({ title: "Meditate", interval: 1, unit: "day", daysOfWeek: [] });
+
+    // 2) Weekdays preset (auto unit: week, interval: 1, Mon-Fri [1,2,3,4,5])
+    const weekdaysParsed = parseAiResponse(JSON.stringify({
+      reply: "Weekdays habit",
+      habits: [{ title: "Morning standup", frequencyMode: "weekdays" }],
+    }));
+    expect(weekdaysParsed.habits[0]).toMatchObject({ title: "Morning standup", interval: 1, unit: "week", daysOfWeek: [1, 2, 3, 4, 5] });
+
+    // 3) Custom cadence (e.g. every 2 months)
+    const customParsed = parseAiResponse(JSON.stringify({
+      reply: "Custom habit",
+      habits: [{ title: "Deep clean", interval: 2, unit: "month" }],
+    }));
+    expect(customParsed.habits[0]).toMatchObject({ title: "Deep clean", interval: 2, unit: "month", daysOfWeek: [] });
+  });
+
+  it("parses multilingual weekdays and preset keywords", () => {
+    // English & French
+    expect(habitDaysOfWeek("Monday, Wednesday, Friday")).toEqual([1, 3, 5]);
+    expect(habitDaysOfWeek(["lundi", "mercredi", "vendredi"])).toEqual([1, 3, 5]);
+    // Spanish, German, Portuguese
+    expect(habitDaysOfWeek("martes, jueves, sábado")).toEqual([2, 4, 6]);
+    expect(habitDaysOfWeek(["Dienstag", "Donnerstag"])).toEqual([2, 4]);
+    expect(habitDaysOfWeek("segunda, quarta, sexta")).toEqual([1, 3, 5]);
+    // Presets
+    expect(habitDaysOfWeek("weekdays")).toEqual([1, 2, 3, 4, 5]);
+    expect(habitDaysOfWeek("workdays")).toEqual([1, 2, 3, 4, 5]);
+    expect(habitDaysOfWeek("semaine")).toEqual([1, 2, 3, 4, 5]);
+    expect(habitDaysOfWeek("jours ouvrés")).toEqual([1, 2, 3, 4, 5]);
+    expect(habitDaysOfWeek("weekend")).toEqual([6, 0]);
+    expect(habitDaysOfWeek("week-end")).toEqual([6, 0]);
+  });
+
+  it("auto-promotes habit unit to week when daysOfWeek is supplied without explicit unit", () => {
+    const parsed = parseAiResponse(JSON.stringify({
+      reply: "Workout habit",
+      habits: [{ title: "Gym", daysOfWeek: [1, 3, 5] }],
+    }));
+    expect(parsed.habits[0]).toMatchObject({ title: "Gym", unit: "week", interval: 1, daysOfWeek: [1, 3, 5] });
+  });
+
+  it("parses icon and color for areas, and icon and targetDate for projects", () => {
+    const parsed = parseAiResponse(JSON.stringify({
+      reply: "Area and project",
+      areas: [{ name: "Health", icon: "heart", color: "#6f9a6b", reasoning: "Self-care" }],
+      projects: [{ name: "Marathon 2026", areaName: "Health", targetDate: "2026-10-15", icon: "target", status: "active" }],
+    }));
+    expect(parsed.areas[0]).toMatchObject({ name: "Health", icon: "heart", color: "#6f9a6b" });
+    expect(parsed.projects[0]).toMatchObject({ name: "Marathon 2026", areaName: "Health", targetDate: "2026-10-15", icon: "target", status: "active" });
+  });
+
+  it("formats habit schedules clearly for the system prompt", () => {
+    expect(describeHabitScheduleForPrompt({ interval: 1, unit: "day", daysOfWeek: [] })).toBe("daily");
+    expect(describeHabitScheduleForPrompt({ interval: 1, unit: "week", daysOfWeek: [1, 2, 3, 4, 5] })).toBe("weekly on Mon-Fri (weekdays)");
+    expect(describeHabitScheduleForPrompt({ interval: 1, unit: "week", daysOfWeek: [6, 0] })).toBe("weekly on Sat,Sun (weekend)");
+    expect(describeHabitScheduleForPrompt({ interval: 1, unit: "week", daysOfWeek: [1, 3, 5] })).toBe("weekly on Mon,Wed,Fri");
+    expect(describeHabitScheduleForPrompt({ interval: 2, unit: "week", daysOfWeek: [1] })).toBe("every 2 weeks on Mon");
+    expect(describeHabitScheduleForPrompt({ interval: 3, unit: "month", daysOfWeek: [] })).toBe("every 3 months");
   });
 });

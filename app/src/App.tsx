@@ -683,31 +683,40 @@ export function App() {
     return created.id;
   }
 
-  async function addAgentAreas(batch: Array<{ name: string }>) {
+  async function addAgentAreas(batch: Array<{ name: string; color?: string; icon?: string | null }>) {
     for (const item of batch) {
       const name = item.name.trim();
       if (!name) continue;
       const existing = workspaceStore.listAreas().find((a) => a.name.trim().toLowerCase() === name.toLowerCase());
       if (!existing) {
-        workspaceStore.createArea(name);
+        workspaceStore.createArea(name, item.color, item.icon);
       }
     }
     setAreas(workspaceStore.listAreas());
   }
 
-  async function addAgentProjects(batch: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus }>) {
+  async function addAgentProjects(batch: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null }>) {
     for (const item of batch) {
       const name = item.name.trim();
       if (!name) continue;
       const areaId = item.areaName ? resolveAgentAreaId(item.areaName) : null;
       const existing = workspaceStore.listProjects().find((p) => p.name.trim().toLowerCase() === name.toLowerCase());
       if (!existing) {
-        const created = workspaceStore.createProject(name, areaId, item.description ?? "");
-        if (item.status && item.status !== "active") {
-          workspaceStore.updateProject({ ...created, status: item.status });
+        const created = workspaceStore.createProject(name, areaId, item.description ?? "", item.icon);
+        const updates: Partial<Project> = {};
+        if (item.status && item.status !== "active") updates.status = item.status;
+        if (item.targetDate) updates.targetDate = item.targetDate;
+        if (Object.keys(updates).length > 0) {
+          workspaceStore.updateProject({ ...created, ...updates });
         }
-      } else if (areaId && !existing.areaId) {
-        workspaceStore.updateProject({ ...existing, areaId });
+      } else {
+        const updates: Partial<Project> = {};
+        if (areaId && !existing.areaId) updates.areaId = areaId;
+        if (item.targetDate && !existing.targetDate) updates.targetDate = item.targetDate;
+        if (item.icon && !existing.icon) updates.icon = item.icon;
+        if (Object.keys(updates).length > 0) {
+          workspaceStore.updateProject({ ...existing, ...updates });
+        }
       }
     }
     setAreas(workspaceStore.listAreas());

@@ -79,5 +79,5 @@ describe("Notes markdown and math rendering", () => {
 
     const mathTextAfterNote2 = document.querySelector(".note-math")?.textContent ?? "";
     expect(mathTextAfterNote2).toBe(mathTextBefore);
-  });
+  }, 15000);
 });

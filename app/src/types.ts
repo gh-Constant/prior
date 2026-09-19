@@ -115,6 +115,8 @@ export type QuadrantKey = "focus" | "plan" | "quick" | "later";
 export type ProposedArea = {
   id: string;
   name: string;
+  color?: string;
+  icon?: string | null;
   reasoning: string;
   selected: boolean;
   added?: boolean;
@@ -126,6 +128,8 @@ export type ProposedProject = {
   areaName?: string | null;
   description?: string;
   status?: ProjectStatus;
+  targetDate?: string | null;
+  icon?: string | null;
   reasoning: string;
   selected: boolean;
   added?: boolean;

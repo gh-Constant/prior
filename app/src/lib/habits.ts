@@ -169,8 +169,14 @@ export function habitScheduleLabel(habit: Pick<Habit, "interval" | "unit" | "day
   const interval = intervalFor(habit);
   const selected = selectedWeekdays(habit);
   if (habit.unit === "week" && selected.length) {
-    const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const weekdayLabel = selected.map((day) => names[day]).join(", ");
+    const isWorkdays = selected.length === 5 && [1, 2, 3, 4, 5].every((day) => selected.includes(day));
+    const isWeekend = selected.length === 2 && [6, 0].every((day) => selected.includes(day));
+    const isAllDays = selected.length === 7;
+    if (isWorkdays) return interval === 1 ? "Weekdays (Mon–Fri)" : `Every ${interval} weeks · Weekdays`;
+    if (isWeekend) return interval === 1 ? "Weekend (Sat–Sun)" : `Every ${interval} weeks · Weekend`;
+    if (isAllDays) return interval === 1 ? "Every day" : `Every ${interval} weeks · Every day`;
+    const shortNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const weekdayLabel = selected.map((day) => shortNames[day] ?? String(day)).join(", ");
     return interval === 1 ? `Every ${weekdayLabel}` : `Every ${interval} weeks · ${weekdayLabel}`;
   }
   const names: Record<HabitUnit, [string, string]> = {

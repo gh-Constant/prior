@@ -78,8 +78,8 @@ export function markAreasAdded(
   });
 }
 
-export function areaDraftOf(area: ProposedArea): { name: string } {
-  return { name: area.name };
+export function areaDraftOf(area: ProposedArea): { name: string; color?: string; icon?: string | null } {
+  return { name: area.name, color: area.color, icon: area.icon };
 }
 
 export function updateProjectProposal(
@@ -105,12 +105,14 @@ export function markProjectsAdded(
   });
 }
 
-export function projectDraftOf(project: ProposedProject): { name: string; areaName?: string | null; description?: string; status?: ProjectStatus } {
+export function projectDraftOf(project: ProposedProject): { name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null } {
   return {
     name: project.name,
     areaName: project.areaName,
     description: project.description,
     status: project.status,
+    targetDate: project.targetDate,
+    icon: project.icon,
   };
 }
 

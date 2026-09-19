@@ -185,8 +185,8 @@ describe("proposal updaters", () => {
       favorite: false,
     });
     expect(folderDraftOf(makeFolder())).toEqual({ name: "Projects", parentName: null });
-    expect(areaDraftOf(makeArea())).toEqual({ name: "Work" });
-    expect(projectDraftOf(makeProject())).toEqual({ name: "App Launch", areaName: "Work", description: "Launch v1 to public", status: "active" });
+    expect(areaDraftOf(makeArea())).toEqual({ name: "Work", color: undefined, icon: undefined });
+    expect(projectDraftOf(makeProject())).toEqual({ name: "App Launch", areaName: "Work", description: "Launch v1 to public", status: "active", targetDate: undefined, icon: undefined });
   });
 
   it("updates and marks areas and projects as added", () => {

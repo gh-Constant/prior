@@ -66,8 +66,8 @@ type Props = {
   readonly onAddHabits: (habits: HabitDraft[]) => Promise<void>;
   readonly onAddNotes: (notes: NoteDraft[]) => Promise<void>;
   readonly onAddFolders: (folders: NoteFolderDraft[]) => Promise<void>;
-  readonly onAddAreas?: (areas: Array<{ name: string }>) => Promise<void>;
-  readonly onAddProjects?: (projects: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus }>) => Promise<void>;
+  readonly onAddAreas?: (areas: Array<{ name: string; color?: string; icon?: string | null }>) => Promise<void>;
+  readonly onAddProjects?: (projects: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null }>) => Promise<void>;
   readonly onOpenSettings: () => void;
 };
 
