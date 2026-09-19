@@ -4,7 +4,9 @@ import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
 import { PersonAvatar } from "./PersonAvatar";
 import { useI18n } from "../../lib/i18n";
 import { CustomSelect } from "../CustomSelect";
-import type { Person, PlanningKey, ProjectIssue, TaskPerson, TaskPlanningProps } from "./types";
+import { TaskStatusBadge } from "../TaskStatusBadge";
+import { taskStatusTone } from "../../lib/taskStatusAppearance";
+import type { Person, PlanningKey, ProjectIssue, TaskPerson, TaskPlanningProps, WorkflowState } from "./types";
 import "./Collaboration.css";
 
 const propertyIcons: Record<PlanningKey, IconName> = {
@@ -21,10 +23,10 @@ export function PeopleChips({ people }: { people: readonly Person[] }) {
   </div>;
 }
 
-export function AgilePropertyChips({ properties = [], priority }: Pick<ProjectIssue, "properties" | "priority">) {
+export function AgilePropertyChips({ properties = [], priority, state }: Pick<ProjectIssue, "properties" | "priority"> & { state?: WorkflowState }) {
   const { t } = useI18n();
   return <div className="collab-chips" aria-label={t("collab.issue.properties")}>
-    {properties.map((property, index) => <span className="collab-chip" key={`${property.key}-${index}`}>
+    {properties.map((property, index) => property.key === "state" ? <TaskStatusBadge key={`${property.key}-${index}`} status={state?.id} category={state?.category} label={property.label} /> : <span className="collab-chip" key={`${property.key}-${index}`}>
       <Icon name={propertyIcons[property.key]} aria-hidden="true" /><span>{property.label}</span>
     </span>)}
     {priority !== undefined && <span className="collab-chip"><Icon name="flag" aria-hidden="true" />{t("collab.issue.priority", { priority })}</span>}
@@ -150,7 +152,11 @@ export function TaskPlanning({ fields, onFieldChange, ...peopleProps }: TaskPlan
             onChange={(next) => onFieldChange?.(field.key, next ? [String(next)] : [])}
             options={[
               { value: "", label: t("collab.planning.none") },
-              ...field.options.map((opt) => ({ value: opt.id, label: opt.name })),
+              ...field.options.map((opt) => ({
+                value: opt.id,
+                label: opt.name,
+                ...(field.key === "state" ? { color: taskStatusTone(opt.id).color, tone: taskStatusTone(opt.id) } : {}),
+              })),
             ]}
           />
         )}

@@ -61,9 +61,8 @@ export function ProjectsOverview({ areas, projects, query, onQueryChange, onOpen
   return <section className="projects-overview" aria-label={t("common.views.projects")}>
     <header className="projects-overview-header">
       <div className="projects-overview-intro">
-        <p className="projects-overview-eyebrow">{t("common.workhub.introEyebrow")}</p>
         <h2>{t("common.views.projects")}</h2>
-        <p className="projects-overview-description">{t("common.workhub.overviewDescription")}</p>
+        <p className="projects-overview-description">{tp("common.workhub.overviewProjectCount", projects.length)}<span aria-hidden="true"> · </span>{tp("common.workhub.overviewAreaCount", areas.length)}</p>
       </div>
       <div className="projects-overview-actions">
         <button type="button" className="secondary-button" onClick={onNewArea}><Icon name="layers" />{t("common.workhub.newArea")}</button>
@@ -72,23 +71,28 @@ export function ProjectsOverview({ areas, projects, query, onQueryChange, onOpen
     </header>
 
     <div className="projects-overview-toolbar">
+      <label className="projects-overview-search">
+        <Icon name="search" />
+        <input type="search" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("common.workhub.searchProjectsAndAreas")} aria-label={t("common.workhub.searchProjectsAndAreas")} />
+      </label>
       <div className="projects-status-filters" role="group" aria-label={t("common.workhub.detailStatusLabel")}>
         {statuses.map((value) => <button type="button" key={value} aria-pressed={status === value} onClick={() => setStatus(value)}>
           {value === "all" ? t("common.workhub.allProjectsFilter") : t(statusLabels[value])}
           <span>{value === "all" ? matching.length : matching.filter((project) => project.status === value).length}</span>
         </button>)}
       </div>
-      <label className="projects-overview-search">
-        <Icon name="search" />
-        <input type="search" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("common.workhub.searchProjectsAndAreas")} aria-label={t("common.workhub.searchProjectsAndAreas")} />
+      <label className="projects-mobile-status">
+        <select value={status} aria-label={t("common.workhub.detailStatusLabel")} onChange={(event) => setStatus(event.target.value as ProjectStatus | "all")}>
+          {statuses.map((value) => <option key={value} value={value}>{value === "all" ? t("common.workhub.backToAll") : t(statusLabels[value])}</option>)}
+        </select>
+        <Icon name="chevron-down" />
       </label>
     </div>
 
-    <div className="projects-overview-summary" role="status">
+    {isFiltering && <div className="projects-overview-summary" role="status">
       <span>{tp("common.workhub.overviewProjectCount", filtered.length, { count: filtered.length })}</span>
-      {!isFiltering && <span>{tp("common.workhub.overviewAreaCount", areas.length, { count: areas.length })}</span>}
-      {isFiltering && <button type="button" onClick={resetFilters}>{t("common.workhub.clearFilters")}<Icon name="close" /></button>}
-    </div>
+      <button type="button" onClick={resetFilters}>{t("common.workhub.clearFilters")}<Icon name="close" /></button>
+    </div>}
 
     <div className="projects-overview-groups">
       {groups.map((group) => {
@@ -115,16 +119,16 @@ export function ProjectsOverview({ areas, projects, query, onQueryChange, onOpen
               onContextMenu={(event) => openMenu(event, projectActions(project))}
               {...longPress(() => projectActions(project))}>
               <button type="button" className="projects-card-open" aria-label={t("common.workhub.menuOpen", { name: project.name })} onClick={() => onOpenProject(project.id)}>
-                <span className="projects-card-top">
-                  <span className="projects-card-icon"><WorkspaceIcon icon={project.icon} fallback={project.projectType === "software" ? "code" : DEFAULT_PROJECT_ICON} /></span>
+                <span className="projects-card-icon"><WorkspaceIcon icon={project.icon} fallback={project.projectType === "software" ? "code" : DEFAULT_PROJECT_ICON} /></span>
+                <span className="projects-card-copy">
+                  <span className="projects-card-name">{project.name}</span>
+                  {project.description && <span className="projects-card-description">{project.description}</span>}
+                </span>
+                <span className="projects-card-meta">
                   <span className={`projects-card-status is-${project.status}`}><span aria-hidden="true" />{t(statusLabels[project.status])}</span>
-                </span>
-                <span className="projects-card-name">{project.name}</span>
-                {project.description && <span className="projects-card-description">{project.description}</span>}
-                <span className="projects-card-footer">
                   <span className="projects-card-type"><Icon name={project.projectType === "software" ? "code" : "list-todo"} />{t(project.projectType === "software" ? "common.workhub.badgeSoftware" : "common.workhub.badgeStandard")}</span>
-                  <Icon name="arrow" className="projects-card-arrow" />
                 </span>
+                <Icon name="chevron-right" className="projects-card-arrow" />
               </button>
               <button type="button" className="projects-icon-button projects-card-edit" aria-label={t("common.workhub.editProjectAria", { name: project.name })} title={t("common.workhub.editProject")} onClick={() => onEditProject(project)}><Icon name="pencil" /></button>
             </article>)}

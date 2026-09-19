@@ -8,14 +8,16 @@ import { ProjectShareDialog } from "./ProjectShareDialog";
 import { PersonAvatar } from "./PersonAvatar";
 import { AgilePropertyChips, PeopleChips } from "./TaskPlanning";
 import { useI18n } from "../../lib/i18n";
-import type { ProjectCollaborationProps, ProjectIssue } from "./types";
+import { TaskStatusBadge } from "../TaskStatusBadge";
+import { taskStatusVariables } from "../../lib/taskStatusAppearance";
+import type { ProjectCollaborationProps, ProjectIssue, WorkflowState } from "./types";
 import "./Collaboration.css";
 
 const tabs = ["Overview", "Issues", "Board", "Cycles"] as const;
 type Tab = typeof tabs[number];
 
-function IssueCard({ issue, stateName, onOpen, onDelete, busy, onDrag, onDragEnd }: {
-  issue: ProjectIssue; stateName: string; onOpen?: (id: string) => void; onDelete?: (id: string) => void;
+function IssueCard({ issue, stateName, state, onOpen, onDelete, busy, onDrag, onDragEnd }: {
+  issue: ProjectIssue; stateName: string; state?: WorkflowState; onOpen?: (id: string) => void; onDelete?: (id: string) => void;
   busy: boolean;
   onDrag?: (id: string) => void; onDragEnd: () => void;
 }) {
@@ -37,7 +39,7 @@ function IssueCard({ issue, stateName, onOpen, onDelete, busy, onDrag, onDragEnd
     <div className="collab-issue-heading">{issue.identifier && <small>{issue.identifier}</small>}
       {onOpen ? <button type="button" onClick={() => onOpen(issue.id)}>{issue.title}</button> : <strong>{issue.title}</strong>}
     </div>
-    <AgilePropertyChips priority={issue.priority} properties={[{ key: "state", label: stateName }, ...(issue.properties ?? [])]} />
+    <AgilePropertyChips state={state} priority={issue.priority} properties={[{ key: "state", label: stateName }, ...(issue.properties ?? []).filter((property) => property.key !== "state")]} />
     <PeopleChips people={issue.people} />
     {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
   </article>;
@@ -100,7 +102,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
 
   function endDrag() { draggedIssue.current = null; setDropTarget(null); }
   function issueCard(issue: ProjectIssue, draggable = false) {
-    return <IssueCard key={issue.id} issue={issue} stateName={stateName(issue)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} busy={moving} onDrag={canMove && draggable ? (issueId) => { draggedIssue.current = issueId; } : undefined} onDragEnd={endDrag} />;
+    return <IssueCard key={issue.id} issue={issue} stateName={stateName(issue)} state={states.find((state) => state.id === issue.stateId)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} busy={moving} onDrag={canMove && draggable ? (issueId) => { draggedIssue.current = issueId; } : undefined} onDragEnd={endDrag} />;
   }
 
   const headerMenuItems = [
@@ -148,11 +150,11 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
             {!visibleIssues.length && <CollaborationState title={query ? t("collab.issue.noMatchTitle") : t("collab.issue.emptyTitle")} description={query ? t("collab.issue.noMatchHint") : t("collab.issue.emptyHint")} />}
             <div className="collab-issue-list">{visibleIssues.map((issue) => issueCard(issue))}</div>
           </> : <>
-            <div className="collab-board" aria-busy={moving}>{columns.map((column) => <section key={column.id} className={`collab-board-column${dropTarget === column.id ? " collab-drop-target" : ""}`} aria-label={column.name}
+            <div className="collab-board" aria-busy={moving}>{columns.map((column) => <section key={column.id} className={`collab-board-column${dropTarget === column.id ? " collab-drop-target" : ""}`} aria-label={column.name} style={taskStatusVariables(column.id, states.find((state) => state.id === column.id)?.category)}
               onDragOver={(event) => { if (canMove && !moving && draggedIssue.current && states.some((state) => state.id === column.id)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTarget(column.id); } }}
               onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
               onDrop={(event) => { event.preventDefault(); const issueId = draggedIssue.current; endDrag(); if (issueId) void moveIssue(issueId, column.id); }}>
-              <h3><span>{column.name}</span><small>{column.issues.length}</small></h3>{column.issues.map((issue) => issueCard(issue, true))}{!column.issues.length && <p className="collab-muted">{t("collab.issue.emptyTitle")}</p>}</section>)}</div>
+              <h3><TaskStatusBadge status={column.id} category={states.find((state) => state.id === column.id)?.category} label={column.name} /><small>{column.issues.length}</small></h3>{column.issues.map((issue) => issueCard(issue, true))}{!column.issues.length && <p className="collab-muted">{t("collab.issue.emptyTitle")}</p>}</section>)}</div>
           </>}
         </>}
         {tab === "Cycles" && (cycles.length ? <div className="collab-cycle-list">{cycles.map((cycle) => {

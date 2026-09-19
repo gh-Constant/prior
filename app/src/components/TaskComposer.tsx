@@ -4,6 +4,8 @@ import { useModalDialog } from "../hooks/useModalDialog";
 import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
 import { CustomSelect } from "./CustomSelect";
+import { taskStatusTone } from "../lib/taskStatusAppearance";
+import { TaskStatusBadge } from "./TaskStatusBadge";
 import { DateTimePicker } from "./DateTimePicker";
 import { TaskTitleInput } from "./TaskTitleInput";
 import { TaskPeoplePicker } from "./collaboration/TaskPlanning";
@@ -312,10 +314,12 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                   options={workflowOptions.map((option) => ({
                     value: option.id,
                     label: option.name,
-                    icon: "check-circle" as const,
+                    color: taskStatusTone(option.id).color,
+                    tone: taskStatusTone(option.id),
                   }))}
                 />
               )}
+              {isStatusLocked && <TaskStatusBadge status={status} label={workflowOptions.find((option) => option.id === status)?.name ?? t("tasks.composer.statusTodo")} />}
               <CustomSelect
                 ariaLabel={t("tasks.composer.priority")}
                 className="custom-select-pill"

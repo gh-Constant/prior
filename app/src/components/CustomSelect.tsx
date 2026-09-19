@@ -2,6 +2,7 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconName } from "./Icon";
 import { useFloatingMenu } from "../hooks/useFloatingMenu";
+import type { StatusTone } from "../lib/taskStatusAppearance";
 import "./CustomSelect.css";
 
 export type CustomSelectOption<T extends string | number = string | number> = {
@@ -9,6 +10,7 @@ export type CustomSelectOption<T extends string | number = string | number> = {
   label: ReactNode;
   icon?: IconName;
   color?: string;
+  tone?: StatusTone;
   disabled?: boolean;
 };
 
@@ -99,7 +101,8 @@ export function CustomSelect<T extends string | number = string | number>({
             role="option"
             aria-selected={isSelected}
             disabled={option.disabled}
-            className={`custom-select-item ${isSelected ? "selected" : ""}`}
+            className={`custom-select-item ${isSelected ? "selected" : ""} ${option.tone ? "has-tone" : ""}`}
+            style={option.tone}
             onClick={() => handleSelect(option)}
           >
             {option.icon && <Icon name={option.icon} className="custom-select-icon" />}
@@ -120,7 +123,8 @@ export function CustomSelect<T extends string | number = string | number>({
         ref={triggerRef}
         role="button"
         tabIndex={disabled ? -1 : 0}
-        className={`custom-select-trigger ${open ? "open" : ""} ${disabled ? "disabled" : ""}`}
+        className={`custom-select-trigger ${open ? "open" : ""} ${disabled ? "disabled" : ""} ${selectedOption?.tone ? "has-tone" : ""}`}
+        style={selectedOption?.tone}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-disabled={disabled}
