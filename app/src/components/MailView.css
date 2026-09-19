@@ -363,6 +363,13 @@
 .mail-reader-body { padding: 20px 26px 30px; color: #2f2c28; font-size: 14.5px; line-height: 1.65; overflow-wrap: break-word; }
 .mail-reader-body p { margin: 0 0 1em; }
 
+/* Sanitized rich-mail HTML: keep the layout but never let it break out. */
+.mail-reader-html { overflow: hidden; }
+.mail-reader-html img { max-width: 100%; height: auto; }
+.mail-reader-html table { max-width: 100%; }
+.mail-reader-html pre { white-space: pre-wrap; }
+.mail-reader-html a { color: var(--accent, #fa654a); }
+
 .mail-reader-attachments {
   display: flex; align-items: center; gap: 8px;
   margin: 0 26px 26px; padding: 12px 14px;

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Guards the client release versions: app/package.json, tauri.conf.json,
 # Cargo.toml and the `prior` entry in Cargo.lock must all carry the same
-# 0.3.x version before a tag can be published.
+# semantic version before a tag can be published.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -26,8 +26,8 @@ echo "Cargo.lock:    $lock_version"
 
 for version in "$pkg_version" "$tauri_version" "$cargo_version" "$lock_version"; do
   case "$version" in
-    0.3.*) ;;
-    *) echo "check-versions: version '$version' is not 0.3.x" >&2; exit 1 ;;
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *) echo "check-versions: version '$version' is not semantic (MAJOR.MINOR.PATCH)" >&2; exit 1 ;;
   esac
 done
 

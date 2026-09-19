@@ -81,6 +81,9 @@ export const mail = {
     unarchived: "Moved to inbox",
     deleted: "Moved to trash",
     updated: "Updated",
+    updateFailed: "Couldn't update the message",
+    newMail: "{count} new message",
+    newMail_plural: "{count} new messages",
     taskCreated: "Task created from mail",
   },
 };

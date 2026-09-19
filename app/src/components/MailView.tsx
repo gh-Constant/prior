@@ -5,6 +5,10 @@ import { Icon, type IconName } from "./Icon";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { useModalDialog } from "../hooks/useModalDialog";
 import { resolveMailProvider, type MailProvider } from "../lib/mail";
+import { mailCacheKey, readMailCache, writeMailCache } from "../lib/mailCache";
+import { sanitizeMailHtml } from "../lib/mailHtml";
+import { openExternalUrl } from "../lib/browser";
+import { isTauri } from "../lib/platform";
 import { clearMailAccount, disconnectMailAccount, getMailAccount, listMailAccounts, makeGmailTokenGetter, saveMailAccount, startGmailConnect } from "../lib/mailAuth";
 import { getToken } from "../lib/auth";
 import type { SessionUser } from "../lib/auth";
@@ -57,7 +61,7 @@ function labelColor(label: MailLabel | undefined): { bg: string; fg: string } {
   return { bg: "var(--later)", fg: "var(--ink)" };
 }
 export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) {
-  const { t, lang } = useI18n();
+  const { t, tp, lang } = useI18n();
   const mailMenu = useContextMenu();
 
   const [provider, setProvider] = useState<MailProvider | null>(null);
@@ -83,6 +87,22 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
   const currentFolder = FOLDERS.find((f) => f.id === folder) ?? FOLDERS[0];
   const labelById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
   const customLabels = useMemo(() => labels.filter((l) => !l.system), [labels]);
+
+  /* Stale-while-revalidate: the last known list shows instantly, a fresh
+     fetch replaces it in the background. Keyed per account + folder + query. */
+  const cacheKey = useMemo(
+    () => mailCacheKey({
+      provider: providerKind,
+      account: account?.email ?? "demo",
+      folder,
+      label: activeLabel ?? "",
+      query: debouncedQuery,
+    }),
+    [providerKind, account?.email, folder, activeLabel, debouncedQuery],
+  );
+  const messagesRef = useRef<MailMessage[]>([]);
+  messagesRef.current = messages;
+  const lastFetchRef = useRef(0);
 
   /* Resolve the provider: a Gmail provider when the server knows a connected
      account for this Prior session, else the local demo mailbox. The local
@@ -134,12 +154,19 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
   }, []);
 
   const load = useCallback(async (reset: boolean, pageToken?: string) => {
-    if (!provider) return;
+    if (!provider) return undefined;
     const labelFilter = activeLabel ?? currentFolder.labelFilter;
     const result = await provider.listMessages(labelFilter, debouncedQuery, pageToken);
+    lastFetchRef.current = Date.now();
     setNextPageToken(result.nextPageToken);
-    setMessages((prev) => (reset ? result.messages : [...prev, ...result.messages]));
-  }, [provider, activeLabel, currentFolder.labelFilter, debouncedQuery]);
+    if (reset) {
+      setMessages(result.messages);
+      writeMailCache(cacheKey, result.messages, result.nextPageToken);
+    } else {
+      setMessages((prev) => [...prev, ...result.messages]);
+    }
+    return result;
+  }, [provider, activeLabel, currentFolder.labelFilter, debouncedQuery, cacheKey]);
 
   useEffect(() => {
     if (!provider) return;
@@ -148,18 +175,57 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
 
   useEffect(() => {
     if (!provider) return;
-    setLoading(true);
-    setMessages([]);
+    let cancelled = false;
+    // Show the cached list instantly when there is one; the fresh fetch
+    // below replaces it in the background.
+    const cached = readMailCache(cacheKey);
+    setMessages(cached?.messages ?? []);
+    setNextPageToken(cached?.nextPageToken);
     setSelectedId(null);
     setMobilePane("list");
-    void load(true).finally(() => setLoading(false));
-  }, [provider, load]);
+    setLoading(!cached);
+    setRefreshing(!!cached);
+    void load(true)
+      .catch(() => { if (!cached) showToast(t("mail.toasts.updateFailed")); })
+      .finally(() => { if (!cancelled) { setLoading(false); setRefreshing(false); } });
+    return () => { cancelled = true; };
+  }, [provider, load, cacheKey, showToast, t]);
 
   const refresh = useCallback(async () => {
     if (!provider) return;
     setRefreshing(true);
     try { await load(true); } finally { setRefreshing(false); }
   }, [provider, load]);
+
+  /* Silent background refresh: no spinners, just picks up new mail. Runs on
+     a timer and whenever the window regains focus. */
+  const silentRefresh = useCallback(async () => {
+    if (!provider || document.hidden) return;
+    if (Date.now() - lastFetchRef.current < 30_000) return;
+    const before = new Set(messagesRef.current.map((m) => m.id));
+    const hadAny = before.size > 0;
+    try {
+      const result = await load(true);
+      if (!result || !hadAny) return;
+      const fresh = result.messages.filter((m) => !before.has(m.id)).length;
+      if (fresh > 0) showToast(tp("mail.toasts.newMail", fresh));
+    } catch {
+      // Silent: keep showing the cached list.
+    }
+  }, [provider, load, showToast, tp]);
+
+  useEffect(() => {
+    if (!provider) return;
+    const id = window.setInterval(() => { void silentRefresh(); }, 60_000);
+    const onVisible = () => { void silentRefresh(); };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [provider, silentRefresh]);
 
   const applyModify = useCallback(async (message: MailMessage, add: string[], remove: string[]) => {
     if (!provider) return;
@@ -179,7 +245,7 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
         return prev.map((m) => (m.id === message.id ? updated : m));
       });
     } catch {
-      showToast(t("mail.ai.failed"));
+      showToast(t("mail.toasts.updateFailed"));
     }
   }, [provider, activeLabel, currentFolder.labelFilter, showToast, t]);
 
@@ -543,6 +609,24 @@ function MailReader({ message: m, labelById, onBack, onArchive, onStar, onDelete
   const shownLabels = m.labelIds.map((id) => labelById.get(id)).filter((l): l is MailLabel => Boolean(l && !l.system));
   const toList = m.to.map((a) => a.name || a.email).join(", ");
   const paragraphs = m.body.split(/\n{2,}/);
+  // Rich HTML rendering (sanitized): links open outside the app so a click
+  // can never navigate the Prior webview away.
+  const safeHtml = useMemo(() => (m.bodyHtml ? sanitizeMailHtml(m.bodyHtml) : ""), [m.bodyHtml]);
+  const onBodyClick = useCallback((e: React.MouseEvent) => {
+    const anchor = (e.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;
+    if (!anchor) return;
+    const href = anchor.getAttribute("href") ?? "";
+    if (!href || href.startsWith("#")) { e.preventDefault(); return; }
+    e.preventDefault();
+    void (async () => {
+      try {
+        if (isTauri()) await openExternalUrl(href);
+        else window.open(href, "_blank", "noopener,noreferrer");
+      } catch {
+        // Popup blocked or opener unavailable: stay on the mail.
+      }
+    })();
+  }, []);
   return (
     <article className="mail-reader">
       <div className="mail-reader-toolbar">
@@ -577,10 +661,14 @@ function MailReader({ message: m, labelById, onBack, onArchive, onStar, onDelete
         </div>
       </header>
       <div className="mail-reader-body">
-        {paragraphs.map((para, i) => {
-          const lines = para.split("\n");
-          return <p key={i}>{lines.map((line, j) => <span key={j}>{line}{j < lines.length - 1 ? <br /> : null}</span>)}</p>;
-        })}
+        {safeHtml ? (
+          <div className="mail-reader-html" onClick={onBodyClick} dangerouslySetInnerHTML={{ __html: safeHtml }} />
+        ) : (
+          paragraphs.map((para, i) => {
+            const lines = para.split("\n");
+            return <p key={i}>{lines.map((line, j) => <span key={j}>{line}{j < lines.length - 1 ? <br /> : null}</span>)}</p>;
+          })
+        )}
       </div>
       {m.hasAttachment && (
         <div className="mail-reader-attachments">

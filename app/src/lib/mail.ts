@@ -75,7 +75,7 @@ function stripHtml(html: string): string {
   return (doc.body.textContent ?? "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function extractBody(payload: GmailPayload | undefined): { text: string; hasAttachment: boolean } {
+function extractBody(payload: GmailPayload | undefined): { text: string; html: string; hasAttachment: boolean } {
   let text = "";
   let html = "";
   let hasAttachment = false;
@@ -89,7 +89,7 @@ function extractBody(payload: GmailPayload | undefined): { text: string; hasAtta
   };
   walk(payload);
   const decoded = text || (html ? stripHtml(html) : "");
-  return { text: decoded, hasAttachment };
+  return { text: decoded, html, hasAttachment };
 }
 
 type GmailHeader = { name: string; value: string };
@@ -114,7 +114,7 @@ function toMailMessage(raw: GmailApiMessage): MailMessage {
   const fromRaw = headerValue(headers, "From");
   const toRaw = headerValue(headers, "To");
   const from = parseAddressList(fromRaw)[0] ?? { name: fromRaw, email: fromRaw };
-  const { text, hasAttachment } = extractBody(raw.payload);
+  const { text, html, hasAttachment } = extractBody(raw.payload);
   const labelIds = raw.labelIds ?? [];
   const date = raw.internalDate ? new Date(Number(raw.internalDate)).toISOString() : new Date().toISOString();
   return {
@@ -125,6 +125,7 @@ function toMailMessage(raw: GmailApiMessage): MailMessage {
     subject: headerValue(headers, "Subject") || "(no subject)",
     snippet: raw.snippet ?? "",
     body: text,
+    ...(html ? { bodyHtml: html } : {}),
     date,
     labelIds,
     unread: labelIds.includes("UNREAD"),

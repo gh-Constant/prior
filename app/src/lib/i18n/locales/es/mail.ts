@@ -26,5 +26,5 @@ export const mail = {
   },
   tags: { title: "Etiquetas", apply: "Aplicar", remove: "Quitar", empty: "Aún no hay etiquetas" },
   ai: { generating: "Redactando tarea…", failed: "No se pudo redactar una tarea desde este correo." },
-  toasts: { archived: "Conversación archivada", unarchived: "Movido a la bandeja", deleted: "Movido a la papelera", updated: "Actualizado", taskCreated: "Tarea creada desde el correo" },
+  toasts: { archived: "Conversación archivada", unarchived: "Movido a la bandeja", deleted: "Movido a la papelera", updated: "Actualizado", updateFailed: "No se pudo actualizar el mensaje", newMail: "{count} mensaje nuevo", newMail_plural: "{count} mensajes nuevos", taskCreated: "Tarea creada desde el correo" },
 };

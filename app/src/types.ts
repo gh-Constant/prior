@@ -276,6 +276,8 @@ export type MailMessage = {
   snippet: string;
   /** Decoded plain-text body (HTML stripped to text for safety). */
   body: string;
+  /** Raw HTML body when the mail carries one (render only after sanitizing). */
+  bodyHtml?: string;
   /** ISO 8601 timestamp. */
   date: string;
   labelIds: string[];
