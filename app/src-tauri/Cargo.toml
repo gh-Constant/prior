@@ -1,6 +1,6 @@
 [package]
 name = "prior"
-version = "0.5.3"
+version = "0.5.4"
 description = "Prior — a small, local-first task app"
 authors = ["Constant Suchet"]
 edition = "2021"

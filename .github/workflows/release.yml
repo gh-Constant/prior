@@ -232,13 +232,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          # Prevent Tauri from notarizing before widgets are embedded.
-          # Full bundle notarization is performed by embed-widgets.sh.
-          APPLE_ID: ''
-          APPLE_PASSWORD: ''
-          APPLE_API_KEY: ''
-          APPLE_API_ISSUER: ''
-          APPLE_API_KEY_PATH: ''
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
       # WidgetKit widgets ship inside the macOS bundle (PlugIns). They must be
