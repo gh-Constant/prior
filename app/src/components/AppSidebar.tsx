@@ -16,6 +16,8 @@ type AppSidebarProps = {
   readonly aiShortcut: string;
   readonly inert?: boolean;
   readonly updateAvailable?: boolean;
+  readonly updateInstalling?: boolean;
+  readonly onInstallUpdate?: () => void;
   readonly onViewChange: (view: WorkspaceView) => void;
   readonly onAccount: () => void;
   readonly onToggle: () => void;
@@ -29,7 +31,23 @@ const NAV_GROUPS: Array<{ labelKey: string; items: Array<{ view: WorkspaceView; 
   { labelKey: "common.nav.groups.review", items: [{ view: "waiting", labelKey: "common.nav.items.waiting", icon: "later" }, { view: "eisenhower", labelKey: "common.nav.items.priorityLens", icon: "grid" }, { view: "habits", labelKey: "common.nav.items.habits", icon: "calendar-check" }, { view: "notes", labelKey: "common.nav.items.notes", icon: "file-text" }] },
 ];
 
-export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen, aiShortcut, inert, updateAvailable, onViewChange, onAccount, onToggle, onToggleAgent, onCloseMobile }: AppSidebarProps) {
+export function AppSidebar({
+  activeView,
+  user,
+  collapsed,
+  mobileOpen,
+  agentOpen,
+  aiShortcut,
+  inert,
+  updateAvailable,
+  updateInstalling,
+  onInstallUpdate,
+  onViewChange,
+  onAccount,
+  onToggle,
+  onToggleAgent,
+  onCloseMobile,
+}: AppSidebarProps) {
   const { t } = useI18n();
   function go(view: WorkspaceView): void {
     onCloseMobile();
@@ -96,17 +114,33 @@ export function AppSidebar({ activeView, user, collapsed, mobileOpen, agentOpen,
             <span className="prior-agent-label">{t("common.sidebar.agent")}</span>
             <kbd>{aiShortcut}</kbd>
           </button>
-          <button
-            className="account-trigger"
-            type="button"
-            aria-label={updateAvailable ? t("common.sidebar.accountUpdate") : t("common.sidebar.account")}
-            title={t("common.sidebar.account")}
-            onClick={openAccount}
-          >
-            <span className="account-trigger-avatar">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}</span>
-            <span className="account-trigger-label">{user?.displayName || t("common.sidebar.account")}</span>
-            {updateAvailable && <span className="update-badge-dot" aria-label={t("common.sidebar.updateAvailable")} title={t("common.sidebar.updateAvailable")} style={{ width: 8, height: 8, borderRadius: 999, background: "#fa654a", display: "inline-block", marginLeft: "auto" }} />}
-          </button>
+          <div className="sidebar-account-row">
+            <button
+              className="account-trigger"
+              type="button"
+              aria-label={t("common.sidebar.account")}
+              title={t("common.sidebar.account")}
+              onClick={openAccount}
+            >
+              <span className="account-trigger-avatar">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <Icon name="user" />}</span>
+              <span className="account-trigger-label">{user?.displayName || t("common.sidebar.account")}</span>
+            </button>
+            {updateAvailable && (
+              <button
+                className={`sidebar-update-ball ${updateInstalling ? "installing" : ""}`}
+                type="button"
+                aria-label={updateInstalling ? t("common.celebration.installing") : t("common.celebration.updateAvailable")}
+                title={updateInstalling ? t("common.celebration.installing") : `${t("common.celebration.updateAvailable")} — click to update`}
+                disabled={updateInstalling}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onInstallUpdate?.();
+                }}
+              >
+                <Icon name={updateInstalling ? "refresh" : "download"} />
+              </button>
+            )}
+          </div>
         </div>
       </aside>
     </>

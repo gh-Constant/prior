@@ -1138,6 +1138,8 @@ export function App() {
         agentOpen={agentOpen}
         aiShortcut={aiShortcut}
         updateAvailable={desktopUpdate !== null}
+        updateInstalling={updateInstalling}
+        onInstallUpdate={() => void installDesktopUpdate()}
         inert={composerOpen || editingTask !== null || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
         onViewChange={changeView}
         onAccount={() => setAuthOpen(true)}
@@ -1236,7 +1238,6 @@ export function App() {
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>{t("common.celebration.completed")}</strong><small>{completionCelebration.title}</small></span></div>}
       {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>{t("common.celebration.notice")}</strong><small>{toast}</small></span><button type="button" aria-label={t("common.actions.dismiss")} onClick={() => setToast(null)}>✕</button></div>}
-      {desktopUpdate && activeView !== "settings" && <div className="completion-celebration" role="status" aria-live="polite"><span className="update-install-icon update-install-icon-sm" aria-hidden="true"><Icon name="download" /></span><span><strong>{t("common.celebration.updateAvailable")}</strong><small>{t("common.celebration.updateReady", { version: desktopUpdate.version })}</small></span><button type="button" disabled={updateInstalling} onClick={() => void installDesktopUpdate()}>{updateInstalling ? t("common.celebration.installing") : t("common.celebration.installRestart")}</button><button type="button" className="text-button" onClick={() => changeView("settings")}>{t("common.actions.details")}</button></div>}
     </div>
   );
 }

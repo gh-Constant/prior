@@ -98,6 +98,64 @@
 
 .prior-agent-button kbd { opacity: .5; font-family: inherit; font-size: 10px; font-weight: 600; }
 
+.sidebar-account-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.sidebar-account-row .account-trigger {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-update-ball {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 50%;
+  background: #2b7fff;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(43, 127, 255, 0.4);
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sidebar-update-ball:hover:not(:disabled) {
+  background: #1d6bf3;
+  box-shadow: 0 3px 12px rgba(43, 127, 255, 0.55);
+  transform: scale(1.06);
+}
+
+.sidebar-update-ball:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.sidebar-update-ball:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.sidebar-update-ball svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.2px;
+}
+
+.sidebar-update-ball.installing svg {
+  animation: sidebar-update-spin 1s linear infinite;
+}
+
+@keyframes sidebar-update-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Collapsed rail is a desktop-only concept. The collapse toggle lives in
    .sidebar-top, which is hidden on phones, so these rules must never leak
    into the mobile bottom bar (min-width gate keeps them desktop-only). */
@@ -115,6 +173,7 @@
   .sidebar.is-collapsed .prior-agent-button { justify-content: center; padding: 6px 4px; }
   .sidebar.is-collapsed .prior-agent-label,
   .sidebar.is-collapsed .prior-agent-button kbd { display: none; }
+  .sidebar.is-collapsed .sidebar-account-row { flex-direction: column; align-items: center; gap: 8px; }
   .sidebar.is-collapsed .account-trigger { justify-content: center; padding: 4px; }
 }
 

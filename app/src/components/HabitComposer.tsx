@@ -6,10 +6,6 @@ import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
 import { CustomSelect } from "./CustomSelect";
 
-type Vars = Record<string, string | number>;
-type TFn = (key: string, vars?: Vars) => string;
-type TpFn = (base: string, count: number, vars?: Vars) => string;
-
 const WEEKDAY_SHORT_KEYS = [
   "habits.composer.weekdayShortMon",
   "habits.composer.weekdayShortTue",
@@ -32,61 +28,6 @@ const WEEKDAY_LONG_KEYS = [
 
 const WEEKDAY_VALUES = [1, 2, 3, 4, 5, 6, 0] as const;
 
-const SCHEDULE_WEEKDAY_KEYS = [
-  "habits.schedule.weekdaySunday",
-  "habits.schedule.weekdayMonday",
-  "habits.schedule.weekdayTuesday",
-  "habits.schedule.weekdayWednesday",
-  "habits.schedule.weekdayThursday",
-  "habits.schedule.weekdayFriday",
-  "habits.schedule.weekdaySaturday",
-] as const;
-
-function joinLocalizedList(items: string[], lang = "fr"): string {
-  if (items.length === 0) return "";
-  if (items.length === 1) return items[0];
-  try {
-    const formatter = new Intl.ListFormat(lang, { style: "long", type: "conjunction" });
-    return formatter.format(items);
-  } catch {
-    const conj = lang === "fr" ? " et " : lang === "de" ? " und " : lang === "es" ? " y " : lang === "pt" ? " e " : " and ";
-    return `${items.slice(0, -1).join(", ")}${conj}${items[items.length - 1]}`;
-  }
-}
-
-function scheduleLabelFor(input: Pick<Habit, "interval" | "unit" | "daysOfWeek">, t: TFn, tp: TpFn, lang = "fr"): string {
-  const interval = Number.isFinite(input.interval) && input.interval > 0 ? Math.floor(input.interval) : 1;
-  const selected = [...new Set((input.daysOfWeek ?? []).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7));
-  if (input.unit === "week" && selected.length) {
-    if (selected.length === 7) {
-      if (interval === 1) {
-        return lang === "fr" ? "Tous les jours" : lang === "en" ? "Every day" : tp("habits.schedule.day", 1);
-      }
-      return t("habits.schedule.everyWeeks", { count: interval, days: lang === "fr" ? "jours" : "days" });
-    }
-    const dayNames = selected.map((day) => {
-      const raw = t(SCHEDULE_WEEKDAY_KEYS[day]);
-      if (lang === "fr") {
-        return raw.endsWith("s") ? raw : `${raw}s`;
-      }
-      return raw;
-    });
-    const days = joinLocalizedList(dayNames, lang);
-    return interval === 1
-      ? t("habits.schedule.everyDays", { days })
-      : t("habits.schedule.everyWeeks", { count: interval, days });
-  }
-  if (input.unit === "day") {
-    if (interval === 1) {
-      return lang === "fr" ? "Tous les jours" : lang === "en" ? "Every day" : tp("habits.schedule.day", 1);
-    }
-    return tp("habits.schedule.day", interval);
-  }
-  if (input.unit === "week") return tp("habits.schedule.week", interval);
-  if (input.unit === "month") return tp("habits.schedule.month", interval);
-  return tp("habits.schedule.year", interval);
-}
-
 type FrequencyMode = "daily" | "weekdays" | "custom";
 
 type Props = { readonly habit?: Habit; readonly onSave: (input: HabitDraft) => Promise<void>; readonly onCancel: () => void };
@@ -107,7 +48,7 @@ function initialMode(habit?: Habit): FrequencyMode {
 }
 
 export function HabitComposer({ habit, onSave, onCancel }: Props) {
-  const { t, tp, lang } = useI18n();
+  const { t } = useI18n();
   const editing = Boolean(habit);
   const initialStartDate = habit?.startDate ?? today();
   const [title, setTitle] = useState(habit?.title ?? "");
@@ -190,8 +131,6 @@ export function HabitComposer({ habit, onSave, onCancel }: Props) {
     onCancel();
   }
 
-  const schedule = scheduleLabelFor({ interval, unit, daysOfWeek }, t, tp, lang);
-
   return (
     <>
       <button type="button" className="modal-backdrop" aria-label={t("habits.composer.closeDialog")} onClick={onCancel} />
@@ -264,7 +203,6 @@ export function HabitComposer({ habit, onSave, onCancel }: Props) {
             <div className="habit-weekday-picker">
               <div className="habit-field-label">
                 <span>{t("habits.composer.onDays")}</span>
-                <small>{t("habits.composer.daysHint")}</small>
               </div>
               <div className="habit-quick-presets">
                 <button
@@ -310,7 +248,6 @@ export function HabitComposer({ habit, onSave, onCancel }: Props) {
             <label className="field"><span>{t("habits.composer.starts")}</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
             <label className="field"><span>{t("habits.composer.ends")} <em>{t("habits.composer.optional")}</em></span><input type="date" min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
           </div>
-          <p className="habit-schedule-preview" aria-live="polite">{schedule} · {endDate ? t("habits.composer.endsOn", { date: endDate }) : t("habits.composer.noEnd")}</p>
           {dateError && <p className="habit-form-error" role="alert">{dateError}</p>}
           <div className="composer-options">
             <button type="button" className={`option-button flag-toggle ${important ? "selected important" : ""}`} aria-pressed={important} onClick={() => setImportant((value) => !value)}><Icon name="star" /> {t("habits.composer.important")}</button>

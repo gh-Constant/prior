@@ -114,11 +114,12 @@ describe("HabitComposer", () => {
 
     // Click "Weekend" preset chip
     fireEvent.click(screen.getByRole("button", { name: /Weekend/i }));
-    expect(screen.getByText(/Every Saturday and Sunday/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Saturday" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Sunday" })).toHaveAttribute("aria-pressed", "true");
 
     // Click Wednesday to also include it
     fireEvent.click(screen.getByRole("button", { name: "Wednesday" }));
-    expect(screen.getByText(/Every Wednesday, Saturday, and Sunday/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wednesday" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByText("Create habit"));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
