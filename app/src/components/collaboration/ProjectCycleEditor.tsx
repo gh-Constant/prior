@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { EditorDialog } from "./EditorDialog";
 import { useI18n } from "../../lib/i18n";
+import { DateTimePicker } from "../DateTimePicker";
 import type { ProjectCycleDraft, ProjectCycleEditorProps } from "./types";
 
 export function ProjectCycleEditor({ cycle, issues, onSave, onClose }: ProjectCycleEditorProps) {
@@ -13,8 +14,8 @@ export function ProjectCycleEditor({ cycle, issues, onSave, onClose }: ProjectCy
   return <EditorDialog title={cycle ? t("collab.cycleEditor.titleEdit") : t("collab.cycleEditor.titleNew")} onClose={onClose} invalid={!draft.name.trim() || !draft.startsOn || !draft.endsOn || invalidDates} onSave={() => onSave({ ...draft, name: draft.name.trim() })}>
     <label className="collab-field"><span>{t("collab.cycleEditor.name")}</span><input required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
     <div className="collab-planning-grid">
-      <label className="collab-field"><span>{t("collab.cycleEditor.start")}</span><input type="date" required value={draft.startsOn} onChange={(event) => setDraft({ ...draft, startsOn: event.target.value })} /></label>
-      <label className="collab-field"><span>{t("collab.cycleEditor.end")}</span><input type="date" required min={draft.startsOn || undefined} value={draft.endsOn} onChange={(event) => setDraft({ ...draft, endsOn: event.target.value })} /></label>
+      <div className="collab-field"><span>{t("collab.cycleEditor.start")}</span><DateTimePicker required value={draft.startsOn} onChange={(value) => setDraft({ ...draft, startsOn: value })} ariaLabel={t("collab.cycleEditor.start")} /></div>
+      <div className="collab-field"><span>{t("collab.cycleEditor.end")}</span><DateTimePicker required min={draft.startsOn || undefined} value={draft.endsOn} onChange={(value) => setDraft({ ...draft, endsOn: value })} ariaLabel={t("collab.cycleEditor.end")} /></div>
     </div>
     {invalidDates && <p className="collab-error" role="alert">{t("collab.cycleEditor.dateError")}</p>}
     <label className="collab-field"><span>{t("collab.cycleEditor.search")}</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("collab.cycleEditor.searchPlaceholder")} /></label>

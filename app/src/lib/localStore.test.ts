@@ -49,6 +49,16 @@ describe("localStore browser fallback", () => {
     expect(typeof tasks[0].urgent).toBe("boolean");
   });
 
+  it("persists optional task and habit times while rejecting malformed values", async () => {
+    const task = await localStore.saveTask({ title: "Timed task", dueDate: "2026-09-20", dueTime: "08:45", followUpDate: "2026-09-21", followUpTime: "17:30", important: false, urgent: false });
+    const habit = await localStore.saveHabit({ title: "Timed habit", important: false, urgent: false, interval: 1, unit: "week", daysOfWeek: [1], timeOfDay: "07:15" });
+    expect(task).toMatchObject({ dueTime: "08:45", followUpTime: "17:30" });
+    expect(habit.timeOfDay).toBe("07:15");
+
+    const invalid = await localStore.saveTask({ title: "Invalid time", dueDate: "2026-09-20", dueTime: "25:99", important: false, urgent: false });
+    expect(invalid.dueTime).toBeNull();
+  });
+
   it("persists work-hub context and waiting details with a task", async () => {
     const task = await localStore.saveTask({ title: "Send the brief", areaId: "area-1", projectId: "project-1", status: "waiting", assigneeName: "Alex", followUpDate: "2026-09-22", important: true, urgent: false });
     expect(task).toMatchObject({ areaId: "area-1", projectId: "project-1", status: "waiting", assigneeName: "Alex", followUpDate: "2026-09-22" });

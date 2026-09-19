@@ -14,6 +14,10 @@ export const common = {
     openMenu: "Open menu",
     closeMenu: "Close menu",
   },
+  datePicker: {
+    today: "Today", tomorrow: "Tomorrow", previousMonth: "Previous month", nextMonth: "Next month",
+    time: "Time", addTime: "Add time", removeTime: "Remove", clear: "Clear", done: "Done", open: "open date picker",
+  },
   nav: {
     groups: {
       focus: "Focus",

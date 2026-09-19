@@ -1,0 +1,45 @@
+.date-time-picker { width: 100%; min-width: 0; }
+.date-time-picker-value-input { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; opacity: 0 !important; pointer-events: none !important; }
+.date-time-picker-trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 500; text-align: left; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, background .15s ease; }
+.date-time-picker-trigger:hover:not(:disabled) { border-color: #d1cbc4; }
+.date-time-picker-trigger.open, .date-time-picker-trigger:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light, #fa654a1a); }
+.date-time-picker-trigger:disabled { opacity: .55; cursor: not-allowed; }
+.date-time-picker-trigger > svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--muted); }
+.date-time-picker-trigger > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.date-time-picker-trigger:not(.has-value) > span { color: var(--muted); }
+.date-time-picker-trigger .date-time-picker-chevron { width: 14px; height: 14px; }
+.date-time-picker-menu { position: fixed; z-index: 99999; box-sizing: border-box; overflow: auto; padding: 10px; border: 1px solid var(--line, #e9e8e4); border-radius: 12px; background: var(--panel, #fff); box-shadow: 0 12px 36px -4px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08); animation: date-time-picker-in .14s cubic-bezier(.16,1,.3,1); }
+.date-time-picker-menu.open-top { animation-name: date-time-picker-in-top; }
+@keyframes date-time-picker-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes date-time-picker-in-top { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.date-time-picker-shortcuts { display: flex; gap: 6px; margin-bottom: 8px; }
+.date-time-picker-shortcuts button { flex: 1; min-height: 30px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface, #f5f3f0); color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.date-time-picker-shortcuts button:hover { border-color: var(--accent); color: var(--accent); }
+.date-time-picker-month-header { display: grid; grid-template-columns: 32px 1fr 32px; align-items: center; margin-bottom: 4px; }
+.date-time-picker-month-header strong { text-align: center; font-size: 13px; font-weight: 650; text-transform: capitalize; }
+.date-time-picker-month-header button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.date-time-picker-month-header button:hover { background: var(--surface, #f5f3f0); color: var(--ink); }
+.date-time-picker-month-header svg { width: 15px; height: 15px; }
+.date-time-picker-weekdays, .date-time-picker-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.date-time-picker-weekdays span { padding: 5px 0 4px; color: var(--muted); font-size: 10px; font-weight: 700; text-align: center; text-transform: uppercase; }
+.date-time-picker-grid button { aspect-ratio: 1; min-width: 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.date-time-picker-grid button:hover:not(:disabled) { background: var(--surface, #f5f3f0); }
+.date-time-picker-grid button.outside { color: color-mix(in srgb, var(--muted) 52%, transparent); }
+.date-time-picker-grid button.today { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); font-weight: 700; }
+.date-time-picker-grid button.selected { background: var(--accent); color: #fff; box-shadow: none; font-weight: 700; }
+.date-time-picker-grid button:disabled { opacity: .25; cursor: not-allowed; }
+.date-time-picker-time-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 42px; margin-top: 8px; padding-top: 9px; border-top: 1px solid var(--line); }
+.date-time-picker-time-row > div:first-child { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.date-time-picker-time-row svg { width: 14px; height: 14px; }
+.date-time-picker-add-time, .date-time-picker-remove-time { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.date-time-picker-time-controls { display: flex; align-items: center; gap: 7px; }
+.date-time-picker-time-controls input { width: 94px; min-height: 31px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); font: inherit; font-size: 12px; color-scheme: light; }
+.date-time-picker-remove-time { color: var(--muted); font-size: 11px; }
+.date-time-picker-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); }
+.date-time-picker-footer button { min-height: 30px; padding: 5px 11px; border-radius: 7px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.date-time-picker-clear { border: 0; background: transparent; color: var(--muted); }
+.date-time-picker-clear:disabled { opacity: .35; cursor: default; }
+.date-time-picker-done { margin-left: auto; border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+.date-time-picker.pill { width: auto; display: inline-flex; }
+.date-time-picker.pill .date-time-picker-trigger { width: auto; min-height: 32px; padding: 4px 9px; background: #fbfbf9; font-size: 12px; }
+@media (max-width: 560px) { .date-time-picker-menu { min-width: min(292px, calc(100vw - 16px)) !important; max-width: calc(100vw - 16px) !important; } }

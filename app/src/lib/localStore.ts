@@ -98,6 +98,13 @@ function normalizeDueDate(value: unknown): string | null {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? value.trim() : null;
 }
 
+function normalizeTime(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(trimmed)) return null;
+  return trimmed;
+}
+
 function normalizeWeekdays(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((left, right) => left - right);
@@ -113,14 +120,17 @@ export function normalizeTask(task: Task): Task {
     ...task,
     description: typeof task.description === "string" ? task.description : "",
     dueDate: normalizeDueDate(task.dueDate),
+    dueTime: normalizeTime(task.dueTime),
     priority: normalizePriority(task.priority),
     areaId: task.areaId ?? null,
     projectId: task.projectId ?? null,
     status: normalizeStatus(task.status, Boolean(task.completed)),
     scheduledDate: normalizeDueDate(task.scheduledDate),
+    scheduledTime: normalizeTime(task.scheduledTime),
     assigneeName: typeof task.assigneeName === "string" ? task.assigneeName : "",
     peopleIds: Array.isArray(peopleIds) ? [...new Set(peopleIds.filter((value): value is string => typeof value === "string" && value.length > 0))] : [],
     followUpDate: normalizeDueDate(task.followUpDate),
+    followUpTime: normalizeTime(task.followUpTime),
     completed: Boolean(task.completed),
     important: Boolean(task.important),
     urgent: Boolean(task.urgent),
@@ -134,6 +144,7 @@ export function normalizeHabit(habit: Habit): Habit {
     urgent: Boolean(habit.urgent),
     interval: Number.isFinite(habit.interval) && habit.interval > 0 ? Math.floor(habit.interval) : 1,
     unit: habit.unit ?? "day",
+    timeOfDay: normalizeTime(habit.timeOfDay),
     endDate: normalizeDueDate(habit.endDate),
     daysOfWeek: normalizeWeekdays(habit.daysOfWeek),
     completedDates: Array.isArray(habit.completedDates) ? [...habit.completedDates] : [],
@@ -161,14 +172,17 @@ export function buildTask(
     title: input.title.trim(),
     description: input.description?.trim() ?? previous?.description ?? "",
     dueDate: normalizeDueDate(input.dueDate !== undefined ? input.dueDate : previous?.dueDate),
+    dueTime: normalizeTime(input.dueTime !== undefined ? input.dueTime : previous?.dueTime),
     priority: normalizePriority(input.priority ?? previous?.priority),
     areaId: input.areaId !== undefined ? input.areaId : previous?.areaId ?? null,
     projectId: input.projectId !== undefined ? input.projectId : previous?.projectId ?? null,
     status: normalizeStatus(input.status ?? previous?.status, Boolean(input.completed ?? previous?.completed ?? false)),
     scheduledDate: normalizeDueDate(input.scheduledDate !== undefined ? input.scheduledDate : previous?.scheduledDate),
+    scheduledTime: normalizeTime(input.scheduledTime !== undefined ? input.scheduledTime : previous?.scheduledTime),
     assigneeName: input.assigneeName?.trim() ?? previous?.assigneeName ?? "",
     peopleIds: Array.isArray(input.peopleIds) ? [...new Set(input.peopleIds)] : previous?.peopleIds ?? [],
     followUpDate: normalizeDueDate(input.followUpDate !== undefined ? input.followUpDate : previous?.followUpDate),
+    followUpTime: normalizeTime(input.followUpTime !== undefined ? input.followUpTime : previous?.followUpTime),
     completed: Boolean(input.completed ?? previous?.completed ?? false),
     important: Boolean(input.important),
     urgent: Boolean(input.urgent),
@@ -180,7 +194,7 @@ export function buildTask(
 }
 
 export function buildHabit(
-  input: Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> & Partial<Pick<Habit, "id" | "startDate" | "endDate" | "daysOfWeek" | "completedDates" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>,
+  input: Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> & Partial<Pick<Habit, "id" | "startDate" | "timeOfDay" | "endDate" | "daysOfWeek" | "completedDates" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>,
   previous: Habit | undefined,
   timestamp: string,
   id: string,
@@ -194,6 +208,7 @@ export function buildHabit(
     interval,
     unit: input.unit as HabitUnit,
     startDate: input.startDate ?? previous?.startDate ?? dateKey(new Date(timestamp)),
+    timeOfDay: normalizeTime(input.timeOfDay !== undefined ? input.timeOfDay : previous?.timeOfDay),
     endDate: normalizeDueDate(input.endDate ?? previous?.endDate),
     daysOfWeek: normalizeWeekdays(input.daysOfWeek ?? previous?.daysOfWeek),
     completedDates: [...new Set(input.completedDates ?? previous?.completedDates ?? [])].sort((left, right) => left.localeCompare(right)),
@@ -225,7 +240,7 @@ function pendingEntityIds(mutations: Mutation[], entity: "task" | "habit"): Set<
   return new Set(ids);
 }
 
-type HabitRow = Omit<Habit, "startDate" | "endDate" | "daysOfWeek" | "completedDates"> & { start_date: string; end_date: string | null; days_of_week: string; completed_dates: string };
+type HabitRow = Omit<Habit, "startDate" | "timeOfDay" | "endDate" | "daysOfWeek" | "completedDates"> & { start_date: string; time_of_day: string | null; end_date: string | null; days_of_week: string; completed_dates: string };
 
 function habitFromRow(row: HabitRow): Habit {
   let completedDates: string[] = [];
@@ -238,7 +253,7 @@ function habitFromRow(row: HabitRow): Habit {
     const parsed = JSON.parse(row.days_of_week || "[]");
     daysOfWeek = normalizeWeekdays(parsed);
   } catch { /* normalize to an empty schedule */ }
-  return normalizeHabit({ ...row, startDate: row.start_date, endDate: row.end_date, daysOfWeek, completedDates });
+  return normalizeHabit({ ...row, startDate: row.start_date, timeOfDay: row.time_of_day, endDate: row.end_date, daysOfWeek, completedDates });
 }
 
 async function withTransaction(db: SqlDatabase, work: () => Promise<void>): Promise<void> {
@@ -258,7 +273,7 @@ async function findPreviousTask(db: SqlDatabase | null, accountId: string, id: s
   if (!id) return undefined;
   if (db) {
     const rows = await db.select<Task>(
-      "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE id = ? AND account_id = ?",
+      "SELECT id, title, description, due_date as dueDate, due_time as dueTime, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, scheduled_time as scheduledTime, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, follow_up_time as followUpTime, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE id = ? AND account_id = ?",
       [id, accountId],
     );
     return rows[0] ? normalizeTask(rows[0]) : undefined;
@@ -271,7 +286,7 @@ async function findPreviousHabit(db: SqlDatabase | null, accountId: string, id: 
   if (!id) return undefined;
   if (db) {
     const rows = await db.select<HabitRow>(
-      "SELECT id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE id = ? AND account_id = ?",
+      "SELECT id, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE id = ? AND account_id = ?",
       [id, accountId],
     );
     return rows[0] ? habitFromRow(rows[0]) : undefined;
@@ -295,8 +310,8 @@ async function mergeRemoteTasksIntoDb(db: SqlDatabase, pendingIds: Set<string>, 
     for (const task of candidates) {
       if (isRemoteStale(task.serverRevision, revisions.get(task.id))) continue;
       await db.execute(
-        "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, people_ids, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
-        [accountId, task.id, task.title, task.description ?? "", task.dueDate ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.assigneeName ?? "", JSON.stringify(task.peopleIds ?? []), task.followUpDate ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
+        "INSERT INTO tasks (account_id, id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, people_ids, follow_up_date, follow_up_time, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, due_time=excluded.due_time, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, follow_up_time=excluded.follow_up_time, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+        [accountId, task.id, task.title, task.description ?? "", task.dueDate ?? null, task.dueTime ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.scheduledTime ?? null, task.assigneeName ?? "", JSON.stringify(task.peopleIds ?? []), task.followUpDate ?? null, task.followUpTime ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
       );
     }
   });
@@ -326,8 +341,8 @@ async function mergeRemoteHabitsIntoDb(db: SqlDatabase, pendingIds: Set<string>,
     for (const habit of candidates) {
       if (isRemoteStale(habit.serverRevision, revisions.get(habit.id))) continue;
       await db.execute(
-        "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
-        [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
+        "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, time_of_day=excluded.time_of_day, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
+        [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.timeOfDay ?? null, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, habit.deletedAt, habit.serverRevision ?? null],
       );
     }
   });
@@ -349,7 +364,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       const rows = await db.select<Task>(
-        "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? ORDER BY updated_at DESC",
+        "SELECT id, title, description, due_date as dueDate, due_time as dueTime, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, scheduled_time as scheduledTime, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, follow_up_time as followUpTime, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? ORDER BY updated_at DESC",
         [accountId],
       );
       return rows.map(normalizeTask);
@@ -362,7 +377,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       const rows = await db.select<Task>(
-      "SELECT id, title, description, due_date as dueDate, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? AND deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
+      "SELECT id, title, description, due_date as dueDate, due_time as dueTime, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, scheduled_time as scheduledTime, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, follow_up_time as followUpTime, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? AND deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
       [accountId],
       );
       return rows.map(normalizeTask);
@@ -375,7 +390,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       const rows = await db.select<HabitRow>(
-        "SELECT id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE account_id = ? ORDER BY updated_at DESC",
+        "SELECT id, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE account_id = ? ORDER BY updated_at DESC",
         [accountId],
       );
       return rows.map(habitFromRow);
@@ -391,8 +406,8 @@ export const localStore = {
     const task = buildTask(input, previous, timestamp, input.id ?? uuid());
     if (db) {
       await db.execute(
-        "INSERT INTO tasks (account_id, id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, people_ids, follow_up_date, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
-        [accountId, task.id, task.title, task.description, task.dueDate, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.assigneeName, JSON.stringify(task.peopleIds ?? []), task.followUpDate, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
+        "INSERT INTO tasks (account_id, id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, people_ids, follow_up_date, follow_up_time, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, due_time=excluded.due_time, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, follow_up_time=excluded.follow_up_time, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+        [accountId, task.id, task.title, task.description, task.dueDate, task.dueTime, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.scheduledTime, task.assigneeName, JSON.stringify(task.peopleIds ?? []), task.followUpDate, task.followUpTime, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
       );
     } else {
       const tasks = read<Task[]>(TASKS_KEY, []).filter((item) => item.id !== task.id);
@@ -424,7 +439,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       const rows = await db.select<HabitRow>(
-        "SELECT id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE account_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC",
+        "SELECT id, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM habits WHERE account_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC",
         [accountId],
       );
       return rows.map(habitFromRow);
@@ -432,7 +447,7 @@ export const localStore = {
     return read<Habit[]>(HABITS_KEY, []).filter((habit) => !habit.deletedAt).map(normalizeHabit);
   },
 
-  async saveHabit(input: Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> & Partial<Pick<Habit, "id" | "startDate" | "endDate" | "daysOfWeek" | "completedDates" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>): Promise<Habit> {
+  async saveHabit(input: Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> & Partial<Pick<Habit, "id" | "startDate" | "timeOfDay" | "endDate" | "daysOfWeek" | "completedDates" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>): Promise<Habit> {
     const timestamp = now();
     const db = await getSqlDatabase();
     const accountId = getAccountId();
@@ -440,8 +455,8 @@ export const localStore = {
     const habit = buildHabit(input, existing, timestamp, input.id ?? uuid());
     if (db) {
       await db.execute(
-        "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
-        [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, null, habit.serverRevision ?? null],
+        "INSERT INTO habits (account_id, id, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, important=excluded.important, urgent=excluded.urgent, interval=excluded.interval, unit=excluded.unit, start_date=excluded.start_date, time_of_day=excluded.time_of_day, end_date=excluded.end_date, days_of_week=excluded.days_of_week, completed_dates=excluded.completed_dates, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE habits.account_id = excluded.account_id",
+        [accountId, habit.id, habit.title, habit.important ? 1 : 0, habit.urgent ? 1 : 0, habit.interval, habit.unit, habit.startDate, habit.timeOfDay ?? null, habit.endDate ?? null, JSON.stringify(habit.daysOfWeek ?? []), JSON.stringify(habit.completedDates ?? []), habit.createdAt, habit.updatedAt, null, habit.serverRevision ?? null],
       );
     } else {
       write(HABITS_KEY, [...read<Habit[]>(HABITS_KEY, []).filter((item) => item.id !== habit.id), habit]);

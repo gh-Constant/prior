@@ -1506,6 +1506,9 @@ func validateHabit(habit tasks.Habit) error {
 	if len(habit.DaysOfWeek) > 0 && habit.Unit != "week" {
 		return errors.New("habit weekdays require a weekly schedule")
 	}
+	if err := validateOptionalTime(habit.TimeOfDay, "habit time"); err != nil {
+		return err
+	}
 	return validateHabitDates(habit.StartDate, habit.EndDate, habit.DaysOfWeek, habit.CompletedDates)
 }
 
@@ -1531,7 +1534,7 @@ func insertHabitRow(mc mutationContext, habit tasks.Habit, habitID uuid.UUID, co
 	if err != nil {
 		return err
 	}
-	result, err := mc.tx.Exec(mc.ctx, `INSERT INTO habits (id, user_id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (user_id, id) DO UPDATE SET title = EXCLUDED.title, important = EXCLUDED.important, urgent = EXCLUDED.urgent, interval = EXCLUDED.interval, unit = EXCLUDED.unit, start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date, days_of_week = EXCLUDED.days_of_week, completed_dates = EXCLUDED.completed_dates, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision`, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, habit.EndDate, daysJSON, completedJSON, createdAt, updatedAt, habit.DeletedAt, mc.revision)
+	result, err := mc.tx.Exec(mc.ctx, `INSERT INTO habits (id, user_id, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ON CONFLICT (user_id, id) DO UPDATE SET title = EXCLUDED.title, important = EXCLUDED.important, urgent = EXCLUDED.urgent, interval = EXCLUDED.interval, unit = EXCLUDED.unit, start_date = EXCLUDED.start_date, time_of_day = EXCLUDED.time_of_day, end_date = EXCLUDED.end_date, days_of_week = EXCLUDED.days_of_week, completed_dates = EXCLUDED.completed_dates, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision`, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, habit.TimeOfDay, habit.EndDate, daysJSON, completedJSON, createdAt, updatedAt, habit.DeletedAt, mc.revision)
 	if err != nil {
 		return err
 	}
@@ -1548,7 +1551,7 @@ func insertHabitChangeRow(mc mutationContext, habit tasks.Habit, habitID uuid.UU
 	if err != nil {
 		return err
 	}
-	_, err = mc.tx.Exec(mc.ctx, `INSERT INTO habit_changes (revision, habit_id, user_id, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`, mc.revision, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, habit.EndDate, daysJSON, completedJSON, createdAt, updatedAt, habit.DeletedAt)
+	_, err = mc.tx.Exec(mc.ctx, `INSERT INTO habit_changes (revision, habit_id, user_id, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`, mc.revision, habitID, mc.userID, habit.Title, habit.Important, habit.Urgent, habit.Interval, habit.Unit, habit.StartDate, habit.TimeOfDay, habit.EndDate, daysJSON, completedJSON, createdAt, updatedAt, habit.DeletedAt)
 	return err
 }
 
@@ -1615,6 +1618,16 @@ func normalizeOptionalTaskDate(value **string, field string) error {
 	return nil
 }
 
+func validateOptionalTime(value *string, field string) error {
+	if value == nil {
+		return nil
+	}
+	if _, err := time.Parse("15:04", strings.TrimSpace(*value)); err != nil {
+		return fmt.Errorf("invalid %s", field)
+	}
+	return nil
+}
+
 func validateTask(task *tasks.Task) error {
 	if len(task.Title) == 0 || len(task.Title) > 400 {
 		return fmt.Errorf("task title must be between 1 and 400 characters")
@@ -1629,6 +1642,15 @@ func validateTask(task *tasks.Task) error {
 		return err
 	}
 	if err := normalizeOptionalTaskDate(&task.FollowUpDate, "follow-up date"); err != nil {
+		return err
+	}
+	if err := validateOptionalTime(task.DueTime, "task due time"); err != nil {
+		return err
+	}
+	if err := validateOptionalTime(task.ScheduledTime, "task scheduled time"); err != nil {
+		return err
+	}
+	if err := validateOptionalTime(task.FollowUpTime, "task follow-up time"); err != nil {
 		return err
 	}
 	if task.Status == "" {
@@ -1676,13 +1698,13 @@ func insertTaskRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, create
 		return err
 	}
 	result, err := mc.tx.Exec(mc.ctx, `
-			INSERT INTO tasks (id, user_id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date,
+			INSERT INTO tasks (id, user_id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, follow_up_date, follow_up_time, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date, due_time = EXCLUDED.due_time,
 			 priority = EXCLUDED.priority, area_id = EXCLUDED.area_id, project_id = EXCLUDED.project_id, status = EXCLUDED.status,
-			 scheduled_date = EXCLUDED.scheduled_date, assignee_name = EXCLUDED.assignee_name, follow_up_date = EXCLUDED.follow_up_date, people_ids = EXCLUDED.people_ids,
+			 scheduled_date = EXCLUDED.scheduled_date, scheduled_time = EXCLUDED.scheduled_time, assignee_name = EXCLUDED.assignee_name, follow_up_date = EXCLUDED.follow_up_date, follow_up_time = EXCLUDED.follow_up_time, people_ids = EXCLUDED.people_ids,
 			 completed = EXCLUDED.completed, important = EXCLUDED.important, urgent = EXCLUDED.urgent,
-			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision`, taskID, mc.ownerID, task.Title, task.Description, task.DueDate, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.AssigneeName, task.FollowUpDate, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision)
+			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision`, taskID, mc.ownerID, task.Title, task.Description, task.DueDate, task.DueTime, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.ScheduledTime, task.AssigneeName, task.FollowUpDate, task.FollowUpTime, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision)
 	if err != nil {
 		return err
 	}
@@ -1697,7 +1719,7 @@ func insertTaskChangeRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, 
 	if err != nil {
 		return err
 	}
-	_, err = mc.tx.Exec(mc.ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, priority, area_id, project_id, status, scheduled_date, assignee_name, follow_up_date, people_ids, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`, mc.revision, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.AssigneeName, task.FollowUpDate, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt)
+	_, err = mc.tx.Exec(mc.ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, follow_up_date, follow_up_time, people_ids, completed, important, urgent, created_at, updated_at, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`, mc.revision, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.DueTime, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.ScheduledTime, task.AssigneeName, task.FollowUpDate, task.FollowUpTime, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt)
 	return err
 }
 
@@ -1838,7 +1860,7 @@ func pullChangelogTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUI
 		return result, nil
 	}
 	rows, err := pool.Query(ctx, `
-		SELECT task_id::text, title, description, due_date, priority, area_id::text, project_id::text, status, scheduled_date, assignee_name, follow_up_date, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		SELECT task_id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date, scheduled_time, assignee_name, follow_up_date, follow_up_time, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision
 		FROM task_changes c WHERE revision = ANY($2) AND (c.user_id = $1 OR EXISTS (
 			SELECT 1 FROM project_members pm
 			WHERE pm.project_id = c.project_id AND pm.user_id = $1 AND pm.status = 'active'
@@ -1850,7 +1872,7 @@ func pullChangelogTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUI
 	for rows.Next() {
 		var task tasks.Task
 		var peopleJSON []byte
-		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.AssigneeName, &task.FollowUpDate, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
+		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.DueTime, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.ScheduledTime, &task.AssigneeName, &task.FollowUpDate, &task.FollowUpTime, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
 			return nil, err
 		}
 		if len(peopleJSON) > 0 && string(peopleJSON) != "null" {
@@ -1869,7 +1891,7 @@ func pullChangelogHabits(ctx context.Context, pool *pgxpool.Pool, userID uuid.UU
 		return habits, nil
 	}
 	habitRows, err := pool.Query(ctx, `
-		SELECT habit_id::text, title, important, urgent, interval, unit, start_date, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, revision
+		SELECT habit_id::text, title, important, urgent, interval, unit, start_date, time_of_day, end_date, days_of_week, completed_dates, created_at, updated_at, deleted_at, revision
 		FROM habit_changes WHERE user_id = $1 AND revision = ANY($2) ORDER BY revision ASC`, userID, revisions)
 	if err != nil {
 		return nil, err
@@ -1889,7 +1911,7 @@ func scanHabitRow(habitRows pgx.Rows) (tasks.Habit, error) {
 	var habit tasks.Habit
 	var daysJSON []byte
 	var completedJSON []byte
-	if err := habitRows.Scan(&habit.ID, &habit.Title, &habit.Important, &habit.Urgent, &habit.Interval, &habit.Unit, &habit.StartDate, &habit.EndDate, &daysJSON, &completedJSON, &habit.CreatedAt, &habit.UpdatedAt, &habit.DeletedAt, &habit.ServerRevision); err != nil {
+	if err := habitRows.Scan(&habit.ID, &habit.Title, &habit.Important, &habit.Urgent, &habit.Interval, &habit.Unit, &habit.StartDate, &habit.TimeOfDay, &habit.EndDate, &daysJSON, &completedJSON, &habit.CreatedAt, &habit.UpdatedAt, &habit.DeletedAt, &habit.ServerRevision); err != nil {
 		return tasks.Habit{}, err
 	}
 	if err := json.Unmarshal(daysJSON, &habit.DaysOfWeek); err != nil {

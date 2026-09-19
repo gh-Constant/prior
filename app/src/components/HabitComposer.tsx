@@ -5,6 +5,7 @@ import { useModalDialog } from "../hooks/useModalDialog";
 import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
 import { CustomSelect } from "./CustomSelect";
+import { DateTimePicker } from "./DateTimePicker";
 
 const WEEKDAY_SHORT_KEYS = [
   "habits.composer.weekdayShortMon",
@@ -58,6 +59,7 @@ export function HabitComposer({ habit, onSave, onCancel }: Props) {
   const [unit, setUnit] = useState<HabitUnit>(habit?.unit ?? "day");
   const [frequencyMode, setFrequencyMode] = useState<FrequencyMode>(() => initialMode(habit));
   const [startDate, setStartDate] = useState(initialStartDate);
+  const [timeOfDay, setTimeOfDay] = useState(habit?.timeOfDay ?? null);
   const [endDate, setEndDate] = useState(habit?.endDate ?? "");
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(habit?.daysOfWeek ?? []);
   const [dateError, setDateError] = useState("");
@@ -121,6 +123,7 @@ export function HabitComposer({ habit, onSave, onCancel }: Props) {
       interval: Math.max(1, Math.floor(interval) || 1),
       unit,
       startDate,
+      timeOfDay,
       endDate: endDate || null,
       daysOfWeek: unit === "week" ? daysOfWeek : [],
     });
@@ -245,8 +248,8 @@ export function HabitComposer({ habit, onSave, onCancel }: Props) {
           )}
 
           <div className="habit-date-fields">
-            <label className="field"><span>{t("habits.composer.starts")}</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
-            <label className="field"><span>{t("habits.composer.ends")} <em>{t("habits.composer.optional")}</em></span><input type="date" min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+            <div className="field"><span>{t("habits.composer.starts")}</span><DateTimePicker value={startDate} onChange={setStartDate} time={timeOfDay} onTimeChange={setTimeOfDay} allowTime required ariaLabel={t("habits.composer.starts")} /></div>
+            <div className="field"><span>{t("habits.composer.ends")} <em>{t("habits.composer.optional")}</em></span><DateTimePicker value={endDate} onChange={setEndDate} min={startDate} ariaLabel={`${t("habits.composer.ends")} ${t("habits.composer.optional")}`} /></div>
           </div>
           {dateError && <p className="habit-form-error" role="alert">{dateError}</p>}
           <div className="composer-options">

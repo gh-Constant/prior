@@ -3,6 +3,7 @@ import { DEFAULT_PROJECT_ICON, PROJECT_ICON_OPTIONS } from "../WorkspaceIcon";
 import { EditableIcon, IconPicker, IconUpload } from "../IconPicker";
 import { EditorDialog } from "./EditorDialog";
 import { CustomSelect } from "../CustomSelect";
+import { DateTimePicker } from "../DateTimePicker";
 import { useI18n } from "../../lib/i18n";
 import type { EditableProject, ProjectEditorProps } from "./types";
 
@@ -81,8 +82,8 @@ export function ProjectEditor({ project, avatarUrl, onSave, onClose }: ProjectEd
           ]}
         />
       </label>
-      <label className="collab-field"><span>{t("collab.editor.startDate")}</span><input type="date" value={draft.startDate ?? ""} onChange={(event) => setDraft({ ...draft, startDate: event.target.value || null })} /></label>
-      <label className="collab-field"><span>{t("collab.editor.targetDate")}</span><input type="date" min={draft.startDate ?? undefined} value={draft.targetDate ?? ""} onChange={(event) => setDraft({ ...draft, targetDate: event.target.value || null })} /></label>
+      <div className="collab-field"><span>{t("collab.editor.startDate")}</span><DateTimePicker value={draft.startDate ?? ""} onChange={(value) => setDraft({ ...draft, startDate: value || null })} ariaLabel={t("collab.editor.startDate")} /></div>
+      <div className="collab-field"><span>{t("collab.editor.targetDate")}</span><DateTimePicker min={draft.startDate ?? undefined} value={draft.targetDate ?? ""} onChange={(value) => setDraft({ ...draft, targetDate: value || null })} ariaLabel={t("collab.editor.targetDate")} /></div>
     </div>
     {invalidDates && <p className="collab-error" role="alert">{t("collab.editor.dateError")}</p>}
   </EditorDialog>;

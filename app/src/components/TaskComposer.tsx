@@ -4,6 +4,7 @@ import { useModalDialog } from "../hooks/useModalDialog";
 import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
 import { CustomSelect } from "./CustomSelect";
+import { DateTimePicker } from "./DateTimePicker";
 import { TaskPeoplePicker } from "./collaboration/TaskPlanning";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { TaskPlanningProps } from "./collaboration/types";
@@ -16,32 +17,10 @@ const PRIORITY_COLORS: Record<number, string> = {
   4: "#888888",
 };
 
-function formatDueDateDisplay(value: string, fallbackText: string, lang: string): string {
-  if (!value) return fallbackText;
-  const now = new Date();
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  if (value === todayKey) {
-    return lang === "fr" ? "Aujourd’hui" : "Today";
-  }
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
-  const tomorrowKey = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
-  if (value === tomorrowKey) {
-    return lang === "fr" ? "Demain" : "Tomorrow";
-  }
-  try {
-    const [year, month, day] = value.split("-").map(Number);
-    const d = new Date(year, month - 1, day);
-    return d.toLocaleDateString(lang, { day: "numeric", month: "short" });
-  } catch {
-    return value;
-  }
-}
-
 type Props = { readonly task?: Task; readonly areas?: Area[]; readonly projects?: Project[]; readonly initialContext?: Pick<TaskDraft, "areaId" | "projectId" | "status">; readonly planning?: TaskPlanningProps; readonly onProjectChange?: (projectId: string | null) => void; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
 
 export function TaskComposer({ task, areas = [], projects = [], initialContext, planning, onProjectChange, onSave, onCancel }: Props) {
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const workflowOptions: { id: TaskStatus; name: string }[] = [
     { id: "inbox", name: t("tasks.composer.statusInbox") },
     { id: "backlog", name: t("tasks.composer.statusBacklog") },
@@ -53,6 +32,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
+  const [dueTime, setDueTime] = useState(task?.dueTime ?? null);
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 4);
   const [important, setImportant] = useState(task?.important ?? false);
   const [urgent, setUrgent] = useState(task?.urgent ?? false);
@@ -65,6 +45,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   });
   const [assigneeName, setAssigneeName] = useState(task?.assigneeName ?? "");
   const [followUpDate, setFollowUpDate] = useState(task?.followUpDate ?? "");
+  const [followUpTime, setFollowUpTime] = useState(task?.followUpTime ?? null);
   const [planningPeople, setPlanningPeople] = useState(planning?.people ?? []);
   const peopleSource = useRef(planning?.people);
   const awaitingProjectPeople = useRef(!planning);
@@ -130,12 +111,13 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     setError("");
     setNotice("");
     try {
-      await onSave({ title: clean, description: description.trim(), dueDate: dueDate || null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null });
+      await onSave({ title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null });
       setNotice(task ? t("tasks.composer.saved") : t("tasks.composer.created"));
       if (!task) {
         setTitle("");
         setDescription("");
         setDueDate("");
+        setDueTime(null);
         setPriority(4);
         setImportant(false);
         setUrgent(false);
@@ -150,6 +132,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
         setStatus("inbox");
         setAssigneeName("");
         setFollowUpDate("");
+        setFollowUpTime(null);
       }
     } catch {
       setError(t("tasks.composer.saveError"));
@@ -246,31 +229,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                   color: PRIORITY_COLORS[value],
                 }))}
               />
-              <div className="task-composer-date-pill-wrap">
-                <label className={`task-composer-date-pill ${dueDate ? "has-date" : ""}`}>
-                  <Icon name="calendar-check" />
-                  <span>{formatDueDateDisplay(dueDate, t("tasks.composer.dueDate"), lang)}</span>
-                  <input
-                    type="date"
-                    aria-label={t("tasks.composer.dueDate")}
-                    value={dueDate}
-                    disabled={saving || planningDisabled}
-                    onChange={(event) => setDueDate(event.target.value)}
-                    className="task-composer-date-native"
-                  />
-                </label>
-                {dueDate && (
-                  <button
-                    type="button"
-                    className="task-composer-date-clear"
-                    aria-label="Clear date"
-                    disabled={saving || planningDisabled}
-                    onClick={() => setDueDate("")}
-                  >
-                    <Icon name="close" />
-                  </button>
-                )}
-              </div>
+              <DateTimePicker className="pill" value={dueDate} onChange={setDueDate} time={dueTime} onTimeChange={setDueTime} allowTime ariaLabel={t("tasks.composer.dueDate")} placeholder={t("tasks.composer.dueDate")} disabled={saving || planningDisabled} />
             </div>
 
             <details className="task-composer-details">
@@ -327,31 +286,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                   </div>
                   <div className="task-composer-input-field">
                     <span>{t("tasks.composer.followUp")}</span>
-                    <div className="task-composer-date-pill-wrap">
-                      <label className={`task-composer-date-pill ${followUpDate ? "has-date" : ""}`}>
-                        <Icon name="calendar-check" />
-                        <span>{formatDueDateDisplay(followUpDate, t("tasks.composer.followUp"), lang)}</span>
-                        <input
-                          type="date"
-                          value={followUpDate}
-                          disabled={saving || planningDisabled}
-                          onChange={(event) => setFollowUpDate(event.target.value)}
-                          aria-label={t("tasks.composer.followUp")}
-                          className="task-composer-date-native"
-                        />
-                      </label>
-                      {followUpDate && (
-                        <button
-                          type="button"
-                          className="task-composer-date-clear"
-                          aria-label="Clear follow up date"
-                          disabled={saving || planningDisabled}
-                          onClick={() => setFollowUpDate("")}
-                        >
-                          <Icon name="close" />
-                        </button>
-                      )}
-                    </div>
+                    <DateTimePicker value={followUpDate} onChange={setFollowUpDate} time={followUpTime} onTimeChange={setFollowUpTime} allowTime ariaLabel={t("tasks.composer.followUp")} placeholder={t("tasks.composer.followUp")} disabled={saving || planningDisabled} />
                   </div>
                 </div>
 

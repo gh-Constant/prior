@@ -122,6 +122,8 @@
 }
 
 .habit-schedule-label { color: #827a73; }
+.habit-time { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 650; }
+.habit-time svg { width: 13px; height: 13px; }
 .habit-end-date { color: #a39a92; font-size: 10px; }
 .habit-flag {
   display: inline-flex;

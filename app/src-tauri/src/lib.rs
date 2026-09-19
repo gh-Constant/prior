@@ -220,6 +220,12 @@ pub fn run() {
             sql: include_str!("../migrations/008_project_collaboration.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 9,
+            description: "optional task and habit times",
+            sql: include_str!("../migrations/009_schedule_times.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();

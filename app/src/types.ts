@@ -45,14 +45,17 @@ export type Task = {
   title: string;
   description: string;
   dueDate: string | null;
+  dueTime?: string | null;
   priority: TaskPriority;
   areaId?: string | null;
   projectId?: string | null;
   status?: TaskStatus;
   scheduledDate?: string | null;
+  scheduledTime?: string | null;
   assigneeName?: string;
   peopleIds?: string[];
   followUpDate?: string | null;
+  followUpTime?: string | null;
   completed: boolean;
   important: boolean;
   urgent: boolean;
@@ -62,7 +65,7 @@ export type Task = {
   serverRevision?: number;
 };
 
-export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "assigneeName" | "peopleIds" | "followUpDate">>;
+export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime">>;
 
 export type HabitUnit = "day" | "week" | "month" | "year";
 
@@ -74,6 +77,8 @@ export type Habit = {
   interval: number;
   unit: HabitUnit;
   startDate: string;
+  /** Optional local wall-clock reminder time in HH:mm format. */
+  timeOfDay?: string | null;
   /** Optional for backwards compatibility with habits created before schedules were expanded. */
   endDate?: string | null;
   /** JavaScript weekday values (0 = Sunday, 6 = Saturday), used for weekly habits. */
@@ -85,7 +90,7 @@ export type Habit = {
   serverRevision?: number;
 };
 
-export type HabitDraft = Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> & Partial<Pick<Habit, "id" | "startDate" | "endDate" | "daysOfWeek" | "completedDates" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>;
+export type HabitDraft = Pick<Habit, "title" | "important" | "urgent" | "interval" | "unit"> & Partial<Pick<Habit, "id" | "startDate" | "timeOfDay" | "endDate" | "daysOfWeek" | "completedDates" | "createdAt" | "updatedAt" | "deletedAt" | "serverRevision">>;
 
 export type TaskMutation = {
   id: string;

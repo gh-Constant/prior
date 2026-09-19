@@ -184,6 +184,7 @@ function statusRank(status: HabitStatus): number {
 
 function compareHabits(left: Habit, right: Habit, reference: Date, lang: string): number {
   return statusRank(habitStatus(left, reference)) - statusRank(habitStatus(right, reference))
+    || (left.timeOfDay ?? "99:99").localeCompare(right.timeOfDay ?? "99:99")
     || left.title.localeCompare(right.title, lang)
     || left.id.localeCompare(right.id);
 }
@@ -291,6 +292,10 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
     const baseVisible = habits
       .filter((habit) => {
         if (period === "all") return true;
+        if (period === "today") {
+          const today = dateKey(reference);
+          return habitOccurrenceDates(habit, from, to).includes(today) || (habit.completedDates ?? []).includes(today);
+        }
         const status = habitStatus(habit, reference);
         return status === "overdue" || status === "complete" || habitIsScheduledInRange(habit, from, to);
       })
@@ -584,6 +589,7 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
         </div>
         <div className="habit-meta">
           <span className="habit-schedule-label">{scheduleLabelFor(habit, t, tp, lang)}</span>
+          {habit.timeOfDay && <span className="habit-time"><Icon name="clock" /> {habit.timeOfDay}</span>}
           {habit.endDate && <span className="habit-end-date">{t("habits.card.until", { date: habit.endDate })}</span>}
           {habit.important && <span className="habit-flag important"><Icon name="star" /> {t("habits.card.important")}</span>}
           {habit.urgent && <span className="habit-flag urgent"><Icon name="bolt" /> {t("habits.card.urgent")}</span>}
