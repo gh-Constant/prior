@@ -115,7 +115,10 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   // Don't steal focus on touch devices: it pops the keyboard, shrinks the
   // visual viewport, and can push the sheet footer out of view.
   useEffect(() => {
-    if (typeof window !== "undefined" && window.matchMedia?.("(hover: none)")?.matches) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(hover: none)")?.matches) {
+      dialogRef.current?.focus();
+      return;
+    }
     inputRef.current?.focus();
   }, []);
 
@@ -164,7 +167,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   return (
     <>
       <button type="button" className="modal-backdrop" aria-label={t("tasks.composer.closeDialog")} disabled={saving} onClick={onCancel} />
-      <dialog ref={dialogRef} className="modal composer-modal task-composer-modal" aria-labelledby="new-task-title" onCancel={handleCancel}>
+      <dialog ref={dialogRef} tabIndex={-1} className="modal composer-modal task-composer-modal" aria-labelledby="new-task-title" onCancel={handleCancel}>
         <div className="task-composer-grab-handle" aria-hidden="true" />
         <form aria-busy={saving} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <div className="modal-header">
@@ -183,7 +186,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
           </div>
           {planning?.readOnly && <p className="task-composer-feedback">{t("tasks.composer.readOnly")}</p>}
           <fieldset className="task-composer-body" disabled={saving || planningDisabled}>
-            <div className="task-composer-card">
+            <div className="task-composer-hero">
               <input
                 ref={inputRef}
                 value={title}
