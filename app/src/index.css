@@ -48,6 +48,26 @@ button.static:active, .task-title:active, .nav-item:active, .account-trigger:act
 .primary-button svg, .secondary-button svg, .danger-button svg, .update-button svg, .update-check svg, .filter-toggle svg, .add-all-btn svg, .habit-period-tabs svg, .complete-button svg, .agent-send-btn svg { stroke-width: 2; }
 svg { display: block; flex-shrink: 0; }
 .app-shell { min-height: 100dvh; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+/* Chromeless desktop shells (overlaid title bar): a slim drag strip on top.
+   macOS traffic lights float over its left end; other desktops get caption
+   buttons incrusted on the right. */
+.window-dragbar { display: none; }
+.app-shell.tauri-desktop { grid-template-rows: 30px minmax(0, 1fr); }
+.app-shell.tauri-desktop .window-dragbar {
+  display: flex; grid-column: 1 / -1; align-items: stretch;
+  background: var(--canvas); user-select: none; -webkit-user-select: none;
+}
+.window-drag-fill { flex: 1 1 auto; min-width: 0; }
+.window-caption { display: flex; align-items: stretch; }
+.window-caption-btn {
+  display: grid; place-items: center; width: 52px; border: 0; border-radius: 0;
+  background: transparent; color: var(--muted);
+}
+.window-caption-btn:active { scale: 1; }
+.window-caption-btn svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+.window-caption-btn:hover { background: #00000012; color: var(--ink); }
+.window-caption-btn.close:hover { background: #e81123; color: #fff; }
+.app-shell.tauri-desktop .sidebar { height: calc(100dvh - 30px); }
 @media (min-width: 1101px) {
   .app-shell.agent-open { grid-template-columns: 220px minmax(0, 1fr) minmax(360px, 400px); }
   .app-shell.sidebar-collapsed.agent-open { grid-template-columns: 76px minmax(0, 1fr) minmax(360px, 400px); }
@@ -366,7 +386,7 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
   .sidebar-backdrop { position: fixed; inset: 0; z-index: 40; padding: 0; border: 0; background: #15141266; backdrop-filter: blur(8px); animation: fade-in var(--t-fast) var(--ease); cursor: pointer; }
   .sidebar { position: fixed; inset: 0 0 0 auto; z-index: 41; width: min(320px, 84vw); height: 100dvh; padding-top: max(20px, env(safe-area-inset-top)); padding-bottom: max(20px, env(safe-area-inset-bottom)); box-shadow: var(--shadow-pop); transform: translateX(103%); transition: transform 220ms var(--ease), visibility 220ms; visibility: hidden; }
   .sidebar.is-mobile-open { transform: none; visibility: visible; }
-  .workspace { padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .workspace { padding: max(28px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   .workspace-header { flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
   /* The mobile top bar owns the view title: keep only the actions row here. */
   .workspace-header h1 { display: none; }

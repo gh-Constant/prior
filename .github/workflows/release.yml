@@ -228,6 +228,21 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      # WidgetKit widgets ship inside the macOS bundle (PlugIns). They must be
+      # embedded before verification, and the dmg/updater tarball rebuilt so
+      # they carry the widgets too. Skipped for ad-hoc unsigned builds.
+      - name: Embed macOS widgets
+        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != '-'
+        run: |
+          set -euo pipefail
+          bundle_dir="app/src-tauri/target/universal-apple-darwin/release/bundle"
+          app_path="$(find "$bundle_dir/macos" -maxdepth 1 -name '*.app' | head -n 1)"
+          [ -n "$app_path" ] || { echo "::error::no .app found under $bundle_dir/macos" >&2; exit 1; }
+          sh scripts/macos/embed-widgets.sh --app "$app_path" --identity "$APPLE_SIGNING_IDENTITY" --require
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
       # Fail the release instead of shipping a macOS artifact that Gatekeeper would reject.
       - name: Verify macOS signature and notarization
         if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != '-'

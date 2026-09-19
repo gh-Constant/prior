@@ -5,7 +5,7 @@
   },
   "app": {
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://api.prior.constantsuchet.fr wss://api.prior.constantsuchet.fr https://api.github.com https://openrouter.ai; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' https://api.prior.constantsuchet.fr wss://api.prior.constantsuchet.fr https://api.github.com https://openrouter.ai https://gmail.googleapis.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   }
 }

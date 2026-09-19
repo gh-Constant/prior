@@ -14,6 +14,14 @@
       ]
     },
     "deep-link:default",
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [{ "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior/**" }]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [{ "path": "$HOME/Library/Group Containers/group.fr.constantsuchet.prior/**" }]
+    },
     "process:default",
     "sql:default",
     "sql:allow-execute",

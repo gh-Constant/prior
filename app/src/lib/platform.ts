@@ -34,6 +34,14 @@ export function isDesktop(): boolean {
   return hasTauriInternals() && !/android|iphone|ipad|ipod/i.test(currentUserAgent());
 }
 
+/** True on macOS desktop shells (traffic lights are overlaid, no caption buttons needed). */
+export function isMac(): boolean {
+  if (!hasTauriInternals()) return false;
+  const ua = currentUserAgent().toLowerCase();
+  if (/android|iphone|ipad|ipod/.test(ua)) return false;
+  return ua.includes("mac");
+}
+
 /** Whether the native realtime websocket is available. Web builds use polling. */
 export function supportsRealtime(): boolean {
   return hasTauriInternals();

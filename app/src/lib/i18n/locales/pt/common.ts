@@ -58,6 +58,7 @@ export const common = {
     agent: "Prior Agent",
     agentShortcut: "Prior Agent ({shortcut})",
   },
+  window: { minimize: "Minimizar", toggleMaximize: "Maximizar ou restaurar", close: "Fechar" },
   header: {
     newTask: "Nova tarefa",
     newHabit: "Novo hábito",

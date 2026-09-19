@@ -89,6 +89,9 @@ app_path="$(find "$bundle_dir/macos" -maxdepth 1 -name '*.app' | head -n 1)"
 dmg_path="$(find "$bundle_dir/dmg" -maxdepth 1 -name '*.dmg' 2>/dev/null | head -n 1 || true)"
 [ -n "$app_path" ] || die "no .app produced under $bundle_dir/macos"
 
+# WidgetKit extension (skipped with a warning when Xcode is missing).
+"$script_dir/embed-widgets.sh" --app "$app_path" --identity "$identity"
+
 verify_app_bundle "$app_path" "$notarize"
 [ -z "$dmg_path" ] || verify_dmg "$dmg_path"
 

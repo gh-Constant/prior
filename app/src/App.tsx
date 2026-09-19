@@ -24,6 +24,7 @@ import { CompletionBurst } from "./components/CompletionBurst";
 import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/completionExit";
 import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
 import { MobileTopBar } from "./components/MobileTopBar";
+import { DesktopTitleBar } from "./components/DesktopTitleBar";
 import { pullAssistantSettings } from "./lib/settingsSync";
 import { SettingsPage } from "./components/SettingsPage";
 import { NotesWorkspace } from "./components/NotesWorkspace";
@@ -38,6 +39,7 @@ import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEdito
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
 import { generateTaskFromMail } from "./lib/mailTask";
 import { emitMailAccountChange, saveMailAccount } from "./lib/mailAuth";
+import { parseWidgetUrl, refreshWidgetSnapshot } from "./lib/widgetSnapshot";
 import type { MailMessage } from "./types";
 
 type Layout = "list" | "board";
@@ -272,7 +274,13 @@ export function App() {
       unlistenNative = await onOpenUrl((urls) => {
         for (const url of urls) {
           const email = parseMailConnectedUrl(url);
-          if (email) handleMailConnected(email);
+          if (email) {
+            handleMailConnected(email);
+            continue;
+          }
+          // Taps on the macOS widgets land here (prior://widget/<view>).
+          const widgetView = parseWidgetUrl(url);
+          if (widgetView) changeView(widgetView);
         }
       });
     })();
@@ -302,6 +310,7 @@ export function App() {
       setTasks(nextTasks.filter((task) => !task.projectId || accessibleProjectIds.has(task.projectId)));
       setHabits(nextHabits);
       void updateAndroidWidget(nextTasks, nextHabits).catch(() => undefined);
+      void refreshWidgetSnapshot(nextTasks).catch(() => undefined);
     })();
     refreshInFlight.current = run;
     try {
@@ -1226,7 +1235,8 @@ export function App() {
   }
 
   return (
-    <div className={`app-shell ${agentOpen ? "agent-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`app-shell ${agentOpen ? "agent-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${isDesktop() ? "tauri-desktop" : ""}`}>
+      <DesktopTitleBar />
       <AppSidebar
         activeView={activeView}
         user={user}
