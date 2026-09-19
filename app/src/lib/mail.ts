@@ -186,11 +186,16 @@ export class GmailProvider implements MailProvider {
   }
 
   async modify(id: string, addLabelIds: string[], removeLabelIds: string[]): Promise<MailMessage> {
-    const raw = await this.call<GmailApiMessage>(`/messages/${encodeURIComponent(id)}/modify`, {
+    await this.call<GmailApiMessage>(`/messages/${encodeURIComponent(id)}/modify`, {
       method: "POST",
       body: JSON.stringify({ addLabelIds, removeLabelIds }),
     });
-    return toMailMessage(raw);
+    // The modify endpoint only echoes {id, threadId, labelIds} with no
+    // payload: converting it directly would wipe subject/body/sender from
+    // the list (empty avatar, "(no subject)"). Refetch the full message.
+    const full = await this.getMessage(id);
+    if (!full) throw new Error("gmail-error-refetch");
+    return full;
   }
 }
 
