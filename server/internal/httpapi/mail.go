@@ -266,24 +266,52 @@ func (s *Server) mailDisconnect(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// validMailReturnTo allows the exact Google-sign-in return origins plus the
-// in-app hash route, but never arbitrary URLs. Native shells use
+// validMailReturnTo allows the in-app hash route on an already-allowlisted
+// origin, but never arbitrary URLs. Native shells use
 // prior://auth/callback#/mail-connected?email=… (deep link), web uses
-// {origin}/#/mail-connected?email=….
+// {origin}/#/mail-connected?email=…. The allowlist stores full sign-in
+// return URLs (…/auth/callback), so web returns are matched on origin
+// (scheme + host) rather than the full path.
 func validMailReturnTo(allowed []string, returnTo string) bool {
 	parsed, err := url.Parse(returnTo)
 	if err != nil || parsed.Fragment == "" || !strings.HasPrefix(parsed.Fragment, "/mail-connected") {
 		return false
 	}
+	if parsed.User != nil {
+		return false
+	}
 	if parsed.Scheme == "prior" && parsed.Host == "auth" && parsed.Path == "/callback" {
-		return true
+		return parsed.RawQuery == ""
 	}
 	if parsed.RawQuery != "" {
 		return false
 	}
-	base := parsed.Scheme + "://" + parsed.Host + parsed.Path
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return false
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return false
+	}
+	if parsed.Host == "" {
+		return false
+	}
+	// Plain http is only ever a loopback dev origin; production origins are https.
+	if parsed.Scheme == "http" {
+		host := parsed.Hostname()
+		if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+			return false
+		}
+	}
+	returnOrigin := strings.ToLower(parsed.Scheme + "://" + parsed.Host)
 	for _, origin := range allowed {
-		if base == strings.TrimRight(origin, "/") {
+		allowedParsed, err := url.Parse(strings.TrimSpace(origin))
+		if err != nil || allowedParsed.Host == "" {
+			continue
+		}
+		if allowedParsed.Scheme != "https" && allowedParsed.Scheme != "http" {
+			continue
+		}
+		if returnOrigin == strings.ToLower(allowedParsed.Scheme+"://"+allowedParsed.Host) {
 			return true
 		}
 	}

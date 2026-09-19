@@ -181,6 +181,41 @@ func TestAgentProxyAllowlistAndRedaction(t *testing.T) {
 	}
 }
 
+func TestValidMailReturnTo(t *testing.T) {
+	allowed := []string{
+		"prior://auth/callback",
+		"http://localhost:1420/auth/callback",
+		"http://127.0.0.1:1420/auth/callback",
+		"https://app.prior.constantsuchet.fr/auth/callback",
+	}
+	for _, candidate := range []string{
+		"prior://auth/callback#/mail-connected",
+		"https://app.prior.constantsuchet.fr/#/mail-connected",
+		"http://localhost:1420/#/mail-connected",
+		"http://127.0.0.1:1420/#/mail-connected",
+	} {
+		if !validMailReturnTo(allowed, candidate) {
+			t.Errorf("validMailReturnTo(%q) must be true", candidate)
+		}
+	}
+	for _, candidate := range []string{
+		"",
+		"https://app.prior.constantsuchet.fr/auth/callback",
+		"https://app.prior.constantsuchet.fr/#/other",
+		"https://app.prior.constantsuchet.fr/evil#/mail-connected",
+		"https://app.prior.constantsuchet.fr/?x=1#/mail-connected",
+		"https://evil.example/#/mail-connected",
+		"https://app.prior.constantsuchet.fr.evil.example/#/mail-connected",
+		"http://app.prior.constantsuchet.fr/#/mail-connected",
+		"prior://auth/callback#/other",
+		"prior://evil/callback#/mail-connected",
+	} {
+		if validMailReturnTo(allowed, candidate) {
+			t.Errorf("validMailReturnTo(%q) must be false", candidate)
+		}
+	}
+}
+
 func TestNormalizeReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"low", "medium", "high", "xhigh", "minimal", "none", " HIGH "} {
 		if got := normalizeReasoningEffort(effort); got == "" {
