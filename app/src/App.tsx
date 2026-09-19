@@ -34,6 +34,7 @@ import { workspaceStore } from "./lib/workspaceStore";
 import { collaborationStore } from "./lib/collaborationStore";
 import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
 import { MailView } from "./components/MailView";
+import { CalendarView } from "./components/CalendarView";
 import { ProjectEditor } from "./components/collaboration/ProjectEditor";
 import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
@@ -47,19 +48,6 @@ logger.init();
 
 type Layout = "list" | "board";
 
-function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
-  if (view === "today") return t("common.views.today");
-  if (view === "inbox") return t("common.views.inbox");
-  if (view === "projects") return t("common.views.projects");
-  if (view === "project") return t("common.views.project");
-  if (view === "waiting") return t("common.views.waiting");
-  if (view === "eisenhower") return t("common.views.eisenhower");
-  if (view === "habits") return t("common.views.habits");
-  if (view === "notes") return t("common.views.notes");
-  if (view === "settings") return t("common.views.settings");
-  return t("common.views.allTasks");
-}
-
 type WorkspaceHeaderProps = {
   readonly activeView: WorkspaceView;
   readonly layout: Layout;
@@ -71,12 +59,11 @@ type WorkspaceHeaderProps = {
 
 function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
   const { t } = useI18n();
-  if (["today", "inbox", "projects", "project", "waiting", "notes", "settings"].includes(activeView)) return null;
+  if (["today", "inbox", "calendar", "projects", "project", "waiting", "notes", "settings"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
     <header className="workspace-header">
-      <h1>{viewTitle(activeView, t)}</h1>
       <div className="workspace-actions">
         {activeView === "all" && <div className="layout-switch" role="toolbar" aria-label={t("common.header.layout")}>
           <button type="button" className={layout === "list" ? "active" : ""} aria-label={t("common.header.listView")} aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /></button>
@@ -125,6 +112,7 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, ta
   if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
+  if (activeView === "calendar") return <CalendarView habits={habits} />;
   if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
@@ -321,7 +309,7 @@ export function App() {
       );
       setHabits(nextHabits);
       void updateAndroidWidget(nextTasks, nextHabits).catch(() => undefined);
-      void refreshWidgetSnapshot(nextTasks).catch(() => undefined);
+      void refreshWidgetSnapshot(nextTasks, nextHabits).catch(() => undefined);
     })();
     refreshInFlight.current = run;
     try {
@@ -1304,10 +1292,8 @@ export function App() {
         onCloseMobile={() => setMobileNavOpen(false)}
       />
 
-      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}>
+      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}>
         <MobileTopBar
-          activeView={activeView}
-          projectName={projects.find((project) => project.id === selectedProjectId)?.name}
           menuOpen={mobileNavOpen}
           onMenu={() => setMobileNavOpen((value) => !value)}
         />

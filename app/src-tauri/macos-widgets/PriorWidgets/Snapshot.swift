@@ -28,6 +28,18 @@ struct WidgetMatrix: Codable, Hashable, Sendable {
     var later: Int
 }
 
+struct WidgetCalendarItem: Codable, Hashable, Sendable {
+    var id: String
+    var title: String
+    var date: String
+    var startTime: String?
+    var color: String
+}
+
+struct WidgetCalendar: Codable, Hashable, Sendable {
+    var items: [WidgetCalendarItem]
+}
+
 struct WidgetSnapshot: Codable, Hashable, Sendable {
     var version: Int
     var app: String
@@ -35,6 +47,7 @@ struct WidgetSnapshot: Codable, Hashable, Sendable {
     var today: WidgetToday
     var inbox: WidgetInbox
     var matrix: WidgetMatrix
+    var calendar: WidgetCalendar
 }
 
 enum SnapshotStore {
@@ -72,7 +85,11 @@ enum SnapshotStore {
                     WidgetTaskItem(id: "5", title: "Water the plants", done: false, dueDate: nil, priority: 4),
                 ]
             ),
-            matrix: WidgetMatrix(focus: 1, plan: 2, quick: 1, later: 2)
+            matrix: WidgetMatrix(focus: 1, plan: 2, quick: 1, later: 2),
+            calendar: WidgetCalendar(items: [
+                WidgetCalendarItem(id: "6", title: "Focus block", date: "2026-09-14", startTime: "09:00", color: "#ef795b"),
+                WidgetCalendarItem(id: "7", title: "Product sync", date: "2026-09-14", startTime: "09:30", color: "#6e73d9"),
+            ])
         )
     }
 }

@@ -96,7 +96,12 @@ else
 fi
 
 info "re-sealing app bundle"
-codesign --force --sign "$identity" --options runtime --timestamp "$app"
+app_entitlements="$repo_root/app/src-tauri/entitlements.plist"
+if [ -f "$app_entitlements" ]; then
+  codesign --force --sign "$identity" --entitlements "$app_entitlements" --options runtime --timestamp "$app"
+else
+  codesign --force --sign "$identity" --options runtime --timestamp "$app"
+fi
 codesign --verify --deep --strict "$app"
 
 bundle_dir="$(cd "$app/../.." && pwd)"

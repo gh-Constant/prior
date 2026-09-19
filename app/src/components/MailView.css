@@ -19,7 +19,6 @@
     border-bottom: 1px solid var(--line);
     background: var(--panel);
   }
-  .workspace.mail-workspace-page .mobile-topbar-titles h1 { font-size: 20px; }
 }
 
 .mail-view {

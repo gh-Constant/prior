@@ -1,7 +1,7 @@
 import SwiftUI
 import WidgetKit
 
-/// Prior macOS widgets: Today, Eisenhower matrix and Inbox. Data comes from
+/// Prior macOS widgets: Today, Eisenhower matrix, Inbox and Calendar. Data comes from
 /// the JSON snapshot the app exports into the shared App Group container
 /// (see SnapshotStore); no network, no login, default system styling.
 @main
@@ -10,5 +10,6 @@ struct PriorWidgets: WidgetBundle {
         TodayWidget()
         MatrixWidget()
         InboxWidget()
+        CalendarWidget()
     }
 }

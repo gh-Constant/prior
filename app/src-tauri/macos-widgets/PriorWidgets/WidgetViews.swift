@@ -178,6 +178,67 @@ struct InboxWidget: Widget {
     }
 }
 
+// MARK: - Calendar widget
+
+private struct CalendarItemRow: View {
+    var item: WidgetCalendarItem
+
+    var body: some View {
+        HStack(spacing: 7) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color(hex: item.color))
+                .frame(width: 4, height: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title).font(.callout).lineLimit(1)
+                Text(item.startTime ?? "Anytime")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+struct CalendarWidgetView: View {
+    var entry: SnapshotEntry
+
+    var body: some View {
+        let items = entry.snapshot?.calendar.items ?? []
+        VStack(alignment: .leading, spacing: 6) {
+            WidgetHeader(title: "Calendar", count: "(items.count)")
+            if items.isEmpty {
+                Text("Nothing scheduled")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(items.prefix(4), id: \.id) { item in
+                    CalendarItemRow(item: item)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .widgetURL(URL(string: "prior://widget/calendar"))
+    }
+}
+
+struct CalendarWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "fr.constantsuchet.prior.widget.calendar", provider: SnapshotProvider()) { entry in
+            CalendarWidgetView(entry: entry)
+        }
+        .configurationDisplayName("Prior Calendar")
+        .description("Your connected calendars and habits.")
+        .supportedFamilies([.systemMedium, .systemLarge])
+    }
+}
+
+private extension Color {
+    init(hex: String) {
+        let value = UInt64(String(hex.dropFirst().prefix(6)), radix: 16) ?? 0xEF795B
+        self.init(.sRGB, red: Double((value >> 16) & 0xff) / 255, green: Double((value >> 8) & 0xff) / 255, blue: Double(value & 0xff) / 255, opacity: 1)
+    }
+}
+
 // MARK: - Previews
 
 #if DEBUG
@@ -195,6 +256,12 @@ struct InboxWidget: Widget {
 
 #Preview(as: .systemSmall) {
     InboxWidget()
+} timeline: {
+    SnapshotEntry(date: Date(), snapshot: SnapshotStore.sample)
+}
+
+#Preview(as: .systemMedium) {
+    CalendarWidget()
 } timeline: {
     SnapshotEntry(date: Date(), snapshot: SnapshotStore.sample)
 }

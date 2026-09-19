@@ -36,6 +36,7 @@ describe("buildWidgetSnapshot", () => {
     expect(snapshot.today.items.map((i) => i.id)).toEqual(["2", "1"]);
     expect(snapshot.inbox.total).toBe(1);
     expect(snapshot.matrix).toEqual({ focus: 1, plan: 1, quick: 0, later: 2 });
+    expect(snapshot.calendar.items.length).toBeGreaterThan(0);
   });
 
   it("caps items and skips deleted tasks", () => {
@@ -53,6 +54,7 @@ describe("parseWidgetUrl", () => {
   it("accepts prior://widget/<view> links", () => {
     expect(parseWidgetUrl("prior://widget/today")).toBe("today");
     expect(parseWidgetUrl("prior://widget/inbox")).toBe("inbox");
+    expect(parseWidgetUrl("prior://widget/calendar")).toBe("calendar");
     expect(parseWidgetUrl("prior://widget/eisenhower")).toBe("eisenhower");
     expect(parseWidgetUrl("prior://auth/callback?code=x")).toBeNull();
     expect(parseWidgetUrl("https://example.com")).toBeNull();

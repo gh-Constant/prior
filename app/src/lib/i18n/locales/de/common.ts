@@ -1,3 +1,5 @@
+import { common as englishCommon } from "../en/common";
+
 export const common = {
   documentTitle: "Prior",
   actions: {
@@ -27,6 +29,7 @@ export const common = {
     items: {
       today: "Heute",
       inbox: "Eingang",
+      calendar: "Kalender",
       projects: "Projekte",
       allTasks: "Alle Aufgaben",
       waiting: "Wartend",
@@ -38,6 +41,7 @@ export const common = {
   views: {
     today: "Heute",
     inbox: "Eingang",
+    calendar: "Kalender",
     projects: "Projekte",
     project: "Projekt",
     waiting: "Wartend",
@@ -71,6 +75,7 @@ export const common = {
     closeDialog: "Dialog schließen",
     name: "Name",
   },
+  calendar: englishCommon.calendar,
   iconPicker: {
     search: "{label} suchen",
     options: "Optionen: {label}",

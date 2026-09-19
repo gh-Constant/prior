@@ -5,7 +5,7 @@ import { BrandMark } from "./BrandMark";
 import { Icon } from "./Icon";
 import "./AppSidebar.css";
 
-export type WorkspaceView = "today" | "inbox" | "projects" | "project" | "all" | "waiting" | "eisenhower" | "habits" | "notes" | "settings";
+export type WorkspaceView = "today" | "inbox" | "calendar" | "projects" | "project" | "all" | "waiting" | "eisenhower" | "habits" | "notes" | "settings";
 
 type AppSidebarProps = {
   readonly activeView: WorkspaceView;
@@ -25,10 +25,10 @@ type AppSidebarProps = {
   readonly onCloseMobile: () => void;
 };
 
-const NAV_GROUPS: Array<{ labelKey: string; items: Array<{ view: WorkspaceView; labelKey: string; icon: "inbox" | "grid" | "calendar-check" | "file-text" | "folder" | "focus" | "later" }> }> = [
-  { labelKey: "common.nav.groups.focus", items: [{ view: "today", labelKey: "common.nav.items.today", icon: "focus" }, { view: "inbox", labelKey: "common.nav.items.inbox", icon: "inbox" }] },
+const NAV_GROUPS: Array<{ labelKey: string; items: Array<{ view: WorkspaceView; labelKey: string; icon: "inbox" | "grid" | "calendar-check" | "file-text" | "folder" | "focus" | "later" | "sun" }> }> = [
+  { labelKey: "common.nav.groups.focus", items: [{ view: "today", labelKey: "common.nav.items.today", icon: "focus" }, { view: "inbox", labelKey: "common.nav.items.inbox", icon: "inbox" }, { view: "calendar", labelKey: "common.nav.items.calendar", icon: "calendar-check" }] },
   { labelKey: "common.nav.groups.organize", items: [{ view: "projects", labelKey: "common.nav.items.projects", icon: "folder" }, { view: "all", labelKey: "common.nav.items.allTasks", icon: "inbox" }] },
-  { labelKey: "common.nav.groups.review", items: [{ view: "waiting", labelKey: "common.nav.items.waiting", icon: "later" }, { view: "eisenhower", labelKey: "common.nav.items.priorityLens", icon: "grid" }, { view: "habits", labelKey: "common.nav.items.habits", icon: "calendar-check" }, { view: "notes", labelKey: "common.nav.items.notes", icon: "file-text" }] },
+  { labelKey: "common.nav.groups.review", items: [{ view: "waiting", labelKey: "common.nav.items.waiting", icon: "later" }, { view: "eisenhower", labelKey: "common.nav.items.priorityLens", icon: "grid" }, { view: "habits", labelKey: "common.nav.items.habits", icon: "sun" }, { view: "notes", labelKey: "common.nav.items.notes", icon: "file-text" }] },
 ];
 
 export function AppSidebar({

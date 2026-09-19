@@ -1,4 +1,5 @@
-import type { Task } from "../types";
+import type { Habit, Task } from "../types";
+import { addDays, eventsInRange, loadCalendarState, mondayOf, type CalendarEvent } from "./calendar";
 import { quadrantFor } from "./priority";
 import { isMac } from "./platform";
 
@@ -30,6 +31,15 @@ export type WidgetSnapshot = {
   today: { open: number; done: number; items: WidgetTaskItem[] };
   inbox: { total: number; items: WidgetTaskItem[] };
   matrix: { focus: number; plan: number; quick: number; later: number };
+  calendar: { items: WidgetCalendarItem[] };
+};
+
+export type WidgetCalendarItem = {
+  id: string;
+  title: string;
+  date: string;
+  startTime: string | null;
+  color: string;
 };
 
 export const MAX_WIDGET_ITEMS = 8;
@@ -63,7 +73,11 @@ function byDueDate(a: WidgetTaskItem, b: WidgetTaskItem): number {
   return a.dueDate.localeCompare(b.dueDate) || a.title.localeCompare(b.title);
 }
 
-export function buildWidgetSnapshot(tasks: Task[], now = new Date()): WidgetSnapshot {
+function toCalendarItem(event: CalendarEvent): WidgetCalendarItem {
+  return { id: event.id, title: event.title, date: event.date, startTime: event.startTime, color: event.color };
+}
+
+export function buildWidgetSnapshot(tasks: Task[], now = new Date(), habits: Habit[] = []): WidgetSnapshot {
   const today = dayKey(now);
   const live = tasks.filter(isLive);
   const todayTasks = live.filter((task) => isTodayTask(task, today));
@@ -73,6 +87,10 @@ export function buildWidgetSnapshot(tasks: Task[], now = new Date()): WidgetSnap
   const inboxTasks = live.filter((task) => task.status === "inbox" || task.status == null);
   const matrix = { focus: 0, plan: 0, quick: 0, later: 0 };
   for (const task of live) matrix[quadrantFor(task)] += 1;
+  const weekStart = mondayOf(now);
+  const calendarEvents = eventsInRange(loadCalendarState(), habits, weekStart, addDays(weekStart, 6))
+    .map(toCalendarItem)
+    .slice(0, MAX_WIDGET_ITEMS);
   return {
     version: 1,
     app: "prior",
@@ -87,19 +105,25 @@ export function buildWidgetSnapshot(tasks: Task[], now = new Date()): WidgetSnap
       items: inboxTasks.map(toItem).sort(byDueDate).slice(0, MAX_WIDGET_ITEMS),
     },
     matrix,
+    calendar: { items: calendarEvents },
   };
 }
 
 /** Write the snapshot for the macOS widgets. No-op off macOS; best-effort. */
 let lastSnapshotAt = 0;
+let lastSnapshotJson = "";
 const SNAPSHOT_MIN_INTERVAL_MS = 10_000;
 
-export async function refreshWidgetSnapshot(tasks: Task[]): Promise<void> {
+export async function refreshWidgetSnapshot(tasks: Task[], habits: Habit[] = []): Promise<void> {
   if (!isMac()) return;
   const now = Date.now();
-  if (now - lastSnapshotAt < SNAPSHOT_MIN_INTERVAL_MS) return;
+  const snapshotJson = JSON.stringify(buildWidgetSnapshot(tasks, new Date(), habits));
+  // A startup refresh can first observe an empty SQLite store and then receive
+  // the real rows a moment later. Only identical snapshots are throttled; data
+  // changes must reach the widget immediately.
+  if (snapshotJson === lastSnapshotJson && now - lastSnapshotAt < SNAPSHOT_MIN_INTERVAL_MS) return;
   lastSnapshotAt = now;
-  const snapshotJson = JSON.stringify(buildWidgetSnapshot(tasks));
+  lastSnapshotJson = snapshotJson;
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("widget_refresh_snapshot", { snapshotJson });
@@ -119,7 +143,7 @@ export async function refreshWidgetSnapshot(tasks: Task[]): Promise<void> {
 }
 
 /** Deep-link target opened from a widget tap, e.g. "prior://widget/today". */
-export function parseWidgetUrl(raw: string): "today" | "inbox" | "eisenhower" | null {
+export function parseWidgetUrl(raw: string): "today" | "inbox" | "calendar" | "eisenhower" | null {
   let parsed: URL;
   try {
     parsed = new URL(raw);
@@ -128,5 +152,5 @@ export function parseWidgetUrl(raw: string): "today" | "inbox" | "eisenhower" | 
   }
   if (parsed.protocol !== "prior:" || parsed.host !== "widget") return null;
   const view = parsed.pathname.replace(/^\/+/, "");
-  return view === "today" || view === "inbox" || view === "eisenhower" ? view : null;
+  return view === "today" || view === "inbox" || view === "calendar" || view === "eisenhower" ? view : null;
 }
