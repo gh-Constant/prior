@@ -71,16 +71,11 @@ xcode_cmd=(
   -destination "generic/platform=macOS"
   ARCHS="arm64 x86_64"
   ONLY_ACTIVE_ARCH=NO
-  CODE_SIGN_STYLE=Manual
-  CODE_SIGN_IDENTITY="$identity"
-  PROVISIONING_PROFILE_SPECIFIER=
+  CODE_SIGNING_ALLOWED=NO
+  CODE_SIGNING_REQUIRED=NO
   MARKETING_VERSION="$version"
   CURRENT_PROJECT_VERSION=1
-  OTHER_CODE_SIGN_FLAGS="--options=runtime --timestamp"
 )
-if [ -n "$team" ]; then
-  xcode_cmd+=(DEVELOPMENT_TEAM="$team")
-fi
 
 "${xcode_cmd[@]}" build
 
