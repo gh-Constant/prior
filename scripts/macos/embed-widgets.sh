@@ -65,7 +65,7 @@ trap cleanup EXIT INT TERM
 
 xcode_cmd=(
   xcodebuild -project "$project"
-  -target PriorWidgets
+  -scheme PriorWidgets
   -configuration Release
   -derivedDataPath "$derived"
   -destination "generic/platform=macOS"
@@ -84,7 +84,7 @@ fi
 
 "${xcode_cmd[@]}" build
 
-appex="$(find "$derived/Build/Products/Release" -maxdepth 1 -name '*.appex' | head -n 1)"
+appex="$(find "$derived" -name '*.appex' | head -n 1)"
 [ -n "$appex" ] || die "no .appex produced by xcodebuild"
 
 plugins_dir="$app/Contents/PlugIns"
