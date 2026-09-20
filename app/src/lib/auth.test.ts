@@ -109,6 +109,34 @@ describe("OAuth return", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("ignores previously handled codes even across listener remounts", async () => {
+    const url = "prior://auth/callback?code=replayed-code";
+    vi.mocked(getCurrent).mockResolvedValue([url]);
+    dispose = listenForAuth(onAuthenticated, onError);
+    await vi.waitFor(() => expect(onAuthenticated).toHaveBeenCalledOnce());
+    expect(api.exchange).toHaveBeenCalledWith("replayed-code");
+
+    // Remount listener (simulating user leaving app and returning)
+    dispose();
+    onAuthenticated.mockClear();
+    vi.mocked(api.exchange).mockClear();
+    dispose = listenForAuth(onAuthenticated, onError);
+    await vi.waitFor(() => expect(getCurrent).toHaveBeenCalled());
+    expect(api.exchange).not.toHaveBeenCalled();
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("does not report error when already authenticated and a stale callback fails", async () => {
+    localStorage.setItem("prior.session.user", JSON.stringify(user));
+    vi.mocked(api.exchange).mockRejectedValueOnce(new Error("Code already used"));
+    vi.mocked(getCurrent).mockResolvedValue(["prior://auth/callback?code=expired-code"]);
+    dispose = listenForAuth(onAuthenticated, onError);
+    await vi.waitFor(() => expect(getCurrent).toHaveBeenCalled());
+    expect(onError).not.toHaveBeenCalled();
+    expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+
   it("finishes a browser return and removes the code from the address bar", async () => {
     vi.unstubAllGlobals();
     window.history.replaceState({}, "", "/auth/callback?code=browser-code");

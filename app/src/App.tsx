@@ -229,15 +229,18 @@ export function App() {
     void (async () => {
       try {
         await purgeProductionDemoData();
-        const token = await getToken();
+        let token = await getToken();
         const storedUser = getUser();
+        if (!token && storedUser) {
+          // Native keystore may have brief delay on Android resume/cold-start; retry once
+          token = await getToken();
+        }
         if (!token || !storedUser) {
           if (storedUser || token) await clearSession().catch(() => undefined);
           if (!cancelled) setUser(null);
         }
       } catch (error) {
         console.warn("Prior production data cleanup failed:", error);
-        if (!cancelled) setUser(null);
       } finally {
         if (!cancelled) setAuthReady(true);
       }

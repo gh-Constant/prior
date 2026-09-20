@@ -139,6 +139,31 @@ export async function startNativeGoogleLogin(): Promise<SessionUser | null> {
   return saveSession(await api.googleNative(idToken));
 }
 
+const HANDLED_CODES_KEY = "prior.auth.handled_codes";
+
+function isCodeHandled(code: string): boolean {
+  try {
+    const raw = localStorage.getItem(HANDLED_CODES_KEY);
+    if (!raw) return false;
+    const list: unknown = JSON.parse(raw);
+    return Array.isArray(list) && list.includes(code);
+  } catch {
+    return false;
+  }
+}
+
+function markCodeHandled(code: string): void {
+  try {
+    const raw = localStorage.getItem(HANDLED_CODES_KEY);
+    const list: string[] = raw ? JSON.parse(raw) : [];
+    if (!list.includes(code)) {
+      localStorage.setItem(HANDLED_CODES_KEY, JSON.stringify([...list.slice(-19), code]));
+    }
+  } catch {
+    // storage unavailable
+  }
+}
+
 async function finish(url: string, handledCodes: Set<string>): Promise<SessionUser | null> {
   let parsed: URL;
   try { parsed = new URL(url); } catch { return null; }
@@ -155,10 +180,13 @@ async function finish(url: string, handledCodes: Set<string>): Promise<SessionUs
   if (parsed.searchParams.has("error")) throw new Error(translateStored("auth.errors.googleFailed"));
   const code = parsed.searchParams.get("code");
   if (!code) throw new Error(translateStored("auth.errors.missingCode"));
-  // Tauri can deliver the same one-use code through both startup and open events.
-  if (handledCodes.has(code)) return null;
+  // Tauri can deliver the same one-use code through both startup and open events,
+  // or replay it on Android when resuming from the background.
+  if (handledCodes.has(code) || isCodeHandled(code)) return null;
   handledCodes.add(code);
-  return saveSession(await api.exchange(code));
+  const result = await api.exchange(code);
+  markCodeHandled(code);
+  return saveSession(result);
 }
 
 export function listenForAuth(onAuthenticated: (user: SessionUser) => void, onError: (error: Error) => void): () => void {
@@ -178,6 +206,11 @@ export function listenForAuth(onAuthenticated: (user: SessionUser) => void, onEr
         const user = await finish(url, handledCodes);
         if (user && !disposed) onAuthenticated(user);
       } catch (error) {
+        // Stale or replayed deep-links must never disrupt an existing authenticated session.
+        if (getUser()) {
+          console.warn("Prior ignored stale auth callback while already signed in:", error);
+          return;
+        }
         reportError(error);
       }
     }
