@@ -1,4 +1,5 @@
 // Supported UI languages.
+import { setAccountPreference } from "../accountDocuments";
 //
 // Only interface chrome goes through i18n. Content created by the user
 // (task titles, notes, habits, AI answers, project names…) is never
@@ -45,6 +46,7 @@ export function getStoredLanguage(): Language | null {
 export function setStoredLanguage(lang: Language): void {
   try {
     localStorage.setItem(STORAGE_KEY, lang);
+    setAccountPreference("ui", { [STORAGE_KEY]: lang });
   } catch {
     // Private mode etc. — the language simply won't persist.
   }

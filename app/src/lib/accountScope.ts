@@ -16,6 +16,8 @@ export const LEGACY_STORAGE_KEYS = [
   "prior.note-folders.v1",
   "prior.note-attachments.v1",
   "prior.calendar.v1",
+  "prior.account-data.v1",
+  "prior.agent-outbox.v1",
   "prior.ai.settings.v1",
 ] as const;
 
@@ -42,6 +44,14 @@ function mergeLegacyCollections(existingRaw: string, legacyRaw: string): string 
   try {
     const existing = JSON.parse(existingRaw) as unknown;
     const legacy = JSON.parse(legacyRaw) as unknown;
+    if (existing && legacy && typeof existing === "object" && typeof legacy === "object" && "records" in existing && "records" in legacy && "pending" in existing && "pending" in legacy && Array.isArray(existing.pending) && Array.isArray(legacy.pending)) {
+      const merged = { ...legacy, ...existing, records: { ...(legacy.records as object), ...(existing.records as object) } as Record<string, Record<string, unknown> | null>, pending: [...legacy.pending, ...existing.pending] };
+      for (const mutation of merged.pending) {
+        if (merged.records[mutation.key] === null || (mutation.seed && mutation.key in merged.records)) continue;
+        merged.records[mutation.key] = mutation.patch === null ? null : { ...merged.records[mutation.key], ...mutation.patch };
+      }
+      return JSON.stringify(merged);
+    }
     // Calendars are an object containing sources, unlike the other collections.
     // Keep offline calendars when signing into an account with existing data.
     if (existing && legacy && typeof existing === "object" && typeof legacy === "object" && "sources" in existing && "sources" in legacy && Array.isArray(existing.sources) && Array.isArray(legacy.sources)) {

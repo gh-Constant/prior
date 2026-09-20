@@ -8,6 +8,57 @@ info:
 servers:
   - url: https://api.prior.constantsuchet.fr
 paths:
+  /v1/account-data/sync:
+    post:
+      summary: Merge account document patches and return the account snapshot
+      description: Authenticated. Up to 100 UUID-idempotent mutations; each has key, patch (object or null), and optional seed. Deleted documents remain tombstones.
+      responses:
+        '200':
+          description: Records (key/value) and applied mutation UUIDs
+        '400':
+          description: Invalid mutation batch
+        '401':
+          description: unauthenticated
+  /v1/note-attachments:
+    get:
+      summary: List the current user's attachment metadata
+      responses:
+        '200':
+          description: Array of id, name, type, size
+        '401':
+          description: unauthenticated
+  /v1/note-attachments/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: Upload an immutable attachment (maximum 8 MiB)
+      parameters:
+        - in: query
+          name: name
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: saved
+        '401':
+          description: unauthenticated
+        '413':
+          description: too large
+    get:
+      summary: Download an attachment owned by the current user
+      responses:
+        '200':
+          description: Attachment bytes
+        '401':
+          description: unauthenticated
+        '404':
+          description: not found
   /health:
     get:
       summary: Liveness probe (no DB access)

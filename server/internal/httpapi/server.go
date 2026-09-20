@@ -157,6 +157,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sync/push", s.push)
 	mux.HandleFunc("GET /v1/sync/pull", s.pull)
 	mux.HandleFunc("POST /v1/workspace/sync", s.syncWorkspace)
+	mux.HandleFunc("POST /v1/account-data/sync", s.syncAccountDocuments)
+	mux.HandleFunc("PUT /v1/note-attachments/{id}", s.saveNoteAttachment)
+	mux.HandleFunc("GET /v1/note-attachments/{id}", s.getNoteAttachment)
+	mux.HandleFunc("GET /v1/note-attachments", s.listNoteAttachments)
 	mux.HandleFunc("GET /v1/collaboration/projects", s.collaborationProjects)
 	mux.HandleFunc("PATCH /v1/collaboration/projects/{projectID}", s.updateCollaborativeProject)
 	mux.HandleFunc("GET /v1/collaboration/projects/{projectID}/members", s.collaborationProjectMembers)
@@ -901,6 +905,7 @@ func (s *Server) createAgentChat(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Title string `json:"title"`
+		ID    string `json:"id,omitempty"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid chat request"))
@@ -910,7 +915,15 @@ func (s *Server) createAgentChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("chat title is too long"))
 		return
 	}
-	chat, err := s.store.CreateAgentChat(r.Context(), user.ID, body.Title)
+	id := uuid.New()
+	if body.ID != "" {
+		id, err = uuid.Parse(body.ID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, errors.New("invalid chat id"))
+			return
+		}
+	}
+	chat, err := s.store.CreateAgentChat(r.Context(), user.ID, body.Title, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -1098,6 +1111,7 @@ func (s *Server) syncWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid workspace snapshot"))
 		return
 	}
+	previousRevision, _ := s.store.WorkspaceRevision(r.Context(), user.ID)
 	merged, workspaceRevision, err := s.store.SyncWorkspaceWithRevision(r.Context(), user.ID, snapshot)
 	if err != nil {
 		if errors.Is(err, store.ErrClockSkew) {
@@ -1111,8 +1125,9 @@ func (s *Server) syncWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	s.notifySync(r.Context(), user.ID, "workspace", workspaceRevision)
-	s.notifySync(r.Context(), user.ID, "workspace_required", workspaceRevision)
+	if workspaceRevision > previousRevision {
+		s.notifySync(r.Context(), user.ID, "workspace_required", workspaceRevision)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"areas": merged.Areas, "projects": merged.Projects, "folders": merged.Folders, "notes": merged.Notes,
 		"workspaceRevision": workspaceRevision,
@@ -1265,7 +1280,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		if origin := r.Header.Get("Origin"); allowedOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Vary", "Origin")
 		}
 		if r.Method == http.MethodOptions {
@@ -1296,6 +1311,10 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		if r.URL.Path == "/transcribe" {
 			maxBodyBytes = maxTranscriptionBytes
 		} else if r.URL.Path == "/v1/workspace/sync" {
+			maxBodyBytes = 8 << 20
+		} else if r.URL.Path == "/v1/account-data/sync" {
+			maxBodyBytes = 32 << 20
+		} else if strings.HasPrefix(r.URL.Path, "/v1/note-attachments/") {
 			maxBodyBytes = 8 << 20
 		}
 		limited := http.MaxBytesReader(w, r.Body, maxBodyBytes)

@@ -1,3 +1,4 @@
+import { attachmentMetadata, saveAttachment, loadAttachment } from "./noteAttachments";
 import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import { generateUuid, isValidUuid } from "./uuid";
 
@@ -48,7 +49,7 @@ export const NOTE_FOLDER_COLORS = [
 
 const NOTES_KEY = "prior.notes.v1";
 const FOLDERS_KEY = "prior.note-folders.v1";
-const ATTACHMENTS_KEY = "prior.note-attachments.v1";
+
 const CHANGE_EVENT = "prior-notes-change";
 
 function uid(): string {
@@ -304,36 +305,9 @@ export const notesStore = {
     if (JSON.stringify(notes) !== JSON.stringify(current.notes)) write(NOTES_KEY, notes);
     if (JSON.stringify(folders) !== JSON.stringify(current.folders)) write(FOLDERS_KEY, folders);
   },
-  attachmentMeta(): NoteAttachment[] { return read<NoteAttachment[]>(ATTACHMENTS_KEY, []); },
-  saveAttachment(file: NoteAttachment, blob: Blob): Promise<void> {
-    const database = typeof indexedDB === "undefined" ? null : indexedDB;
-    if (!database) return Promise.reject(new Error("Attachments are unavailable in this browser"));
-    return new Promise((resolve, reject) => {
-      const request = database.open("prior-notes", 1);
-      request.onupgradeneeded = () => request.result.createObjectStore("attachments");
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const transaction = request.result.transaction("attachments", "readwrite");
-        transaction.objectStore("attachments").put(blob, file.id);
-        transaction.oncomplete = () => { write(ATTACHMENTS_KEY, [...this.attachmentMeta().filter((item) => item.id !== file.id), file]); resolve(); };
-        transaction.onerror = () => reject(transaction.error);
-      };
-    });
-  },
-  loadAttachment(id: string): Promise<Blob | undefined> {
-    if (typeof indexedDB === "undefined") return Promise.resolve(undefined);
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open("prior-notes", 1);
-      request.onupgradeneeded = () => request.result.createObjectStore("attachments");
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const transaction = request.result.transaction("attachments", "readonly");
-        const get = transaction.objectStore("attachments").get(id);
-        get.onsuccess = () => resolve(get.result as Blob | undefined);
-        get.onerror = () => reject(get.error);
-      };
-    });
-  },
+  attachmentMeta: attachmentMetadata,
+  saveAttachment,
+  loadAttachment,
   subscribe(callback: () => void): () => void {
     window.addEventListener(CHANGE_EVENT, callback);
     window.addEventListener("storage", callback);

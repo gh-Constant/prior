@@ -30,10 +30,21 @@ func TestAuthExchangePreflight(t *testing.T) {
 			if response.Code != http.StatusNoContent || response.Header().Get("Access-Control-Allow-Origin") != origin {
 				t.Fatalf("native/web OAuth preflight rejected: status %d, headers %v", response.Code, response.Header())
 			}
-			if response.Header().Get("Access-Control-Allow-Methods") != "GET, POST, PATCH, DELETE, OPTIONS" || response.Header().Get("Access-Control-Allow-Headers") != "Authorization, Content-Type" {
+			if response.Header().Get("Access-Control-Allow-Methods") != "GET, POST, PUT, PATCH, DELETE, OPTIONS" || response.Header().Get("Access-Control-Allow-Headers") != "Authorization, Content-Type" {
 				t.Fatal("preflight does not permit the JSON code exchange")
 			}
 		})
+	}
+}
+
+func TestAccountSyncRequiresAuthentication(t *testing.T) {
+	server := &Server{}
+	for _, handler := range []http.HandlerFunc{server.syncAccountDocuments, server.saveNoteAttachment, server.getNoteAttachment, server.listNoteAttachments} {
+		response := httptest.NewRecorder()
+		handler(response, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`)))
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated account data status = %d", response.Code)
+		}
 	}
 }
 

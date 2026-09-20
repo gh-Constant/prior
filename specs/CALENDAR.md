@@ -15,7 +15,7 @@ Fonctions utiles à prévoir ensuite : rappels avec permissions et notifications
 
 ## Sauvegarde et séparation des données
 
-Les calendriers utilisent le stockage local existant `prior.calendar.v1`, isolé par compte Prior, dans le navigateur et le WebView natif. Ils persistent sur cet appareil ; cette collection n'est pas synchronisée via PostgreSQL. Une erreur de quota est affichée et ne ferme pas le formulaire. Ne pas présenter cette sauvegarde locale comme une sauvegarde cloud.
+Les calendriers utilisent `prior.account-data.v1`, isolé par compte Prior, dans le navigateur et le WebView natif. Les anciens calendriers sont migrés automatiquement. Les changements sont enregistrés localement avec une file d'attente persistante, puis synchronisés vers PostgreSQL lorsque le compte est connecté. Les événements personnels, répétitions, exclusions, couleurs, verrouillages, filtres et visibilité suivent le compte. Les flux ICS par fichier sont synchronisés ; les caches de flux URL/Google sont rechargés sur chaque appareil. Une erreur de quota est affichée et ne ferme pas le formulaire. Voir [SYNC.md](SYNC.md) pour les règles de convergence et de reprise.
 
 `local` désigne un calendrier personnel modifiable. Les événements importés sont des copies en lecture seule. Couleurs, verrouillage, masquage individuel et règles de titre sont des préférences Prior conservées séparément, même lorsque les événements sont remplacés par une actualisation.
 

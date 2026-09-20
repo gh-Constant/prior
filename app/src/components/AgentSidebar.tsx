@@ -23,6 +23,9 @@ import { askAgent, askAgentStream, AGENT_SETTINGS_EVENT, DEFAULT_MODEL, fetchAva
 import { fetchCodexModels, getCachedCodexAccount, supportsCodexDesktop, type CodexModelOption } from "../lib/codex";
 import { getToken, handleAuthError, type SessionUser } from "../lib/auth";
 import { api, isAuthError } from "../lib/api";
+import { pendingChats, queueAgentMessage, syncAgentOutbox } from "../lib/agentOutbox";
+import { getAccountId } from "../lib/accountScope";
+import { generateUuid } from "../lib/uuid";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
 import {
@@ -52,6 +55,12 @@ import { useI18n } from "../lib/i18n";
 import { Icon } from "./Icon";
 import { DictationControls, DictationPreview, DictationStatusBar } from "./DictationControls";
 import { useDictation } from "../hooks/useDictation";
+
+function withPendingChats(chats: AgentChatSummary[]): AgentChatSummary[] {
+  const known = new Set(chats.map((chat) => chat.id));
+  const now = new Date().toISOString();
+  return [...pendingChats().filter((chat) => !known.has(chat.id)).map((chat) => ({ id: chat.id, title: chat.title, createdAt: chat.messages[0]?.createdAt ?? now, updatedAt: now, messageCount: chat.messages.length })), ...chats];
+}
 
 type Props = {
   readonly open: boolean;
@@ -252,7 +261,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         }
         try {
           const chats = await api.listAgentChats(token);
-          if (!cancelled) setChatHistory(chats);
+          if (!cancelled) setChatHistory(withPendingChats(chats));
         } catch (error) {
           if (await handleAuthError(error)) {
             if (!cancelled) {
@@ -267,7 +276,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       .catch((error) => {
         if (!cancelled) {
           if (isAuthError(error)) setError(t("agent.error.sessionExpired"));
-          setChatHistory([]);
+          setChatHistory(withPendingChats([]));
         }
       })
       .finally(() => {
@@ -276,6 +285,26 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
 
     return () => { cancelled = true; };
   }, [open, user]);
+
+  useEffect(() => {
+    if (!open || !user) return;
+    let cancelled = false;
+    const account = getAccountId();
+    const refreshHistory = async () => {
+      try {
+        const token = await getToken();
+        if (!token || cancelled || account !== getAccountId()) return;
+        const chats = await api.listAgentChats(token);
+        if (cancelled || account !== getAccountId()) return;
+        setChatHistory(withPendingChats(chats));
+        if (!activeChatId || loadingRef.current) return;
+        const chat = await api.getAgentChat(activeChatId, token);
+        if (!cancelled && account === getAccountId() && !loadingRef.current && !pendingChats().some((item) => item.id === activeChatId)) setMessages(chat.messages ?? []);
+      } catch { /* The next sync retries; current messages stay visible. */ }
+    };
+    window.addEventListener("prior-sync-complete", refreshHistory);
+    return () => { cancelled = true; window.removeEventListener("prior-sync-complete", refreshHistory); };
+  }, [open, user, activeChatId]);
 
   useEffect(() => {
     if (open && isOverlay) {
@@ -437,30 +466,29 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     }
   }
 
-  async function ensureChat(token: string): Promise<string | null> {
+  async function ensureChat(): Promise<string | null> {
     if (activeChatId) return activeChatId;
-    try {
-      const chat = await api.createAgentChat(t("agent.history.newChat"), token);
-      setActiveChatId(chat.id);
-      setChatHistory((current) => [chat, ...current.filter((item) => item.id !== chat.id)]);
-      return chat.id;
-    } catch (error) {
-      if (await handleAuthError(error)) setError(t("agent.error.sessionExpired"));
-      return null;
-    }
+    const id = generateUuid();
+    queueAgentMessage(id, t("agent.history.newChat"));
+    setActiveChatId(id);
+    setChatHistory((chats) => withPendingChats(chats));
+    return id;
   }
 
   async function persistMessage(chatId: string, message: AgentMessage, token: string): Promise<void> {
+    const account = getAccountId();
+    queueAgentMessage(chatId, t("agent.history.newChat"), message);
     try {
-      await api.saveAgentChatMessage(chatId, message, token);
+      await syncAgentOutbox(token, () => account === getAccountId());
+      if (account !== getAccountId()) return;
       const chats = await api.listAgentChats(token);
-      setChatHistory(chats);
+      if (account === getAccountId()) setChatHistory(chats);
     } catch (error) {
       if (await handleAuthError(error)) {
         setError(t("agent.error.sessionExpired"));
         return;
       }
-      // Keep the conversation usable when the sync API is temporarily unavailable.
+      console.warn("Prior agent messages remain queued for sync.");
     }
   }
 
@@ -491,6 +519,13 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       setInput("");
       if (window.matchMedia("(max-width: 760px)").matches) setHistoryOpen(false);
     } catch (err: unknown) {
+      const pending = pendingChats().find((chat) => chat.id === chatId);
+      if (pending) {
+        setActiveChatId(chatId);
+        setMessages(pending.messages);
+        setCodexThreadId(null);
+        return;
+      }
       if (await handleAuthError(err)) {
         setError(t("agent.error.sessionExpired"));
       } else {
@@ -537,7 +572,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     try {
       const token = sessionToken ?? await getToken();
       if (token && !sessionToken) setSessionToken(token);
-      const chatId = token && user ? await ensureChat(token) : null;
+      const chatId = token && user ? await ensureChat() : null;
 
       const userMsg: AgentMessage = {
         id: crypto.randomUUID(),

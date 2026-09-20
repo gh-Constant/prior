@@ -2,6 +2,7 @@ import type { AgentChat, AgentMessage, AgentChatSummary, Area, Habit, Mutation, 
 import type { Note, NoteFolder } from "./notes";
 import { translateStored } from "./i18n";
 import { isTauri } from "./platform";
+import type { DocumentMutation, DocumentValue } from "./accountDocuments";
 
 export type WorkspaceSnapshot = {
   areas: Area[];
@@ -67,7 +68,7 @@ function isNetworkFailure(error: unknown): boolean {
 type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
 type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }>; results?: Array<{ mutationId: string; ok: boolean; revision?: number; entity?: string; task?: Task; habit?: Habit; error?: { code: string; message: string } }> };
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number; nextSince?: number; hasMore?: boolean; workspaceRevision?: number; profile?: { displayName: string; profileRevision: number; updatedAt: string } };
-export type ServerSettings = { openrouterApiKey: string; openaiApiKey: string; webSearch: boolean };
+export type ServerSettings = { openrouterApiKey: string; openaiApiKey: string; webSearch: boolean; initialized?: boolean };
 export type ProfileUser = { id: string; email: string; displayName: string; avatarUrl?: string };
 export type CollaborationMember = { userId: string; email: string; displayName: string; avatarUrl?: string; role: "owner" | "editor" | "viewer"; status: "active" | "revoked"; createdAt: string };
 export type CollaborationInvite = { id: string; email: string; role: "editor" | "viewer"; expiresAt: string; inviteToken?: string; projectId: string };
@@ -218,6 +219,9 @@ export const api = {
   syncWorkspace(snapshot: WorkspaceSnapshot, token: string): Promise<WorkspaceSnapshot> {
     return request<WorkspaceSnapshot>("/v1/workspace/sync", { method: "POST", body: JSON.stringify(snapshot) }, token, 30_000);
   },
+  syncAccountData(mutations: DocumentMutation[], token: string): Promise<{ records: Array<{ key: string; value: DocumentValue | null }>; applied: string[] }> {
+    return request("/v1/account-data/sync", { method: "POST", body: JSON.stringify({ mutations }) }, token, 60_000);
+  },
   listCollaborativeProjects(token: string): Promise<{ projects: CollaborationProject[] }> {
     return request<{ projects: CollaborationProject[] }>("/v1/collaboration/projects", {}, token, 30_000);
   },
@@ -251,8 +255,8 @@ export const api = {
   listAgentChats(token: string): Promise<AgentChatSummary[]> {
     return request<AgentChatSummary[]>("/v1/agent/chats", {}, token);
   },
-  createAgentChat(title: string, token: string): Promise<AgentChatSummary> {
-    return request<AgentChatSummary>("/v1/agent/chats", { method: "POST", body: JSON.stringify({ title }) }, token);
+  createAgentChat(title: string, token: string, id?: string): Promise<AgentChatSummary> {
+    return request<AgentChatSummary>("/v1/agent/chats", { method: "POST", body: JSON.stringify({ title, id }) }, token);
   },
   getAgentChat(chatId: string, token: string): Promise<AgentChat> {
     return request<AgentChat>(`/v1/agent/chats/${encodeURIComponent(chatId)}`, {}, token);

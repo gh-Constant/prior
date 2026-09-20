@@ -31,6 +31,12 @@ import { SettingsPage } from "./components/SettingsPage";
 import { NotesWorkspace } from "./components/NotesWorkspace";
 import { notesStore } from "./lib/notes";
 import { workspaceSync } from "./lib/workspaceSync";
+import { ACCOUNT_DATA_LOCAL, setAccountPreference, syncAccountDocuments } from "./lib/accountDocuments";
+import { initializeAccountPreferences, applyAccountPreferences, PREFERENCES_APPLIED } from "./lib/accountPreferences";
+import { initializeCalendarSync } from "./lib/calendarSync";
+import { loadLegacyCalendarState } from "./lib/calendar";
+import { syncNoteAttachments } from "./lib/noteAttachments";
+import { syncAgentOutbox } from "./lib/agentOutbox";
 import { workspaceStore } from "./lib/workspaceStore";
 import { collaborationStore } from "./lib/collaborationStore";
 import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
@@ -392,6 +398,7 @@ export function App() {
         if (!token || generation !== sessionGeneration.current) return;
 
         logger.info("sync", "Starting sync cycle");
+        const incomplete: string[] = [];
 
         // Profile first: the server copy wins so a rename on another device
         // converges locally. Failures are non-fatal for task data.
@@ -413,6 +420,7 @@ export function App() {
             return;
           }
           logger.warn("sync", "Profile sync failed", { error: String(profileError) });
+          incomplete.push("profile");
           console.warn("Prior profile sync failed:", profileError);
         }
 
@@ -436,10 +444,11 @@ export function App() {
           const first = await api.pull(since, token as string);
           if (generation !== sessionGeneration.current) return first;
           let combined = first;
-          let guard = 0;
-          while (combined.hasMore && typeof combined.nextSince === "number" && guard < 50) {
-            guard += 1;
+          let previousCursor = since;
+          while (combined.hasMore && typeof combined.nextSince === "number") {
             const cursor: number = combined.nextSince;
+            if (cursor <= previousCursor) throw new Error("Sync pagination did not advance");
+            previousCursor = cursor;
             const next = await api.pull(cursor, token as string);
             if (generation !== sessionGeneration.current) return combined;
             combined = {
@@ -448,6 +457,7 @@ export function App() {
               habits: [...(combined.habits ?? []), ...(next.habits ?? [])],
             };
           }
+          if (combined.hasMore) throw new Error("Sync history was incomplete; retaining the previous cursor for retry.");
           return combined;
         }
 
@@ -491,12 +501,34 @@ export function App() {
 
         // Workspace sync in an isolated try/catch so a workspace snapshot issue never halts tasks/habits
         try {
+          initializeCalendarSync(loadLegacyCalendarState());
+          initializeAccountPreferences();
+          await syncAccountDocuments(token, () => generation === sessionGeneration.current);
+        } catch (accountDataError) {
+          incomplete.push("calendars/preferences");
+          logger.error("sync", "Calendar/account data sync failed; local changes remain queued", { error: String(accountDataError) });
+          console.warn("Prior account data sync failed; will retry.");
+        }
+
+        if (generation !== sessionGeneration.current) return;
+
+        try {
+          await syncNoteAttachments(token, () => generation === sessionGeneration.current);
+        } catch (attachmentError) {
+          incomplete.push("attachments");
+          logger.warn("sync", "Note attachments remain pending", { error: String(attachmentError) });
+        }
+        if (generation !== sessionGeneration.current) return;
+
+        try {
           await workspaceSync.sync(token, () => generation === sessionGeneration.current);
           if (generation === sessionGeneration.current) {
             refreshWorkspace();
             await refresh();
+            if (generation === sessionGeneration.current) applyAccountPreferences();
           }
         } catch (workspaceError) {
+          incomplete.push("workspace");
           logger.error("sync", "Workspace sync failed", { error: String(workspaceError) });
           console.warn("Prior workspace sync failed:", workspaceError);
         }
@@ -508,6 +540,7 @@ export function App() {
         try {
           collaborationChanged = (await collaborationStore.sync(token)).changed;
         } catch (collaborationError) {
+          incomplete.push("collaboration");
           logger.warn("sync", "Collaboration sync failed", { error: String(collaborationError) });
           console.warn("Prior collaboration sync failed:", collaborationError);
         }
@@ -539,8 +572,17 @@ export function App() {
 
         // Assistant settings follow the account after workspace data.
         try {
+          await syncAgentOutbox(token, () => generation === sessionGeneration.current);
+        } catch (chatError) {
+          incomplete.push("chats");
+          logger.warn("sync", "Agent messages remain queued", { error: String(chatError) });
+        }
+        if (generation !== sessionGeneration.current) return;
+        window.dispatchEvent(new Event("prior-sync-complete"));
+
+        try {
           const settingsOk = await pullAssistantSettings();
-          if (!settingsOk) logger.warn("sync", "Assistant settings not yet synced; will retry on next sync");
+          if (!settingsOk) { incomplete.push("settings"); logger.warn("sync", "Assistant settings not yet synced; will retry on next sync"); }
         } catch (settingsError) {
           if (await handleAuthError(settingsError)) {
             if (generation !== sessionGeneration.current) return;
@@ -551,10 +593,12 @@ export function App() {
             return;
           }
           logger.warn("sync", "Assistant settings sync failed", { error: String(settingsError) });
+          incomplete.push("settings");
           console.warn("Prior assistant settings sync failed:", settingsError);
         }
 
-        logger.info("sync", "Sync cycle completed successfully", { revision: finalRevision });
+        if (incomplete.length) logger.warn("sync", "Sync partially completed; pending sections will retry", { sections: incomplete });
+        else logger.info("sync", "Sync cycle completed successfully", { revision: finalRevision });
       } catch (error) {
         logger.error("sync", "Prior sync failed", { error: String(error) });
         if (await handleAuthError(error)) {
@@ -692,6 +736,23 @@ export function App() {
   useEffect(() => collaborationStore.subscribe(refreshWorkspace), [refreshWorkspace]);
 
   useEffect(() => notesStore.subscribe(scheduleWorkspaceSync), [scheduleWorkspaceSync]);
+  useEffect(() => {
+    window.addEventListener(ACCOUNT_DATA_LOCAL, scheduleWorkspaceSync);
+    return () => window.removeEventListener(ACCOUNT_DATA_LOCAL, scheduleWorkspaceSync);
+  }, [scheduleWorkspaceSync]);
+  const savedUiState = useRef({ agentOpen, sidebarCollapsed });
+  useEffect(() => {
+    const patch: Record<string, string> = {};
+    if (savedUiState.current.agentOpen !== agentOpen) patch["prior.ai.open"] = String(agentOpen);
+    if (savedUiState.current.sidebarCollapsed !== sidebarCollapsed) patch["prior.sidebar.collapsed"] = String(sidebarCollapsed);
+    savedUiState.current = { agentOpen, sidebarCollapsed };
+    if (Object.keys(patch).length) setAccountPreference("ui", patch);
+  }, [agentOpen, sidebarCollapsed]);
+  useEffect(() => {
+    const apply = () => { setAgentOpen(localStorage.getItem("prior.ai.open") === "true"); setSidebarCollapsed(localStorage.getItem("prior.sidebar.collapsed") === "true"); };
+    window.addEventListener(PREFERENCES_APPLIED, apply);
+    return () => window.removeEventListener(PREFERENCES_APPLIED, apply);
+  }, []);
 
   useEffect(() => {
     const onAuthChange = () => {

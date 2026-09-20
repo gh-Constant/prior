@@ -6,6 +6,8 @@ import { NOTE_FOLDER_COLORS, getFolderDescendants, getFolderPath, notesStore, ty
 import { translateStored, useI18n } from "../lib/i18n";
 import { applySlashInsert, filterSlashCommands, matchSlashToken, type SlashCommand } from "../lib/noteSlash";
 import { Modal } from "./Modal";
+import { setAccountPreference } from "../lib/accountDocuments";
+import { PREFERENCES_APPLIED } from "../lib/accountPreferences";
 import "./NotesWorkspace.css";
 import "katex/dist/katex.min.css";
 
@@ -611,14 +613,48 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   useEffect(() => { try { localStorage.setItem("prior.notes.tabs", JSON.stringify(openIds)); } catch { /* storage unavailable */ } }, [openIds]);
   useEffect(() => { try { localStorage.setItem("prior.notes.library", String(libraryOpen)); } catch { /* storage unavailable */ } }, [libraryOpen]);
   useEffect(() => { try { localStorage.setItem("prior.notes.collapsed", JSON.stringify([...collapsedIds])); } catch { /* storage unavailable */ } }, [collapsedIds]);
+  const previousPreferences = useRef({ tabs: JSON.stringify(openIds), library: String(libraryOpen), collapsed: JSON.stringify([...collapsedIds]) });
+  useEffect(() => {
+    const next = { tabs: JSON.stringify(openIds), library: String(libraryOpen), collapsed: JSON.stringify([...collapsedIds]) };
+    const patch: Record<string, string> = {};
+    for (const key of ["tabs", "library", "collapsed"] as const) if (next[key] !== previousPreferences.current[key]) patch[`prior.notes.${key}`] = next[key];
+    previousPreferences.current = next;
+    if (Object.keys(patch).length) setAccountPreference("ui", patch);
+  }, [openIds, libraryOpen, collapsedIds]);
+  useEffect(() => {
+    const apply = () => {
+      try {
+        const tabs: unknown = JSON.parse(localStorage.getItem("prior.notes.tabs") ?? "[]");
+        const collapsed: unknown = JSON.parse(localStorage.getItem("prior.notes.collapsed") ?? "[]");
+        if (Array.isArray(tabs)) setOpenIds(tabs.filter((id): id is string => typeof id === "string"));
+        if (Array.isArray(collapsed)) setCollapsedIds(new Set(collapsed.filter((id): id is string => typeof id === "string")));
+        setLibraryOpen(localStorage.getItem("prior.notes.library") !== "false");
+      } catch { console.warn("Note view preferences could not be loaded."); }
+    };
+    window.addEventListener(PREFERENCES_APPLIED, apply);
+    return () => window.removeEventListener(PREFERENCES_APPLIED, apply);
+  }, []);
   useEffect(() => {
     let cancelled = false;
-    for (const meta of notesStore.attachmentMeta()) {
-      void notesStore.loadAttachment(meta.id).then((blob) => {
-        if (!cancelled && blob) setAttachmentUrls((current) => current[meta.id] ? current : { ...current, [meta.id]: URL.createObjectURL(blob) });
-      }).catch(() => undefined);
-    }
-    return () => { cancelled = true; if (saveTimer.current) window.clearTimeout(saveTimer.current); };
+    const urls = new Set<string>();
+    const requested = new Set<string>();
+    const refreshAttachments = () => {
+      for (const meta of notesStore.attachmentMeta()) {
+        if (requested.has(meta.id)) continue;
+        requested.add(meta.id);
+        void notesStore.loadAttachment(meta.id).then((blob) => {
+          if (!blob) requested.delete(meta.id);
+          if (!cancelled && blob) setAttachmentUrls((current) => {
+            if (current[meta.id]) return current;
+            const url = URL.createObjectURL(blob); urls.add(url);
+            return { ...current, [meta.id]: url };
+          });
+        }).catch(() => { requested.delete(meta.id); console.warn("Note attachment unavailable; retrying on the next sync."); });
+      }
+    };
+    refreshAttachments();
+    const unsubscribe = notesStore.subscribe(refreshAttachments);
+    return () => { cancelled = true; unsubscribe(); for (const url of urls) URL.revokeObjectURL(url); if (saveTimer.current) window.clearTimeout(saveTimer.current); };
   }, []);
 
   const visibleNotes = useMemo(() => notes.filter((note) => (!folderFilter || folderFilter === "favorites" || note.folderId === folderFilter) && (!query.trim() || `${note.title} ${note.body}`.toLowerCase().includes(query.toLowerCase()))), [folderFilter, notes, query]);

@@ -32,6 +32,7 @@ import { CALENDAR_ACCOUNT_EVENT, listCalendarAccounts, makeGoogleCalendarTokenGe
 import { getToken } from "../lib/auth";
 import { getAccountId } from "../lib/accountScope";
 import { generateUuid } from "../lib/uuid";
+import { ACCOUNT_DATA_CHANGED, readAccountDocuments } from "../lib/accountDocuments";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 import { createLocalCalendar, saveLocalEvent, deleteLocalEvent, normalizeCalendarText } from "../lib/calendarEvents";
@@ -176,6 +177,15 @@ export function CalendarView({ habits }: Props) {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const accountId = useRef(getAccountId());
   const [accountVersion, setAccountVersion] = useState(0);
+  useEffect(() => {
+    const refresh = () => {
+      if (accountId.current !== getAccountId()) return;
+      const next = loadCalendarState(); stateRef.current = next; setState(next);
+    };
+    window.addEventListener(ACCOUNT_DATA_CHANGED, refresh);
+    window.addEventListener("storage", refresh);
+    return () => { window.removeEventListener(ACCOUNT_DATA_CHANGED, refresh); window.removeEventListener("storage", refresh); };
+  }, []);
   const activeSyncs = useRef(new Map<string, AbortController>());
   const mounted = useRef(true);
   useEffect(() => {
@@ -219,8 +229,9 @@ export function CalendarView({ habits }: Props) {
       const next = typeof value === "function" ? value(stateRef.current) : value;
       if (next === stateRef.current) return true;
       saveCalendarState(next);
-      stateRef.current = next;
-      setState(next);
+      const saved = loadCalendarState();
+      stateRef.current = saved;
+      setState(saved);
       setStorageError("");
       return true;
     } catch {
@@ -324,9 +335,10 @@ export function CalendarView({ habits }: Props) {
         if (current.ignoredGoogleAccountIds?.includes(account.id)) continue;
         for (const calendar of calendars ?? [{ id: "primary", primary: true, name: `Google Calendar · ${account.email}`, color: "#6e73d9" }]) {
           const base = createGoogleCalendarSource(account.id, account.email, nextSources.length);
-          const id = calendar.primary ? base.id : `${base.id}-${encodeURIComponent(calendar.id)}`;
-          if (current.ignoredGoogleAccountIds?.includes(id) || nextSources.some((source) => source.id === id)) continue;
-          nextSources.push({ ...base, id, googleCalendarId: calendar.id, name: calendar.name, color: calendar.color });
+          const stableId = calendar.primary ? base.id : `${base.id}-${encodeURIComponent(calendar.id)}`;
+          if (current.ignoredGoogleAccountIds?.includes(stableId) || nextSources.some((source) => source.accountId === account.id && (source.googleCalendarId === calendar.id || (calendar.primary && !source.googleCalendarId)))) continue;
+          const id = readAccountDocuments().records[`calendar/source/${encodeURIComponent(stableId)}`] === null ? `${stableId}-${generateUuid()}` : stableId;
+          nextSources.push({ ...base, id, googleCalendarId: calendar.id, googleCalendarKey: stableId, name: calendar.name, color: calendar.color });
         }
       }
       if (nextSources.length === current.sources.length && nextSources.every((source, index) => source === current.sources[index])) return current;
@@ -485,7 +497,7 @@ export function CalendarView({ habits }: Props) {
         const saved = updateState((current) => ({ ...current, sources: sourceEditor.isNew ? [...current.sources, source] : current.sources.map((item) => item.id === source.id ? { ...source, events: item.events, icsData: item.icsData, coverageFrom: item.coverageFrom, coverageTo: item.coverageTo, lastSyncedAt: item.lastSyncedAt, syncError: item.syncError } : item) }));
         if (saved && sourceEditor.thenCreate) createEvent(sourceEditor.thenCreate.date, sourceEditor.thenCreate.time, source.id);
         return saved;
-      }} onRemove={() => updateState((current) => ({ ...current, ignoredGoogleAccountIds: sourceEditor.source.accountId ? [...(current.ignoredGoogleAccountIds ?? []), sourceEditor.source.id] : current.ignoredGoogleAccountIds, sources: current.sources.filter((source) => source.id !== sourceEditor.source.id) }))} />}
+      }} onRemove={() => updateState((current) => ({ ...current, ignoredGoogleAccountIds: sourceEditor.source.accountId ? [...(current.ignoredGoogleAccountIds ?? []), sourceEditor.source.googleCalendarKey ?? sourceEditor.source.id] : current.ignoredGoogleAccountIds, sources: current.sources.filter((source) => source.id !== sourceEditor.source.id) }))} />}
       {importOpen && <Modal title={t("common.calendar.importTitle")} onClose={closeImport} className="calendar-import-modal">
         {importMode === "options" ? <div className="calendar-import-body">{importError && <p className="calendar-import-error" role="alert">{importError}</p>}<div className="calendar-import-options"><label className="calendar-file-import">{l.file}<input type="file" accept=".ics,text/calendar" onChange={async (event) => { const file = event.target.files?.[0]; const importAccount = getAccountId(); if (!file) return; try { if (file.size > 8000000) throw new Error("large-file"); const source = createIcsUrlSource(file.name.replace(/\.ics$/i, ""), "", "hourly", state.sources.length); source.icsData = await file.text(); if (importAccount !== getAccountId()) return; source.events = parseIcsCalendar(source.icsData, source.id, source.color); if (updateState((current) => ({ ...current, sources: [...current.sources, source] }))) closeImport(); } catch { setImportError(l.fileError); } }} /></label>{IMPORT_OPTIONS.map((option) => <button type="button" className="calendar-import-option" key={option.type} onClick={() => { void addCalendar(option.type); }}><span className="calendar-import-option-icon"><Icon name={option.icon} /></span><span><strong>{t(option.labelKey)}</strong></span><Icon name="chevron-right" /></button>)}</div></div> : <form className="calendar-import-form" onSubmit={(event) => { void addIcsCalendar(event); }}>
           <label htmlFor="calendar-ics-name"><span>{t("common.modal.name")}</span><input id="calendar-ics-name" value={icsName} onChange={(event) => setIcsName(event.target.value)} placeholder="IUT INFO" /></label>

@@ -4,6 +4,8 @@ import { API_URL } from "./api";
 import { habitOccurrenceDates } from "./habits";
 import { expandCalendarEvent, presentImportedEvent } from "./calendarEvents";
 import { parseIcsCalendar } from "./calendarIcs";
+import { readAccountDocuments } from "./accountDocuments";
+import { calendarFromDocuments, persistCalendarForSync, initializeCalendarSync } from "./calendarSync";
 
 export type CalendarViewMode = "day" | "week" | "month" | "agenda";
 export type CalendarSourceType = "local" | "demo" | "google" | "outlook" | "icloud" | "ics";
@@ -37,6 +39,7 @@ export type CalendarSource = {
   type: CalendarSourceType;
   accountId?: string;
   googleCalendarId?: string;
+  googleCalendarKey?: string;
   color: string;
   enabled: boolean;
   events: CalendarEvent[];
@@ -277,6 +280,15 @@ function isCalendarState(value: unknown): value is CalendarState {
 }
 
 export function loadCalendarState(): CalendarState {
+  const documents = readAccountDocuments();
+  if (documents.calendarMigrated) {
+    if (readScopedStorage(CALENDAR_STORAGE_KEY)) initializeCalendarSync(loadLegacyCalendarState());
+    return calendarFromDocuments(readAccountDocuments());
+  }
+  return loadLegacyCalendarState();
+}
+
+export function loadLegacyCalendarState(): CalendarState {
   if (typeof window === "undefined") return isDevelopmentBuild() ? createDemoCalendarState() : EMPTY_CALENDAR_STATE;
   try {
     const raw = readScopedStorage(CALENDAR_STORAGE_KEY);
@@ -294,7 +306,7 @@ export function loadCalendarState(): CalendarState {
 export function saveCalendarState(state: CalendarState): void {
   // Let the UI report quota / storage failures instead of claiming a save succeeded.
   if (typeof localStorage === "undefined") throw new Error("Calendar storage unavailable");
-  writeScopedStorage(CALENDAR_STORAGE_KEY, JSON.stringify(sanitizeCalendarState(state)));
+  persistCalendarForSync(sanitizeCalendarState(state), loadLegacyCalendarState());
 }
 
 export { parseIcsCalendar } from "./calendarIcs";

@@ -20,6 +20,7 @@ import (
 const settingsSealPrefix = "gcm1:"
 
 type settingsPayload struct {
+	Initialized      bool   `json:"initialized"`
 	OpenRouterAPIKey string `json:"openrouterApiKey"`
 	OpenAIAPIKey     string `json:"openaiApiKey"`
 	WebSearch        bool   `json:"webSearch"`
@@ -120,7 +121,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to load settings"))
 		return
 	}
-	writeJSON(w, http.StatusOK, settingsPayload{OpenRouterAPIKey: openRouterAPIKey, OpenAIAPIKey: openAIAPIKey, WebSearch: stored.WebSearch})
+	writeJSON(w, http.StatusOK, settingsPayload{Initialized: true, OpenRouterAPIKey: openRouterAPIKey, OpenAIAPIKey: openAIAPIKey, WebSearch: stored.WebSearch})
 }
 
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
@@ -166,5 +167,5 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.notifySync(r.Context(), user.ID, "settings", 0)
-	writeJSON(w, http.StatusOK, settingsPayload{OpenRouterAPIKey: openRouterAPIKey, OpenAIAPIKey: openAIAPIKey, WebSearch: stored.WebSearch})
+	writeJSON(w, http.StatusOK, settingsPayload{Initialized: true, OpenRouterAPIKey: openRouterAPIKey, OpenAIAPIKey: openAIAPIKey, WebSearch: stored.WebSearch})
 }

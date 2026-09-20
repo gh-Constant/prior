@@ -4,6 +4,12 @@ import { mergeServerSettings } from "./settingsSync";
 const local = { apiKey: "sk-local", transcriptionApiKey: "sk-openai-local", model: "openrouter/free", webSearch: false };
 
 describe("mergeServerSettings", () => {
+  it("propagates intentional key deletion instead of reseeding from another device", () => {
+    const { merged, shouldPush } = mergeServerSettings(local, { initialized: true, openrouterApiKey: "", openaiApiKey: "", webSearch: true });
+    expect(merged.apiKey).toBe("");
+    expect(merged.transcriptionApiKey).toBe("");
+    expect(shouldPush).toBe(false);
+  });
   it("prefers the server key and web search when the server holds a key", () => {
     const { merged, shouldPush } = mergeServerSettings(local, { openrouterApiKey: "sk-server", openaiApiKey: "sk-openai-server", webSearch: true });
     expect(merged).toEqual({ apiKey: "sk-server", transcriptionApiKey: "sk-openai-server", model: "openrouter/free", webSearch: true });

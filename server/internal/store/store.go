@@ -1023,7 +1023,11 @@ func (s *Store) ListAgentChats(ctx context.Context, userID uuid.UUID) ([]AgentCh
 	return chats, nil
 }
 
-func (s *Store) CreateAgentChat(ctx context.Context, userID uuid.UUID, title string) (AgentChat, error) {
+func (s *Store) CreateAgentChat(ctx context.Context, userID uuid.UUID, title string, requestedID ...uuid.UUID) (AgentChat, error) {
+	id := uuid.New()
+	if len(requestedID) > 0 {
+		id = requestedID[0]
+	}
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "New chat"
@@ -1034,9 +1038,10 @@ func (s *Store) CreateAgentChat(ctx context.Context, userID uuid.UUID, title str
 
 	var chat AgentChat
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO agent_chats (user_id, title)
-		VALUES ($1, $2)
-		RETURNING id, title, created_at, updated_at`, userID, title).
+		INSERT INTO agent_chats (id,user_id, title)
+        VALUES ($3,$1,$2)
+        ON CONFLICT(id) DO UPDATE SET id=EXCLUDED.id WHERE agent_chats.user_id=$1
+        RETURNING id,title,created_at,updated_at`, userID, title, id).
 		Scan(&chat.ID, &chat.Title, &chat.CreatedAt, &chat.UpdatedAt)
 	return chat, err
 }

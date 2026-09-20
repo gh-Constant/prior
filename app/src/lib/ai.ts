@@ -22,6 +22,8 @@ import { api, isAuthError } from "./api";
 import { storedLanguage, translateStored } from "./i18n";
 import { readScopedStorage, removeScopedStorage, writeScopedStorage } from "./accountScope";
 import type { Note, NoteFolder } from "./notes";
+import { setAccountPreference } from "./accountDocuments";
+import { generateUuid } from "./uuid";
 
 export const DEFAULT_MODEL = "openrouter/free";
 
@@ -89,13 +91,18 @@ export function getAgentSettings(): AgentSettings {
   return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: false, provider: "openrouter", reasoningEffort: "auto" };
 }
 
-export function saveAgentSettings(settings: AgentSettings): void {
+export function saveAgentSettings(settings: AgentSettings, localChange = true): void {
   try {
     if (typeof localStorage !== "undefined") {
-      writeScopedStorage(SETTINGS_KEY, JSON.stringify(settings));
+      const previous = getAgentSettings();
+      const stored = JSON.parse(readScopedStorage(SETTINGS_KEY) ?? "{}") as { pendingId?: string };
+      const changedKeys = settings.apiKey !== previous.apiKey || settings.transcriptionApiKey !== previous.transcriptionApiKey || settings.webSearch !== previous.webSearch;
+      const pendingId = localChange && changedKeys ? generateUuid() : stored.pendingId;
+      writeScopedStorage(SETTINGS_KEY, JSON.stringify({ ...settings, pendingId }));
+      if (localChange) setAccountPreference("agent", { model: settings.model, codexModel: settings.codexModel ?? "", provider: settings.provider ?? "openrouter", reasoningEffort: settings.reasoningEffort ?? "auto" });
     }
   } catch {
-    // ignore
+    console.warn("Prior assistant settings could not be saved.");
   }
 }
 

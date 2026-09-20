@@ -18,6 +18,11 @@ const I18nContext = createContext<I18n | null>(null);
 
 export function I18nProvider({ children }: { readonly children: ReactNode }) {
   const [lang, setLangState] = useState<Language>(resolveInitialLanguage);
+  useEffect(() => {
+    const refresh = () => setLangState(resolveInitialLanguage());
+    window.addEventListener("prior-preferences-applied", refresh);
+    return () => window.removeEventListener("prior-preferences-applied", refresh);
+  }, []);
   const i18n = useMemo<I18n>(() => {
     const dict = dictionaries[lang] ?? dictionaries.en;
     const { t, tp } = createTranslator(lang, dict, dictionaries.en);

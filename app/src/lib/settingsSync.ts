@@ -2,6 +2,9 @@ import { api, isAuthError, isRetriableError, type ServerSettings } from "./api";
 import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "./ai";
 import type { AgentSettings } from "../types";
 import { getToken } from "./auth";
+import { getAccountId, readScopedStorage, writeScopedStorage } from "./accountScope";
+
+const SETTINGS_KEY = "prior.ai.settings.v1";
 
 // The OpenRouter key lives in the account (server database) so it follows
 // the user across devices, with local storage as the offline cache.
@@ -9,8 +12,8 @@ import { getToken } from "./auth";
 // a local key seeds the server on next push.
 export function mergeServerSettings(local: AgentSettings, server: ServerSettings): { merged: AgentSettings; shouldPush: boolean } {
   const merged: AgentSettings = {
-    apiKey: server.openrouterApiKey || local.apiKey,
-    transcriptionApiKey: server.openaiApiKey || local.transcriptionApiKey,
+    apiKey: server.initialized ? server.openrouterApiKey : server.openrouterApiKey || local.apiKey,
+    transcriptionApiKey: server.initialized ? server.openaiApiKey : server.openaiApiKey || local.transcriptionApiKey,
     model: local.model,
     webSearch: server.webSearch,
   };
@@ -19,7 +22,7 @@ export function mergeServerSettings(local: AgentSettings, server: ServerSettings
   if (local.reasoningEffort) merged.reasoningEffort = local.reasoningEffort;
   return {
     merged,
-    shouldPush: (!server.openrouterApiKey && local.apiKey !== "") || (!server.openaiApiKey && local.transcriptionApiKey !== ""),
+    shouldPush: !server.initialized && ((!server.openrouterApiKey && local.apiKey !== "") || (!server.openaiApiKey && local.transcriptionApiKey !== "")),
   };
 }
 
@@ -28,15 +31,20 @@ export function mergeServerSettings(local: AgentSettings, server: ServerSettings
 // the user out; network/server failures are retried once and then reported
 // as false (with a warning, never swallowed silently).
 export async function pullAssistantSettings(): Promise<boolean> {
+  const account = getAccountId();
   const token = await getToken().catch(() => null);
-  if (!token) return false;
+  if (!token || account !== getAccountId()) return false;
+  const pending = JSON.parse(readScopedStorage(SETTINGS_KEY) ?? "{}") as { pendingId?: string };
+  if (pending.pendingId && !await pushAssistantSettings(token)) return false;
   const maxAttempts = 2;
   let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const server = await api.getSettings(token);
+      if (account !== getAccountId()) return false;
+      if ((JSON.parse(readScopedStorage(SETTINGS_KEY) ?? "{}") as { pendingId?: string }).pendingId) return false;
       const { merged, shouldPush } = mergeServerSettings(getAgentSettings(), server);
-      saveAgentSettings(merged);
+      saveAgentSettings(merged, false);
       notifyAgentSettingsChanged();
       if (shouldPush) await pushAssistantSettings(token);
       return true;
@@ -55,11 +63,16 @@ export async function pullAssistantSettings(): Promise<boolean> {
 // Push the local settings to the account. Best-effort: local storage stays
 // authoritative while offline.
 export async function pushAssistantSettings(token?: string, settings?: AgentSettings): Promise<boolean> {
+  const account = getAccountId();
   const resolved = token ?? await getToken().catch(() => null);
-  if (!resolved) return false;
+  if (!resolved || account !== getAccountId()) return false;
   const local = settings ?? getAgentSettings();
+  const pendingId = (JSON.parse(readScopedStorage(SETTINGS_KEY) ?? "{}") as { pendingId?: string }).pendingId;
   try {
     await api.saveSettings({ openrouterApiKey: local.apiKey, openaiApiKey: local.transcriptionApiKey, webSearch: local.webSearch !== false }, resolved);
+    if (account !== getAccountId()) return false;
+    const latest = JSON.parse(readScopedStorage(SETTINGS_KEY) ?? "{}") as { pendingId?: string };
+    if (latest.pendingId === pendingId) { delete latest.pendingId; writeScopedStorage(SETTINGS_KEY, JSON.stringify(latest)); }
     return true;
   } catch (error) {
     if (isAuthError(error)) throw error;

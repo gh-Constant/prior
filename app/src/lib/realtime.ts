@@ -119,7 +119,7 @@ export async function connectRealtime(
     if (event.type === "pong") return;
     // Server emits legacy "sync_required"/"sync" plus unified
     // "tasks_required"/"workspace_required"/"profile_required"/"settings_required"/"workspace".
-    if (event.type === undefined || event.type === "sync_required" || event.type === "sync" || event.type.endsWith("_required") || event.type === "workspace") {
+    if (event.type === undefined || event.type === "sync_required" || event.type === "sync" || event.type.endsWith("_required") || event.type === "workspace" || event.type === "chat" || event.type === "settings") {
       if (typeof event.revision === "number") lastRevision = event.revision;
       onSyncRequired(lastRevision);
     }
