@@ -2,6 +2,7 @@ import type { Habit } from "../types";
 import { describe, expect, it } from "vitest";
 import {
   buildHabitCalendarEvents,
+  createGoogleCalendarSource,
   createIcsUrlSource,
   createDemoCalendarState,
   eventsInRange,
@@ -76,5 +77,13 @@ describe("calendar data", () => {
     ]));
     expect(isCalendarSourceDue({ ...source, lastSyncedAt: new Date(2026, 8, 21, 9, 30).toISOString() }, new Date(2026, 8, 21, 9, 45))).toBe(false);
     expect(isCalendarSourceDue({ ...source, lastSyncedAt: new Date(2026, 8, 21, 8, 0).toISOString() }, new Date(2026, 8, 21, 9, 1))).toBe(true);
+  });
+
+  it("creates an account-bound Google source and refreshes it hourly", () => {
+    const source = createGoogleCalendarSource("account-1", "me@example.com");
+    expect(source).toMatchObject({ type: "google", accountId: "account-1", name: "Google Calendar · me@example.com", refreshInterval: "hourly" });
+    expect(isCalendarSourceDue(source, new Date(2026, 8, 21, 9, 0))).toBe(true);
+    expect(isCalendarSourceDue({ ...source, lastSyncedAt: new Date(2026, 8, 21, 8, 30).toISOString() }, new Date(2026, 8, 21, 9, 0))).toBe(false);
+    expect(isCalendarSourceDue({ ...source, lastSyncedAt: new Date(2026, 8, 21, 7, 30).toISOString() }, new Date(2026, 8, 21, 9, 0))).toBe(true);
   });
 });

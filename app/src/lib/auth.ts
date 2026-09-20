@@ -148,6 +148,10 @@ async function finish(url: string, handledCodes: Set<string>): Promise<SessionUs
     (parsed.origin === window.location.origin && ["http:", "https:"].includes(parsed.protocol))
   );
   if ((!nativeCallback && !webCallback) || parsed.username || parsed.password) return null;
+  // Gmail and Google Calendar use the same native deep-link host, but their
+  // callback is already completed server-side and carries its result in the
+  // hash. It is not a Prior sign-in code.
+  if (parsed.hash.startsWith("#/mail-connected") || parsed.hash.startsWith("#/calendar-connected")) return null;
   if (parsed.searchParams.has("error")) throw new Error(translateStored("auth.errors.googleFailed"));
   const code = parsed.searchParams.get("code");
   if (!code) throw new Error(translateStored("auth.errors.missingCode"));

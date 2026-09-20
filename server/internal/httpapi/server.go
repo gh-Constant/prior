@@ -147,6 +147,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/mail/accounts", s.mailAccounts)
 	mux.HandleFunc("GET /v1/mail/token", s.mailToken)
 	mux.HandleFunc("DELETE /v1/mail/accounts/{id}", s.mailDisconnect)
+	mux.HandleFunc("GET /v1/calendar/connect/start", s.calendarConnectStart)
+	mux.HandleFunc("GET /v1/calendar/google/callback", s.calendarGoogleCallback)
+	mux.HandleFunc("GET /v1/calendar/accounts", s.calendarAccounts)
+	mux.HandleFunc("GET /v1/calendar/token", s.calendarToken)
+	mux.HandleFunc("DELETE /v1/calendar/accounts/{id}", s.calendarDisconnect)
 	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("POST /v1/sync/push", s.push)
 	mux.HandleFunc("GET /v1/sync/pull", s.pull)
@@ -1234,7 +1239,7 @@ func (s *Server) limiterForPath(path string) *rateLimiter {
 		return s.settingsLimiter
 	case path == "/v1/agent/complete":
 		return s.agentLimiter
-	case path == "/v1/mail/accounts" || path == "/v1/mail/token":
+	case path == "/v1/mail/accounts" || path == "/v1/mail/token" || path == "/v1/calendar/accounts" || path == "/v1/calendar/token":
 		return s.settingsLimiter
 	default:
 		return nil

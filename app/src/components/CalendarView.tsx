@@ -3,11 +3,13 @@ import type { Habit } from "../types";
 import { useI18n } from "../lib/i18n";
 import {
   addDays,
+  createGoogleCalendarSource,
   createIcsUrlSource,
   createImportedDemoSource,
   dateKey,
   eventsInRange,
   fetchIcsCalendar,
+  fetchGoogleCalendar,
   isCalendarSourceDue,
   loadCalendarState,
   mondayOf,
@@ -24,6 +26,8 @@ import {
   type CalendarState,
   type CalendarViewMode,
 } from "../lib/calendar";
+import { CALENDAR_ACCOUNT_EVENT, listCalendarAccounts, makeGoogleCalendarTokenGetter, startGoogleCalendarConnect } from "../lib/calendarAuth";
+import { getToken } from "../lib/auth";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 import "./CalendarView.css";
@@ -34,11 +38,11 @@ const TIME_START = 7 * 60;
 const TIME_END = 22 * 60;
 const HOUR_HEIGHT = 64;
 const WEEKDAY_KEYS = ["common.calendar.weekdays.monday", "common.calendar.weekdays.tuesday", "common.calendar.weekdays.wednesday", "common.calendar.weekdays.thursday", "common.calendar.weekdays.friday", "common.calendar.weekdays.saturday", "common.calendar.weekdays.sunday"] as const;
-const IMPORT_OPTIONS = ([
-  { type: "google", icon: "google", labelKey: "common.calendar.import.google" },
-  { type: "outlook", icon: "cloud", labelKey: "common.calendar.import.outlook" },
-  { type: "ics", icon: "file", labelKey: "common.calendar.import.ics" },
-] as const).filter((option) => import.meta.env.DEV || option.type === "ics");
+const IMPORT_OPTIONS = [
+  { type: "google", icon: "google", labelKey: "common.calendar.import.google" } as const,
+  ...(import.meta.env.DEV ? [{ type: "outlook", icon: "cloud", labelKey: "common.calendar.import.outlook" } as const] : []),
+  { type: "ics", icon: "file", labelKey: "common.calendar.import.ics" } as const,
+];
 
 function isToday(value: string): boolean {
   return value === dateKey();
@@ -149,6 +153,7 @@ export function CalendarView({ habits }: Props) {
   const [icsUrl, setIcsUrl] = useState("");
   const [icsRefresh, setIcsRefresh] = useState<CalendarRefreshInterval>("hourly");
   const [icsError, setIcsError] = useState("");
+  const [importError, setImportError] = useState("");
   const [syncingSourceId, setSyncingSourceId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
@@ -170,14 +175,24 @@ export function CalendarView({ habits }: Props) {
     saveCalendarState(next);
   }
 
-  const syncIcsSource = useCallback(async (source: CalendarSource, force = false) => {
-    if (!source.url || (!force && !isCalendarSourceDue(source))) return;
+  const syncRemoteSource = useCallback(async (source: CalendarSource, force = false) => {
+    if (source.type === "ics" && !source.url) return;
+    if (source.type === "google" && !source.accountId) return;
+    if (source.type !== "ics" && source.type !== "google") return;
+    if (!force && !isCalendarSourceDue(source)) return;
     setSyncingSourceId(source.id);
     try {
-      const events = await fetchIcsCalendar(source.url, source.id, source.color);
+      let events: CalendarEvent[];
+      if (source.type === "google") {
+        const session = await getToken();
+        if (!session || !source.accountId) throw new Error("sign-in-required");
+        events = await fetchGoogleCalendar(makeGoogleCalendarTokenGetter(session, source.accountId), source.id, source.color);
+      } else {
+        events = await fetchIcsCalendar(source.url!, source.id, source.color);
+      }
       setState((current) => {
         const currentSource = current.sources.find((item) => item.id === source.id);
-        if (!currentSource || currentSource.url !== source.url) return current;
+        if (!currentSource || currentSource.url !== source.url || currentSource.accountId !== source.accountId) return current;
         const next = {
           ...current,
           sources: current.sources.map((item) => item.id === source.id ? { ...item, events, lastSyncedAt: new Date().toISOString(), syncError: undefined } : item),
@@ -188,7 +203,7 @@ export function CalendarView({ habits }: Props) {
     } catch {
       setState((current) => {
         const currentSource = current.sources.find((item) => item.id === source.id);
-        if (!currentSource || currentSource.url !== source.url) return current;
+        if (!currentSource || currentSource.url !== source.url || currentSource.accountId !== source.accountId) return current;
         const next = { ...current, sources: current.sources.map((item) => item.id === source.id ? { ...item, syncError: "sync-failed", lastSyncedAt: new Date().toISOString() } : item) };
         saveCalendarState(next);
         return next;
@@ -198,14 +213,52 @@ export function CalendarView({ habits }: Props) {
     }
   }, []);
 
+  const syncGoogleAccounts = useCallback(async () => {
+    const session = await getToken();
+    if (!session) return;
+    let accounts;
+    try {
+      accounts = await listCalendarAccounts(session);
+    } catch {
+      return;
+    }
+    setState((current) => {
+      const accountIds = new Set(accounts.map((account) => account.id));
+      const retained = current.sources.filter((source) => source.type !== "google" || (source.accountId && accountIds.has(source.accountId)));
+      const nextSources = [...retained];
+      for (const account of accounts) {
+        const existing = nextSources.find((source) => source.type === "google" && source.accountId === account.id);
+        if (existing) {
+          if (existing.name !== `Google Calendar · ${account.email}`) {
+            const index = nextSources.indexOf(existing);
+            nextSources[index] = { ...existing, name: `Google Calendar · ${account.email}` };
+          }
+          continue;
+        }
+        nextSources.push(createGoogleCalendarSource(account.id, account.email, nextSources.length));
+      }
+      if (nextSources.length === current.sources.length && nextSources.every((source, index) => source === current.sources[index])) return current;
+      const next = { ...current, sources: nextSources };
+      saveCalendarState(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
-    const remoteSources = state.sources.filter((source) => source.type === "ics" && source.url);
-    remoteSources.filter((source) => isCalendarSourceDue(source)).forEach((source) => { void syncIcsSource(source); });
+    void syncGoogleAccounts();
+    const refresh = () => { void syncGoogleAccounts(); };
+    window.addEventListener(CALENDAR_ACCOUNT_EVENT, refresh);
+    return () => window.removeEventListener(CALENDAR_ACCOUNT_EVENT, refresh);
+  }, [syncGoogleAccounts]);
+
+  useEffect(() => {
+    const remoteSources = state.sources.filter((source) => (source.type === "ics" && source.url) || (source.type === "google" && source.accountId));
+    remoteSources.filter((source) => isCalendarSourceDue(source)).forEach((source) => { void syncRemoteSource(source); });
     const timer = window.setInterval(() => {
-      remoteSources.filter((source) => isCalendarSourceDue(source, new Date())).forEach((source) => { void syncIcsSource(source); });
+      remoteSources.filter((source) => isCalendarSourceDue(source, new Date())).forEach((source) => { void syncRemoteSource(source); });
     }, 60_000);
     return () => window.clearInterval(timer);
-  }, [state.sources, syncIcsSource]);
+  }, [state.sources, syncRemoteSource]);
 
   function moveRange(amount: number) {
     setAnchorDate((current) => mode === "month" ? new Date(current.getFullYear(), current.getMonth() + amount, 1) : addDays(current, amount * 7));
@@ -215,6 +268,7 @@ export function CalendarView({ habits }: Props) {
   function openImport(): void {
     setImportMode("options");
     setIcsError("");
+    setImportError("");
     setImportOpen(true);
   }
 
@@ -222,20 +276,32 @@ export function CalendarView({ habits }: Props) {
     setImportOpen(false);
     setImportMode("options");
     setIcsError("");
+    setImportError("");
   }
 
-  function addCalendar(type: Exclude<CalendarSourceType, "demo">) {
+  async function addCalendar(type: Exclude<CalendarSourceType, "demo">): Promise<void> {
     if (type === "ics") {
       setImportMode("ics");
       setIcsError("");
       return;
     }
-    // Google and Outlook need provider-specific OAuth grants. Until those
-    // flows exist, never create fabricated events in a production build.
-    if (import.meta.env.DEV !== true) return;
-    const source = createImportedDemoSource(type, anchorDate, state.sources.length);
-    updateState({ ...state, sources: [...state.sources, source] });
-    closeImport();
+    if (type === "google") {
+      setImportError("");
+      closeImport();
+      try {
+        await startGoogleCalendarConnect();
+      } catch {
+        setImportError(t("common.calendar.import.googleError"));
+        setImportMode("options");
+        setImportOpen(true);
+      }
+      return;
+    }
+    if (type === "outlook" && import.meta.env.DEV === true) {
+      const source = createImportedDemoSource(type, anchorDate, state.sources.length);
+      updateState({ ...state, sources: [...state.sources, source] });
+      closeImport();
+    }
   }
 
   async function addIcsCalendar(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -290,7 +356,7 @@ export function CalendarView({ habits }: Props) {
       </div>
 
       {importOpen && <Modal title={t("common.calendar.importTitle")} onClose={closeImport} className="calendar-import-modal">
-        {importMode === "options" ? <div className="calendar-import-body"><div className="calendar-import-options">{IMPORT_OPTIONS.map((option) => <button type="button" className="calendar-import-option" key={option.type} onClick={() => addCalendar(option.type)}><span className="calendar-import-option-icon"><Icon name={option.icon} /></span><span><strong>{t(option.labelKey)}</strong></span><Icon name="chevron-right" /></button>)}</div></div> : <form className="calendar-import-form" onSubmit={(event) => { void addIcsCalendar(event); }}>
+        {importMode === "options" ? <div className="calendar-import-body">{importError && <p className="calendar-import-error" role="alert">{importError}</p>}<div className="calendar-import-options">{IMPORT_OPTIONS.map((option) => <button type="button" className="calendar-import-option" key={option.type} onClick={() => { void addCalendar(option.type); }}><span className="calendar-import-option-icon"><Icon name={option.icon} /></span><span><strong>{t(option.labelKey)}</strong></span><Icon name="chevron-right" /></button>)}</div></div> : <form className="calendar-import-form" onSubmit={(event) => { void addIcsCalendar(event); }}>
           <label htmlFor="calendar-ics-name"><span>{t("common.modal.name")}</span><input id="calendar-ics-name" value={icsName} onChange={(event) => setIcsName(event.target.value)} placeholder="IUT INFO" /></label>
           <label htmlFor="calendar-ics-url"><span>{t("common.calendar.import.icsUrl")}</span><input id="calendar-ics-url" type="url" required value={icsUrl} onChange={(event) => setIcsUrl(event.target.value)} placeholder="https://…" /></label>
           <label htmlFor="calendar-ics-refresh"><span>{t("common.calendar.import.icsRefresh")}</span><select id="calendar-ics-refresh" value={icsRefresh} onChange={(event) => setIcsRefresh(event.target.value as CalendarRefreshInterval)}><option value="15m">{t("common.calendar.import.every15m")}</option><option value="hourly">{t("common.calendar.import.everyHour")}</option><option value="daily">{t("common.calendar.import.everyDay")}</option></select></label>

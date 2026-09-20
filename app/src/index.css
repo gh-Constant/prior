@@ -346,6 +346,22 @@ dialog.modal::backdrop { background: #15141266; backdrop-filter: blur(8px); }
 .auth-required-brand { margin: 0 24px 28px; color: var(--accent); font-size: 25px; font-weight: 700; letter-spacing: -.07em; }
 .auth-required-card h1 { margin: 0 24px 8px; font-size: 23px; font-weight: 650; letter-spacing: -.045em; }
 .auth-required-card > p { margin: 0 24px 24px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.calendar-connection-page { display: grid; place-items: center; width: 100%; min-height: 100dvh; padding: 32px 16px; background: var(--canvas); }
+.calendar-connection-card { width: min(100%, 520px); padding: 42px 38px 36px; border: 1px solid var(--line); border-radius: 22px; background: var(--panel); box-shadow: var(--shadow-pop); text-align: center; }
+.calendar-connection-icon { display: grid; place-items: center; width: 60px; height: 60px; margin: 0 auto 22px; border-radius: 50%; }
+.calendar-connection-icon.success { color: #267f68; background: #dff3eb; }
+.calendar-connection-icon.error { color: #b43b25; background: #fbe3dc; }
+.calendar-connection-icon svg { width: 30px; height: 30px; stroke-width: 1.8; }
+.calendar-connection-eyebrow { margin: 0 0 10px; color: var(--accent); font-size: 12px; font-weight: 650; letter-spacing: .02em; }
+.calendar-connection-card h1 { margin: 0 0 10px; font-size: 25px; font-weight: 650; letter-spacing: -.045em; }
+.calendar-connection-card > p:not(.calendar-connection-eyebrow) { max-width: 390px; margin: 0 auto; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.calendar-connection-actions { display: flex; justify-content: center; gap: 10px; margin-top: 28px; }
+@media (max-width: 520px) {
+  .calendar-connection-page { align-items: start; padding: 16px 10px; }
+  .calendar-connection-card { padding: 34px 24px 28px; border: 0; box-shadow: none; }
+  .calendar-connection-actions { flex-direction: column; }
+  .calendar-connection-actions button { width: 100%; }
+}
 @media (max-width: 520px) {
   .auth-required-page { align-items: start; padding: 16px 10px; }
   .auth-required-card { border: 0; box-shadow: none; }

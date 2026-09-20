@@ -216,6 +216,36 @@ func TestValidMailReturnTo(t *testing.T) {
 	}
 }
 
+func TestValidCalendarReturnTo(t *testing.T) {
+	allowed := []string{
+		"prior://auth/callback",
+		"http://localhost:1420/auth/callback",
+		"https://app.prior.constantsuchet.fr/auth/callback",
+	}
+	for _, candidate := range []string{
+		"prior://auth/callback#/calendar-connected",
+		"https://app.prior.constantsuchet.fr/#/calendar-connected",
+		"http://localhost:1420/#/calendar-connected",
+	} {
+		if !validCalendarReturnTo(allowed, candidate) {
+			t.Errorf("validCalendarReturnTo(%q) must be true", candidate)
+		}
+	}
+	for _, candidate := range []string{
+		"",
+		"https://app.prior.constantsuchet.fr/auth/callback",
+		"https://app.prior.constantsuchet.fr/#/mail-connected",
+		"https://app.prior.constantsuchet.fr/evil#/calendar-connected",
+		"https://app.prior.constantsuchet.fr/?x=1#/calendar-connected",
+		"https://evil.example/#/calendar-connected",
+		"prior://evil/callback#/calendar-connected",
+	} {
+		if validCalendarReturnTo(allowed, candidate) {
+			t.Errorf("validCalendarReturnTo(%q) must be false", candidate)
+		}
+	}
+}
+
 func TestNormalizeReasoningEffort(t *testing.T) {
 	for _, effort := range []string{"low", "medium", "high", "xhigh", "minimal", "none", " HIGH "} {
 		if got := normalizeReasoningEffort(effort); got == "" {

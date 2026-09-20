@@ -36,11 +36,13 @@ import { collaborationStore } from "./lib/collaborationStore";
 import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
 import { MailView } from "./components/MailView";
 import { CalendarView } from "./components/CalendarView";
+import { CalendarConnectionSuccess } from "./components/CalendarConnectionSuccess";
 import { ProjectEditor } from "./components/collaboration/ProjectEditor";
 import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
 import { generateTaskFromMail } from "./lib/mailTask";
 import { emitMailAccountChange, saveMailAccount } from "./lib/mailAuth";
+import { emitCalendarAccountChange, parseCalendarConnectedUrl, startGoogleCalendarConnect } from "./lib/calendarAuth";
 import { parseWidgetUrl, refreshWidgetSnapshot } from "./lib/widgetSnapshot";
 import { logger } from "./lib/logger";
 import { purgeProductionDemoData } from "./lib/productionData";
@@ -175,6 +177,7 @@ export function App() {
   const [authError, setAuthError] = useState("");
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
   const [activeView, setActiveView] = useState<WorkspaceView>("today");
+  const [calendarConnection, setCalendarConnection] = useState<{ email: string | null; error: string | null } | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [notesProjectId, setNotesProjectId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -290,8 +293,19 @@ export function App() {
       setActiveView("inbox");
       emitMailAccountChange();
     };
+    const handleCalendarConnected = (result: { email: string | null; error: string | null }) => {
+      setCalendarConnection(result);
+      setActiveView("calendar");
+      if (!result.error) emitCalendarAccountChange();
+    };
     const handleHash = () => {
       const hash = window.location.hash;
+      if (hash.startsWith("#/calendar-connected")) {
+        const result = parseCalendarConnectedUrl(window.location.href);
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+        if (result) handleCalendarConnected(result);
+        return;
+      }
       if (!hash.startsWith("#/mail-connected")) return;
       const email = new URLSearchParams(hash.split("?")[1] ?? "").get("email");
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
@@ -306,6 +320,11 @@ export function App() {
       const { parseMailConnectedUrl } = await import("./lib/mailAuth");
       unlistenNative = await onOpenUrl((urls) => {
         for (const url of urls) {
+          const calendarResult = parseCalendarConnectedUrl(url);
+          if (calendarResult) {
+            handleCalendarConnected(calendarResult);
+            continue;
+          }
           const email = parseMailConnectedUrl(url);
           if (email) {
             handleMailConnected(email);
@@ -1318,6 +1337,16 @@ export function App() {
 
   if (productionAuthRequired && !user) {
     return <AuthGate authError={authError} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} />;
+  }
+
+  if (calendarConnection) {
+    return <CalendarConnectionSuccess
+      email={calendarConnection.email}
+      error={calendarConnection.error}
+      onOpenCalendar={() => { setCalendarConnection(null); setActiveView("calendar"); }}
+      onRetry={() => { setCalendarConnection(null); void startGoogleCalendarConnect().catch(() => setToast(t("common.calendar.import.googleError"))); }}
+      onClose={() => setCalendarConnection(null)}
+    />;
   }
 
   return (

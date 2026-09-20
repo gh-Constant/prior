@@ -24,6 +24,7 @@ export type CalendarSource = {
   id: string;
   name: string;
   type: CalendarSourceType;
+  accountId?: string;
   color: string;
   enabled: boolean;
   events: CalendarEvent[];
@@ -153,8 +154,23 @@ export function createIcsUrlSource(name: string, url: string, refreshInterval: C
   };
 }
 
+export function createGoogleCalendarSource(accountId: string, email: string, index = 0): CalendarSource {
+  return {
+    id: `calendar-google-${accountId}`,
+    name: email ? `Google Calendar · ${email}` : "Google Calendar",
+    type: "google",
+    accountId,
+    color: CALENDAR_COLORS[index % CALENDAR_COLORS.length],
+    enabled: true,
+    events: [],
+    refreshInterval: "hourly",
+  };
+}
+
 export function isCalendarSourceDue(source: CalendarSource, now = new Date()): boolean {
-  if (source.type !== "ics" || !source.url) return false;
+  if (source.type === "ics" && !source.url) return false;
+  if (source.type === "google" && !source.accountId) return false;
+  if (source.type !== "ics" && source.type !== "google") return false;
   if (!source.lastSyncedAt) return true;
   const lastSyncedAt = Date.parse(source.lastSyncedAt);
   if (!Number.isFinite(lastSyncedAt)) return true;
@@ -214,15 +230,21 @@ export function createDemoCalendarState(reference = new Date()): CalendarState {
 function sanitizeCalendarState(state: CalendarState): CalendarState {
   return {
     showHabits: state.showHabits,
-    // Demo calendars are useful in local development only. Never allow a
-    // persisted demo source to reappear in a production build.
+    // Demo/provider fixtures are useful in local development only. Google
+    // sources are production-safe only when they carry a server account id;
+    // Outlook and iCloud remain development placeholders for now.
     sources: state.sources
-      .filter((source) => isDevelopmentBuild() || source.type !== "demo")
+      .filter((source) => isDevelopmentBuild() || (
+        source.type !== "demo" &&
+        source.type !== "outlook" &&
+        source.type !== "icloud" &&
+        (source.type !== "google" || Boolean(source.accountId))
+      ))
       .filter((source) => source && Array.isArray(source.events))
       .map((source) => ({
         ...source,
         enabled: source.enabled !== false,
-        refreshInterval: source.type === "ics" && source.url ? source.refreshInterval ?? "hourly" : source.refreshInterval,
+        refreshInterval: (source.type === "ics" && source.url) || (source.type === "google" && source.accountId) ? source.refreshInterval ?? "hourly" : source.refreshInterval,
       })),
   };
 }
@@ -372,6 +394,85 @@ export async function fetchIcsCalendar(url: string, sourceId: string, color: str
   const body = await response.text();
   if (body.length > 8_000_000) throw new Error("Calendar is too large");
   return parseIcsCalendar(body, sourceId, color);
+}
+
+type GoogleCalendarDate = { date?: string; dateTime?: string };
+type GoogleCalendarItem = {
+  id?: string;
+  status?: string;
+  summary?: string;
+  location?: string;
+  start?: GoogleCalendarDate;
+  end?: GoogleCalendarDate;
+};
+
+export type CalendarTokenGetter = () => Promise<string>;
+
+function parseGoogleCalendarDate(value: GoogleCalendarDate | undefined): { date: string; time: string | null } | null {
+  if (value?.date) {
+    const parsed = parseDateKey(value.date);
+    return dateKey(parsed) === value.date ? { date: value.date, time: null } : null;
+  }
+  if (!value?.dateTime) return null;
+  const parsed = new Date(value.dateTime);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return { date: dateKey(parsed), time: timeFromMinutes(parsed.getHours() * 60 + parsed.getMinutes()) };
+}
+
+function googleCalendarEvent(item: GoogleCalendarItem, sourceId: string, color: string, index: number): CalendarEvent | null {
+  if (item.status === "cancelled") return null;
+  const start = parseGoogleCalendarDate(item.start);
+  if (!start) return null;
+  const end = parseGoogleCalendarDate(item.end);
+  return {
+    id: `${sourceId}-${item.id ?? index}`.replace(/[^a-zA-Z0-9._:-]/g, "-"),
+    sourceId,
+    title: item.summary?.trim() || "Google Calendar event",
+    date: start.date,
+    startTime: start.time,
+    endTime: end?.time ?? null,
+    color,
+    location: item.location?.trim() || undefined,
+    kind: "event",
+  };
+}
+
+/** Read the primary Google calendar for a broad rolling window. A broad
+ * window keeps navigation between week, month and agenda views local after a
+ * sync while the hourly refresh keeps the data current. */
+export async function fetchGoogleCalendar(getToken: CalendarTokenGetter, sourceId: string, color: string, signal?: AbortSignal): Promise<CalendarEvent[]> {
+  const token = await getToken();
+  const from = new Date();
+  from.setDate(from.getDate() - 90);
+  from.setHours(0, 0, 0, 0);
+  const to = new Date();
+  to.setFullYear(to.getFullYear() + 1);
+  to.setHours(23, 59, 59, 999);
+  const events: CalendarEvent[] = [];
+  let pageToken = "";
+  do {
+    const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
+    url.searchParams.set("singleEvents", "true");
+    url.searchParams.set("orderBy", "startTime");
+    url.searchParams.set("showDeleted", "false");
+    url.searchParams.set("maxResults", "2500");
+    url.searchParams.set("timeMin", from.toISOString());
+    url.searchParams.set("timeMax", to.toISOString());
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url, {
+      cache: "no-store",
+      signal,
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Google Calendar returned ${response.status}`);
+    const body = (await response.json()) as { items?: GoogleCalendarItem[]; nextPageToken?: string };
+    for (const [index, item] of (body.items ?? []).entries()) {
+      const event = googleCalendarEvent(item, sourceId, color, events.length + index);
+      if (event) events.push(event);
+    }
+    pageToken = body.nextPageToken ?? "";
+  } while (pageToken);
+  return events;
 }
 
 export function buildHabitCalendarEvents(habits: Habit[], from: Date, to: Date): CalendarEvent[] {

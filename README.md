@@ -35,7 +35,7 @@ Android requires JDK 17, Android SDK Platform 36, Build Tools 35, NDK 27.1.12297
 
 ## Authentication
 
-Email/password accounts are available directly in the app. Passwords are stored as bcrypt hashes and sessions are returned as bearer tokens. Google OAuth remains optional: create a Google Cloud OAuth client for a web application, add the exact redirect URI from `GOOGLE_REDIRECT_URL`, configure the consent screen with the verified `prior.constantsuchet.fr` domain, and keep the client secret only in the API environment. Prior requests only `openid email profile`. See [specs/AUTH.md](specs/AUTH.md).
+Email/password accounts are available directly in the app. Passwords are stored as bcrypt hashes and sessions are returned as bearer tokens. Google OAuth remains optional: create a Google Cloud OAuth client for a web application, add the exact redirect URI from `GOOGLE_REDIRECT_URL` plus `https://api.prior.constantsuchet.fr/v1/calendar/google/callback` for the Calendar connection, configure the consent screen with the verified `prior.constantsuchet.fr` domain, and keep the client secret only in the API environment. Prior sign-in requests `openid email profile`; Google Calendar additionally requests the read-only Calendar scope only when the user connects a calendar. See [specs/AUTH.md](specs/AUTH.md).
 
 Voice transcription is handled by the API with a per-user OpenAI key configured in Settings → Assistant. The key is stored with that user's assistant settings and encrypted at rest when `SETTINGS_ENCRYPTION_KEY` is configured; it is never logged or shared with another account. The authenticated client uploads a short `webm`/`mp4` recording to `POST /transcribe`, which forwards it to OpenAI's `gpt-4o-mini-transcribe` model.
 
