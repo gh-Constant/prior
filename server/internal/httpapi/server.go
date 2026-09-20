@@ -151,6 +151,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/calendar/google/callback", s.calendarGoogleCallback)
 	mux.HandleFunc("GET /v1/calendar/accounts", s.calendarAccounts)
 	mux.HandleFunc("GET /v1/calendar/token", s.calendarToken)
+	mux.HandleFunc("POST /v1/calendar/ics", s.calendarICSProxy)
 	mux.HandleFunc("DELETE /v1/calendar/accounts/{id}", s.calendarDisconnect)
 	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("POST /v1/sync/push", s.push)

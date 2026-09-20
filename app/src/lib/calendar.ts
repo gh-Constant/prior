@@ -1,5 +1,6 @@
 import type { Habit } from "../types";
 import { readScopedStorage, writeScopedStorage } from "./accountScope";
+import { API_URL } from "./api";
 import { habitOccurrenceDates } from "./habits";
 
 export type CalendarViewMode = "week" | "month" | "agenda";
@@ -388,8 +389,16 @@ export function parseIcsCalendar(value: string, sourceId: string, color: string)
   }));
 }
 
-export async function fetchIcsCalendar(url: string, sourceId: string, color: string, signal?: AbortSignal): Promise<CalendarEvent[]> {
-  const response = await fetch(url, { cache: "no-store", headers: { Accept: "text/calendar, text/plain;q=0.9, */*;q=0.1" }, signal });
+export async function fetchIcsCalendar(url: string, sourceId: string, color: string, signal?: AbortSignal, sessionToken?: string): Promise<CalendarEvent[]> {
+  const response = sessionToken
+    ? await fetch(`${API_URL}/v1/calendar/ics`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { Accept: "text/calendar, text/plain;q=0.9, */*;q=0.1", "Content-Type": "application/json", Authorization: `Bearer ${sessionToken}` },
+      body: JSON.stringify({ url }),
+      signal,
+    })
+    : await fetch(url, { cache: "no-store", headers: { Accept: "text/calendar, text/plain;q=0.9, */*;q=0.1" }, signal });
   if (!response.ok) throw new Error(`Calendar returned ${response.status}`);
   const body = await response.text();
   if (body.length > 8_000_000) throw new Error("Calendar is too large");

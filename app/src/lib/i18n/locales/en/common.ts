@@ -103,6 +103,7 @@ export const common = {
       icsAdd: "Add calendar",
       icsInvalidUrl: "Enter a valid http(s) URL.",
       icsError: "Could not load this ICS calendar.",
+      icsAuthRequired: "Sign in to import a remote ICS calendar.",
       googleError: "Could not start Google Calendar connection. Please try again.",
     },
     connection: {

@@ -188,7 +188,9 @@ export function CalendarView({ habits }: Props) {
         if (!session || !source.accountId) throw new Error("sign-in-required");
         events = await fetchGoogleCalendar(makeGoogleCalendarTokenGetter(session, source.accountId), source.id, source.color);
       } else {
-        events = await fetchIcsCalendar(source.url!, source.id, source.color);
+        const session = await getToken();
+        if (!session && import.meta.env.DEV !== true) return;
+        events = await fetchIcsCalendar(source.url!, source.id, source.color, undefined, session ?? undefined);
       }
       setState((current) => {
         const currentSource = current.sources.find((item) => item.id === source.id);
@@ -318,7 +320,12 @@ export function CalendarView({ habits }: Props) {
     setIcsError("");
     setSyncingSourceId(source.id);
     try {
-      const events = await fetchIcsCalendar(trimmedUrl, source.id, source.color);
+      const session = await getToken();
+      if (!session && import.meta.env.DEV !== true) {
+        setIcsError(t("common.calendar.import.icsAuthRequired"));
+        return;
+      }
+      const events = await fetchIcsCalendar(trimmedUrl, source.id, source.color, undefined, session ?? undefined);
       updateState({ ...state, sources: [...state.sources, { ...source, events, lastSyncedAt: new Date().toISOString() }] });
       setIcsName("");
       setIcsUrl("");

@@ -49,6 +49,33 @@ paths:
           description: settings
         '401':
           description: unauthenticated
+  /v1/calendar/ics:
+    post:
+      summary: Fetch a user-provided ICS feed through the Prior server proxy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  format: uri
+      responses:
+        '200':
+          description: ICS calendar content
+          content:
+            text/calendar:
+              schema:
+                type: string
+        '400':
+          description: invalid or non-public URL
+        '401':
+          description: unauthenticated
+        '502':
+          description: upstream calendar unavailable
   /v1/sync/pull:
     get:
       summary: Pull task/habit changes since a revision

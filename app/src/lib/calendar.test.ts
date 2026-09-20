@@ -1,11 +1,12 @@
 import type { Habit } from "../types";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildHabitCalendarEvents,
   createGoogleCalendarSource,
   createIcsUrlSource,
   createDemoCalendarState,
   eventsInRange,
+  fetchIcsCalendar,
   isCalendarSourceDue,
   mondayOf,
   parseIcsCalendar,
@@ -31,6 +32,8 @@ function makeHabit(overrides: Partial<Habit> = {}): Habit {
 }
 
 describe("calendar data", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it("seeds multiple demo sources with a deliberate overlap", () => {
     const state = createDemoCalendarState(new Date(2026, 8, 19));
     const monday = mondayOf(new Date(2026, 8, 19));
@@ -77,6 +80,23 @@ describe("calendar data", () => {
     ]));
     expect(isCalendarSourceDue({ ...source, lastSyncedAt: new Date(2026, 8, 21, 9, 30).toISOString() }, new Date(2026, 8, 21, 9, 45))).toBe(false);
     expect(isCalendarSourceDue({ ...source, lastSyncedAt: new Date(2026, 8, 21, 8, 0).toISOString() }, new Date(2026, 8, 21, 9, 1))).toBe(true);
+  });
+
+  it("loads remote ICS feeds through the authenticated Prior proxy", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchIcsCalendar("https://example.test/calendar.ics", "source-1", "#ef795b", undefined, "session-token");
+
+    const [requestURL, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(requestURL).toContain("/v1/calendar/ics");
+    expect(request.method).toBe("POST");
+    expect(new Headers(request.headers).get("authorization")).toBe("Bearer session-token");
+    expect(JSON.parse(request.body as string)).toEqual({ url: "https://example.test/calendar.ics" });
   });
 
   it("creates an account-bound Google source and refreshes it hourly", () => {
