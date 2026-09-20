@@ -662,7 +662,7 @@
 .agent-message-bubble {
   min-width: 0;
   border-radius: 14px;
-  color: #f8f7f4;
+  color: #ffffff;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -673,7 +673,7 @@
   border: 1px solid #4a342d;
   border-bottom-right-radius: 4px;
   background: #3b2d28;
-  color: #262524;
+  color: #ffffff;
   box-shadow: 0 4px 12px #00000066;
 }
 
