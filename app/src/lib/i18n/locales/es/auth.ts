@@ -30,6 +30,10 @@ export const auth = {
   google: {
     continue: "Continuar con Google",
   },
+  required: {
+    title: "Inicia sesión para usar Prior",
+    description: "Tus tareas, calendario, bandeja de entrada, hábitos y notas permanecen privados en tu cuenta.",
+  },
   errors: {
     googleFailed: "El inicio de sesión con Google falló o fue cancelado. Inténtalo de nuevo.",
     missingCode: "El enlace de inicio de sesión no incluye el código. Inicia sesión de nuevo.",

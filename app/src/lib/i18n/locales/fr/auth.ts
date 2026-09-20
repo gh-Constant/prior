@@ -30,6 +30,10 @@ export const auth = {
   google: {
     continue: "Continuer avec Google",
   },
+  required: {
+    title: "Connectez-vous pour utiliser Prior",
+    description: "Vos tâches, votre calendrier, votre boîte de réception, vos habitudes et vos notes restent privés à votre compte.",
+  },
   errors: {
     googleFailed: "La connexion Google a échoué ou a été annulée. Veuillez réessayer.",
     missingCode: "Le lien de connexion ne contient pas de code. Veuillez vous reconnecter.",

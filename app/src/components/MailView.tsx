@@ -65,7 +65,7 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
   const mailMenu = useContextMenu();
 
   const [provider, setProvider] = useState<MailProvider | null>(null);
-  const [providerKind, setProviderKind] = useState<"gmail" | "demo">("demo");
+  const [providerKind, setProviderKind] = useState<"gmail" | "demo" | "none">("none");
   const [labels, setLabels] = useState<MailLabel[]>([]);
   const [messages, setMessages] = useState<MailMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +97,7 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
   const cacheKey = useMemo(
     () => mailCacheKey({
       provider: providerKind,
-      account: account?.email ?? "demo",
+      account: account?.email ?? "none",
       folder,
       label: activeLabel ?? "",
       query: debouncedQuery,
@@ -109,8 +109,8 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
   const lastFetchRef = useRef(0);
 
   /* Resolve the provider: a Gmail provider when the server knows a connected
-     account for this Prior session, else the local demo mailbox. The local
-     record just seeds the "connected as" display until the server confirms. */
+     account for this Prior session. The local demo provider remains available
+     only in development so production never displays fabricated mail. */
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -131,17 +131,19 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
             return;
           }
         } catch {
-          // API unreachable or unauthorized: fall back to demo below.
+          // API unreachable or unauthorized: keep the inbox disconnected.
         }
       }
       if (!cancelled) {
-        const mod = await import("../lib/mail");
-        // In demo mode the server has no Gmail account for this session, so
-        // never surface a stale local record as "connected": the inbox must
-        // keep offering Connect Gmail.
         setAccount(null);
-        setProvider(new mod.DemoProvider(local?.email ?? "you@example.com"));
-        setProviderKind("demo");
+        if (import.meta.env.DEV) {
+          const mod = await import("../lib/mail");
+          setProvider(new mod.DemoProvider(local?.email ?? "you@example.com"));
+          setProviderKind("demo");
+        } else {
+          setProvider(null);
+          setProviderKind("none");
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -369,7 +371,9 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
 
   /* ---------------- Render ---------------- */
 
-  const showConnectCard = providerKind === "demo" && !account;
+  const showConnectCard = providerKind !== "gmail" && !account;
+  const connectBannerTitle = import.meta.env.DEV ? t("mail.connect.demoBanner") : t("mail.connect.title");
+  const connectBannerHint = import.meta.env.DEV ? t("mail.connect.demoHint") : t("mail.connect.body");
 
   return (
     <section className="mail-view" aria-label={t("mail.title")}>
@@ -455,7 +459,7 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
         {showConnectCard && (
           <button type="button" className="mail-demo-banner" onClick={() => setConnectOpen(true)}>
             <Icon name="sparkles" />
-            <span><strong>{t("mail.connect.demoBanner")}</strong> — {t("mail.connect.demoHint")}</span>
+            <span><strong>{connectBannerTitle}</strong> — {connectBannerHint}</span>
           </button>
         )}
 

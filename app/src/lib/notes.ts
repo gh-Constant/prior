@@ -160,6 +160,9 @@ export const LEGACY_SEED_WELCOME_NOTE_ID = "prior-seed-welcome-note";
 export const SEED_WELCOME_NOTE_ID = "e0000000-0000-4000-8000-000000000001";
 
 function ensureSeed(): void {
+  // The welcome note is a local-development fixture. Production accounts
+  // must start with an empty notes library.
+  if (import.meta.env.DEV !== true) return;
   if (readScopedStorage(NOTES_KEY) === null) {
     const timestamp = now();
     const welcome: Note = {

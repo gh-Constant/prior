@@ -30,6 +30,10 @@ export const auth = {
   google: {
     continue: "Mit Google fortfahren",
   },
+  required: {
+    title: "Melde dich an, um Prior zu verwenden",
+    description: "Deine Aufgaben, dein Kalender, dein Posteingang, deine Gewohnheiten und deine Notizen bleiben privat in deinem Konto.",
+  },
   errors: {
     googleFailed: "Die Google-Anmeldung ist fehlgeschlagen oder wurde abgebrochen. Bitte versuche es erneut.",
     missingCode: "Der Anmeldelink enthält keinen Code. Bitte melde dich erneut an.",

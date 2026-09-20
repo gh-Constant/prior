@@ -30,6 +30,10 @@ export const auth = {
   google: {
     continue: "Continuar com o Google",
   },
+  required: {
+    title: "Entre para usar o Prior",
+    description: "As suas tarefas, calendário, caixa de entrada, hábitos e notas permanecem privados na sua conta.",
+  },
   errors: {
     googleFailed: "O login com o Google falhou ou foi cancelado. Tente novamente.",
     missingCode: "O link de login não contém o código. Entre novamente.",

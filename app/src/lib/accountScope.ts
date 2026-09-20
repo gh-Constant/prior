@@ -15,6 +15,7 @@ export const LEGACY_STORAGE_KEYS = [
   "prior.notes.v1",
   "prior.note-folders.v1",
   "prior.note-attachments.v1",
+  "prior.calendar.v1",
   "prior.ai.settings.v1",
 ] as const;
 

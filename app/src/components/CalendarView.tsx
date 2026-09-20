@@ -34,11 +34,11 @@ const TIME_START = 7 * 60;
 const TIME_END = 22 * 60;
 const HOUR_HEIGHT = 64;
 const WEEKDAY_KEYS = ["common.calendar.weekdays.monday", "common.calendar.weekdays.tuesday", "common.calendar.weekdays.wednesday", "common.calendar.weekdays.thursday", "common.calendar.weekdays.friday", "common.calendar.weekdays.saturday", "common.calendar.weekdays.sunday"] as const;
-const IMPORT_OPTIONS: Array<{ type: Exclude<CalendarSourceType, "demo">; icon: "google" | "cloud" | "file"; labelKey: string }> = [
+const IMPORT_OPTIONS = ([
   { type: "google", icon: "google", labelKey: "common.calendar.import.google" },
   { type: "outlook", icon: "cloud", labelKey: "common.calendar.import.outlook" },
   { type: "ics", icon: "file", labelKey: "common.calendar.import.ics" },
-];
+] as const).filter((option) => import.meta.env.DEV || option.type === "ics");
 
 function isToday(value: string): boolean {
   return value === dateKey();
@@ -230,6 +230,9 @@ export function CalendarView({ habits }: Props) {
       setIcsError("");
       return;
     }
+    // Google and Outlook need provider-specific OAuth grants. Until those
+    // flows exist, never create fabricated events in a production build.
+    if (import.meta.env.DEV !== true) return;
     const source = createImportedDemoSource(type, anchorDate, state.sources.length);
     updateState({ ...state, sources: [...state.sources, source] });
     closeImport();

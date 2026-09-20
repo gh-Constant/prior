@@ -7,8 +7,8 @@ import { readScopedStorage, writeScopedStorage } from "./accountScope";
  *
  * Two providers share one interface:
  *  - `GmailProvider` talks to the Gmail REST API with a user access token.
- *  - `DemoProvider` serves a local, fully-editable demo mailbox (used in
- *    development and whenever no Google account is connected).
+ *  - `DemoProvider` serves a local, fully-editable demo mailbox in development
+ *    only. Production never fabricates inbox content.
  *
  * The demo provider persists its edits to scoped localStorage so archive /
  * star / read / label changes survive reloads and feel real while testing
@@ -293,11 +293,11 @@ export class DemoProvider implements MailProvider {
 /* Provider resolution                                                       */
 /* ------------------------------------------------------------------------ */
 
-/** Returns a Gmail provider when a token getter is available, else demo. */
+/** Returns a real Gmail provider, or the DEV-only fixture provider. */
 export function resolveMailProvider(
   accountEmail: string | null,
   getToken: (() => Promise<string>) | null,
-): MailProvider {
+): MailProvider | null {
   if (accountEmail && getToken) return new GmailProvider(accountEmail, getToken);
-  return new DemoProvider(accountEmail ?? "you@example.com");
+  return import.meta.env.DEV ? new DemoProvider(accountEmail ?? "you@example.com") : null;
 }

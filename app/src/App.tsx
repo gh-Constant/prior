@@ -14,6 +14,7 @@ import { TaskComposer } from "./components/TaskComposer";
 import { CompletionExitProvider, TaskRow } from "./components/TaskRow";
 import { TaskColumns } from "./components/TaskColumns";
 import { AccountDialog } from "./components/AccountDialog";
+import { AuthGate } from "./components/AuthGate";
 import { updateAndroidWidget } from "./lib/widget";
 import { defaultTaskFilters, type TaskFilterState } from "./lib/taskFilters";
 import { TaskFilters } from "./components/TaskFilters";
@@ -42,6 +43,7 @@ import { generateTaskFromMail } from "./lib/mailTask";
 import { emitMailAccountChange, saveMailAccount } from "./lib/mailAuth";
 import { parseWidgetUrl, refreshWidgetSnapshot } from "./lib/widgetSnapshot";
 import { logger } from "./lib/logger";
+import { purgeProductionDemoData } from "./lib/productionData";
 import type { MailMessage } from "./types";
 
 logger.init();
@@ -151,6 +153,8 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, ta
 
 export function App() {
   const { t } = useI18n();
+  const productionAuthRequired = import.meta.env.DEV !== true;
+  const [authReady, setAuthReady] = useState(!productionAuthRequired);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [areas, setAreas] = useState<Area[]>(() => workspaceStore.listAreas());
@@ -209,6 +213,28 @@ export function App() {
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
   const aiShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ J" : "Ctrl J";
+
+  useEffect(() => {
+    if (!productionAuthRequired) return undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await purgeProductionDemoData();
+        const token = await getToken();
+        const storedUser = getUser();
+        if (!token || !storedUser) {
+          if (storedUser || token) await clearSession().catch(() => undefined);
+          if (!cancelled) setUser(null);
+        }
+      } catch (error) {
+        console.warn("Prior production data cleanup failed:", error);
+        if (!cancelled) setUser(null);
+      } finally {
+        if (!cancelled) setAuthReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [productionAuthRequired]);
 
   const refreshWorkspace = useCallback(() => {
     workspaceStore.syncNoteCategories();
@@ -1284,6 +1310,14 @@ export function App() {
       setAuthError(t("common.errors.googleFailed"));
       setAuthOpen(true);
     }
+  }
+
+  if (productionAuthRequired && !authReady) {
+    return <main className="auth-required-page auth-required-loading" aria-live="polite">{t("common.actions.loading")}</main>;
+  }
+
+  if (productionAuthRequired && !user) {
+    return <AuthGate authError={authError} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} />;
   }
 
   return (

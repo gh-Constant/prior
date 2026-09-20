@@ -1,4 +1,5 @@
 import type { Habit } from "../types";
+import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import { habitOccurrenceDates } from "./habits";
 
 export type CalendarViewMode = "week" | "month" | "agenda";
@@ -50,6 +51,16 @@ export const CALENDAR_REFRESH_INTERVAL_MS: Record<CalendarRefreshInterval, numbe
   hourly: 60 * 60 * 1000,
   daily: 24 * 60 * 60 * 1000,
 };
+
+const EMPTY_CALENDAR_STATE: CalendarState = { showHabits: true, sources: [] };
+
+function isDevelopmentBuild(): boolean {
+  try {
+    return import.meta.env.DEV === true;
+  } catch {
+    return false;
+  }
+}
 
 const MINUTES_PER_DAY = 24 * 60;
 
@@ -200,6 +211,22 @@ export function createDemoCalendarState(reference = new Date()): CalendarState {
   };
 }
 
+function sanitizeCalendarState(state: CalendarState): CalendarState {
+  return {
+    showHabits: state.showHabits,
+    // Demo calendars are useful in local development only. Never allow a
+    // persisted demo source to reappear in a production build.
+    sources: state.sources
+      .filter((source) => isDevelopmentBuild() || source.type !== "demo")
+      .filter((source) => source && Array.isArray(source.events))
+      .map((source) => ({
+        ...source,
+        enabled: source.enabled !== false,
+        refreshInterval: source.type === "ics" && source.url ? source.refreshInterval ?? "hourly" : source.refreshInterval,
+      })),
+  };
+}
+
 function isCalendarState(value: unknown): value is CalendarState {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<CalendarState>;
@@ -207,28 +234,23 @@ function isCalendarState(value: unknown): value is CalendarState {
 }
 
 export function loadCalendarState(): CalendarState {
-  if (typeof window === "undefined") return createDemoCalendarState();
+  if (typeof window === "undefined") return isDevelopmentBuild() ? createDemoCalendarState() : EMPTY_CALENDAR_STATE;
   try {
-    const raw = window.localStorage.getItem(CALENDAR_STORAGE_KEY);
-    if (!raw) return createDemoCalendarState();
+    const raw = readScopedStorage(CALENDAR_STORAGE_KEY);
+    if (!raw) return isDevelopmentBuild() ? createDemoCalendarState() : EMPTY_CALENDAR_STATE;
     const parsed: unknown = JSON.parse(raw);
-    if (!isCalendarState(parsed)) return createDemoCalendarState();
-    return {
-      showHabits: parsed.showHabits,
-      sources: parsed.sources.filter((source) => source && Array.isArray(source.events)).map((source) => ({
-        ...source,
-        enabled: source.enabled !== false,
-        refreshInterval: source.type === "ics" && source.url ? source.refreshInterval ?? "hourly" : source.refreshInterval,
-      })),
-    };
+    if (!isCalendarState(parsed)) return isDevelopmentBuild() ? createDemoCalendarState() : EMPTY_CALENDAR_STATE;
+    const sanitized = sanitizeCalendarState(parsed);
+    if (JSON.stringify(sanitized) !== JSON.stringify(parsed)) writeScopedStorage(CALENDAR_STORAGE_KEY, JSON.stringify(sanitized));
+    return sanitized;
   } catch {
-    return createDemoCalendarState();
+    return isDevelopmentBuild() ? createDemoCalendarState() : EMPTY_CALENDAR_STATE;
   }
 }
 
 export function saveCalendarState(state: CalendarState): void {
   try {
-    window.localStorage.setItem(CALENDAR_STORAGE_KEY, JSON.stringify(state));
+    writeScopedStorage(CALENDAR_STORAGE_KEY, JSON.stringify(sanitizeCalendarState(state)));
   } catch {
     // Private browsing and restricted webviews can reject localStorage.
   }

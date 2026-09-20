@@ -7,6 +7,7 @@ import { openExternalUrl } from "./browser";
 import { getSecret, removeSecret, setSecret } from "./secureStore";
 import { translateStored } from "./i18n";
 import { isAndroid, isTauri } from "./platform";
+import { purgeProductionDemoData } from "./productionData";
 
 const USER_KEY = "prior.session.user";
 
@@ -55,14 +56,28 @@ export async function clearSession(): Promise<void> {
 }
 
 async function saveSession(result: { token: string; user: SessionUser }): Promise<SessionUser> {
+  // Clean any local fixtures before anonymous data can be claimed by a real
+  // account. The helper is a no-op for local development builds.
+  if (import.meta.env.DEV !== true) await purgeProductionFixtures();
   await setSecret("session_token", result.token);
   cachedToken = result.token;
   tokenRead = null;
   saveUser(result.user);
   migrateLegacyStorageForAccount(result.user.id);
   claimAnonymousStorageForAccount(result.user.id);
+  if (import.meta.env.DEV !== true) await purgeProductionFixtures();
   emitAccountScopeChange();
   return result.user;
+}
+
+async function purgeProductionFixtures(): Promise<void> {
+  try {
+    await purgeProductionDemoData();
+  } catch (error) {
+    // Sign-in must remain usable if a local cache is unavailable. Production
+    // reads still filter demo sources, and the next startup retries cleanup.
+    console.warn("Prior could not clean local demo data:", error);
+  }
 }
 
 export async function signInWithPassword(email: string, password: string): Promise<SessionUser> {

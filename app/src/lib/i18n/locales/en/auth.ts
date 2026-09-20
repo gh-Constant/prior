@@ -30,6 +30,10 @@ export const auth = {
   google: {
     continue: "Continue with Google",
   },
+  required: {
+    title: "Sign in to use Prior",
+    description: "Your tasks, calendar, inbox, habits, and notes stay private to your account.",
+  },
   errors: {
     googleFailed: "Google sign-in failed or was cancelled. Please try again.",
     missingCode: "The sign-in link is missing its code. Please sign in again.",
