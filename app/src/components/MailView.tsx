@@ -83,6 +83,8 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
   const [connectOpen, setConnectOpen] = useState(false);
   const [mobilePane, setMobilePane] = useState<"list" | "read">("list");
   const [account, setAccount] = useState(getMailAccount());
+  const [aiBusyId, setAiBusyId] = useState<string | null>(null);
+  const aiBusyRef = useRef<string | null>(null);
   /* Bumped when the Gmail connection changes (OAuth return, disconnect).
      Native shells never reload on return, so the provider resolution below
      must re-run from this instead of a page load. */
@@ -318,10 +320,24 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
     setSelectMode(false);
   }, [messages, checkedIds, applyModify]);
 
+  const createTaskAI = useCallback(async (message: MailMessage): Promise<void> => {
+    if (aiBusyRef.current) return;
+    aiBusyRef.current = message.id;
+    setAiBusyId(message.id);
+    try {
+      await onCreateTaskAI(message);
+    } finally {
+      if (aiBusyRef.current === message.id) {
+        aiBusyRef.current = null;
+        setAiBusyId(null);
+      }
+    }
+  }, [onCreateTaskAI]);
+
   const buildMenuItems = useCallback((m: MailMessage): ContextMenuItem[] => {
     return [
       { label: t("mail.menu.addToTask"), icon: "plus", run: () => void onCreateTask(taskDraftFromMail(m, t)) },
-      { label: t("mail.menu.addToTaskAI"), icon: "sparkles", run: () => void onCreateTaskAI(m) },
+      { label: t("mail.menu.addToTaskAI"), icon: "sparkles", run: () => void createTaskAI(m) },
       { label: t("mail.menu.tags"), icon: "tag", run: () => setTagsFor(m) },
       m.archived || !m.labelIds.includes("INBOX")
         ? { label: t("mail.menu.unarchive"), icon: "inbox", run: () => unarchive(m) }
@@ -334,7 +350,7 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
         : { label: t("mail.menu.markUnread"), icon: "mail", run: () => toggleRead(m) },
       { label: t("mail.menu.delete"), icon: "trash", danger: true, run: () => remove(m) },
     ];
-  }, [t, onCreateTask, onCreateTaskAI, archive, unarchive, toggleStar, toggleRead, remove]);
+  }, [t, onCreateTask, createTaskAI, archive, unarchive, toggleStar, toggleRead, remove]);
 
   const toggleTag = useCallback((labelId: string) => {
     if (!tagsFor) return;
@@ -487,6 +503,8 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
               onContextMenu={(e) => mailMenu.openMenu(e, buildMenuItems(m))}
               longPress={mailMenu.longPress(() => buildMenuItems(m))}
               starLabel={m.starred ? t("mail.actions.unstar") : t("mail.actions.star")}
+              aiBusy={aiBusyId === m.id}
+              aiBusyLabel={t("mail.ai.generating")}
             />
           ))}
           {nextPageToken && !loading && (
@@ -507,7 +525,8 @@ export function MailView({ user, onCreateTask, onCreateTaskAI }: MailViewProps) 
             onStar={() => toggleStar(selectedMessage)}
             onDelete={() => remove(selectedMessage)}
             onAddTask={() => void onCreateTask(taskDraftFromMail(selectedMessage, t))}
-            onAddTaskAI={() => void onCreateTaskAI(selectedMessage)}
+            onAddTaskAI={() => void createTaskAI(selectedMessage)}
+            aiBusy={aiBusyId === selectedMessage.id}
           />
         ) : (
           <div className="mail-read-empty">
@@ -551,12 +570,15 @@ type MailRowProps = {
   readonly onToggleStar: () => void;
   readonly onContextMenu: (e: React.MouseEvent) => void;
   readonly longPress: Record<string, unknown>;
+  readonly aiBusy: boolean;
+  readonly aiBusyLabel: string;
 };
 
-function MailRow({ message: m, labels, isSelected, isChecked, selectMode, lang, starLabel, onSelect, onToggleStar, onContextMenu, longPress }: MailRowProps) {
+function MailRow({ message: m, labels, isSelected, isChecked, selectMode, lang, starLabel, onSelect, onToggleStar, onContextMenu, longPress, aiBusy, aiBusyLabel }: MailRowProps) {
   return (
     <div
       role="listitem"
+      aria-busy={aiBusy}
       className={`mail-row ${m.unread ? "unread" : ""} ${isSelected ? "selected" : ""} ${isChecked ? "checked" : ""}`}
       onClick={onSelect}
       onContextMenu={onContextMenu}
@@ -586,6 +608,7 @@ function MailRow({ message: m, labels, isSelected, isChecked, selectMode, lang, 
           </div>
         )}
       </div>
+      {aiBusy && <span className="mail-row-ai-loading" role="status" aria-label={aiBusyLabel}><Icon name="refresh" /></span>}
       <button
         type="button"
         className={`mail-star ${m.starred ? "on" : ""}`}
@@ -620,9 +643,10 @@ type MailReaderProps = {
   readonly onDelete: () => void;
   readonly onAddTask: () => void;
   readonly onAddTaskAI: () => void;
+  readonly aiBusy: boolean;
 };
 
-function MailReader({ message: m, labelById, onBack, onArchive, onStar, onDelete, onAddTask, onAddTaskAI }: MailReaderProps) {
+function MailReader({ message: m, labelById, onBack, onArchive, onStar, onDelete, onAddTask, onAddTaskAI, aiBusy }: MailReaderProps) {
   const { t, tp, lang } = useI18n();
   const shownLabels = m.labelIds.map((id) => labelById.get(id)).filter((l): l is MailLabel => Boolean(l && !l.system));
   const toList = m.to.map((a) => a.name || a.email).join(", ");
@@ -654,7 +678,7 @@ function MailReader({ message: m, labelById, onBack, onArchive, onStar, onDelete
         <button type="button" className="mail-icon-btn danger" title={t("mail.actions.delete")} aria-label={t("mail.actions.delete")} onClick={onDelete}><Icon name="trash" /></button>
         <span className="mail-reader-spacer" />
         <button type="button" className="mail-task-btn" onClick={onAddTask}><Icon name="plus" /><span>{t("mail.actions.addToTask")}</span></button>
-        <button type="button" className="mail-task-btn ai" onClick={onAddTaskAI}><Icon name="sparkles" /><span>{t("mail.actions.addToTaskAI")}</span></button>
+        <button type="button" className={`mail-task-btn ai${aiBusy ? " loading" : ""}`} disabled={aiBusy} aria-busy={aiBusy} onClick={onAddTaskAI}><Icon name={aiBusy ? "refresh" : "sparkles"} /><span>{aiBusy ? t("mail.ai.generating") : t("mail.actions.addToTaskAI")}</span></button>
       </div>
       <header className="mail-reader-header">
         <h2 className="mail-reader-subject">{m.subject}</h2>

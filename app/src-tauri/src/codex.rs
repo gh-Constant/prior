@@ -613,6 +613,11 @@ impl CodexProcess {
                             "sandbox": "read-only",
                             "model": request.model.clone(),
                             "personality": "friendly",
+                            // Prior's assistant conversations are temporary
+                            // implementation threads, not user Codex chats.
+                            // Keep them in memory so they do not pollute the
+                            // Codex desktop history.
+                            "ephemeral": true,
                             "serviceName": "prior"
                         }),
                         &request,
@@ -757,6 +762,7 @@ impl CodexProcess {
                             "sandbox": "read-only",
                             "model": request.model.clone(),
                             "personality": "friendly",
+                            "ephemeral": true,
                             "serviceName": "prior"
                         }),
                         &request,

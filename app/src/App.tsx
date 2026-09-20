@@ -144,11 +144,11 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, ta
     );
   }
   if (layout === "board") {
-    return <TaskColumns tasks={visibleTasks} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />;
+    return <TaskColumns tasks={visibleTasks} hideNextStatus onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />;
   }
   return (
     <section className="list-view" aria-label={t("common.views.allTasks")}>
-      {visibleTasks.map((task) => <TaskRow key={task.id} task={task} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}
+      {visibleTasks.map((task) => <TaskRow key={task.id} task={task} hideNextStatus onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}
     </section>
   );
 }

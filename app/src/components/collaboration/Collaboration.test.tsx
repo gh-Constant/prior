@@ -228,6 +228,7 @@ describe("WorkHubView opt-in integration", () => {
   it("preserves personal project tabs until collaboration props are supplied", () => {
     const { rerender } = render(<WorkHubView {...props} />);
     expect(screen.getByRole("tab", { name: /Tasks/ })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Board" })).toBeVisible();
     expect(screen.getByRole("tab", { name: /Notes/ })).toBeVisible();
     expect(screen.queryByRole("tab", { name: "Overview" })).not.toBeInTheDocument();
     rerender(<WorkHubView {...props} collaborationByProject={{ [project.id]: base }} />);

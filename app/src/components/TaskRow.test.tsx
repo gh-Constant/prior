@@ -116,6 +116,15 @@ describe("TaskRow project chip", () => {
     const element = await renderRow({ projectId: "missing" }, null);
     expect(element.querySelector(".task-project-meta")).toBeNull();
   });
+
+  it("can hide the next-action badge in global task views", async () => {
+    const element = await renderRow({ status: "next" });
+    expect(element.querySelector(".task-status-badge")).not.toBeNull();
+    await act(async () => {
+      root?.render(<TaskRow task={{ ...task, status: "next" }} hideNextStatus onChange={vi.fn(async () => undefined)} onDelete={vi.fn(async () => undefined)} />);
+    });
+    expect(element.querySelector(".task-status-badge")).toBeNull();
+  });
 });
 
 describe("TaskRow context menu", () => {

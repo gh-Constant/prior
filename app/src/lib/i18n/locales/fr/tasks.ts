@@ -52,7 +52,7 @@ export const tasks = {
     markTitleComplete: "Marquer {title} comme terminée",
     markTitleIncomplete: "Marquer {title} comme non terminée",
     details: "Détails de la tâche",
-    statusNext: "Suivante",
+    statusNext: "À faire ensuite",
     statusInProgress: "En cours",
     statusWaiting: "En attente",
     markImportant: "Marquer important",

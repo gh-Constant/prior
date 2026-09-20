@@ -8,16 +8,17 @@ type Props = {
   readonly onDelete: (task: Task) => Promise<void>;
   readonly onEdit: (task: Task) => void;
   readonly projects?: readonly Project[];
+  readonly hideNextStatus?: boolean;
 };
 
-export function TaskColumns({ tasks, onChange, onDelete, onEdit, projects = [] }: Props) {
+export function TaskColumns({ tasks, onChange, onDelete, onEdit, projects = [], hideNextStatus = false }: Props) {
   const { t } = useI18n();
   const projectById = new Map(projects.map((project) => [project.id, project]));
   return (
     <section className="task-columns" aria-label={t("tasks.columns.label")}>
       {tasks.map((task) => (
         <div className="task-card" key={task.id}>
-          <TaskRow task={task} project={task.projectId ? projectById.get(task.projectId) ?? null : null} onChange={onChange} onDelete={onDelete} onEdit={onEdit} />
+          <TaskRow task={task} project={task.projectId ? projectById.get(task.projectId) ?? null : null} hideNextStatus={hideNextStatus} onChange={onChange} onDelete={onDelete} onEdit={onEdit} />
         </div>
       ))}
     </section>

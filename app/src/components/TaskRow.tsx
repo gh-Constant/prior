@@ -8,7 +8,7 @@ import { Icon } from "./Icon";
 import { TaskStatusBadge } from "./TaskStatusBadge";
 import { DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 
-type Props = { readonly task: Task; readonly onChange: (task: Task) => Promise<void>; readonly onDelete: (task: Task) => Promise<void>; readonly onEdit?: (task: Task) => void; readonly hideFlags?: boolean; readonly project?: Pick<Project, "name" | "icon"> | null };
+type Props = { readonly task: Task; readonly onChange: (task: Task) => Promise<void>; readonly onDelete: (task: Task) => Promise<void>; readonly onEdit?: (task: Task) => void; readonly hideFlags?: boolean; readonly hideNextStatus?: boolean; readonly project?: Pick<Project, "name" | "icon"> | null };
 const CompletionExitContext = createContext<CompletionExitDeadlines>({});
 
 function formatDueDate(value: string, lang: string): string {
@@ -28,7 +28,7 @@ export function CompletionExitProvider({ deadlines, children }: { readonly deadl
   return <CompletionExitContext.Provider value={deadlines}>{children}</CompletionExitContext.Provider>;
 }
 
-export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, project = null }: Props) {
+export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, hideNextStatus = false, project = null }: Props) {
   const { t, lang } = useI18n();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
@@ -118,7 +118,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, p
           <span className={`task-priority priority-${task.priority ?? 4}`}><Icon name="flag" /> P{task.priority ?? 4}</span>
           {task.projectId && project?.name ? <span className="task-project-meta" title={project.name}><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /><span className="task-project-name">{project.name}</span></span> : null}
           {task.dueDate && <span className="task-due-date"><Icon name="calendar-check" /> {formatDueDate(task.dueDate, lang)}{task.dueTime ? ` · ${task.dueTime}` : ""}</span>}
-          <TaskStatusBadge status={task.completed ? "done" : task.status ?? "inbox"} label={statusLabel(task.completed ? "done" : task.status, t)} />
+          {!(hideNextStatus && !task.completed && task.status === "next") && <TaskStatusBadge status={task.completed ? "done" : task.status ?? "inbox"} label={statusLabel(task.completed ? "done" : task.status, t)} />}
           {task.assigneeName && <span className="task-assignee-meta"><Icon name="user" /> {task.assigneeName}</span>}
         </div>
       </div>
