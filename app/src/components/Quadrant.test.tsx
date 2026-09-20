@@ -71,6 +71,35 @@ describe("Quadrant component (Eisenhower matrix)", () => {
     });
   });
 
+  it("hides the next status badge when hideNextStatus is set, like all tasks and today", () => {
+    const { rerender } = render(
+      <Quadrant
+        id="focus"
+        label="Focus (Do First)"
+        tasks={sampleTasks}
+        onChange={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+      />
+    );
+    expect(document.querySelector(".task-status-badge")).toBeInTheDocument();
+
+    rerender(
+      <Quadrant
+        id="focus"
+        label="Focus (Do First)"
+        tasks={sampleTasks}
+        onChange={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+        hideNextStatus
+      />
+    );
+    // The "next" task badge disappears; the "in_progress" badge stays.
+    const badges = [...document.querySelectorAll(".task-status-badge")];
+    expect(badges).toHaveLength(1);
+  });
+
   it("preserves task metadata including area, project, status, and delegation values", () => {
     render(
       <Quadrant

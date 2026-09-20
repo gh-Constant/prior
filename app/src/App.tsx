@@ -145,7 +145,7 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, ta
   if (activeView === "eisenhower") {
     return (
       <div className="quadrant-grid">
-        {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}
+        {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} projects={projects} hideNextStatus />)}
       </div>
     );
   }
@@ -211,13 +211,9 @@ export function App() {
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const { deadlines: completionExitDeadlines, retain: retainCompletionExit, release: releaseCompletionExit } = useCompletionExits();
-  const [agentOpen, setAgentOpen] = useState(() => {
-    try {
-      return localStorage.getItem("prior.ai.open") === "true";
-    } catch {
-      return false;
-    }
-  });
+  // The assistant always starts closed: it only opens when the user asks
+  // for it (sidebar button or ⌘/Ctrl J), never on arrival or after a sync.
+  const [agentOpen, setAgentOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
@@ -274,14 +270,6 @@ export function App() {
       window.removeEventListener("focus", onFocus);
     };
   }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("prior.ai.open", String(agentOpen));
-    } catch {
-      // ignore
-    }
-  }, [agentOpen]);
 
   useEffect(() => {
     try {
@@ -743,16 +731,15 @@ export function App() {
     window.addEventListener(ACCOUNT_DATA_LOCAL, scheduleWorkspaceSync);
     return () => window.removeEventListener(ACCOUNT_DATA_LOCAL, scheduleWorkspaceSync);
   }, [scheduleWorkspaceSync]);
-  const savedUiState = useRef({ agentOpen, sidebarCollapsed });
+  const savedUiState = useRef({ sidebarCollapsed });
   useEffect(() => {
     const patch: Record<string, string> = {};
-    if (savedUiState.current.agentOpen !== agentOpen) patch["prior.ai.open"] = String(agentOpen);
     if (savedUiState.current.sidebarCollapsed !== sidebarCollapsed) patch["prior.sidebar.collapsed"] = String(sidebarCollapsed);
-    savedUiState.current = { agentOpen, sidebarCollapsed };
+    savedUiState.current = { sidebarCollapsed };
     if (Object.keys(patch).length) setAccountPreference("ui", patch);
-  }, [agentOpen, sidebarCollapsed]);
+  }, [sidebarCollapsed]);
   useEffect(() => {
-    const apply = () => { setAgentOpen(localStorage.getItem("prior.ai.open") === "true"); setSidebarCollapsed(localStorage.getItem("prior.sidebar.collapsed") === "true"); };
+    const apply = () => { setSidebarCollapsed(localStorage.getItem("prior.sidebar.collapsed") === "true"); };
     window.addEventListener(PREFERENCES_APPLIED, apply);
     return () => window.removeEventListener(PREFERENCES_APPLIED, apply);
   }, []);

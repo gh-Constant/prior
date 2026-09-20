@@ -218,28 +218,8 @@ function rangeLabel(period: HabitPeriod, from: Date, to: Date, lang: string, t: 
   return `${new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" }).format(from)}–${new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" }).format(to)}`;
 }
 
-function countPeriodProgress(habits: Habit[], from: Date, to: Date): { completed: number; scheduled: number } {
-  let completed = 0;
-  let scheduled = 0;
-  for (const habit of habits) {
-    const completedDates = new Set(habit.completedDates ?? []);
-    for (const occurrence of habitOccurrenceDates(habit, from, to)) {
-      scheduled += 1;
-      if (completedDates.has(occurrence)) completed += 1;
-    }
-  }
-  return { completed, scheduled };
-}
-
-function periodSummary(period: HabitPeriod, dueCount: number, habitCount: number, progress: { completed: number; scheduled: number }, t: TFn, tp: TpFn): string {
-  if (period === "today") return dueCount === 0 ? t("habits.view.allClear") : tp("habits.view.due", dueCount);
-  if (period === "all") return tp("habits.view.count", habitCount);
-  if (!progress.scheduled) return tp("habits.view.count", habitCount);
-  return t("habits.view.progress", { completed: progress.completed, scheduled: progress.scheduled });
-}
-
 export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdit }: Props) {
-  const { t, tp, lang } = useI18n();
+  const { t, lang } = useI18n();
   const [period, setPeriod] = useState<HabitPeriod>("today");
   const reference = new Date();
   const [from, to] = rangeFor(period, reference);
@@ -321,19 +301,10 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
   const sections = GROUP_ORDER
     .map((group) => ({ group, items: visibleItems.filter(({ habit }) => scheduleGroupFor(habit) === group) }))
     .filter(({ items }) => items.length > 0);
-  const dueCount = habits.filter((habit) => ["due", "overdue"].includes(habitStatus(habit, reference))).length;
-  const progress = useMemo(() => countPeriodProgress(visibleItems.map(({ habit }) => habit), from, to), [from.getTime(), to.getTime(), visibleItems]);
   const emptyTitle = t(EMPTY_KEYS[period]);
 
   return (
     <section className="habits-view" aria-label={t("habits.view.label")}>
-      <div className="habits-intro">
-        <div className="habits-intro-copy">
-          <p className="eyebrow">{t("habits.view.eyebrow")}</p>
-          <p className="habits-summary">{periodSummary(period, dueCount, habits.length, progress, t, tp)}</p>
-        </div>
-      </div>
-
       <div className="habit-period-bar">
         <div className="habit-period-tabs" role="tablist" aria-label={t("habits.view.periodLabel")}>
           {(["today", "week", "month", "all"] as const).map((value) => (

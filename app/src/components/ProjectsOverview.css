@@ -49,12 +49,12 @@
 .projects-card-name { color: var(--ink); font-size: 16px; font-weight: 550; letter-spacing: -.02em; line-height: 1.45; overflow-wrap: anywhere; }
 .projects-card-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .projects-card-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
-.projects-card-status { display: inline-flex; align-items: center; gap: 7px; color: #69655e; font-size: 12px; font-weight: 500; line-height: 1.4; }
-.projects-card-status > span { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: currentColor; }
-.projects-card-status.is-active { color: #507348; }
-.projects-card-status.is-planned { color: #5d6e83; }
-.projects-card-status.is-paused { color: #8a6931; }
-.projects-card-status.is-completed { color: #557563; }
+.projects-card-status { display: inline-flex; align-items: center; gap: 7px; min-height: 24px; padding: 2px 10px 2px 8px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1.4; white-space: nowrap; }
+.projects-card-status > span { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: currentColor; }
+.projects-card-status.is-active { border-color: #bcd8b4; background: #e6f2e1; color: #3c6b35; }
+.projects-card-status.is-planned { border-color: #c3d2e5; background: #e8eef7; color: #3d5a80; }
+.projects-card-status.is-paused { border-color: #e3cf9e; background: #faf0d7; color: #8a6414; }
+.projects-card-status.is-completed { border-color: #b8cdc2; background: #e4efe9; color: #476b58; }
 .projects-card-type { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .projects-card-type svg { width: 13px; height: 13px; }
 .projects-card-arrow { width: 15px; height: 15px; color: #aaa59c; }

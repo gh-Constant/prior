@@ -583,7 +583,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   const [mode, setMode] = useState<EditorMode>("live");
   const [query, setQuery] = useState("");
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(() => { try { return localStorage.getItem("prior.notes.library") !== "false"; } catch { return true; } });
   const [explorerOpen, setExplorerOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);

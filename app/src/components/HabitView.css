@@ -4,15 +4,6 @@
   --habit-muted: #8b817a;
 }
 
-.habits-intro {
-  display: grid;
-  grid-template-columns: 1fr;
-  align-items: center;
-  gap: 16px;
-}
-
-.habits-intro-copy { min-width: 0; }
-
 .habit-period-bar {
   display: flex;
   align-items: center;
@@ -254,7 +245,6 @@
 }
 
 @media (max-width: 760px) {
-  .habits-intro { gap: 12px; margin-bottom: 18px; }
   .habit-period-bar { align-items: stretch; flex-direction: column; gap: 9px; }
   .habit-period-tabs { flex-basis: auto; width: 100%; }
   .habit-range-label { padding-left: 4px; }

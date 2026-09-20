@@ -61,6 +61,11 @@
 .project-detail-actions select, .workhub-field select { min-height: 40px; padding: 0 30px 0 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 650; }
 .project-status-custom-select { width: 140px; }
 .project-status-custom-select .custom-select-trigger { min-height: 40px; font-size: 12px; font-weight: 650; border-radius: 9px; }
+.project-status-custom-select.status-active .custom-select-trigger { border-color: #bcd8b4; background: #e6f2e1; color: #3c6b35; }
+.project-status-custom-select.status-planned .custom-select-trigger { border-color: #c3d2e5; background: #e8eef7; color: #3d5a80; }
+.project-status-custom-select.status-paused .custom-select-trigger { border-color: #e3cf9e; background: #faf0d7; color: #8a6414; }
+.project-status-custom-select.status-completed .custom-select-trigger { border-color: #b8cdc2; background: #e4efe9; color: #476b58; }
+.project-task-board.standard-board { grid-template-columns: repeat(4, minmax(190px, 1fr)); }
 .project-progress { margin: 24px 0 22px; }
 .project-progress > div:first-child { display: flex; justify-content: space-between; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
 .project-progress strong { color: var(--ink); }

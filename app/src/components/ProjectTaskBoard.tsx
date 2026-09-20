@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Project, Task, TaskStatus } from "../types";
+import type { Project, ProjectType, Task, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { taskStatusVariables } from "../lib/taskStatusAppearance";
 import { Icon } from "./Icon";
@@ -8,7 +8,10 @@ import { TaskStatusBadge } from "./TaskStatusBadge";
 
 import "./WorkHubView.css";
 
-const BOARD_STATUSES: readonly TaskStatus[] = ["inbox", "backlog", "next", "in_progress", "waiting", "done"];
+/** Software projects keep the full workflow; standard projects show a
+ *  simpler board without the backlog/inbox triage columns. */
+const SOFTWARE_BOARD_STATUSES: readonly TaskStatus[] = ["inbox", "backlog", "next", "in_progress", "waiting", "done"];
+const STANDARD_BOARD_STATUSES: readonly TaskStatus[] = ["next", "in_progress", "waiting", "done"];
 
 function statusLabel(status: TaskStatus, t: (key: string) => string): string {
   switch (status) {
@@ -21,13 +24,23 @@ function statusLabel(status: TaskStatus, t: (key: string) => string): string {
   }
 }
 
-function taskBoardStatus(task: Task): TaskStatus {
+function standardBoardStatus(task: Task): TaskStatus {
   if (task.completed) return "done";
-  return BOARD_STATUSES.includes(task.status as TaskStatus) ? task.status as TaskStatus : "inbox";
+  switch (task.status as TaskStatus) {
+    case "in_progress": return "in_progress";
+    case "waiting": return "waiting";
+    case "done": return "done";
+    default: return "next";
+  }
+}
+
+function softwareBoardStatus(task: Task): TaskStatus {
+  if (task.completed) return "done";
+  return SOFTWARE_BOARD_STATUSES.includes(task.status as TaskStatus) ? task.status as TaskStatus : "inbox";
 }
 
 export function ProjectTaskBoard({ project, tasks, onChange, onDelete, onEdit }: {
-  readonly project: Pick<Project, "name" | "icon">;
+  readonly project: Pick<Project, "name" | "icon" | "projectType">;
   readonly tasks: Task[];
   readonly onChange: (task: Task) => Promise<void>;
   readonly onDelete: (task: Task) => Promise<void>;
@@ -36,6 +49,10 @@ export function ProjectTaskBoard({ project, tasks, onChange, onDelete, onEdit }:
   const { t } = useI18n();
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
+  const projectType: ProjectType = project.projectType ?? "standard";
+  const isStandard = projectType !== "software";
+  const boardStatuses = isStandard ? STANDARD_BOARD_STATUSES : SOFTWARE_BOARD_STATUSES;
+  const taskBoardStatus = (task: Task): TaskStatus => isStandard ? standardBoardStatus(task) : softwareBoardStatus(task);
 
   async function moveTask(taskId: string, status: TaskStatus): Promise<void> {
     const task = tasks.find((item) => item.id === taskId);
@@ -48,8 +65,8 @@ export function ProjectTaskBoard({ project, tasks, onChange, onDelete, onEdit }:
     setDropTarget(null);
   }
 
-  return <section className="project-task-board" aria-label={t("common.workhub.boardTab")}>
-    {BOARD_STATUSES.map((status) => {
+  return <section className={`project-task-board${isStandard ? " standard-board" : ""}`} aria-label={t("common.workhub.boardTab")}>
+    {boardStatuses.map((status) => {
       const columnTasks = tasks.filter((task) => taskBoardStatus(task) === status);
       const label = statusLabel(status, t);
       return <section key={status} className={`project-task-board-column${dropTarget === status ? " is-drop-target" : ""}`} aria-label={label} style={taskStatusVariables(status)}

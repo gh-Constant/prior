@@ -165,6 +165,7 @@ export function CalendarView({ habits }: Props) {
   const [editor, setEditor] = useState<{ initial: CalendarEvent; original?: CalendarEvent } | null>(null);
   const [sourceEditor, setSourceEditor] = useState<{ source: CalendarSource; isNew: boolean; thenCreate?: { date: string; time: string } } | null>(null);
   const [mode, setMode] = useState<CalendarViewMode>("week");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [anchorDate, setAnchorDate] = useState(() => new Date());
   const [importOpen, setImportOpen] = useState(false);
   const [importMode, setImportMode] = useState<"options" | "ics">("options");
@@ -458,16 +459,23 @@ export function CalendarView({ habits }: Props) {
       </div>
 
       {storageError && <p role="alert" className="calendar-import-error">{storageError}</p>}
-      <div className="calendar-tools"><input type="search" aria-label={l.search} placeholder={l.search} value={query} onChange={(event) => setQuery(event.target.value)} /><label>{l.jump}<input type="date" value={dateKey(anchorDate)} onChange={(event) => { if (event.target.value) setAnchorDate(parseDateKey(event.target.value)); }} /></label></div>
-      <div className="calendar-layout">
-        <aside className="calendar-sidebar" aria-label={t("common.calendar.sourcesLabel")}>
+      <div className="calendar-tools">
+        <button type="button" className={`calendar-sources-toggle${sidebarOpen ? " active" : ""}`} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen((value) => !value)}>
+          <Icon name="calendar-check" /><span>{t("common.calendar.sourcesTitle")}</span><em>{state.sources.length}</em>
+        </button>
+        <button type="button" role="switch" aria-checked={state.showHabits} aria-label={t("common.calendar.habitsTitle")} className={`calendar-habits-toggle${state.showHabits ? " on" : ""}`} onClick={() => updateState({ ...state, showHabits: !state.showHabits })}>
+          <span className="calendar-toggle-dot" aria-hidden="true" /><span>{t("common.calendar.habitsTitle")}</span>
+        </button>
+        <input type="search" aria-label={l.search} placeholder={l.search} value={query} onChange={(event) => setQuery(event.target.value)} /><label>{l.jump}<input type="date" value={dateKey(anchorDate)} onChange={(event) => { if (event.target.value) setAnchorDate(parseDateKey(event.target.value)); }} /></label>
+      </div>
+      <div className={`calendar-layout${sidebarOpen ? "" : " sidebar-collapsed"}`}>
+        {sidebarOpen && <aside className="calendar-sidebar" aria-label={t("common.calendar.sourcesLabel")}>
           <div className="calendar-sidebar-section"><div className="calendar-sidebar-heading"><h2>{t("common.calendar.sourcesTitle")}</h2><span>{state.sources.length}</span></div>
             {(["local", "imported"] as const).map((group) => <div className="calendar-source-group" key={group}><h3>{group === "local" ? l.personal : l.imported}</h3><div className="calendar-sources">{state.sources.filter((source) => (source.type === "local") === (group === "local")).map((source) => <div className="calendar-source-item" key={source.id}><button type="button" className={`calendar-source-row ${source.enabled ? "enabled" : "disabled"}`} aria-pressed={source.enabled} onClick={() => updateState({ ...state, sources: state.sources.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item) })}><span className="calendar-source-swatch" style={{ background: source.color }} /><span className="calendar-source-copy"><strong>{source.name}</strong>{source.syncError && <small title={l.syncError}>!</small>}</span><span className="calendar-source-check">{source.enabled && <Icon name="check" />}</span></button><button type="button" className="calendar-icon-button" aria-label={`${l.settings} · ${source.name}`} onClick={() => setSourceEditor({ source, isNew: false })}>···</button></div>)}</div></div>)}
             <button type="button" className="calendar-sidebar-add" onClick={() => setSourceEditor({ source: createLocalCalendar(l.personal), isNew: true })}><Icon name="plus" />{l.newCalendar}</button>
             <button type="button" className="calendar-sidebar-add" onClick={openImport}><Icon name="plus" />{t("common.calendar.importAnother")}</button>
           </div>
-          <div className="calendar-sidebar-section calendar-habit-section"><div className="calendar-habit-toggle-row"><h2>{t("common.calendar.habitsTitle")}</h2><button type="button" role="switch" aria-label={state.showHabits ? t("common.calendar.showHabits") : t("common.calendar.hideHabits")} aria-checked={state.showHabits} className={`calendar-toggle ${state.showHabits ? "on" : ""}`} onClick={() => updateState({ ...state, showHabits: !state.showHabits })}><span /></button></div></div>
-        </aside>
+        </aside>}
         <div className="calendar-board">
           {(mode === "week" || mode === "day") && <WeekCalendar days={range.days} events={events} t={t} onOpen={setSelectedEvent} onCreate={createEvent} />}
           {mode === "month" && <MonthCalendar days={range.days} events={events} onOpen={setSelectedEvent} onCreate={createEvent} onDay={(date) => { setAnchorDate(parseDateKey(date)); setMode("day"); }} />}

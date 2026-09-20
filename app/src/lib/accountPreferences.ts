@@ -3,7 +3,9 @@ import { readAccountDocuments, stageDocument, writeAccountDocuments } from "./ac
 import type { AgentSettings } from "../types";
 
 export const PREFERENCES_APPLIED = "prior-preferences-applied";
-export const UI_PREFERENCE_KEYS = ["prior.language", "prior.sidebar.collapsed", "prior.ai.open", "prior.notes.tabs", "prior.notes.library", "prior.notes.collapsed"] as const;
+// NB: "prior.ai.open" is intentionally NOT synced: the assistant must never
+// reopen on arrival because another device left it open.
+export const UI_PREFERENCE_KEYS = ["prior.language", "prior.sidebar.collapsed", "prior.notes.tabs", "prior.notes.library", "prior.notes.collapsed"] as const;
 
 export function initializeAccountPreferences(): void {
   const documents = readAccountDocuments();

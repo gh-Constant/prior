@@ -62,6 +62,52 @@ function withPendingChats(chats: AgentChatSummary[]): AgentChatSummary[] {
   return [...pendingChats().filter((chat) => !known.has(chat.id)).map((chat) => ({ id: chat.id, title: chat.title, createdAt: chat.messages[0]?.createdAt ?? now, updatedAt: now, messageCount: chat.messages.length })), ...chats];
 }
 
+/* Added-proposal flags are client-side only (the server stores the proposal
+ * as first suggested), so they are remembered locally. Without this, closing
+ * and reopening the assistant resets every card to "not added" and the user
+ * can accidentally create everything twice. */
+const ADDED_PROPOSALS_KEY = "prior.agent.added.v1";
+const MAX_ADDED_PROPOSALS = 1000;
+
+function loadAddedProposalIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(ADDED_PROPOSALS_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberAddedProposals(ids: ReadonlySet<string> | readonly string[]): void {
+  const list = [...ids];
+  if (!list.length) return;
+  try {
+    const next = loadAddedProposalIds();
+    for (const id of list) next.add(id);
+    localStorage.setItem(ADDED_PROPOSALS_KEY, JSON.stringify([...next].slice(-MAX_ADDED_PROPOSALS)));
+  } catch {
+    // Storage unavailable: flags still apply for this session.
+  }
+}
+
+function withPersistedAddedFlags(messages: AgentMessage[]): AgentMessage[] {
+  const added = loadAddedProposalIds();
+  if (!added.size) return messages;
+  const mark = <T extends { id: string; added?: boolean }>(items: T[] | undefined): T[] | undefined =>
+    items?.map((item) => added.has(item.id) && !item.added ? { ...item, added: true } : item);
+  return messages.map((message) => ({
+    ...message,
+    proposedAreas: mark(message.proposedAreas),
+    proposedProjects: mark(message.proposedProjects),
+    proposedTasks: mark(message.proposedTasks),
+    proposedHabits: mark(message.proposedHabits),
+    proposedNotes: mark(message.proposedNotes),
+    proposedFolders: mark(message.proposedFolders),
+  }));
+}
+
 type Props = {
   readonly open: boolean;
   readonly inert?: boolean;
@@ -299,7 +345,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         setChatHistory(withPendingChats(chats));
         if (!activeChatId || loadingRef.current) return;
         const chat = await api.getAgentChat(activeChatId, token);
-        if (!cancelled && account === getAccountId() && !loadingRef.current && !pendingChats().some((item) => item.id === activeChatId)) setMessages(chat.messages ?? []);
+        if (!cancelled && account === getAccountId() && !loadingRef.current && !pendingChats().some((item) => item.id === activeChatId)) setMessages(withPersistedAddedFlags(chat.messages ?? []));
       } catch { /* The next sync retries; current messages stay visible. */ }
     };
     window.addEventListener("prior-sync-complete", refreshHistory);
@@ -515,14 +561,14 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       const chat = await api.getAgentChat(chatId, sessionToken);
       setActiveChatId(chat.id);
       setCodexThreadId(null);
-      setMessages(chat.messages ?? []);
+      setMessages(withPersistedAddedFlags(chat.messages ?? []));
       setInput("");
       if (window.matchMedia("(max-width: 760px)").matches) setHistoryOpen(false);
     } catch (err: unknown) {
       const pending = pendingChats().find((chat) => chat.id === chatId);
       if (pending) {
         setActiveChatId(chatId);
-        setMessages(pending.messages);
+        setMessages(withPersistedAddedFlags(pending.messages));
         setCodexThreadId(null);
         return;
       }
@@ -698,6 +744,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     setAddingIds((prev) => ({ ...prev, [task.id]: true }));
     try {
       await onAddTasks([taskDraftOf(task)]);
+      rememberAddedProposals([task.id]);
       setMessages((prev) => markTasksAdded(prev, messageId, new Set([task.id])));
     } finally {
       setAddingIds((prev) => ({ ...prev, [task.id]: false }));
@@ -711,6 +758,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     toAdd.forEach((task) => setAddingIds((prev) => ({ ...prev, [task.id]: true })));
     try {
       await onAddTasks(toAdd.map(taskDraftOf));
+      rememberAddedProposals(ids);
       setMessages((prev) => markTasksAdded(prev, messageId, ids));
     } finally {
       toAdd.forEach((task) => setAddingIds((prev) => ({ ...prev, [task.id]: false })));
@@ -725,6 +773,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     setAddingIds((prev) => ({ ...prev, [habit.id]: true }));
     try {
       await onAddHabits([habitDraftOf(habit)]);
+      rememberAddedProposals([habit.id]);
       updateProposedHabit(messageId, habit.id, { added: true });
     } finally {
       setAddingIds((prev) => ({ ...prev, [habit.id]: false }));
@@ -738,6 +787,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     toAdd.forEach((habit) => setAddingIds((prev) => ({ ...prev, [habit.id]: true })));
     try {
       await onAddHabits(toAdd.map(habitDraftOf));
+      rememberAddedProposals(ids);
       setMessages((prev) => markHabitsAdded(prev, messageId, ids));
     } finally {
       toAdd.forEach((habit) => setAddingIds((prev) => ({ ...prev, [habit.id]: false })));
@@ -752,6 +802,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     setAddingIds((prev) => ({ ...prev, [note.id]: true }));
     try {
       await onAddNotes([noteDraftOf(note)]);
+      rememberAddedProposals([note.id]);
       setMessages((prev) => markNotesAdded(prev, messageId, new Set([note.id])));
     } finally {
       setAddingIds((prev) => ({ ...prev, [note.id]: false }));
@@ -765,6 +816,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     toAdd.forEach((note) => setAddingIds((prev) => ({ ...prev, [note.id]: true })));
     try {
       await onAddNotes(toAdd.map(noteDraftOf));
+      rememberAddedProposals(ids);
       setMessages((prev) => markNotesAdded(prev, messageId, ids));
     } finally {
       toAdd.forEach((note) => setAddingIds((prev) => ({ ...prev, [note.id]: false })));
@@ -779,6 +831,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     setAddingIds((prev) => ({ ...prev, [folder.id]: true }));
     try {
       await onAddFolders([folderDraftOf(folder)]);
+      rememberAddedProposals([folder.id]);
       setMessages((prev) => markFoldersAdded(prev, messageId, new Set([folder.id])));
     } finally {
       setAddingIds((prev) => ({ ...prev, [folder.id]: false }));
@@ -792,6 +845,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     toAdd.forEach((folder) => setAddingIds((prev) => ({ ...prev, [folder.id]: true })));
     try {
       await onAddFolders(toAdd.map(folderDraftOf));
+      rememberAddedProposals(ids);
       setMessages((prev) => markFoldersAdded(prev, messageId, ids));
     } finally {
       toAdd.forEach((folder) => setAddingIds((prev) => ({ ...prev, [folder.id]: false })));
@@ -806,6 +860,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     setAddingIds((prev) => ({ ...prev, [area.id]: true }));
     try {
       if (onAddAreas) await onAddAreas([areaDraftOf(area)]);
+      rememberAddedProposals([area.id]);
       setMessages((prev) => markAreasAdded(prev, messageId, new Set([area.id])));
     } finally {
       setAddingIds((prev) => ({ ...prev, [area.id]: false }));
@@ -819,6 +874,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     toAdd.forEach((area) => setAddingIds((prev) => ({ ...prev, [area.id]: true })));
     try {
       if (onAddAreas) await onAddAreas(toAdd.map(areaDraftOf));
+      rememberAddedProposals(ids);
       setMessages((prev) => markAreasAdded(prev, messageId, ids));
     } finally {
       toAdd.forEach((area) => setAddingIds((prev) => ({ ...prev, [area.id]: false })));
@@ -833,6 +889,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     setAddingIds((prev) => ({ ...prev, [project.id]: true }));
     try {
       if (onAddProjects) await onAddProjects([projectDraftOf(project)]);
+      rememberAddedProposals([project.id]);
       setMessages((prev) => markProjectsAdded(prev, messageId, new Set([project.id])));
     } finally {
       setAddingIds((prev) => ({ ...prev, [project.id]: false }));
@@ -846,6 +903,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     toAdd.forEach((project) => setAddingIds((prev) => ({ ...prev, [project.id]: true })));
     try {
       if (onAddProjects) await onAddProjects(toAdd.map(projectDraftOf));
+      rememberAddedProposals(ids);
       setMessages((prev) => markProjectsAdded(prev, messageId, ids));
     } finally {
       toAdd.forEach((project) => setAddingIds((prev) => ({ ...prev, [project.id]: false })));
