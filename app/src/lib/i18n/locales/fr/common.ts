@@ -59,6 +59,8 @@ export const common = {
     updateAvailable: "Mise à jour disponible",
     agent: "Prior Agent",
     agentShortcut: "Prior Agent ({shortcut})",
+    sync: "Synchroniser",
+    syncing: "Synchronisation…",
   },
   window: { minimize: "Réduire", toggleMaximize: "Agrandir ou restaurer", close: "Fermer" },
   header: {

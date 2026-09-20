@@ -52,6 +52,49 @@
 
 .sidebar-bottom { display: flex; flex-direction: column; gap: 8px; }
 
+/* Manual + status sync entry point: the icon spins for the whole sync,
+   whether the user pressed it or an auto-sync is running. */
+.sidebar-sync-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #a5a39e;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-sync-button:hover {
+  background: #2a2a29;
+  color: #fff;
+}
+
+.sidebar-sync-button svg { width: 15px; height: 15px; flex: 0 0 auto; }
+
+.sidebar-sync-button.is-syncing { color: #ff9e88; }
+
+.sidebar-sync-button.is-syncing svg { animation: sidebar-sync-spin 1s linear infinite; }
+
+.sidebar-sync-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes sidebar-sync-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Prior Agent: gradient-bordered entry point next to the account button. */
 .prior-agent-button {
   --agent-gradient: linear-gradient(135deg, #ff8a72 0%, #fa654a 48%, #c93820 100%);
@@ -173,6 +216,8 @@
   .sidebar.is-collapsed .prior-agent-button { justify-content: center; padding: 6px 4px; }
   .sidebar.is-collapsed .prior-agent-label,
   .sidebar.is-collapsed .prior-agent-button kbd { display: none; }
+  .sidebar.is-collapsed .sidebar-sync-button { justify-content: center; padding: 6px 4px; }
+  .sidebar.is-collapsed .sidebar-sync-label { display: none; }
   .sidebar.is-collapsed .sidebar-account-row { flex-direction: column; align-items: center; gap: 8px; }
   .sidebar.is-collapsed .account-trigger { justify-content: center; padding: 4px; }
 }
@@ -195,4 +240,8 @@
   .account-trigger { padding-right: 2px; padding-left: 2px; }
   .nav-item,
   .account-trigger-label-mobile { font-size: 9.5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-sync-button.is-syncing svg { animation: none; }
 }

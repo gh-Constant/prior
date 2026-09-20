@@ -112,7 +112,8 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .primary-button svg, .update-button svg, .update-check svg { width: 16px; height: 16px; }
 .new-task-button { flex: 0 0 auto; white-space: nowrap; }
 .new-task-button kbd { margin-left: 10px; opacity: .6; font-family: inherit; font-size: 10px; }
-.secondary-button, .update-check { background: var(--panel); border-color: var(--line); color: #625f59; }
+.secondary-button, .update-check { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: var(--panel); border-color: var(--line); color: #625f59; }
+.secondary-button svg { width: 16px; height: 16px; }
 .secondary-button:hover, .update-check:hover { background: #f2f1ed; }
 .danger-button { width: 100%; margin-top: 24px; background: #fff1ed; color: #ac3b26; }
 .danger-button:hover { background: #ffe5dc; }

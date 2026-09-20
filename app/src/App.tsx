@@ -200,6 +200,7 @@ export function App() {
   const celebrationKey = useRef(0);
   const syncInFlight = useRef<Promise<void> | null>(null);
   const syncQueued = useRef(false);
+  const [syncing, setSyncing] = useState(false);
   const lastActiveSyncAt = useRef(0);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const workspaceSyncTimer = useRef<number | undefined>(undefined);
@@ -381,6 +382,9 @@ export function App() {
       syncQueued.current = true;
       return syncInFlight.current;
     }
+    // Every sync (manual or automatic) flows through here, so the sidebar
+    // spinner reflects the real sync activity.
+    setSyncing(true);
 
     const run = (async () => {
       try {
@@ -608,6 +612,8 @@ export function App() {
       if (syncQueued.current) {
         syncQueued.current = false;
         void syncNow();
+      } else {
+        setSyncing(false);
       }
     }).catch(() => undefined);
     return run;
@@ -1419,6 +1425,8 @@ export function App() {
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onToggleAgent={() => setAgentOpen((value) => !value)}
         onCloseMobile={() => setMobileNavOpen(false)}
+        syncing={syncing}
+        onSync={() => void syncNow()}
       />
 
       <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}>

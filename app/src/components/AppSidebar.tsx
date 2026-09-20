@@ -18,6 +18,8 @@ type AppSidebarProps = {
   readonly updateAvailable?: boolean;
   readonly updateInstalling?: boolean;
   readonly onInstallUpdate?: () => void;
+  readonly syncing: boolean;
+  readonly onSync: () => void;
   readonly onViewChange: (view: WorkspaceView) => void;
   readonly onAccount: () => void;
   readonly onToggle: () => void;
@@ -42,6 +44,8 @@ export function AppSidebar({
   updateAvailable,
   updateInstalling,
   onInstallUpdate,
+  syncing,
+  onSync,
   onViewChange,
   onAccount,
   onToggle,
@@ -102,6 +106,16 @@ export function AppSidebar({
         </nav>
 
         <div className="sidebar-bottom">
+          <button
+            type="button"
+            className={`sidebar-sync-button ${syncing ? "is-syncing" : ""}`}
+            aria-label={syncing ? t("common.sidebar.syncing") : t("common.sidebar.sync")}
+            title={syncing ? t("common.sidebar.syncing") : t("common.sidebar.sync")}
+            onClick={onSync}
+          >
+            <Icon name="refresh" aria-hidden="true" />
+            <span className="sidebar-sync-label">{syncing ? t("common.sidebar.syncing") : t("common.sidebar.sync")}</span>
+          </button>
           <button
             type="button"
             className={`prior-agent-button ${agentOpen ? "active" : ""}`}
