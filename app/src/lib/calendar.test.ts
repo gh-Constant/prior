@@ -7,6 +7,8 @@ import {
   createDemoCalendarState,
   eventsInRange,
   fetchIcsCalendar,
+  fetchGoogleCalendar,
+  fetchGoogleCalendarList,
   isCalendarSourceDue,
   mondayOf,
   parseIcsCalendar,
@@ -105,5 +107,26 @@ describe("calendar data", () => {
     expect(isCalendarSourceDue(source, new Date(2026, 8, 21, 9, 0))).toBe(true);
     expect(isCalendarSourceDue({ ...source, lastSyncedAt: new Date(2026, 8, 21, 8, 30).toISOString() }, new Date(2026, 8, 21, 9, 0))).toBe(false);
     expect(isCalendarSourceDue({ ...source, lastSyncedAt: new Date(2026, 8, 21, 7, 30).toISOString() }, new Date(2026, 8, 21, 9, 0))).toBe(true);
+  });
+
+  it("reads all Google calendars across pages using read-only requests", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [{ id: "main", summary: "Personal", primary: true, backgroundColor: "#123456" }], nextPageToken: "next" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [{ id: "classes", summary: "IUT" }] }) });
+    vi.stubGlobal("fetch", request);
+    expect(await fetchGoogleCalendarList(async () => "token")).toEqual([
+      { id: "main", name: "Personal", primary: true, color: "#123456" },
+      expect.objectContaining({ id: "classes", name: "IUT" }),
+    ]);
+    expect(String(request.mock.calls[1][0])).toContain("pageToken=next");
+    expect(request.mock.calls.every(([, init]) => !init.method || init.method === "GET")).toBe(true);
+  });
+
+  it("reads the selected Google calendar and retains multi-day all-day dates", async () => {
+    const request = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [{ id: "trip", summary: "Trip", start: { date: "2026-09-21" }, end: { date: "2026-09-24" } }] }) });
+    vi.stubGlobal("fetch", request);
+    const result = await fetchGoogleCalendar(async () => "token", "google", "#123456", undefined, "classes@example.com", new Date(2026, 8, 21));
+    expect(String(request.mock.calls[0][0])).toContain("classes%40example.com/events");
+    expect(result[0]).toMatchObject({ date: "2026-09-21", endDate: "2026-09-23", startTime: null });
   });
 });

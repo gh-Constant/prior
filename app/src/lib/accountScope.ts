@@ -42,6 +42,12 @@ function mergeLegacyCollections(existingRaw: string, legacyRaw: string): string 
   try {
     const existing = JSON.parse(existingRaw) as unknown;
     const legacy = JSON.parse(legacyRaw) as unknown;
+    // Calendars are an object containing sources, unlike the other collections.
+    // Keep offline calendars when signing into an account with existing data.
+    if (existing && legacy && typeof existing === "object" && typeof legacy === "object" && "sources" in existing && "sources" in legacy && Array.isArray(existing.sources) && Array.isArray(legacy.sources)) {
+      const sources = JSON.parse(mergeLegacyCollections(JSON.stringify(existing.sources), JSON.stringify(legacy.sources))) as unknown[];
+      return JSON.stringify({ ...existing, sources });
+    }
     if (!Array.isArray(existing) || !Array.isArray(legacy)) return existingRaw;
     const merged = new Map<string, unknown>();
     for (const item of [...legacy, ...existing]) {

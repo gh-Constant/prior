@@ -1028,6 +1028,32 @@ export type AskAgentStreamOptions = {
   signal?: AbortSignal;
 };
 
+/** Shared provider/settings path for reviewable feature-specific drafts. */
+export async function draftWithAgent(system: string, prompt: string, settings: AgentSettings, sessionToken: string | null, signal: AbortSignal): Promise<string> {
+  if (settings.provider === "codex") {
+    return (await runCodexStream({ prompt, systemPrompt: system, history: [], model: settings.codexModel || null, reasoningEffort: reasoningEffortParam(settings) }, { signal })).text;
+  }
+  if (sessionToken) {
+    try {
+      const response = await api.agentComplete({ model: settings.model || DEFAULT_MODEL, prompt, system, history: [], webSearch: false, reasoningEffort: reasoningEffortParam(settings) ?? undefined }, sessionToken);
+      signal.throwIfAborted();
+      return response.content;
+    } catch (error) {
+      if (signal.aborted || isAuthError(error) || !settings.apiKey) throw error;
+    }
+  }
+  if (!settings.apiKey) throw new Error(translateStored("agent.errors.missingKey"));
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST", signal: AbortSignal.any([signal, AbortSignal.timeout(90000)]),
+    headers: { Authorization: `Bearer ${settings.apiKey.trim()}`, "Content-Type": "application/json", "X-Title": "Prior AI Assistant" },
+    body: JSON.stringify({ model: settings.model || DEFAULT_MODEL, messages: [{ role: "system", content: system }, { role: "user", content: prompt }],
+      ...(reasoningEffortParam(settings) ? { reasoning: { effort: reasoningEffortParam(settings) } } : {}) }),
+  });
+  if (!response.ok) throw new Error(translateStored("agent.errors.openrouterStatus", { status: response.status, detail: response.statusText }));
+  const body = await response.json();
+  return contentFromMessage(body.choices?.[0]?.message?.content);
+}
+
 export async function askAgentStream(
   prompt: string,
   history: AgentMessage[],

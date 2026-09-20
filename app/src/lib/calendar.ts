@@ -2,9 +2,11 @@ import type { Habit } from "../types";
 import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import { API_URL } from "./api";
 import { habitOccurrenceDates } from "./habits";
+import { expandCalendarEvent, presentImportedEvent } from "./calendarEvents";
+import { parseIcsCalendar } from "./calendarIcs";
 
-export type CalendarViewMode = "week" | "month" | "agenda";
-export type CalendarSourceType = "demo" | "google" | "outlook" | "icloud" | "ics";
+export type CalendarViewMode = "day" | "week" | "month" | "agenda";
+export type CalendarSourceType = "local" | "demo" | "google" | "outlook" | "icloud" | "ics";
 export type CalendarRefreshInterval = "15m" | "hourly" | "daily";
 
 export type CalendarEvent = {
@@ -19,6 +21,14 @@ export type CalendarEvent = {
   kind: "event" | "habit";
   habitId?: string;
   completed?: boolean;
+  description?: string;
+  endDate?: string;
+  locked?: boolean;
+  customColor?: string;
+  recurrence?: { frequency: "daily" | "weekly" | "monthly" | "yearly"; interval: number; weekdays?: number[]; until?: string; count?: number };
+  excludedDates?: string[];
+  seriesId?: string;
+  occurrenceDate?: string;
 };
 
 export type CalendarSource = {
@@ -26,18 +36,27 @@ export type CalendarSource = {
   name: string;
   type: CalendarSourceType;
   accountId?: string;
+  googleCalendarId?: string;
   color: string;
   enabled: boolean;
   events: CalendarEvent[];
   url?: string;
+  icsData?: string;
   refreshInterval?: CalendarRefreshInterval;
   lastSyncedAt?: string;
+  coverageFrom?: string;
+  coverageTo?: string;
   syncError?: string;
+  description?: string;
+  locked?: boolean;
+  hiddenTitles?: string[];
+  eventOverrides?: Record<string, { hidden?: boolean; color?: string; locked?: boolean }>;
 };
 
 export type CalendarState = {
   sources: CalendarSource[];
   showHabits: boolean;
+  ignoredGoogleAccountIds?: string[];
 };
 
 export type PositionedCalendarEvent = CalendarEvent & {
@@ -122,8 +141,8 @@ function demoEvent(sourceId: string, id: string, title: string, date: string, st
   return { id, sourceId, title, date, startTime, endTime, color, location, kind: "event" };
 }
 
-export function createImportedDemoSource(type: Exclude<CalendarSourceType, "demo">, reference = new Date(), index = 0): CalendarSource {
-  const labels: Record<Exclude<CalendarSourceType, "demo">, { name: string; title: string }> = {
+export function createImportedDemoSource(type: Exclude<CalendarSourceType, "demo" | "local">, reference = new Date(), index = 0): CalendarSource {
+  const labels: Record<Exclude<CalendarSourceType, "demo" | "local">, { name: string; title: string }> = {
     google: { name: "Google Calendar", title: "Google Calendar event" },
     outlook: { name: "Outlook Calendar", title: "Outlook Calendar event" },
     icloud: { name: "iCloud Calendar", title: "iCloud Calendar event" },
@@ -231,17 +250,18 @@ export function createDemoCalendarState(reference = new Date()): CalendarState {
 function sanitizeCalendarState(state: CalendarState): CalendarState {
   return {
     showHabits: state.showHabits,
+    ignoredGoogleAccountIds: state.ignoredGoogleAccountIds,
     // Demo/provider fixtures are useful in local development only. Google
     // sources are production-safe only when they carry a server account id;
     // Outlook and iCloud remain development placeholders for now.
     sources: state.sources
+      .filter((source) => source && Array.isArray(source.events))
       .filter((source) => isDevelopmentBuild() || (
         source.type !== "demo" &&
         source.type !== "outlook" &&
         source.type !== "icloud" &&
         (source.type !== "google" || Boolean(source.accountId))
       ))
-      .filter((source) => source && Array.isArray(source.events))
       .map((source) => ({
         ...source,
         enabled: source.enabled !== false,
@@ -272,124 +292,18 @@ export function loadCalendarState(): CalendarState {
 }
 
 export function saveCalendarState(state: CalendarState): void {
-  try {
-    writeScopedStorage(CALENDAR_STORAGE_KEY, JSON.stringify(sanitizeCalendarState(state)));
-  } catch {
-    // Private browsing and restricted webviews can reject localStorage.
-  }
+  // Let the UI report quota / storage failures instead of claiming a save succeeded.
+  if (typeof localStorage === "undefined") throw new Error("Calendar storage unavailable");
+  writeScopedStorage(CALENDAR_STORAGE_KEY, JSON.stringify(sanitizeCalendarState(state)));
 }
 
-type ParsedIcsDate = {
-  date: string;
-  time: string | null;
-  timestamp: number;
-};
-
-type ParsedIcsEvent = {
-  uid: string;
-  summary: string;
-  start: ParsedIcsDate;
-  end: ParsedIcsDate | null;
-  location?: string;
-};
-
-function unfoldIcsLines(value: string): string[] {
-  return value.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "").replace(/\r/g, "").split("\n").filter(Boolean);
-}
-
-function unescapeIcsText(value: string): string {
-  return value.replace(/\\n/gi, "\n").replace(/\\([,;\\])/g, "$1").trim();
-}
-
-function parseIcsProperty(line: string): { name: string; params: Record<string, string>; value: string } | null {
-  const separator = line.indexOf(":");
-  if (separator < 1) return null;
-  const head = line.slice(0, separator).split(";");
-  const params: Record<string, string> = {};
-  for (const part of head.slice(1)) {
-    const equals = part.indexOf("=");
-    if (equals > 0) params[part.slice(0, equals).toUpperCase()] = part.slice(equals + 1).replace(/^"|"$/g, "");
-  }
-  return { name: head[0].toUpperCase(), params, value: line.slice(separator + 1) };
-}
-
-function parseIcsDate(value: string, _params: Record<string, string>): ParsedIcsDate | null {
-  const compact = value.trim();
-  const dateOnly = /^(\d{4})(\d{2})(\d{2})$/.exec(compact);
-  if (dateOnly) {
-    const year = Number(dateOnly[1]);
-    const month = Number(dateOnly[2]);
-    const day = Number(dateOnly[3]);
-    const local = new Date(year, month - 1, day);
-    if (local.getFullYear() !== year || local.getMonth() !== month - 1 || local.getDate() !== day) return null;
-    return { date: dateKey(local), time: null, timestamp: local.getTime() };
-  }
-
-  const dateTime = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/.exec(compact);
-  if (!dateTime) return null;
-  const [, yearValue, monthValue, dayValue, hourValue, minuteValue, secondValue, utc] = dateTime;
-  const year = Number(yearValue);
-  const month = Number(monthValue);
-  const day = Number(dayValue);
-  const hour = Number(hourValue);
-  const minute = Number(minuteValue);
-  const second = Number(secondValue);
-  const timestamp = utc
-    ? Date.UTC(year, month - 1, day, hour, minute, second)
-    : new Date(year, month - 1, day, hour, minute, second).getTime();
-  const parsed = new Date(timestamp);
-  if (!Number.isFinite(timestamp) || (utc && Number.isNaN(parsed.getTime()))) return null;
-  if (!utc && (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day || parsed.getHours() !== hour || parsed.getMinutes() !== minute)) return null;
-  // DTSTART values with TZID are intentionally interpreted in the user's local
-  // timezone. That matches timetable feeds and keeps events stable in local-first storage.
-  return { date: dateKey(parsed), time: timeFromMinutes(parsed.getHours() * 60 + parsed.getMinutes()), timestamp };
-}
-
-function parseIcsEventsWithDates(value: string): Array<ParsedIcsEvent & { startParams: Record<string, string>; endParams: Record<string, string> }> {
-  const events: Array<ParsedIcsEvent & { startParams: Record<string, string>; endParams: Record<string, string> }> = [];
-  let current: Partial<Record<"uid" | "summary" | "location", string>> & { start?: { value: string; params: Record<string, string> }; end?: { value: string; params: Record<string, string> } } | null = null;
-  for (const line of unfoldIcsLines(value)) {
-    if (line.toUpperCase() === "BEGIN:VEVENT") {
-      current = {};
-      continue;
-    }
-    if (line.toUpperCase() === "END:VEVENT") {
-      if (current?.summary && current.start) {
-        const start = parseIcsDate(current.start.value, current.start.params);
-        const end = current.end ? parseIcsDate(current.end.value, current.end.params) : null;
-        if (start) events.push({ uid: current.uid ?? `${events.length}`, summary: current.summary, start, end, location: current.location, startParams: current.start.params, endParams: current.end?.params ?? {} });
-      }
-      current = null;
-      continue;
-    }
-    if (!current) continue;
-    const property = parseIcsProperty(line);
-    if (!property) continue;
-    if (property.name === "UID") current.uid = unescapeIcsText(property.value);
-    if (property.name === "SUMMARY") current.summary = unescapeIcsText(property.value);
-    if (property.name === "LOCATION") current.location = unescapeIcsText(property.value);
-    if (property.name === "DTSTART") current.start = { value: property.value, params: property.params };
-    if (property.name === "DTEND") current.end = { value: property.value, params: property.params };
-  }
-  return events;
-}
-
-export function parseIcsCalendar(value: string, sourceId: string, color: string): CalendarEvent[] {
-  if (!/BEGIN:VCALENDAR/i.test(value)) throw new Error("Invalid ICS calendar");
-  return parseIcsEventsWithDates(value).map((event, index) => ({
-    id: `${sourceId}-${event.uid || index}-${event.start.date}-${event.start.time ?? "all-day"}`.replace(/[^a-zA-Z0-9._:-]/g, "-"),
-    sourceId,
-    title: event.summary,
-    date: event.start.date,
-    startTime: event.start.time,
-    endTime: event.end?.time ?? null,
-    color,
-    location: event.location,
-    kind: "event" as const,
-  }));
-}
+export { parseIcsCalendar } from "./calendarIcs";
 
 export async function fetchIcsCalendar(url: string, sourceId: string, color: string, signal?: AbortSignal, sessionToken?: string): Promise<CalendarEvent[]> {
+  return (await fetchIcsDocument(url, sourceId, color, signal, sessionToken)).events;
+}
+
+export async function fetchIcsDocument(url: string, sourceId: string, color: string, signal?: AbortSignal, sessionToken?: string): Promise<{ events: CalendarEvent[]; icsData: string }> {
   const response = sessionToken
     ? await fetch(`${API_URL}/v1/calendar/ics`, {
       method: "POST",
@@ -402,7 +316,7 @@ export async function fetchIcsCalendar(url: string, sourceId: string, color: str
   if (!response.ok) throw new Error(`Calendar returned ${response.status}`);
   const body = await response.text();
   if (body.length > 8_000_000) throw new Error("Calendar is too large");
-  return parseIcsCalendar(body, sourceId, color);
+  return { events: parseIcsCalendar(body, sourceId, color), icsData: body };
 }
 
 type GoogleCalendarDate = { date?: string; dateTime?: string };
@@ -411,6 +325,7 @@ type GoogleCalendarItem = {
   status?: string;
   summary?: string;
   location?: string;
+  description?: string;
   start?: GoogleCalendarDate;
   end?: GoogleCalendarDate;
 };
@@ -440,27 +355,29 @@ function googleCalendarEvent(item: GoogleCalendarItem, sourceId: string, color: 
     date: start.date,
     startTime: start.time,
     endTime: end?.time ?? null,
+    endDate: end ? (start.time === null && end.date > start.date ? dateKey(addDays(parseDateKey(end.date), -1)) : end.date) : start.date,
     color,
     location: item.location?.trim() || undefined,
+    description: item.description,
     kind: "event",
   };
 }
 
-/** Read the primary Google calendar for a broad rolling window. A broad
+/** Read the selected Google calendar for a broad rolling window. A broad
  * window keeps navigation between week, month and agenda views local after a
  * sync while the hourly refresh keeps the data current. */
-export async function fetchGoogleCalendar(getToken: CalendarTokenGetter, sourceId: string, color: string, signal?: AbortSignal): Promise<CalendarEvent[]> {
+export async function fetchGoogleCalendar(getToken: CalendarTokenGetter, sourceId: string, color: string, signal?: AbortSignal, calendarId = "primary", reference = new Date()): Promise<CalendarEvent[]> {
   const token = await getToken();
-  const from = new Date();
+  const from = new Date(reference);
   from.setDate(from.getDate() - 90);
   from.setHours(0, 0, 0, 0);
-  const to = new Date();
+  const to = new Date(reference);
   to.setFullYear(to.getFullYear() + 1);
   to.setHours(23, 59, 59, 999);
   const events: CalendarEvent[] = [];
   let pageToken = "";
   do {
-    const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
     url.searchParams.set("singleEvents", "true");
     url.searchParams.set("orderBy", "startTime");
     url.searchParams.set("showDeleted", "false");
@@ -484,6 +401,23 @@ export async function fetchGoogleCalendar(getToken: CalendarTokenGetter, sourceI
   return events;
 }
 
+export async function fetchGoogleCalendarList(getToken: CalendarTokenGetter): Promise<Array<{ id: string; name: string; color: string; primary: boolean }>> {
+  const token = await getToken();
+  const calendars: Array<{ id: string; name: string; color: string; primary: boolean }> = [];
+  let pageToken = "";
+  do {
+    const url = new URL("https://www.googleapis.com/calendar/v3/users/me/calendarList");
+    url.searchParams.set("maxResults", "250");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new Error("Calendar list could not be loaded");
+    const body = await response.json() as { items?: Array<{ id: string; summary: string; backgroundColor?: string; primary?: boolean }>; nextPageToken?: string };
+    calendars.push(...(body.items ?? []).map((item) => ({ id: item.id, name: item.summary, color: /^#[0-9a-f]{6}$/i.test(item.backgroundColor ?? "") ? item.backgroundColor! : CALENDAR_COLORS[0], primary: Boolean(item.primary) })));
+    pageToken = body.nextPageToken ?? "";
+  } while (pageToken);
+  return calendars;
+}
+
 export function buildHabitCalendarEvents(habits: Habit[], from: Date, to: Date): CalendarEvent[] {
   return habits.flatMap((habit) => habitOccurrenceDates(habit, from, to).map((date) => {
     const startTime = habit.timeOfDay ?? null;
@@ -504,7 +438,17 @@ export function buildHabitCalendarEvents(habits: Habit[], from: Date, to: Date):
 }
 
 export function eventsInRange(state: CalendarState, habits: Habit[], from: Date, to: Date): CalendarEvent[] {
-  const enabledEvents = state.sources.filter((source) => source.enabled).flatMap((source) => source.events);
+  const enabledEvents = state.sources.filter((source) => source.enabled).flatMap((source) => {
+    let sourceEvents = source.events;
+    if (source.icsData) {
+      try { sourceEvents = parseIcsCalendar(source.icsData, source.id, source.color, from, { from, to }); }
+      catch { console.warn("Calendar recurrence expansion failed; using cached events."); }
+    }
+    return sourceEvents.flatMap((event) => {
+      const visible = presentImportedEvent(source, event);
+      return visible ? expandCalendarEvent(visible, from, to) : [];
+    });
+  });
   const habitEvents = state.showHabits ? buildHabitCalendarEvents(habits, from, to) : [];
   const fromKey = dateKey(from);
   const toKey = dateKey(to);
