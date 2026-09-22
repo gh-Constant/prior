@@ -7,7 +7,7 @@
   100% { opacity: 0; transform: translateY(-4px); }
 }
 
-.completion-burst { position: absolute; z-index: 1; inset: -13px; display: grid; place-items: center; color: var(--accent, #d57961); pointer-events: none; }
+.completion-burst { position: absolute; z-index: 1; inset: -13px; display: grid; place-items: center; color: var(--accent); pointer-events: none; }
 .completion-burst-ring { width: 27px; height: 27px; border: 1px solid currentColor; border-radius: 50%; opacity: 0; transform: scale(.55); animation: completion-burst-ring .52s cubic-bezier(.2, .8, .3, 1) both; }
 .completion-burst-particle { --burst-angle: 0deg; --burst-distance: 10px; position: absolute; top: 50%; left: 50%; width: 2px; height: 5px; margin: -2.5px 0 0 -1px; border-radius: 999px; background: currentColor; opacity: 0; transform: rotate(var(--burst-angle)) translateY(0) scale(.6); animation: completion-burst-particle .46s cubic-bezier(.2, .8, .3, 1) both; }
 .completion-burst-particle:nth-child(3) { --burst-angle: 60deg; --burst-distance: 11px; animation-delay: .015s; }

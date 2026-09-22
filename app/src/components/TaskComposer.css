@@ -1,13 +1,13 @@
-/* Modern, refined Task Composer for Prior (Desktop Mac & Mobile Android/iOS) */
+/* Task Composer for Prior (Desktop Mac & Mobile Android/iOS) — Linear-style "new issue" sheet */
 
 .task-composer-modal.modal {
-  width: min(calc(100% - 32px), 540px);
+  width: min(calc(100% - 32px), 560px);
   max-height: min(88vh, 720px);
   padding: 0;
-  border-radius: 16px;
-  background: var(--panel, #ffffff);
-  border: 1px solid var(--line, #e9e8e4);
-  box-shadow: 0 20px 60px -15px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.04);
+  border-radius: var(--r-xl);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-pop);
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -35,9 +35,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--line, #f0eee9);
-  background: var(--panel, #ffffff);
+  padding: 14px 14px 6px 20px;
+  border-bottom: 0;
+  background: var(--panel);
   position: sticky;
   top: 0;
   z-index: 2;
@@ -53,58 +53,61 @@
 
 .task-composer-modal .modal-header h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 650;
+  font-size: var(--fs-lg);
+  font-weight: 600;
   letter-spacing: -0.02em;
-  color: var(--ink, #272522);
+  color: var(--ink);
 }
 
 .task-composer-context-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: #f4f2ee;
-  color: var(--muted, #797773);
-  font-size: 11px;
-  font-weight: 550;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+  font-weight: 500;
 }
 
 .task-composer-context-badge svg {
   width: 12px;
   height: 12px;
+  color: var(--faint);
 }
 
 /* Close button - clean reset so no red focus outline on touch/modal open */
 .task-composer-modal .icon-button {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: transparent;
-  color: var(--muted, #8a867f);
+  color: var(--faint);
   cursor: pointer;
   outline: none;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 
 .task-composer-modal .icon-button:hover:not(:disabled) {
-  background: #f3f1ed;
-  color: var(--ink, #272522);
+  background: var(--hover);
+  color: var(--ink);
 }
 
 .task-composer-modal .icon-button:focus-visible {
-  outline: 2px solid var(--accent, #fa654a);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 /* Form body */
 .task-composer-modal .task-composer-body {
-  padding: 16px 20px 12px;
+  padding: 8px 20px 14px;
   margin: 0;
   border: 0;
   min-width: 0;
@@ -117,7 +120,7 @@
 .task-composer-hero {
   display: flex;
   flex-direction: column;
-  padding: 2px 0 4px;
+  padding: 2px 0 2px;
 }
 
 .task-composer-title-input {
@@ -125,17 +128,18 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--ink, #272522);
+  color: var(--ink);
   font-family: inherit;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 550;
   line-height: 1.35;
+  letter-spacing: -0.015em;
   padding: 2px 0;
   box-sizing: border-box;
 }
 
 .task-composer-title-input::placeholder {
-  color: #b0aca3;
+  color: var(--faint);
   font-weight: 450;
 }
 
@@ -144,8 +148,8 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 4px 0 2px;
+  gap: 6px;
+  padding: 2px 0 2px;
 }
 
 /* Keep the date pill as a real flex item on narrow sheets. Without an
@@ -153,6 +157,14 @@
 .task-composer-toolbar .date-time-picker.pill {
   flex: 0 0 auto;
   min-width: max-content;
+}
+
+/* Match the 28px property pills beside it */
+.task-composer-toolbar .date-time-picker.pill .date-time-picker-trigger {
+  min-height: 28px;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
 }
 
 /* Date pill */
@@ -168,40 +180,41 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: #fbfbf9;
-  border: 1px solid var(--line, #e9e8e4);
-  color: var(--ink, #272522);
-  font-size: 12px;
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-xs);
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
   user-select: none;
   white-space: nowrap;
 }
 
 .task-composer-date-pill:hover {
-  border-color: #d1cbc4;
-  background: #f3f1ed;
+  background: var(--hover);
+  color: var(--ink);
 }
 
 .task-composer-date-pill svg {
   width: 13px;
   height: 13px;
-  color: var(--muted, #797773);
+  color: var(--faint);
 }
 
 .task-composer-date-pill.has-date {
-  background: #f1f8f3;
-  border-color: #c4dec9;
-  color: #246536;
-  font-weight: 550;
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-dark);
+  font-weight: 500;
 }
 
 .task-composer-date-pill.has-date svg {
-  color: #246536;
+  color: var(--accent-dark);
 }
 
 .task-composer-date-native {
@@ -223,16 +236,16 @@
   width: 16px;
   height: 16px;
   padding: 0;
-  border: 0;
+  border: 1.5px solid var(--panel);
   border-radius: 50%;
-  background: var(--muted, #797773);
-  color: #ffffff;
+  background: var(--faint);
+  color: var(--accent-ink);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--t-fast) var(--ease);
 }
 
 .task-composer-date-clear:hover {
-  background: var(--ink, #272522);
+  background: var(--ink-2);
 }
 
 .task-composer-date-clear svg {
@@ -242,8 +255,8 @@
 
 /* Secondary Details Accordion */
 .task-composer-details {
-  border-top: 1px solid var(--line, #f0eee9);
-  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 6px;
   margin-top: 2px;
 }
 
@@ -251,18 +264,22 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 0 8px;
-  color: var(--muted, #797773);
-  font-size: 12px;
-  font-weight: 550;
+  min-height: 28px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
   list-style: none;
   user-select: none;
-  transition: color 0.15s ease;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 
 .task-composer-details-trigger:hover {
-  color: var(--ink, #272522);
+  background: var(--hover);
+  color: var(--ink);
 }
 
 .task-composer-details-trigger::-webkit-details-marker,
@@ -273,7 +290,8 @@
 .task-composer-chevron {
   width: 13px;
   height: 13px;
-  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+  color: var(--faint);
+  transition: transform 0.2s var(--ease);
 }
 
 .task-composer-details[open] .task-composer-chevron {
@@ -287,32 +305,37 @@
   padding-top: 8px;
 }
 
+/* Description: quiet, borderless until focused */
 .task-composer-desc-input {
   width: 100%;
-  min-height: 60px;
+  min-height: 64px;
   max-height: 180px;
-  border: 1px solid var(--line, #e9e8e4);
-  border-radius: 8px;
-  background: #faf9f7;
-  color: var(--ink, #272522);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink);
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--fs-md);
+  line-height: 1.55;
   resize: vertical;
-  padding: 8px 11px;
+  padding: 8px 10px;
   box-sizing: border-box;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+
+.task-composer-desc-input:hover {
+  background: var(--surface-3);
 }
 
 .task-composer-desc-input:focus {
   outline: none;
-  border-color: var(--accent, #fa654a);
-  box-shadow: 0 0 0 2px rgba(250, 101, 74, 0.1);
-  background: #ffffff;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+  background: var(--panel);
 }
 
 .task-composer-desc-input::placeholder {
-  color: #b5b0a6;
+  color: var(--faint);
 }
 
 .task-composer-details-row {
@@ -324,35 +347,40 @@
 .task-composer-input-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 }
 
 .task-composer-input-field > span {
-  font-size: 11px;
-  font-weight: 550;
-  color: var(--muted, #797773);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .task-composer-input-field input {
   width: 100%;
-  min-height: 34px;
-  padding: 5px 9px;
-  border: 1px solid var(--line, #e9e8e4);
-  border-radius: 8px;
-  background: #faf9f7;
-  color: var(--ink, #272522);
+  min-height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-control);
+  color: var(--ink);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   box-sizing: border-box;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.task-composer-input-field input::placeholder {
+  color: var(--faint);
 }
 
 .task-composer-input-field input:focus {
   outline: none;
-  border-color: var(--accent, #fa654a);
-  box-shadow: 0 0 0 2px rgba(250, 101, 74, 0.1);
-  background: #ffffff;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+  background: var(--panel);
 }
 
 .task-composer-input-field .task-composer-date-pill-wrap {
@@ -368,7 +396,7 @@
 .task-composer-flags {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding-top: 2px;
 }
 
@@ -376,47 +404,52 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--line, #e9e8e4);
-  border-radius: 8px;
-  background: #fbfbf9;
-  color: var(--muted, #797773);
-  font-size: 12px;
-  font-weight: 550;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  box-shadow: var(--shadow-xs);
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 
 .task-composer-flag-btn:hover {
-  border-color: #d1cbc4;
-  background: #f3f1ed;
-  color: var(--ink, #272522);
+  background: var(--hover);
+  color: var(--ink);
 }
 
 .task-composer-flag-btn.selected.important {
-  background: #fff8eb;
-  border-color: #f1cf93;
-  color: #b47b19;
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
 }
 
 .task-composer-flag-btn.selected.urgent {
-  background: #fff1eb;
-  border-color: #f5b19c;
-  color: #c9442a;
+  background: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red);
+}
+
+.task-composer-flag-btn.selected svg {
+  color: currentColor;
 }
 
 .task-composer-flag-btn svg {
   width: 13px;
   height: 13px;
+  color: var(--faint);
 }
 
 /* Collaborators section */
 .task-composer-section-heading {
   margin: 8px 0 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted, #797773);
+  font-size: var(--fs-xs);
+  font-weight: 550;
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -429,14 +462,14 @@
 
 .task-composer-avatars .collab-avatar + .collab-avatar {
   margin-left: -5px;
-  border: 2px solid var(--panel, #ffffff);
+  border: 2px solid var(--panel);
 }
 
 .task-composer-modal .collab-people-picker {
-  border: 1px solid var(--line, #e9e8e4);
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   padding: 10px 12px;
-  background: #fdfdfc;
+  background: var(--panel);
 }
 
 .task-composer-modal .collab-people-picker h3 {
@@ -449,9 +482,9 @@
 
 /* Feedback notices */
 .task-composer-feedback {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--muted, #797773);
+  margin: 6px 20px 0;
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
 .task-composer-feedback:empty {
@@ -459,7 +492,7 @@
 }
 
 .task-composer-error {
-  color: #b43b25;
+  color: var(--red);
 }
 
 /* Footer */
@@ -468,9 +501,9 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--line, #f0eee9);
-  background: #fbfbf9;
+  padding: 10px 16px 12px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
   position: sticky;
   bottom: 0;
   z-index: 2;
@@ -478,39 +511,39 @@
 }
 
 .task-composer-footer .secondary-button {
-  min-height: 34px;
-  padding: 0 14px;
-  border-radius: 8px;
-  border: 1px solid var(--line, #e9e8e4);
-  background: #ffffff;
-  color: var(--ink, #272522);
-  font-size: 13px;
-  font-weight: 550;
+  min-height: var(--control-h);
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  box-shadow: var(--shadow-control);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
 .task-composer-footer .secondary-button:hover:not(:disabled) {
-  background: #f3f1ed;
-  border-color: #d1cbc4;
+  background: var(--hover);
+  border-color: var(--line-strong);
 }
 
 .task-composer-footer .primary-button {
-  min-height: 34px;
-  padding: 0 16px;
-  border-radius: 8px;
-  background: var(--accent, #fa654a);
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 600;
-  border: 0;
-  box-shadow: 0 1px 3px rgba(250, 101, 74, 0.3);
+  min-height: var(--control-h);
+  padding: 0 14px;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--fs-sm);
+  font-weight: 550;
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow-xs);
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
 .task-composer-footer .primary-button:hover:not(:disabled) {
-  background: var(--accent-dark, #df4d33);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 /* Mobile Bottom Sheet (< 640px) */
@@ -526,11 +559,11 @@
     width: 100% !important;
     max-width: 100% !important;
     max-height: 90dvh !important;
-    border-radius: 20px 20px 0 0 !important;
+    border-radius: 16px 16px 0 0 !important;
     border-bottom: 0 !important;
     border-left: 0 !important;
     border-right: 0 !important;
-    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.18) !important;
+    box-shadow: 0 0 0 1px oklch(0 0 0 / 0.05), 0 -12px 40px -8px oklch(0 0 0 / 0.18) !important;
     animation: modal-sheet-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
@@ -539,13 +572,18 @@
     width: 36px;
     height: 4px;
     border-radius: 4px;
-    background: #d8d4cc;
+    background: var(--line-strong);
     margin: 10px auto 4px;
     flex-shrink: 0;
   }
 
   .task-composer-modal .modal-header {
-    padding: 6px 18px 10px;
+    padding: 4px 10px 4px 18px;
+  }
+
+  .task-composer-modal .icon-button {
+    width: 44px;
+    height: 44px;
   }
 
   .task-composer-modal .icon-button:focus,
@@ -555,7 +593,7 @@
   }
 
   .task-composer-modal .task-composer-body {
-    padding: 12px 18px 10px;
+    padding: 8px 18px 10px;
     gap: 10px;
   }
 
@@ -579,14 +617,33 @@
   }
 
   .task-composer-toolbar .custom-select-wrap.custom-select-pill .custom-select-trigger,
-  .task-composer-toolbar .task-composer-date-pill {
+  .task-composer-toolbar .task-composer-date-pill,
+  .task-composer-toolbar .date-time-picker.pill .date-time-picker-trigger {
     min-height: 34px;
     padding: 6px 11px;
-    font-size: 12.5px;
+    font-size: var(--fs-sm);
+  }
+
+  .task-composer-details-trigger,
+  .task-composer-flag-btn {
+    min-height: 36px;
+  }
+
+  .task-composer-input-field input {
+    min-height: 44px;
+    font-size: 16px; /* Prevents auto-zoom on iOS Safari */
+  }
+
+  .task-composer-desc-input {
+    font-size: 16px;
   }
 
   .task-composer-details-row {
     grid-template-columns: 1fr;
+  }
+
+  .task-composer-feedback {
+    margin: 6px 18px 0;
   }
 
   .task-composer-footer {
@@ -601,16 +658,16 @@
     flex: 1;
     min-height: 44px;
     font-size: 14px;
-    font-weight: 600;
-    border-radius: 10px;
+    font-weight: 500;
+    border-radius: var(--r-lg);
   }
 
   .task-composer-footer .primary-button {
     flex: 2;
     min-height: 44px;
     font-size: 14px;
-    font-weight: 600;
-    border-radius: 10px;
+    font-weight: 550;
+    border-radius: var(--r-lg);
   }
 }
 

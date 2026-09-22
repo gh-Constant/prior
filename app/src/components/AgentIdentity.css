@@ -10,7 +10,7 @@
 }
 
 .agent-identity-tiny { --identity-size: 28px; }
-.agent-identity-small { --identity-size: 34px; }
+.agent-identity-small { --identity-size: 30px; }
 .agent-identity-hero { --identity-size: 118px; }
 
 /* Agent identity: no box, the orange/white wave floats directly on the UI. */

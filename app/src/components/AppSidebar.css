@@ -3,16 +3,16 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin: 0 8px 42px 13px;
+  margin: 0 2px 22px 8px;
 }
 
 .sidebar-top .sidebar-brand { min-width: 0; margin: 0; }
 .sidebar-top .brand-lockup { min-width: 0; }
 .sidebar-top .brand-title { overflow: hidden; }
 
-.sidebar-nav-group { display: flex; flex-direction: column; gap: 5px; }
+.sidebar-nav-group { display: flex; flex-direction: column; gap: 1px; }
 .sidebar-nav-group + .sidebar-nav-group { margin-top: 18px; }
-.sidebar-nav-label { margin: 0 14px 3px; color: #77746f; font-size: 9px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+.sidebar-nav-label { margin: 0 10px 4px; color: var(--sidebar-faint); font-size: 11px; font-weight: 550; letter-spacing: 0; }
 
 .sidebar-collapse-button {
   display: grid;
@@ -22,15 +22,14 @@
   flex: 0 0 auto;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   background: transparent;
-  color: #8d8b86;
+  color: var(--sidebar-faint);
 }
 
 .sidebar-collapse-button:hover {
-  border-color: #ffffff12;
-  background: #2a2a29;
-  color: #fff;
+  background: var(--sidebar-2);
+  color: var(--sidebar-ink);
 }
 
 .sidebar-collapse-button svg { width: 15px; height: 15px; }
@@ -50,7 +49,7 @@
 
 .sidebar-close-button svg { width: 16px; height: 16px; }
 
-.sidebar-bottom { display: flex; flex-direction: column; gap: 8px; }
+.sidebar-bottom { display: flex; flex-direction: column; gap: 2px; }
 
 /* Manual + status sync entry point: the icon spins for the whole sync,
    whether the user pressed it or an auto-sync is running. */
@@ -59,26 +58,26 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 40px;
-  padding: 6px 12px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
   background: transparent;
-  color: #a5a39e;
-  font-size: 12.5px;
-  font-weight: 600;
+  color: var(--sidebar-muted);
+  font-size: 13px;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
 
 .sidebar-sync-button:hover {
-  background: #2a2a29;
-  color: #fff;
+  background: var(--sidebar-2);
+  color: var(--sidebar-ink);
 }
 
-.sidebar-sync-button svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.sidebar-sync-button svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--sidebar-faint); }
 
-.sidebar-sync-button.is-syncing { color: #ff9e88; }
+.sidebar-sync-button.is-syncing, .sidebar-sync-button.is-syncing svg { color: #ff9e88; }
 
 .sidebar-sync-button.is-syncing svg { animation: sidebar-sync-spin 1s linear infinite; }
 
@@ -95,34 +94,35 @@
   to { transform: rotate(360deg); }
 }
 
-/* Prior Agent: gradient-bordered entry point next to the account button. */
+/* Prior Agent: a quiet row with a hairline gradient edge; the animated
+   identity orb carries the personality, not the chrome. */
 .prior-agent-button {
-  --agent-gradient: linear-gradient(135deg, #ff8a72 0%, #fa654a 48%, #c93820 100%);
+  --agent-gradient: linear-gradient(135deg, #ff8a7299 0%, #f35f4366 50%, #ffffff14 100%);
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   width: 100%;
-  min-height: 48px;
-  padding: 6px 12px 6px 9px;
+  min-height: 36px;
+  margin: 4px 0;
+  padding: 0 8px 0 6px;
   border: 1px solid transparent;
-  border-radius: 11px;
-  background: linear-gradient(#262524, #262524) padding-box, var(--agent-gradient) border-box;
-  color: #f8f7f4;
+  border-radius: var(--r-md);
+  background: linear-gradient(#1f1e1c, #1f1e1c) padding-box, var(--agent-gradient) border-box;
+  color: var(--sidebar-ink);
   text-align: left;
-  box-shadow: 0 2px 10px #fa654a14;
 }
 
 .prior-agent-button:hover {
-  background: linear-gradient(#2f2e2c, #2f2e2c) padding-box, var(--agent-gradient) border-box;
-  box-shadow: 0 2px 16px #fa654a30;
+  background: linear-gradient(#262523, #262523) padding-box, var(--agent-gradient) border-box;
 }
 
 .prior-agent-button.active {
-  background: linear-gradient(#38302b, #2b2724) padding-box, var(--agent-gradient) border-box;
-  box-shadow: 0 0 0 1px #fa654a44, 0 4px 20px #fa654a35;
+  --agent-gradient: linear-gradient(135deg, #ff8a72 0%, #f35f43 55%, #c93820 100%);
+  background: linear-gradient(#2a2421, #241f1d) padding-box, var(--agent-gradient) border-box;
+  box-shadow: 0 0 18px -4px #f35f4355;
 }
 
-.prior-agent-button .agent-identity { --identity-size: 26px; }
+.prior-agent-button .agent-identity { --identity-size: 22px; }
 
 .prior-agent-label {
   min-width: 0;
@@ -130,16 +130,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: linear-gradient(92deg, #ffb59f 0%, #ff8d75 48%, #f6b878 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--sidebar-ink);
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: -.01em;
+  font-weight: 550;
+  letter-spacing: -.005em;
 }
 
-.prior-agent-button kbd { opacity: .5; font-family: inherit; font-size: 10px; font-weight: 600; }
+.prior-agent-button kbd { padding: 1px 5px; border: 1px solid #ffffff14; border-radius: var(--r-xs); color: var(--sidebar-faint); font-family: inherit; font-size: 10px; font-weight: 550; }
 
 .sidebar-account-row {
   display: flex;
@@ -213,16 +210,16 @@
   .sidebar.is-collapsed .sidebar-top .brand-lockup { gap: 0; }
   .sidebar.is-collapsed .nav-item { justify-content: center; padding: 0; }
   .sidebar.is-collapsed .nav-item.active::before { left: 0; }
-  .sidebar.is-collapsed .prior-agent-button { justify-content: center; padding: 6px 4px; }
+  .sidebar.is-collapsed .prior-agent-button { justify-content: center; padding: 0; }
   .sidebar.is-collapsed .prior-agent-label,
   .sidebar.is-collapsed .prior-agent-button kbd { display: none; }
-  .sidebar.is-collapsed .sidebar-sync-button { justify-content: center; padding: 6px 4px; }
+  .sidebar.is-collapsed .sidebar-sync-button { justify-content: center; padding: 0; }
   .sidebar.is-collapsed .sidebar-sync-label { display: none; }
   .sidebar.is-collapsed .sidebar-account-row { flex-direction: column; align-items: center; gap: 8px; }
   .sidebar.is-collapsed .account-trigger { justify-content: center; padding: 4px; }
 }
 
-.app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
+.app-shell.sidebar-collapsed { grid-template-columns: 60px minmax(0, 1fr); }
 
 @media (max-width: 760px) {
   /* Drawer mode: the collapse toggle is desktop-only, the X button takes over. */
@@ -231,6 +228,11 @@
   .sidebar-close-button { display: grid; }
   .sidebar-nav { overflow-y: auto; }
   .sidebar.is-collapsed .sidebar-brand { display: block; }
+  /* Touch-sized rows in the drawer */
+  .nav-item, .sidebar-sync-button, .account-trigger, .prior-agent-button { min-height: 44px; font-size: 15px; }
+  .prior-agent-label { font-size: 15px; }
+  .nav-item svg, .sidebar-sync-button svg { width: 18px; height: 18px; }
+  .sidebar-nav-label { font-size: 12px; }
 }
 
 @media (max-width: 380px) {
@@ -238,8 +240,6 @@
   .sidebar-nav { gap: 2px; }
   .nav-item,
   .account-trigger { padding-right: 2px; padding-left: 2px; }
-  .nav-item,
-  .account-trigger-label-mobile { font-size: 9.5px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
