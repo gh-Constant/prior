@@ -497,6 +497,10 @@
   transition: background-color var(--hv-motion) var(--ease-out), box-shadow var(--hv-motion) var(--ease-out);
 }
 
+/* Not scheduled that day (before the start date, or off-schedule): a quiet dot,
+   clearly different from a missed day. */
+.habit-week-cell.is-off { background: transparent; }
+.habit-week-cell.is-off::before { position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--line-strong); content: ""; transform: translate(-50%, -50%); }
 .habit-week-cell.is-done { background: var(--accent); }
 .habit-week-cell.is-missed { background: var(--line-strong); }
 .habit-week-cell.is-upcoming { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
