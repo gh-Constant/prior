@@ -30,6 +30,10 @@ export const habits = {
     createHabit: "Crear un hábito",
     scheduledWeek: "Fechas programadas esta semana",
     monthProgress: "{completed}/{total} este mes",
+    summaryLabel: "Progreso",
+    summaryDone: "Completadas",
+    summaryRemaining: "Pendientes",
+    summaryStreak: "Mejor racha",
   },
   week: {
     label: "Esta semana",
@@ -60,6 +64,7 @@ export const habits = {
     savingTitle: "Guardando {title}",
     saveError: "No se pudo guardar. Inténtalo de nuevo.",
     deleteError: "No se pudo eliminar. Inténtalo de nuevo.",
+    streak: "Racha actual: {count}",
   },
   schedule: {
     everyDays: "Cada {days}",

@@ -1,5 +1,3 @@
-import { useState } from "react";
-import { SiriWave } from "./SiriWave";
 import "./AgentIdentity.css";
 
 type AgentIdentityProps = {
@@ -7,41 +5,28 @@ type AgentIdentityProps = {
   readonly size?: "tiny" | "small" | "hero";
 };
 
-/** Canvas backing size per tile (display size comes from CSS). */
-const SIRI_SIZE: Record<NonNullable<AgentIdentityProps["size"]>, number> = {
-  tiny: 28,
-  small: 34,
-  hero: 118,
-};
+/* Same geometry as Prior's "P" logo (256 grid), so the agent reads as part of the brand. */
+const BOWL = "M80 48 H132 C166 48 188 70 188 104 C188 138 166 160 132 160 H80";
+const STEM = "M80 48 V204";
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
+/**
+ * Prior Agent mark: the Prior "P" in cream on a dark tile, with a coral dot
+ * (the agent's focus) held inside the bowl. Idle, the dot breathes; thinking,
+ * a coral trace runs around the bowl. Pure SVG + CSS, crisp at every size.
+ */
 export function AgentIdentity({ thinking = false, size = "small" }: AgentIdentityProps) {
-  const [reduced] = useState(prefersReducedMotion);
-
   return (
     <span
       className={`agent-identity agent-identity-${size} ${thinking ? "is-thinking" : "is-idle"}`}
       data-state={thinking ? "thinking" : "idle"}
       aria-hidden="true"
     >
-      <span className="agent-fluid">
-        <span className="agent-fluid-fallback" />
-        {!reduced && (
-          <SiriWave
-            variant="wave"
-            size={SIRI_SIZE[size]}
-            renderScale={0.5}
-            timeScale={thinking ? 2.4 : 0.6}
-            className="agent-siri"
-          />
-        )}
-      </span>
+      <svg className="agent-mark" viewBox="0 0 256 256" focusable="false">
+        <path className="agent-mark-stroke" d={STEM} />
+        <path className="agent-mark-stroke" d={BOWL} />
+        <path className="agent-mark-trace" d={BOWL} pathLength="100" />
+        <circle className="agent-mark-core" cx="134" cy="104" r="21" />
+      </svg>
     </span>
   );
 }

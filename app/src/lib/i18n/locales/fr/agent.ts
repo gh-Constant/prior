@@ -12,6 +12,7 @@ export const agent = {
   },
   welcome: {
     title: "Et maintenant ?",
+    subtitle: "Planifiez, priorisez et capturez, avec vos tâches, habitudes et notes en contexte.",
   },
   suggest: {
     setup: {
