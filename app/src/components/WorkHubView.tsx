@@ -1,5 +1,5 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
-import type { Area, Project, ProjectStatus, Task, TaskDraft, TaskStatus } from "../types";
+import type { Area, Habit, Project, ProjectStatus, Task, TaskDraft, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { notesStore } from "../lib/notes";
 import { mergeAssignedProjectTasks } from "../lib/projectTasks";
@@ -17,7 +17,8 @@ import { CustomSelect } from "./CustomSelect";
 import { ProjectsOverview } from "./ProjectsOverview";
 import { AvatarStack, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, ProjectTile, currentCycle, projectProgress } from "./ProjectVisuals";
 import { ProjectBreadcrumb, ProjectDetailHeader, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "./ProjectDetailParts";
-import { rankFocusTasks } from "../lib/taskFocus";
+import { TodayView } from "./TodayView";
+import { WaitingView } from "./WaitingView";
 import "./WorkHubView.css";
 
 export type WorkHubViewKind = "today" | "projects" | "project" | "waiting";
@@ -40,6 +41,13 @@ type Props = {
   readonly collaborationByProject?: Readonly<Record<string, Omit<ProjectCollaborationProps, "project">>>;
   /** Current user id used to keep assigned project issues in All/Today. */
   readonly currentUserId?: string | null;
+  /** Today dashboard data and shortcuts; each block hides when absent. */
+  readonly habits?: Habit[];
+  readonly onHabitComplete?: (habit: Habit, date: string) => Promise<void>;
+  readonly onQuickAddTask?: (draft: TaskDraft) => Promise<void>;
+  readonly onOpenAgent?: () => void;
+  readonly onOpenCalendar?: () => void;
+  readonly onOpenHabits?: () => void;
 };
 
 type WorkspaceModal =
@@ -49,12 +57,6 @@ type WorkspaceModal =
   | { kind: "confirm-project-delete"; project: Project }
   | null;
 
-function dateKey(date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function WorkspaceItemModal({ modal, areas, onClose, onSave }: { modal: Exclude<WorkspaceModal, null> & ({ kind: "project" } | { kind: "area" }); areas: Area[]; onClose: () => void; onSave: (name: string, areaId: string | null, icon: string, projectType?: import("../types").ProjectType) => void }) {
   const { t } = useI18n();
@@ -205,8 +207,8 @@ function ProjectDetail({ project, area, tasks, members = [], onBack, onOpenNotes
   </section>;
 }
 
-export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, collaborationByProject, currentUserId = null }: Props) {
-  const { t, tp, lang } = useI18n();
+export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, collaborationByProject, currentUserId = null, habits, onHabitComplete, onQuickAddTask, onOpenAgent, onOpenCalendar, onOpenHabits }: Props) {
+  const { t } = useI18n();
   const [projectQuery, setProjectQuery] = useState("");
   const [modal, setModal] = useState<WorkspaceModal>(null);
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
@@ -214,12 +216,8 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   // exists in the collaboration workspace (deduped by id). Inbox/Waiting keep
   // their existing filters below, so their logic is unchanged.
   const mergedTasks = useMemo(() => mergeAssignedProjectTasks(tasks, collaborationByProject, currentUserId), [tasks, collaborationByProject, currentUserId]);
-  const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
-  const projectFor = (task: Task) => task.projectId ? projectById.get(task.projectId) ?? null : null;
   const projectTasks = selectedProject ? mergedTasks.filter((task) => task.projectId === selectedProject.id) : [];
-  const today = dateKey();
   const waitingTasks = mergedTasks.filter((task) => !task.completed && (task.status === "waiting" || Boolean(task.assigneeName)));
-  const focusTasks = useMemo(() => rankFocusTasks(mergedTasks, today).slice(0, 6), [mergedTasks, today]);
   const areaForProject = (project: Project) => areas.find((area) => area.id === project.areaId);
   const collaboration = selectedProject ? collaborationByProject?.[selectedProject.id] : undefined;
   const membersByProject = useMemo(() => Object.fromEntries(Object.entries(collaborationByProject ?? {}).map(([id, entry]) => [id, entry.sharing.members])), [collaborationByProject]);
@@ -257,47 +255,6 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
 
   if (view === "projects") return <><ProjectsOverview areas={areas} projects={projects} tasks={mergedTasks} membersByProject={membersByProject} query={projectQuery} onQueryChange={setProjectQuery} onOpenProject={onOpenProject} onNewProject={(areaId) => setModal({ kind: "project", areaId: areaId ?? null })} onNewArea={() => setModal({ kind: "area" })} onEditArea={(area) => setModal({ kind: "area", area })} onDeleteArea={(area) => setModal({ kind: "confirm-area-delete", area })} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</>;
   if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} members={collaboration?.sharing.members} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>{t("common.workhub.notFound")}</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>{t("common.workhub.backToProjects")}</button></div>;
-  if (view === "waiting") return <TaskCollection title={t("common.workhub.waitingTitle")} description={t("common.workhub.waitingDescription")} tasks={waitingTasks} projects={projects} empty={t("common.workhub.waitingEmpty")} actionLabel={t("common.workhub.waitingAction")} onAction={() => onNewTask({ status: "waiting" })} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
-  return <section className="today-view" aria-label={t("common.views.today")}>
-    <header className="workhub-dashboard-header today-header">
-      <div className="workhub-header-title">
-        <h2>{t("common.views.today")}</h2>
-        <span className="workhub-date-badge">{new Date().toLocaleDateString(lang, { weekday: "short", month: "short", day: "numeric" })}</span>
-        <span className="workhub-pill-count">{focusTasks.length} {t("common.workhub.tasksCountSuffix")}</span>
-      </div>
-      <div className="workhub-header-actions">
-        <button type="button" className="primary-button" onClick={() => onNewTask({ status: "next" })}><Icon name="plus" /><span>{t("common.header.newTask")}</span></button>
-      </div>
-    </header>
-    <div className="today-grid">
-      <section className="today-section now-section">
-        <div className="today-section-heading">
-          <div>
-            <span className="section-kicker">{t("common.workhub.nowKicker")}</span>
-            <h3>{t("common.workhub.nowTitle")}</h3>
-          </div>
-          <span className="today-count">{focusTasks.length}</span>
-        </div>
-        {focusTasks.length ? focusTasks.map((task) => <TaskRow key={task.id} task={task} project={projectFor(task)} hideNextStatus onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />) : <div className="today-empty"><Icon name="check-circle" /><strong>{t("common.workhub.nowEmptyTitle")}</strong><span>{t("common.workhub.nowEmptyHint")}</span></div>}
-      </section>
-    </div>
-    {waitingTasks.length > 0 && <button type="button" className="today-waiting-banner" onClick={onOpenWaiting}><span><Icon name="later" /><strong>{tp("common.workhub.waitingBanner", waitingTasks.length)}</strong></span><Icon name="chevron-right" /></button>}
-  </section>;
-}
-
-function TaskCollection({ title, tasks, projects, empty, actionLabel, onAction, onTaskChange, onTaskDelete, onTaskEdit }: { title: string; eyebrow?: string; description?: string; tasks: Task[]; projects: Project[]; empty: string; actionLabel: string; onAction: () => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void }) {
-  const { t } = useI18n();
-  const projectById = new Map(projects.map((project) => [project.id, project]));
-  return <section className="task-collection" aria-label={title}>
-    <header className="workhub-dashboard-header">
-      <div className="workhub-header-title">
-        <h2>{title}</h2>
-        <span className="workhub-pill-count">{tasks.length} {t("common.workhub.tasksCountSuffix")}</span>
-      </div>
-      <div className="workhub-header-actions">
-        <button type="button" className="primary-button" onClick={onAction}><Icon name="plus" /><span>{actionLabel}</span></button>
-      </div>
-    </header>
-    {tasks.length ? <div className="task-collection-list">{tasks.map((task) => <TaskRow key={task.id} task={task} project={task.projectId ? projectById.get(task.projectId) ?? null : null} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}</div> : <div className="workhub-empty-state"><Icon name="check-circle" /><h3>{empty}</h3><button type="button" className="primary-button" onClick={onAction}><Icon name="plus" />{actionLabel}</button></div>}
-  </section>;
+  if (view === "waiting") return <WaitingView tasks={waitingTasks} projects={projects} onAdd={() => onNewTask({ status: "waiting" })} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
+  return <TodayView tasks={mergedTasks} waitingTasks={waitingTasks} projects={projects} areas={areas} habits={habits} onHabitComplete={onHabitComplete} onNewTask={onNewTask} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={onOpenCalendar} onOpenHabits={onOpenHabits} onOpenWaiting={onOpenWaiting} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
 }

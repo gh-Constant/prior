@@ -139,15 +139,18 @@ type WorkspaceContentProps = {
   readonly collaborationByProject: Readonly<Record<string, Omit<ProjectCollaborationProps, "project">>>;
   readonly onMailCreateTask: (draft: TaskDraft) => Promise<void>;
   readonly onMailCreateTaskAI: (message: MailMessage) => Promise<void>;
+  readonly onQuickAddTask: (draft: TaskDraft) => Promise<void>;
+  readonly onOpenAgent: () => void;
+  readonly onViewChange: (view: WorkspaceView) => void;
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange }: WorkspaceContentProps) {
   if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
   if (activeView === "calendar") return <CalendarView habits={habits} />;
-  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} />;
+  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} habits={habits} onHabitComplete={onHabitComplete} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={() => onViewChange("calendar")} onOpenHabits={() => onViewChange("habits")} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
   }
@@ -851,11 +854,13 @@ export function App() {
     setComposerOpen(true);
   }
 
-  async function saveTask(input: TaskDraft) {
+  async function saveTask(input: TaskDraft, options?: { keepOpen?: boolean }) {
     if (input.projectId && collaborationStore.role(input.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
     await localStore.saveTask({ ...newTaskContext, ...input, completed: input.status === "done", peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
-    setComposerOpen(false);
-    setNewTaskContext(undefined);
+    if (!options?.keepOpen) {
+      setComposerOpen(false);
+      setNewTaskContext(undefined);
+    }
     await refresh();
     void syncNow();
   }
@@ -1486,6 +1491,9 @@ export function App() {
             collaborationByProject={collaborationByProject}
             onMailCreateTask={(draft) => { openMailTask(draft); return Promise.resolve(); }}
             onMailCreateTaskAI={createMailTaskAI}
+            onQuickAddTask={saveTask}
+            onOpenAgent={() => setAgentOpen(true)}
+            onViewChange={changeView}
           />
         </CompletionExitProvider>
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => openNewTask()}><Icon name="plus" /> {t("common.header.newTask")}</button>}
@@ -1529,7 +1537,7 @@ export function App() {
         onOpenSettings={() => { setAgentOpen(false); changeView("settings"); }}
       />
 
-      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onProjectChange={setComposerProjectId} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); setComposerProjectId(undefined); }} />}
+      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onProjectChange={setComposerProjectId} allowCreateMore={!editingTask} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); setComposerProjectId(undefined); }} />}
       {mailComposerOpen && mailDraft && (
         <TaskComposer
           key="mail-task"
