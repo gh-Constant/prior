@@ -188,6 +188,7 @@
   .today-next-event > svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--sidebar-muted); }
 
   .today-dash-grid { display: flex; flex-direction: column; gap: 14px; margin-top: 0; }
+  .today-dash-grid > *, .today-dash-grid .today-card { width: 100%; min-width: 0; align-self: stretch; }
   .today-dash-main { display: contents; }
   .today-card { border-radius: var(--r-xl); }
   .today-priorities { order: 1; }

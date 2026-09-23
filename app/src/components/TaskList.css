@@ -158,7 +158,9 @@
 
 @media (max-width: 760px) {
   .workspace-header.tasks-header { flex-wrap: nowrap; margin-bottom: 14px; }
-  .workspace-header.tasks-header h1 { display: block; font-size: 28px; font-weight: 650; letter-spacing: -.035em; }
+  /* The shell phone header already shows the large page title. */
+  .workspace-header.tasks-header { justify-content: flex-end; }
+  .workspace-header.tasks-header h1 { display: none; }
   .workspace-header.tasks-header .workspace-subtitle, .workspace-header.tasks-header .layout-switch-labeled span { display: none; }
   .workspace-header.tasks-header .workspace-actions { width: auto; }
   /* Icon-only primary action: the label stays as the button's aria-label. */
