@@ -1,7 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { fireEvent } from "@testing-library/react";
 import { Quadrant } from "./Quadrant";
+import { EisenhowerMatrix } from "./EisenhowerMatrix";
 import type { Task } from "../types";
 
 afterEach(() => cleanup());
@@ -118,5 +120,30 @@ describe("Quadrant component (Eisenhower matrix)", () => {
     expect(task.status).toBe("in_progress");
     expect(task.assigneeName).toBe("Alice");
     expect(task.followUpDate).toBe("2026-09-18");
+  });
+
+  it("shows a header count, an empty-state line and an add action", () => {
+    const onAdd = vi.fn();
+    render(<Quadrant id="plan" label="Schedule" hint="Important · Not urgent" tasks={[]} onChange={vi.fn()} onDelete={vi.fn()} onEdit={vi.fn()} onAdd={onAdd} />);
+    expect(screen.getByText("Important · Not urgent")).toBeInTheDocument();
+    expect(screen.getByLabelText("0 tasks")).toHaveTextContent("0");
+    expect(screen.getByText("No tasks here yet.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add a task to Schedule" }));
+    expect(onAdd).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("EisenhowerMatrix", () => {
+  it("lays out the four quadrants with axis labels and presets new tasks per quadrant", () => {
+    const onNewTask = vi.fn();
+    render(<EisenhowerMatrix grouped={{ focus: [], plan: [], quick: [], later: [] }} onChange={vi.fn()} onDelete={vi.fn()} onEdit={vi.fn()} onNewTask={onNewTask} />);
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Do now", "Schedule", "Delegate", "Later"]);
+    expect(screen.getByText("Not urgent")).toBeInTheDocument();
+    expect(screen.getByText("Not important")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add a task to Delegate" }));
+    expect(onNewTask).toHaveBeenLastCalledWith({ important: false, urgent: true });
+    fireEvent.click(screen.getByRole("button", { name: "Add a task to Do now" }));
+    expect(onNewTask).toHaveBeenLastCalledWith({ important: true, urgent: true });
   });
 });
