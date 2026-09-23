@@ -28,6 +28,7 @@ describe("collaboration editing actions", () => {
   it("keeps project editing across tabs, switches creation actions, preserves notes and hides empty placeholders", () => {
     const onEditProject = vi.fn(), onCreateCycle = vi.fn(), onEditCycle = vi.fn(), onOpenNotes = vi.fn();
     render(<ProjectCollaboration {...props} onEditProject={onEditProject} onCreateIssue={vi.fn()} onCreateCycle={onCreateCycle} onEditCycle={onEditCycle} onOpenNotes={onOpenNotes} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     expect(screen.queryByRole("heading", { name: "Milestones" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Latest update" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "Project people" })).getByRole("img", { name: "Alex" }).querySelector("img")).toHaveAttribute("src", "https://example.com/alex.jpg");

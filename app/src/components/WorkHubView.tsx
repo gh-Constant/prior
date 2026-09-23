@@ -1,20 +1,22 @@
-import { useMemo, useState, type ReactNode } from "react";
-import type { Area, Project, ProjectStatus, Task, TaskDraft } from "../types";
+import { useId, useMemo, useState, type ReactNode } from "react";
+import type { Area, Project, ProjectStatus, Task, TaskDraft, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { notesStore } from "../lib/notes";
 import { mergeAssignedProjectTasks } from "../lib/projectTasks";
 import { workspaceStore } from "../lib/workspaceStore";
-import { ContextMenu, useContextMenu } from "./ContextMenu";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { TaskRow } from "./TaskRow";
 import { ProjectTaskBoard } from "./ProjectTaskBoard";
 import { Modal } from "./Modal";
 import { ProjectCollaboration } from "./collaboration/ProjectCollaboration";
-import type { ProjectCollaborationProps } from "./collaboration/types";
-import { AREA_ICON_OPTIONS, DEFAULT_AREA_ICON, DEFAULT_PROJECT_ICON, PROJECT_ICON_OPTIONS, WorkspaceIcon } from "./WorkspaceIcon";
+import type { Person, ProjectCollaborationProps } from "./collaboration/types";
+import { AREA_ICON_OPTIONS, DEFAULT_AREA_ICON, DEFAULT_PROJECT_ICON, PROJECT_ICON_OPTIONS } from "./WorkspaceIcon";
 import { IconPicker, IconUpload } from "./IconPicker";
 import { CustomSelect } from "./CustomSelect";
 import { ProjectsOverview } from "./ProjectsOverview";
+import { AvatarStack, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, ProjectTile, currentCycle, projectProgress } from "./ProjectVisuals";
+import { ProjectBreadcrumb, ProjectDetailHeader, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "./ProjectDetailParts";
 import { rankFocusTasks } from "../lib/taskFocus";
 import "./WorkHubView.css";
 
@@ -46,13 +48,6 @@ type WorkspaceModal =
   | { kind: "confirm-area-delete"; area: Area }
   | { kind: "confirm-project-delete"; project: Project }
   | null;
-
-const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  planned: "common.workhub.statusPlanned",
-  active: "common.workhub.statusActive",
-  paused: "common.workhub.statusPaused",
-  completed: "common.workhub.statusCompleted",
-};
 
 function dateKey(date = new Date()): string {
   const year = date.getFullYear();
@@ -150,41 +145,62 @@ function ConfirmProjectDeleteModal({ project, onClose, onConfirm }: { project: P
 }
 
 
-function ProjectDetail({ project, area, tasks, onBack, onOpenNotes, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, onEditProject, onDeleteProject }: { project: Project; area?: Area; tasks: Task[]; onBack: () => void; onOpenNotes: (id: string) => void; onNewTask: (context: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void; onWorkspaceChange: () => void; onEditProject: (project: Project) => void; onDeleteProject: (project: Project) => void }) {
+type ProjectDetailTab = "board" | "list" | "notes";
+
+function ProjectDetail({ project, area, tasks, members = [], onBack, onOpenNotes, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, onEditProject, onDeleteProject }: { project: Project; area?: Area; tasks: Task[]; members?: readonly Person[]; onBack: () => void; onOpenNotes: (id: string) => void; onNewTask: (context: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void; onWorkspaceChange: () => void; onEditProject: (project: Project) => void; onDeleteProject: (project: Project) => void }) {
   const { t } = useI18n();
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
-  const [tab, setTab] = useState<"tasks" | "board" | "notes">("tasks");
+  const [tab, setTab] = useState<ProjectDetailTab>("board");
+  const panelId = useId();
   const [notes, setNotes] = useState(() => notesStore.list().filter((note) => note.projectId === project.id));
-  const completed = tasks.filter((task) => task.completed).length;
-  const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
+  const progress = projectProgress(tasks);
+  const cycle = currentCycle(project.cycles);
+  const openCount = tasks.filter((task) => !task.completed).length;
+  const newTask = (status: TaskStatus = "next") => onNewTask({ areaId: project.areaId, projectId: project.id, status });
   const createNote = () => {
-    const note = notesStore.create(t("common.workhub.untitledProjectNote"), null, project.id);
+    notesStore.create(t("common.workhub.untitledProjectNote"), null, project.id);
     setNotes(notesStore.list().filter((item) => item.projectId === project.id));
     onOpenNotes(project.id);
-    void note;
   };
   function changeStatus(status: ProjectStatus): void {
     workspaceStore.updateProject({ ...project, status });
     onWorkspaceChange();
   }
-  return <section className="workhub-project-detail" aria-label={project.name}>
-    <button type="button" className="back-link" onClick={onBack}><Icon name="chevron-left" />{t("common.workhub.backToAll")}</button>
-    <div
-      className="project-detail-header"
-      onContextMenu={(event) => openMenu(event, [
-        { icon: "pencil", label: t("common.workhub.menuEdit", { name: project.name }), run: () => onEditProject(project) },
-        { icon: "plus", label: t("common.workhub.menuNewTask"), run: () => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" }) },
-        { icon: "trash", label: t("common.workhub.menuDelete", { name: project.name }), danger: true, run: () => onDeleteProject(project) },
-      ])}
-      {...longPress(() => [
-        { icon: "pencil", label: t("common.workhub.menuEdit", { name: project.name }), run: () => onEditProject(project) },
-        { icon: "plus", label: t("common.workhub.menuNewTask"), run: () => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" }) },
-        { icon: "trash", label: t("common.workhub.menuDelete", { name: project.name }), danger: true, run: () => onDeleteProject(project) },
-      ])}
-    ><div className="project-detail-heading"><div className="project-detail-title-row"><span className="project-detail-icon"><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /></span><div><div className="project-detail-kicker">{area?.name ?? t("common.workhub.noArea")}<span className={`project-type-badge type-${project.projectType || "standard"}`}>{project.projectType === "software" ? t("common.workhub.badgeSoftware") : t("common.workhub.badgeStandard")}</span></div><h2>{project.name}</h2></div></div>{project.description && <p>{project.description}</p>}</div><div className="project-detail-actions"><button type="button" className="secondary-button project-edit-button" onClick={() => onEditProject(project)}><Icon name="pencil" />{t("common.workhub.editProject")}</button><CustomSelect ariaLabel={t("common.workhub.detailStatusLabel")} className={`project-status-custom-select status-${project.status}`} value={project.status} onChange={(next) => changeStatus(next as ProjectStatus)} options={Object.entries(PROJECT_STATUS_LABELS).map(([val, labelKey]) => ({ value: val, label: t(labelKey) }))} /><button type="button" className="primary-button" onClick={() => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" })}><Icon name="plus" />{t("common.header.newTask")}</button></div></div>
-    <div className="project-progress"><div><span>{t("common.workhub.progress", { completed, total: tasks.length })}</span><strong>{progress}%</strong></div><div className="project-progress-track"><span style={{ width: `${progress}%` }} /></div></div>
-    <div className="workhub-tabs" role="tablist"><button type="button" role="tab" aria-selected={tab === "tasks"} className={tab === "tasks" ? "active" : ""} onClick={() => setTab("tasks")}>{t("common.workhub.tasksTab")} <span>{tasks.filter((task) => !task.completed).length}</span></button><button type="button" role="tab" aria-selected={tab === "board"} className={tab === "board" ? "active" : ""} onClick={() => setTab("board")}>{t("common.workhub.boardTab")}</button><button type="button" role="tab" aria-selected={tab === "notes"} className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}>{t("common.workhub.notesTab")} <span>{notes.length}</span></button></div>
-    {tab === "tasks" ? <div className="project-task-list">{tasks.length ? tasks.map((task) => <TaskRow key={task.id} task={task} project={project} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />) : <div className="workhub-empty-state compact"><Icon name="check-circle" /><h3>{t("common.workhub.noTasksTitle")}</h3><p>{t("common.workhub.noTasksHint")}</p><button type="button" className="primary-button" onClick={() => onNewTask({ areaId: project.areaId, projectId: project.id, status: "next" })}><Icon name="plus" />{t("common.workhub.addNextTask")}</button></div>}</div> : tab === "board" ? <ProjectTaskBoard project={project} tasks={tasks} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} /> : <div className="project-notes-panel"><div className="project-notes-heading"><div><h3>{t("common.workhub.notesTitle")}</h3></div><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.newNote")}</button></div>{notes.length ? <div className="project-note-list">{notes.map((note) => <button type="button" className="project-note-card" key={note.id} onClick={() => onOpenNotes(project.id)}><Icon name="file-text" /><span><strong>{note.title}</strong><small>{note.body.replace(/\s+/g, " ").trim().slice(0, 120) || t("common.workhub.emptyNote")}</small></span><Icon name="chevron-right" /></button>)}</div> : <div className="workhub-empty-state compact"><Icon name="file-text" /><h3>{t("common.workhub.noNotesTitle")}</h3><p>{t("common.workhub.noNotesHint")}</p><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.createNote")}</button></div>}<button type="button" className="secondary-button project-open-notes" onClick={() => onOpenNotes(project.id)}>{t("common.workhub.openNotes")}</button></div>}
+  const headerMenu = (): ContextMenuItem[] => [
+    { icon: "pencil", label: t("common.workhub.menuEdit", { name: project.name }), run: () => onEditProject(project) },
+    { icon: "plus", label: t("common.workhub.menuNewTask"), run: () => newTask() },
+    { icon: "trash", label: t("common.workhub.menuDelete", { name: project.name }), danger: true, run: () => onDeleteProject(project) },
+  ];
+  const tabs: ProjectTabItem<ProjectDetailTab>[] = [
+    { id: "board", label: t("common.workhub.boardTab"), icon: "columns" },
+    { id: "list", label: t("common.projectHub.listTab"), icon: "list", count: openCount },
+    { id: "notes", label: t("common.workhub.notesTab"), icon: "file-text", count: notes.length },
+  ];
+  const noTasks = <div className="workhub-empty-state compact project-empty-state"><Icon name="check-circle" /><h3>{t("common.workhub.noTasksTitle")}</h3><p>{t("common.workhub.noTasksHint")}</p><button type="button" className="primary-button" onClick={() => newTask()}><Icon name="plus" />{t("common.workhub.addNextTask")}</button></div>;
+  return <section className="workhub-project-detail project-page" aria-label={project.name}>
+    <ProjectBreadcrumb areaName={area?.name} projectName={project.name} onBack={onBack} />
+    <ProjectDetailHeader
+      icon={<ProjectTile project={project} size="lg" />}
+      title={project.name}
+      chips={<>
+        <CustomSelect ariaLabel={t("common.workhub.detailStatusLabel")} className={`project-status-select is-${project.status}`} value={project.status} onChange={(next) => changeStatus(next as ProjectStatus)} options={(["planned", "active", "paused", "completed"] as const).map((value) => ({ value, label: t(PROJECT_STATUS_LABELS[value]), color: PROJECT_STATUS_COLORS[value] }))} />
+        <ProjectTypeChip software={project.projectType === "software"} cycleName={cycle?.name} />
+      </>}
+      description={project.description}
+      aside={<AvatarStack people={members} size="md" label={t("common.projectHub.members")} />}
+      actions={<>
+        <button type="button" className="secondary-button project-edit-button" aria-label={t("common.workhub.editProject")} title={t("common.workhub.editProject")} onClick={() => onEditProject(project)}><Icon name="pencil" /><span>{t("common.workhub.editProject")}</span></button>
+        <button type="button" className="primary-button" onClick={() => newTask()}><Icon name="plus" /><span>{t("common.header.newTask")}</span></button>
+      </>}
+      headerProps={{ onContextMenu: (event) => openMenu(event, headerMenu()), ...longPress(headerMenu) }}
+    />
+    <ProjectStatsStrip progress={progress} targetDate={project.targetDate} cycle={cycle} health={project.health} completed={project.status === "completed"} />
+    <ProjectTabs tabs={tabs} active={tab} onChange={setTab} label={t("common.projectHub.viewsLabel")} panelId={panelId} />
+    <div id={panelId} className="project-tab-panel" role="tabpanel" aria-label={tabs.find((item) => item.id === tab)?.label}>
+      {tab === "board" ? (tasks.length ? <ProjectTaskBoard project={project} tasks={tasks} people={members} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onAddTask={newTask} /> : noTasks)
+        : tab === "list" ? (tasks.length ? <div className="project-task-list">{tasks.map((task) => <TaskRow key={task.id} task={task} project={project} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}</div> : noTasks)
+        : <div className="project-notes-panel"><div className="project-notes-heading"><h3>{t("common.workhub.notesTitle")}</h3><div className="project-notes-actions"><button type="button" className="secondary-button" onClick={() => onOpenNotes(project.id)}>{t("common.workhub.openNotes")}</button><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.newNote")}</button></div></div>{notes.length ? <div className="project-note-list">{notes.map((note) => <button type="button" className="project-note-card" key={note.id} onClick={() => onOpenNotes(project.id)}><Icon name="file-text" /><span><strong>{note.title}</strong><small>{note.body.replace(/\s+/g, " ").trim().slice(0, 120) || t("common.workhub.emptyNote")}</small></span><Icon name="chevron-right" /></button>)}</div> : <div className="workhub-empty-state compact"><Icon name="file-text" /><h3>{t("common.workhub.noNotesTitle")}</h3><p>{t("common.workhub.noNotesHint")}</p><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.createNote")}</button></div>}</div>}
+    </div>
     {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
   </section>;
 }
@@ -206,10 +222,11 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   const focusTasks = useMemo(() => rankFocusTasks(mergedTasks, today).slice(0, 6), [mergedTasks, today]);
   const areaForProject = (project: Project) => areas.find((area) => area.id === project.areaId);
   const collaboration = selectedProject ? collaborationByProject?.[selectedProject.id] : undefined;
+  const membersByProject = useMemo(() => Object.fromEntries(Object.entries(collaborationByProject ?? {}).map(([id, entry]) => [id, entry.sharing.members])), [collaborationByProject]);
 
   const isSoftwareCollaboration = selectedProject?.projectType === "software" || (!selectedProject?.projectType && Boolean(collaboration));
-  if (view === "project" && selectedProject && collaboration && isSoftwareCollaboration) return <div className="workhub-project-detail">
-    <button type="button" className="back-link" onClick={() => onOpenProject("")}><Icon name="chevron-left" />{t("common.workhub.backToAll")}</button>
+  if (view === "project" && selectedProject && collaboration && isSoftwareCollaboration) return <div className="workhub-project-detail project-page">
+    <ProjectBreadcrumb areaName={areaForProject(selectedProject)?.name} projectName={selectedProject.name} onBack={() => onOpenProject("")} />
     <ProjectCollaboration key={selectedProject.id} {...collaboration} project={selectedProject} />
   </div>;
 
@@ -238,8 +255,8 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
     return <WorkspaceItemModal modal={modalState} areas={areas} onClose={() => setModal(null)} onSave={saveModal} />;
   }
 
-  if (view === "projects") return <><ProjectsOverview areas={areas} projects={projects} query={projectQuery} onQueryChange={setProjectQuery} onOpenProject={onOpenProject} onNewProject={(areaId) => setModal({ kind: "project", areaId: areaId ?? null })} onNewArea={() => setModal({ kind: "area" })} onEditArea={(area) => setModal({ kind: "area", area })} onDeleteArea={(area) => setModal({ kind: "confirm-area-delete", area })} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</>;
-  if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>{t("common.workhub.notFound")}</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>{t("common.workhub.backToProjects")}</button></div>;
+  if (view === "projects") return <><ProjectsOverview areas={areas} projects={projects} tasks={mergedTasks} membersByProject={membersByProject} query={projectQuery} onQueryChange={setProjectQuery} onOpenProject={onOpenProject} onNewProject={(areaId) => setModal({ kind: "project", areaId: areaId ?? null })} onNewArea={() => setModal({ kind: "area" })} onEditArea={(area) => setModal({ kind: "area", area })} onDeleteArea={(area) => setModal({ kind: "confirm-area-delete", area })} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</>;
+  if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} members={collaboration?.sharing.members} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>{t("common.workhub.notFound")}</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>{t("common.workhub.backToProjects")}</button></div>;
   if (view === "waiting") return <TaskCollection title={t("common.workhub.waitingTitle")} description={t("common.workhub.waitingDescription")} tasks={waitingTasks} projects={projects} empty={t("common.workhub.waitingEmpty")} actionLabel={t("common.workhub.waitingAction")} onAction={() => onNewTask({ status: "waiting" })} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
   return <section className="today-view" aria-label={t("common.views.today")}>
     <header className="workhub-dashboard-header today-header">
