@@ -507,18 +507,18 @@ input.notes-document-title::placeholder, .notes-document-title.is-placeholder { 
 @media (max-width: 760px) {
   .notes-workspace,
   .notes-workspace.with-inspector,
-  .notes-workspace.library-collapsed { display: block; height: auto; min-height: calc(100dvh - 84px); overflow: visible; }
+  .notes-workspace.library-collapsed { display: block; height: auto; min-height: 100dvh; overflow: visible; }
   .notes-inspector { display: none; }
 
-  /* Explorer and note are two screens; the bottom tab bar stays reachable below both. */
+  /* Explorer and note are two screens; both keep clear of the shell's bottom tab bar. */
   .notes-workspace[data-mobile-view="note"] .notes-explorer { display: none; }
   .notes-workspace[data-mobile-view="list"] .notes-main { display: none; }
   .notes-workspace[data-mobile-view="list"] .notes-explorer { display: flex; }
-  .notes-workspace-page:has(.notes-workspace[data-mobile-view="note"]) > .mobile-topbar { display: none; }
 
-  .notes-explorer { gap: 12px; min-height: calc(100dvh - 84px); padding: 8px max(16px, env(safe-area-inset-right)) calc(104px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); border-right: 0; }
+  .notes-explorer { gap: 12px; min-height: 100dvh; padding: max(20px, calc(env(safe-area-inset-top) + 12px)) max(16px, env(safe-area-inset-right)) calc(var(--mobile-tabbar-h, 84px) + 24px) max(16px, env(safe-area-inset-left)); border-right: 0; }
   .notes-explorer-header { padding-left: 2px; }
-  .notes-explorer-header h2 { font-size: 26px; font-weight: 650; letter-spacing: -.03em; }
+  /* Matches the shell's phone page title (MobileTopBar). */
+  .notes-explorer-header h2 { font-size: 28px; font-weight: 650; letter-spacing: -.035em; line-height: 1.15; }
   .notes-explorer-header-actions { gap: 8px; }
   .notes-explorer-header-actions .notes-icon-button { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink-2); }
   .notes-explorer-header-actions .notes-icon-button svg { width: 18px; height: 18px; }
@@ -533,7 +533,7 @@ input.notes-document-title::placeholder, .notes-document-title.is-placeholder { 
   .note-row-action { width: 36px; height: 36px; }
   .notes-explorer-footer { padding: 4px 4px 0; font-size: 12px; }
 
-  .notes-main { min-height: calc(100dvh - 84px); }
+  .notes-main { min-height: 100dvh; }
   .notes-tabs, .notes-toolbar { display: none; }
   .notes-mobilebar {
     position: sticky;
@@ -556,7 +556,7 @@ input.notes-document-title::placeholder, .notes-document-title.is-placeholder { 
   .notes-mobilebar-button.is-active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-dark); }
 
   .notes-document-scroll { overflow: visible; }
-  .notes-document, .notes-document.is-split { width: auto; margin: 0; padding: 22px max(22px, env(safe-area-inset-right)) calc(120px + env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left)); font-size: 16px; }
+  .notes-document, .notes-document.is-split { width: auto; margin: 0; padding: 22px max(22px, env(safe-area-inset-right)) calc(var(--mobile-tabbar-h, 84px) + 40px) max(22px, env(safe-area-inset-left)); font-size: 16px; }
   .notes-document-header { margin-bottom: 14px; }
   .notes-document-title { font-size: 30px; font-weight: 650; }
   .notes-document-meta { margin-top: 14px; }
