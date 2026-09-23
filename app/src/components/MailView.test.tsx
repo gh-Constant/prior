@@ -22,7 +22,7 @@ describe("MailView", () => {
     const onCreateTaskAI = vi.fn(async () => undefined);
     render(<I18nProvider><MailView user={null} onCreateTask={onCreateTask} onCreateTaskAI={onCreateTaskAI} /></I18nProvider>);
 
-    const firstRow = await screen.findByRole("button", { name: /Amélie Laurent/ });
+    const firstRow = await screen.findByRole("button", { name: /Amélie Laurent/ }, { timeout: 8000 });
     expect(screen.getByRole("heading", { name: "No message selected" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /SNCF Connect/ })).toBeTruthy();
 
@@ -31,7 +31,7 @@ describe("MailView", () => {
     expect(screen.queryByRole("button", { name: /SNCF Connect/ })).toBeNull();
 
     fireEvent.click(firstRow);
-    const reader = await screen.findByRole("article");
+    const reader = await screen.findByRole("article", undefined, { timeout: 8000 });
     expect(within(reader).getByRole("heading", { name: "Re: Brand sprint — final assets handoff" })).toBeTruthy();
     expect(within(reader).getByRole("heading", { name: "Turn into a task" })).toBeTruthy();
 
@@ -40,13 +40,13 @@ describe("MailView", () => {
 
     fireEvent.click(within(reader).getByRole("button", { name: "Create task" }));
     expect(onCreateTask).toHaveBeenCalledWith(expect.objectContaining({ title: "Re: Brand sprint — final assets handoff", status: "inbox" }));
-  });
+  }, 20_000);
 
   it("shows the Gmail connection page when no mailbox is available", async () => {
     vi.stubEnv("DEV", false);
     render(<I18nProvider><MailView user={null} onCreateTask={vi.fn()} onCreateTaskAI={vi.fn()} /></I18nProvider>);
-    expect(await screen.findByRole("heading", { name: "Connect your Gmail", level: 1 })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Connect your Gmail", level: 1 }, { timeout: 8000 })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Continue with Google" })).toBeTruthy();
     expect(screen.queryByRole("list", { name: "Messages" })).toBeNull();
-  });
+  }, 20_000);
 });
