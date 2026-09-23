@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe("ProjectsOverview", () => {
-  it("keeps complete names and both kinds of metadata, with separate open and edit actions", () => {
+  it("keeps complete names and both kinds of metadata, with separate open and options actions", () => {
     const actions = setup();
     const name = projects[0].name;
     expect(screen.getByText(name)).toBeVisible();
@@ -50,7 +50,8 @@ describe("ProjectsOverview", () => {
     expect(within(card).getByText("Active")).toBeVisible();
     fireEvent.click(card);
     expect(actions.onOpenProject).toHaveBeenCalledWith("launch");
-    fireEvent.click(screen.getByRole("button", { name: `Edit ${name} project` }));
+    fireEvent.click(screen.getByRole("button", { name: `Options for ${name} project` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: `Edit ${name}` }));
     expect(actions.onEditProject).toHaveBeenCalledWith(projects[0]);
     expect(actions.onOpenProject).toHaveBeenCalledTimes(1);
   });
@@ -80,7 +81,10 @@ describe("ProjectsOverview", () => {
     const actions = setup();
     fireEvent.click(screen.getByRole("button", { name: "Create your first project in Personal" }));
     expect(actions.onNewProject).toHaveBeenCalledWith("personal");
-    fireEvent.click(screen.getByRole("button", { name: "New project in Studio" }));
+    // The area heading action comes first; the dashed card at the end of the grid repeats it.
+    const studioActions = screen.getAllByRole("button", { name: "New project in Studio" });
+    expect(studioActions).toHaveLength(2);
+    fireEvent.click(studioActions[0]);
     expect(actions.onNewProject).toHaveBeenCalledWith("work");
     fireEvent.click(screen.getByRole("button", { name: "Options for Studio area" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Edit Studio area" }));
@@ -103,7 +107,7 @@ describe("ProjectsOverview", () => {
     expect(screen.queryByRole("region", { name: "No area" })).not.toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: "New project" })[1]);
     expect(actions.onNewProject).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "New area" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New area" })[1]);
     expect(actions.onNewArea).toHaveBeenCalledTimes(1);
   });
 });

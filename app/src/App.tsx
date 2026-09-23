@@ -1153,7 +1153,7 @@ export function App() {
           return { ...cycle, phase: cycle.endsOn < today ? "past" as const : cycle.startsOn > today ? "upcoming" as const : "current" as const, dateLabel: `${cycle.startsOn} – ${cycle.endsOn}`, issueCount: assigned.length, completedCount: assigned.filter((issue) => issue.stateId === "done").length };
         }),
         readOnly,
-        onCreateIssue: readOnly ? undefined : () => openNewTask({ projectId: project.id, status: "backlog" }),
+        onCreateIssue: readOnly ? undefined : (stateId) => openNewTask({ projectId: project.id, status: stateOptions.find((state) => state.id === stateId)?.id as Task["status"] ?? "backlog" }),
         onEditProject: readOnly ? undefined : () => setProjectEditor(project),
         onCreateCycle: readOnly ? undefined : () => setCycleEditor({ projectId: project.id }),
         onEditCycle: readOnly ? undefined : (cycleId) => setCycleEditor({ projectId: project.id, cycleId }),
