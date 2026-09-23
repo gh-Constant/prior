@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { api } from "./lib/api";
 import { AUTH_REQUIRED_EVENT, clearSession, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
 import { useI18n } from "./lib/i18n";
@@ -9,10 +9,11 @@ import { isDesktop, isMac, isTauri } from "./lib/platform";
 import { checkForUpdate, installAvailableUpdate, type UpdateInfo } from "./lib/updater";
 import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
-import { Quadrant } from "./components/Quadrant";
-import { TaskComposer } from "./components/TaskComposer";
-import { CompletionExitProvider, TaskRow } from "./components/TaskRow";
+import { EisenhowerMatrix } from "./components/EisenhowerMatrix";
+import { TaskComposer, type TaskComposerContext } from "./components/TaskComposer";
+import { CompletionExitProvider } from "./components/TaskRow";
 import { TaskColumns } from "./components/TaskColumns";
+import { AllTasksView } from "./components/AllTasksView";
 import { AccountDialog } from "./components/AccountDialog";
 import { AuthGate } from "./components/AuthGate";
 import { updateAndroidWidget } from "./lib/widget";
@@ -65,7 +66,7 @@ function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
   if (view === "projects") return t("common.views.projects");
   if (view === "project") return t("common.views.project");
   if (view === "waiting") return t("common.views.waiting");
-  if (view === "eisenhower") return t("common.views.eisenhower");
+  if (view === "eisenhower") return t("tasks.matrix.title");
   if (view === "habits") return t("common.views.habits");
   if (view === "notes") return t("common.views.notes");
   if (view === "settings") return t("common.views.settings");
@@ -79,21 +80,26 @@ type WorkspaceHeaderProps = {
   readonly shortcut: string;
   readonly shortcutKey: string;
   readonly onNewTask: () => void;
+  /** Muted count next to the title (all tasks, priorities). */
+  readonly subtitle?: string;
+  /** Extra header controls placed before the primary action. */
+  readonly extraActions?: ReactNode;
 };
 
-function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
+function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask, subtitle, extraActions }: WorkspaceHeaderProps) {
   const { t } = useI18n();
   if (["today", "inbox", "projects", "project", "waiting", "notes", "settings"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
-    <header className="workspace-header">
-      <h1>{viewTitle(activeView, t)}</h1>
+    <header className={`workspace-header ${activeView === "all" || activeView === "eisenhower" ? "tasks-header" : ""}`}>
+      {subtitle ? <div className="workspace-heading"><h1>{viewTitle(activeView, t)}</h1><span className="workspace-subtitle">{subtitle}</span></div> : <h1>{viewTitle(activeView, t)}</h1>}
       {activeView !== "calendar" && <div className="workspace-actions">
-        {activeView === "all" && <div className="layout-switch" role="toolbar" aria-label={t("common.header.layout")}>
-          <button type="button" className={layout === "list" ? "active" : ""} aria-label={t("common.header.listView")} aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /></button>
-          <button type="button" className={layout === "board" ? "active" : ""} aria-label={t("common.header.columnView")} title={t("common.header.columnView")} aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /></button>
+        {activeView === "all" && <div className="layout-switch layout-switch-labeled" role="toolbar" aria-label={t("common.header.layout")}>
+          <button type="button" className={layout === "list" ? "active" : ""} aria-label={t("tasks.list.layoutList")} aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /><span>{t("tasks.list.layoutList")}</span></button>
+          <button type="button" className={layout === "board" ? "active" : ""} aria-label={t("tasks.list.layoutBoard")} aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /><span>{t("tasks.list.layoutBoard")}</span></button>
         </div>}
+        {extraActions}
         <button className="primary-button new-task-button" type="button" aria-label={newTaskLabel} title={t("common.header.newActionTitle", { label: newTaskLabel, shortcut })} aria-keyshortcuts={shortcutKey} onClick={onNewTask}><Icon name="plus" /><span>{newTaskLabel}</span><kbd>{shortcut}</kbd></button>
       </div>}
     </header>
@@ -124,7 +130,8 @@ type WorkspaceContentProps = {
   readonly onOpenProject: (projectId: string) => void;
   readonly onOpenNotes: (projectId?: string) => void;
   readonly onOpenWaiting: () => void;
-  readonly onNewTask: (context?: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void;
+  readonly onNewTask: (context?: TaskComposerContext) => void;
+  readonly taskFilters: TaskFilterState;
   readonly onWorkspaceChange: () => void;
   readonly collaborationByProject: Readonly<Record<string, Omit<ProjectCollaborationProps, "project">>>;
   readonly onMailCreateTask: (draft: TaskDraft) => Promise<void>;
@@ -132,8 +139,7 @@ type WorkspaceContentProps = {
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI }: WorkspaceContentProps) {
-  const { t } = useI18n();
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI }: WorkspaceContentProps) {
   if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
@@ -143,24 +149,16 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, ta
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
   }
   if (activeView === "eisenhower") {
-    return (
-      <div className="quadrant-grid">
-        {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} projects={projects} hideNextStatus />)}
-      </div>
-    );
+    return <EisenhowerMatrix grouped={grouped} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
   }
   if (layout === "board") {
-    return <TaskColumns tasks={visibleTasks} hideNextStatus onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />;
+    return <TaskColumns tasks={visibleTasks} projects={projects} showDone={taskFilters.status !== "open"} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
   }
-  return (
-    <section className="list-view" aria-label={t("common.views.allTasks")}>
-      {visibleTasks.map((task) => <TaskRow key={task.id} task={task} hideNextStatus onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}
-    </section>
-  );
+  return <AllTasksView tasks={tasks} visibleTasks={visibleTasks} filters={taskFilters} projects={projects} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
 }
 
 export function App() {
-  const { t } = useI18n();
+  const { t, tp } = useI18n();
   const productionAuthRequired = import.meta.env.DEV !== true;
   const [authReady, setAuthReady] = useState(!productionAuthRequired);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -169,7 +167,7 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>(() => workspaceStore.listProjects());
   const [, bumpCollaboration] = useReducer((value: number) => value + 1, 0);
   const [composerOpen, setComposerOpen] = useState(false);
-  const [newTaskContext, setNewTaskContext] = useState<Pick<TaskDraft, "areaId" | "projectId" | "status"> | undefined>(undefined);
+  const [newTaskContext, setNewTaskContext] = useState<TaskComposerContext | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [mailDraft, setMailDraft] = useState<TaskDraft | null>(null);
   const [mailComposerOpen, setMailComposerOpen] = useState(false);
@@ -843,7 +841,7 @@ export function App() {
     return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("online", syncNow); window.removeEventListener("focus", syncOnActive); };
   }, [activeView, syncNow, syncOnActive]);
 
-  function openNewTask(context?: Pick<TaskDraft, "areaId" | "projectId" | "status">): void {
+  function openNewTask(context?: TaskComposerContext): void {
     setNewTaskContext(context);
     setComposerProjectId(context?.projectId ?? null);
     setComposerOpen(true);
@@ -1299,6 +1297,8 @@ export function App() {
     [tasks, taskFilters, completionExitDeadlines],
   );
 
+  const openTaskCount = useMemo(() => tasks.filter((task) => !task.completed).length, [tasks]);
+
   const grouped = useMemo(() => Object.fromEntries(QUADRANTS.map((quadrant) => [quadrant.key, visibleTasks.filter((task) => quadrantFor(task) === quadrant.key)])), [visibleTasks]);
 
   function handleAuthenticated(nextUser: SessionUser) {
@@ -1441,9 +1441,14 @@ export function App() {
           shortcut={shortcut}
           shortcutKey={shortcutKey}
           onNewTask={() => activeView === "habits" ? setHabitComposerOpen(true) : openNewTask()}
+          subtitle={activeView === "all" ? tp("tasks.list.activeCount", openTaskCount) : activeView === "eisenhower" ? tp("tasks.matrix.subtitle", visibleTasks.length) : undefined}
+          extraActions={activeView === "eisenhower" ? <div className="scope-switch" role="group" aria-label={t("tasks.matrix.scopeLabel")}>
+            <button type="button" aria-pressed={taskFilters.status === "open"} onClick={() => setTaskFilters({ ...taskFilters, status: "open" })}>{t("tasks.matrix.scopeActive")}</button>
+            <button type="button" aria-pressed={taskFilters.status === "all"} onClick={() => setTaskFilters({ ...taskFilters, status: "all" })}>{t("tasks.matrix.scopeAll")}</button>
+          </div> : undefined}
         />
 
-        {(activeView === "all" || activeView === "eisenhower") && <TaskFilters value={taskFilters} onChange={setTaskFilters} />}
+        {(activeView === "all" || activeView === "eisenhower") && <TaskFilters value={taskFilters} onChange={setTaskFilters} taskCount={activeView === "all" ? openTaskCount : undefined} />}
 
         <CompletionExitProvider deadlines={completionExitDeadlines}>
           <WorkspaceContent
@@ -1472,6 +1477,7 @@ export function App() {
             onOpenNotes={openNotes}
             onOpenWaiting={openWaiting}
             onNewTask={openNewTask}
+            taskFilters={taskFilters}
             onWorkspaceChange={refreshWorkspace}
             collaborationByProject={collaborationByProject}
             onMailCreateTask={(draft) => { openMailTask(draft); return Promise.resolve(); }}

@@ -135,11 +135,6 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 @media (min-width: 1101px) {
   .app-shell.agent-open { grid-template-columns: 232px minmax(0, 1fr) minmax(360px, 400px); }
   .app-shell.sidebar-collapsed.agent-open { grid-template-columns: 60px minmax(0, 1fr) minmax(360px, 400px); }
-  .agent-open .quadrant-grid { grid-template-columns: minmax(0, 1fr); }
-  .agent-open .task-columns { columns: 2; }
-}
-@media (min-width: 1101px) and (max-width: 1400px) {
-  .agent-open .task-columns { columns: 1; }
 }
 .sidebar { position: sticky; top: 0; height: 100dvh; max-height: 100dvh; display: flex; flex-direction: column; padding: max(18px, env(safe-area-inset-top)) 10px 12px; background: var(--sidebar); color: var(--sidebar-ink); border-right: 1px solid #000; overflow-y: auto; overflow-x: hidden; }
 .sidebar-brand { margin: 0 8px 24px; }
@@ -184,7 +179,7 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .danger-button:hover { background: #fbe4e0; }
 /* Filters: a flat toolbar, not a card */
 .task-filters { margin-bottom: 14px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.filters-toolbar { display: flex; align-items: center; gap: 8px; }
+.filters-toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .task-filters .filter-search { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: var(--control-h); flex: 1 1 auto; padding: 0 8px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--faint); box-shadow: var(--shadow-control); transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
 .task-filters .filter-search svg { width: 15px; height: 15px; flex: 0 0 auto; }
 .task-filters .filter-search input { width: 100%; min-width: 0; padding: 6px 0; border: 0; border-radius: 0; outline: 0; background: transparent; color: var(--ink); font-size: var(--fs-md); }
@@ -196,12 +191,11 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .filter-search-clear:hover { background: var(--surface-3); color: var(--ink); }
 .filter-search-clear svg { width: 12px; height: 12px; }
 .filters-toolbar-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.filter-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: var(--control-h); padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink-2); font-size: var(--fs-sm); font-weight: 550; box-shadow: var(--shadow-control); }
-.filter-toggle:hover { border-color: #cfcdc7; background: var(--hover); }
+.filter-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: var(--control-h); padding: 0 10px; border: 1px solid transparent; border-radius: var(--r-md); background: transparent; color: var(--muted); font-size: var(--fs-sm); font-weight: 550; }
+.filter-toggle:hover { background: var(--hover); color: var(--ink); }
 .filter-toggle.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-dark); }
+.filter-toggle.has-active:not(.active) { color: var(--ink-2); }
 .filter-toggle svg { width: 14px; height: 14px; }
-.filter-toggle svg:last-child { width: 12px; height: 12px; opacity: .6; transition: rotate var(--t-fast) var(--ease); }
-.filter-toggle.active svg:last-child { rotate: 180deg; }
 .filter-count { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; }
 .filter-sort { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: var(--control-h); padding: 0 2px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink-2); font-size: var(--fs-sm); font-weight: 550; box-shadow: var(--shadow-control); }
 .filter-sort-label { flex: 0 0 auto; color: var(--faint); font-weight: 500; }
@@ -216,8 +210,8 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .filter-field select { width: 100%; min-width: 0; min-height: var(--control-h); padding: 0 28px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink); font-size: var(--fs-sm); cursor: pointer; }
 .filter-field select:hover { border-color: #cfcdc7; }
 .filter-field select:focus-visible { outline: 0; border-color: var(--accent); box-shadow: var(--ring); }
-.active-pills { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.active-pill { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; max-width: 100%; padding: 0 3px 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--panel); color: var(--ink-2); font-size: var(--fs-xs); font-weight: 500; }
+.active-pills { display: flex; align-items: center; flex: 0 1 auto; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 0; }
+.active-pill { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; max-width: 220px; padding: 0 3px 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink-2); font-size: var(--fs-xs); font-weight: 500; }
 .active-pill > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .active-pill button { display: grid; place-items: center; width: 18px; height: 18px; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--faint); }
 .active-pill button:hover { background: var(--surface-3); color: var(--ink); }
@@ -320,24 +314,7 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .empty-add { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 160px; margin: 0; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: transparent; color: var(--muted); font-size: var(--fs-md); }
 .empty-add:hover { color: var(--ink); border-color: #cfcdc7; background: var(--panel); }
 .empty-add svg { width: 15px; height: 15px; }
-.quadrant-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.quadrant { min-width: 0; min-height: 240px; padding: 4px 14px 8px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-card); }
-.quadrant-header { margin: -4px -14px 4px; padding: 11px 16px; border-bottom: 1px solid var(--line); border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; background: var(--panel); }
-.quadrant-focus .quadrant-header, .quadrant-plan .quadrant-header, .quadrant-quick .quadrant-header, .quadrant-later .quadrant-header { background: var(--panel); }
-.quadrant-header > div { display: flex; align-items: center; gap: 9px; }
-.quadrant h2 { margin: 0; font-size: var(--fs-md); font-weight: 600; letter-spacing: -.012em; }
-.quadrant-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.quadrant-plan .quadrant-dot { background: #d9a13a; box-shadow: 0 0 0 3px var(--amber-soft); }
-.quadrant-quick .quadrant-dot { background: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
-.quadrant-later .quadrant-dot { background: var(--faint); box-shadow: 0 0 0 3px var(--surface-2); }
-.task-columns { columns: 3; column-gap: 16px; }
-.task-card { break-inside: avoid; margin-bottom: 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-card); transition: box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
-.task-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-card-hover); }
-.task-card .task-row { position: relative; align-items: flex-start; gap: 10px; padding: 12px 12px 12px 14px; border-bottom: 0; }
-.task-card .complete-control { margin-top: 2px; }
-.task-card .task-actions { margin-left: auto; }
-.task-card .task-action { opacity: 1; }
-.task-card .task-title { font-size: var(--fs-md); }
+/* Eisenhower matrix, grouped task list and board: see components/TaskList.css */
 .modal-backdrop { position: fixed; z-index: 50; inset: 0; padding: 0; border: 0; background: oklch(0.18 0.005 60 / 0.32); backdrop-filter: blur(3px); animation: fade-in var(--t-fast) var(--ease); cursor: pointer; }
 /* Native modal dialogs render in the top layer (author styles win over UA styles
    except where UA uses higher-specificity :modal rules, which is what centers them). */
@@ -445,7 +422,6 @@ dialog.modal::backdrop { background: oklch(0.18 0.005 60 / 0.32); backdrop-filte
   .app-shell { grid-template-columns: 190px minmax(0, 1fr); }
   .app-shell.agent-open { grid-template-columns: 190px minmax(0, 1fr); }
   .workspace { padding: 24px 24px 60px; }
-  .task-columns { columns: 2; }
   .filters-panel { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .new-task-button kbd { display: none; }
 }
@@ -471,6 +447,8 @@ dialog.modal::backdrop { background: oklch(0.18 0.005 60 / 0.32); backdrop-filte
   .task-filters { padding: 0; }
   .filters-toolbar { flex-wrap: wrap; }
   .task-filters .filter-search { flex-basis: 100%; min-height: 44px; }
+  .active-pills { flex-basis: 100%; }
+  .active-pills:empty { display: none; }
   .task-filters .filter-search input { font-size: 16px; }
   .filters-toolbar-actions { width: 100%; }
   .filter-toggle { flex: 1 1 auto; justify-content: center; min-height: 44px; }
@@ -478,9 +456,6 @@ dialog.modal::backdrop { background: oklch(0.18 0.005 60 / 0.32); backdrop-filte
   .filter-sort select { max-width: none; flex: 1; min-width: 0; font-size: 16px; }
   .filters-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filter-field select { min-height: 44px; font-size: 16px; }
-  .quadrant-grid { grid-template-columns: 1fr; gap: 14px; }
-  .quadrant { min-height: 160px; padding: 18px; }
-  .quadrant-header { margin: -18px -18px 6px; padding: 15px 18px; }
   .list-view .task-row { min-height: 58px; padding: 12px 14px; gap: 11px; align-items: flex-start; }
   .task-title { font-size: 14.5px; }
   .task-actions { margin-left: auto; gap: 2px; }
@@ -510,7 +485,6 @@ dialog.modal::backdrop { background: oklch(0.18 0.005 60 / 0.32); backdrop-filte
   .auth-tabs button { min-height: 44px; }
 }
 @media (max-width: 480px) {
-  .task-columns { columns: 1; }
   .filters-panel { grid-template-columns: minmax(0, 1fr); }
   .habit-schedule-fields, .habit-date-fields { grid-template-columns: minmax(0, 1fr); }
   .habit-weekday-options button { min-height: 40px; }

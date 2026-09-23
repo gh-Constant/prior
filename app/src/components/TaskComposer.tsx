@@ -21,7 +21,10 @@ const PRIORITY_COLORS: Record<number, string> = {
   4: "#888888",
 };
 
-type Props = { readonly task?: Task; readonly areas?: Area[]; readonly projects?: Project[]; readonly initialContext?: Pick<TaskDraft, "areaId" | "projectId" | "status">; readonly planning?: TaskPlanningProps; readonly onProjectChange?: (projectId: string | null) => void; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
+/** Preset fields for a new task (project, status group, matrix quadrant). */
+export type TaskComposerContext = Pick<TaskDraft, "areaId" | "projectId" | "status"> & Partial<Pick<TaskDraft, "important" | "urgent">>;
+
+type Props = { readonly task?: Task; readonly areas?: Area[]; readonly projects?: Project[]; readonly initialContext?: TaskComposerContext; readonly planning?: TaskPlanningProps; readonly onProjectChange?: (projectId: string | null) => void; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
 
 export function TaskComposer({ task, areas = [], projects = [], initialContext, planning, onProjectChange, onSave, onCancel }: Props) {
   const { t, lang } = useI18n();
@@ -30,8 +33,8 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
   const [dueTime, setDueTime] = useState(task?.dueTime ?? null);
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 4);
-  const [important, setImportant] = useState(task?.important ?? false);
-  const [urgent, setUrgent] = useState(task?.urgent ?? false);
+  const [important, setImportant] = useState(task?.important ?? initialContext?.important ?? false);
+  const [urgent, setUrgent] = useState(task?.urgent ?? initialContext?.urgent ?? false);
   const [areaId, setAreaId] = useState(task?.areaId ?? initialContext?.areaId ?? null);
   const [projectId, setProjectId] = useState(task?.projectId ?? initialContext?.projectId ?? planning?.fields.find((field) => field.key === "project")?.selectedIds[0] ?? null);
 
