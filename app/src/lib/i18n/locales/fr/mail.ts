@@ -27,4 +27,17 @@ export const mail = {
   tags: { title: "Libellés", apply: "Appliquer", remove: "Retirer", empty: "Aucun libellé" },
   ai: { generating: "Rédaction de la tâche…", failed: "Impossible de rédiger une tâche depuis ce mail." },
   toasts: { archived: "Conversation archivée", unarchived: "Déplacé vers la boîte de réception", deleted: "Déplacé vers la corbeille", updated: "Mis à jour", updateFailed: "Mise à jour du message impossible", newMail: "{count} nouveau message", newMail_plural: "{count} nouveaux messages", connected: "Gmail connecté : {email}", taskCreated: "Tâche créée depuis le mail" },
+  view: {
+    folderNav: "Dossiers de messagerie", listLabel: "Messages", filterLabel: "Afficher", filterAll: "Tous", filterUnread: "Non lus",
+    unread: "Non lu", unreadCount: "{count} non lu", unreadCount_plural: "{count} non lus", noUnread: "Aucun mail non lu ici.",
+    searchOpen: "Rechercher dans les mails", searchClose: "Fermer la recherche", account: "Compte Gmail", more: "Plus d'options",
+    selectedCount: "{count} sélectionné", selectedCount_plural: "{count} sélectionnés", doneSelecting: "Terminé",
+    createTask: "Créer une tâche", attachments: "Contient des pièces jointes", loading: "Chargement des messages",
+    taskCard: {
+      title: "Transformer en tâche",
+      body: "Prior Agent lit ce mail et rédige une tâche : titre, échéance et priorité. Vous la vérifiez avant tout enregistrement.",
+      action: "Rédiger avec Prior Agent", drafting: "Prior Agent rédige…",
+    },
+    emptyReader: { title: "Aucun message sélectionné", body: "Choisissez un message pour le lire. Ce qui demande une action devient une tâche en un clic." },
+  },
 };

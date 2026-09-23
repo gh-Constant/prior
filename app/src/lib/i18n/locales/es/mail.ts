@@ -27,4 +27,17 @@ export const mail = {
   tags: { title: "Etiquetas", apply: "Aplicar", remove: "Quitar", empty: "Aún no hay etiquetas" },
   ai: { generating: "Redactando tarea…", failed: "No se pudo redactar una tarea desde este correo." },
   toasts: { archived: "Conversación archivada", unarchived: "Movido a la bandeja", deleted: "Movido a la papelera", updated: "Actualizado", updateFailed: "No se pudo actualizar el mensaje", newMail: "{count} mensaje nuevo", newMail_plural: "{count} mensajes nuevos", connected: "Gmail conectado como {email}", taskCreated: "Tarea creada desde el correo" },
+  view: {
+    folderNav: "Carpetas de correo", listLabel: "Mensajes", filterLabel: "Mostrar", filterAll: "Todos", filterUnread: "No leídos",
+    unread: "No leído", unreadCount: "{count} no leído", unreadCount_plural: "{count} no leídos", noUnread: "No hay correos sin leer aquí.",
+    searchOpen: "Buscar correo", searchClose: "Cerrar búsqueda", account: "Cuenta de Gmail", more: "Más opciones",
+    selectedCount: "{count} seleccionado", selectedCount_plural: "{count} seleccionados", doneSelecting: "Listo",
+    createTask: "Crear tarea", attachments: "Contiene adjuntos", loading: "Cargando mensajes",
+    taskCard: {
+      title: "Convertir en tarea",
+      body: "Prior Agent lee este correo y redacta una tarea: título, fecha límite y prioridad. La revisas antes de que se guarde nada.",
+      action: "Redactar con Prior Agent", drafting: "Prior Agent está redactando…",
+    },
+    emptyReader: { title: "Ningún mensaje seleccionado", body: "Elige un mensaje para leerlo. Lo que requiera acción se convierte en tarea con un clic." },
+  },
 };
