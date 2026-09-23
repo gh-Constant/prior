@@ -49,7 +49,7 @@ describe("MobileTabBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
     fireEvent.click(screen.getByRole("button", { name: "Calendar" }));
     fireEvent.click(screen.getByRole("button", { name: "Today" }));
-    expect(props.onNavigate.mock.calls.map(([view]) => view)).toEqual(["all", "calendar", "today"]);
+    expect(vi.mocked(props.onNavigate).mock.calls.map(([view]) => view)).toEqual(["all", "calendar", "today"]);
   });
 
   it("creates in context from the central button", () => {
