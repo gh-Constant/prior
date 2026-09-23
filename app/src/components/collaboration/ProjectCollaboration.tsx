@@ -8,7 +8,8 @@ import { ProjectShareDialog } from "./ProjectShareDialog";
 import { PersonAvatar } from "./PersonAvatar";
 import { AgilePropertyChips, PeopleChips } from "./TaskPlanning";
 import { useI18n } from "../../lib/i18n";
-import { AvatarStack, PROJECT_STATUS_LABELS, PriorityGlyph, ProjectStatusChip, StatusGlyph, UsersGlyph, projectTintStyle, statusGlyphKind } from "../ProjectVisuals";
+import { AvatarStack, PROJECT_STATUS_LABELS, PriorityGlyph, ProjectStatusChip, UsersGlyph, glyphStatus, projectTintStyle } from "../ProjectVisuals";
+import { StatusGlyph } from "../TaskGlyphs";
 import { ProjectDetailHeader, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "../ProjectDetailParts";
 import type { ProjectCollaborationProps, ProjectIssue, WorkflowState } from "./types";
 import "./Collaboration.css";
@@ -178,7 +179,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
             onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
             onDrop={(event) => { event.preventDefault(); const issueId = draggedIssue.current; endDrag(); if (issueId) void moveIssue(issueId, column.id); }}>
             <header className="project-board-column-heading">
-              <StatusGlyph kind={statusGlyphKind(column.state?.id, column.state?.category)} />
+              <StatusGlyph status={glyphStatus(column.state?.id, column.state?.category)} />
               <h3>{column.name}</h3>
               <span className="project-board-count">{column.issues.length}</span>
               {!readOnly && onCreateIssue && column.state && <button type="button" className="project-board-add" disabled={loading} aria-label={t("common.projectHub.addTaskIn", { status: column.name })} title={t("common.projectHub.addTaskIn", { status: column.name })} onClick={() => onCreateIssue(column.id)}><Icon name="plus" /></button>}

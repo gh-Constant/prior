@@ -44,7 +44,7 @@
 .projects-area-add { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: var(--fs-xs); font-weight: 550; }
 .projects-area-add svg { width: 13px; height: 13px; }
 .projects-icon-button { display: grid; place-items: center; flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--faint); }
-.projects-icon-button .project-inline-icon { width: 16px; height: 16px; }
+.projects-icon-button svg { width: 16px; height: 16px; }
 .projects-area-add:hover, .projects-icon-button:hover { background: var(--hover); color: var(--ink); }
 
 /* Card grid */
@@ -65,7 +65,7 @@
 .projects-card-footer { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 22px; }
 .projects-card-footer .project-avatar-stack { margin-left: auto; }
 .projects-card-menu { position: absolute; top: 14px; right: 10px; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--faint); }
-.projects-card-menu .project-inline-icon { width: 16px; height: 16px; }
+.projects-card-menu svg { width: 16px; height: 16px; }
 .projects-card-menu:hover, .projects-card-menu[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
 
 /* Dashed "new project" card */

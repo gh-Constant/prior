@@ -5,7 +5,8 @@ import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu
 import { Icon } from "./Icon";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { Person } from "./collaboration/types";
-import { CalendarGlyph, PriorityGlyph, StatusGlyph, daysBetween, formatShortDate, localDateKey, statusGlyphKind } from "./ProjectVisuals";
+import { PriorityGlyph, daysBetween, formatShortDate, glyphStatus, localDateKey } from "./ProjectVisuals";
+import { CalendarGlyph, StatusGlyph } from "./TaskGlyphs";
 
 import "./ProjectDetail.css";
 
@@ -141,7 +142,7 @@ export function ProjectTaskBoard({ project, tasks, onChange, onDelete, onEdit, p
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
         onDrop={(event) => { event.preventDefault(); const taskId = draggedTaskId; endDrag(); if (taskId) void moveTask(taskId, status); }}>
         <header className="project-board-column-heading">
-          <StatusGlyph kind={statusGlyphKind(status)} />
+          <StatusGlyph status={glyphStatus(status)} />
           <h3>{label}</h3>
           <span className="project-board-count">{columnTasks.length}</span>
           {onAddTask && <button type="button" className="project-board-add" aria-label={t("common.projectHub.addTaskIn", { status: label })} title={t("common.projectHub.addTaskIn", { status: label })} onClick={() => onAddTask(status)}><Icon name="plus" /></button>}

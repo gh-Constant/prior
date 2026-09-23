@@ -1,8 +1,9 @@
 import type { CSSProperties } from "react";
-import type { Project, ProjectCycle, ProjectStatus, Task, TaskPriority } from "../types";
+import type { Project, ProjectCycle, ProjectStatus, Task, TaskPriority, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { Person } from "./collaboration/types";
+import { PriorityGlyph as TaskPriorityGlyph } from "./TaskGlyphs";
 import { DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import "./ProjectVisuals.css";
 
@@ -115,47 +116,25 @@ export function AvatarStack({ people, max = 4, size = "sm", label }: { people: r
   </span>;
 }
 
-/* Status glyph (kit .st): an outline circle that fills as work progresses. */
-export type StatusGlyphKind = "inbox" | "backlog" | "todo" | "progress" | "waiting" | "done" | "canceled";
-
-export function statusGlyphKind(status?: string | null, category?: string): StatusGlyphKind {
+/** Maps a task status or a workflow-state category onto the shared status glyph. */
+export function glyphStatus(status?: string | null, category?: string): TaskStatus {
   switch (status) {
-    case "inbox": return "inbox";
-    case "backlog": return "backlog";
-    case "next": case "todo": return "todo";
-    case "in_progress": return "progress";
-    case "waiting": return "waiting";
-    case "done": return "done";
-    case "canceled": case "cancelled": return "canceled";
+    case "inbox": case "backlog": case "next": case "in_progress": case "waiting": case "done": return status;
+    case "todo": return "next";
   }
   switch (category) {
     case "backlog": return "backlog";
-    case "unstarted": return "todo";
-    case "started": return "progress";
+    case "unstarted": return "next";
+    case "started": return "in_progress";
     case "completed": return "done";
-    case "canceled": return "canceled";
-    default: return "backlog";
+    default: return "inbox";
   }
 }
 
-export function StatusGlyph({ kind }: { kind: StatusGlyphKind }) {
-  return <span className={`status-glyph is-${kind}`} aria-hidden="true" />;
-}
-
-/* Priority glyph (kit .prio): Todoist order, 1 is the most urgent. */
+/** Shared priority glyph with its localized label (Todoist order: 1 is most urgent). */
 export function PriorityGlyph({ priority }: { priority: TaskPriority }) {
   const { t } = useI18n();
-  const label = t("tasks.composer.priorityOption", { value: priority });
-  if (priority === 1) return <span className="priority-glyph is-urgent" role="img" aria-label={label} title={label}>!</span>;
-  return <span className={`priority-glyph is-p${priority}`} role="img" aria-label={label} title={label}><i /><i /><i /></span>;
-}
-
-export function CalendarGlyph() {
-  return <svg className="project-inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>;
-}
-
-export function DotsGlyph() {
-  return <svg className="project-inline-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>;
+  return <TaskPriorityGlyph priority={priority} label={t("tasks.composer.priorityOption", { value: priority })} />;
 }
 
 export function UsersGlyph() {

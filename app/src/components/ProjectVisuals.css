@@ -1,4 +1,5 @@
-/* Shared project primitives: icon tile, chips, progress, avatars, glyphs. */
+/* Shared project primitives: icon tile, chips, progress, avatars. Status and
+ * priority glyphs come from TaskGlyphs (TaskList.css). */
 .project-tile { display: grid; place-items: center; flex: 0 0 auto; width: 32px; height: 32px; overflow: hidden; border-radius: 9px; background: color-mix(in oklab, var(--project-tint, var(--muted)) 12%, var(--panel)); color: var(--project-tint, var(--muted)); }
 .project-tile svg { width: 16px; height: 16px; stroke-width: 1.7; }
 .project-tile img { width: 100%; height: 100%; object-fit: cover; }
@@ -8,11 +9,11 @@
 .project-tile.size-lg svg { width: 20px; height: 20px; }
 
 .project-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; min-height: 20px; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink-2); font-size: var(--fs-2xs); font-weight: 500; line-height: 1.3; white-space: nowrap; }
-.project-chip .project-inline-icon, .project-chip > svg { width: 11px; height: 11px; flex: 0 0 auto; color: var(--faint); }
+.project-chip svg { width: 11px; height: 11px; flex: 0 0 auto; color: var(--faint); }
 .project-chip-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--faint); }
 .project-chip.is-overdue { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
-.project-chip.is-overdue .project-inline-icon { color: var(--red); }
-.project-chip.is-today .project-inline-icon { color: var(--accent); }
+.project-chip.is-overdue svg { color: var(--red); }
+.project-chip.is-today svg { color: var(--accent); }
 .project-chip.is-done { color: var(--muted); }
 
 .project-progress-bar { position: relative; display: block; height: 4px; overflow: hidden; border-radius: 999px; background: var(--surface-3); }
@@ -28,26 +29,6 @@
 .project-avatar-item .project-avatar-more { background: var(--surface-3); color: var(--muted); }
 .project-avatar-stack.size-md .project-avatar { width: 28px; height: 28px; font-size: 11px; }
 .project-avatar-stack.size-md .project-avatar-item { box-shadow: 0 0 0 2px var(--canvas); }
-
-/* Status glyphs */
-.status-glyph { display: inline-block; flex: 0 0 auto; box-sizing: border-box; width: 14px; height: 14px; border: 1.5px solid var(--faint); border-radius: 50%; }
-.status-glyph.is-todo { border-color: var(--ink-2); }
-.status-glyph.is-backlog { border-style: dashed; }
-.status-glyph.is-progress { border-color: #e0a01a; background: conic-gradient(#e0a01a 0 50%, transparent 0); box-shadow: inset 0 0 0 2px var(--panel); }
-.status-glyph.is-waiting { border-color: var(--violet); background: radial-gradient(circle, var(--violet) 0 2px, transparent 2.5px); }
-.status-glyph.is-done { border-color: var(--accent); background: var(--accent); }
-.status-glyph.is-canceled { border-color: var(--faint); background: linear-gradient(135deg, transparent 44%, var(--faint) 44% 56%, transparent 56%); }
-
-/* Priority glyph */
-.priority-glyph { display: inline-flex; align-items: flex-end; flex: 0 0 auto; gap: 1.5px; width: 14px; height: 14px; padding: 2px 1px; }
-.priority-glyph i { width: 3px; border-radius: 1px; background: var(--line-strong); }
-.priority-glyph i:nth-child(1) { height: 5px; }
-.priority-glyph i:nth-child(2) { height: 8px; }
-.priority-glyph i:nth-child(3) { height: 11px; }
-.priority-glyph.is-p2 i { background: var(--ink-2); }
-.priority-glyph.is-p3 i:nth-child(-n + 2) { background: var(--ink-2); }
-.priority-glyph.is-p4 i:nth-child(1) { background: var(--ink-2); }
-.priority-glyph.is-urgent { display: inline-grid; place-items: center; padding: 0; border-radius: 3px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 800; line-height: 1; }
 
 .project-inline-icon { display: block; width: 14px; height: 14px; flex: 0 0 auto; }
 

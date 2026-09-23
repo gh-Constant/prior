@@ -6,9 +6,10 @@ import { Icon } from "./Icon";
 import { DEFAULT_AREA_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import type { Person } from "./collaboration/types";
 import {
-  AvatarStack, CalendarGlyph, DotsGlyph, PROJECT_STATUS_LABELS, ProgressBar, ProjectStatusChip, ProjectTile,
+  AvatarStack, PROJECT_STATUS_LABELS, ProgressBar, ProjectStatusChip, ProjectTile,
   currentCycle, daysBetween, formatPercent, formatShortDate, localDateKey, nextDueDate, projectProgress,
 } from "./ProjectVisuals";
+import { CalendarGlyph, MoreGlyph } from "./TaskGlyphs";
 import "./ProjectsOverview.css";
 
 type Props = {
@@ -121,7 +122,7 @@ export function ProjectsOverview({ areas, projects, tasks = NO_TASKS, membersByP
         </span>
       </button>
       <button type="button" className="projects-card-menu" aria-label={t("common.projectHub.projectOptions", { name: project.name })} aria-haspopup="menu" title={t("common.projectHub.projectOptions", { name: project.name })}
-        onClick={(event) => openMenuFrom(event.currentTarget, projectActions(project))}><DotsGlyph /></button>
+        onClick={(event) => openMenuFrom(event.currentTarget, projectActions(project))}><MoreGlyph /></button>
     </article>;
   }
 
@@ -179,7 +180,7 @@ export function ProjectsOverview({ areas, projects, tasks = NO_TASKS, membersByP
             <span className="projects-area-count">{groupProjects.length}</span>
             <div className="projects-area-actions">
               <button type="button" className="projects-area-add" aria-label={t("common.workhub.menuNewProjectIn", { name: group.name })} onClick={() => onNewProject(group.id)}><Icon name="plus" /><span>{t("common.workhub.projectAction")}</span></button>
-              {group.area && <button type="button" className="projects-icon-button" aria-label={t("common.workhub.areaOptions", { name: group.name })} aria-haspopup="menu" onClick={(event) => openMenuFrom(event.currentTarget, areaActions(group.area!))}><DotsGlyph /></button>}
+              {group.area && <button type="button" className="projects-icon-button" aria-label={t("common.workhub.areaOptions", { name: group.name })} aria-haspopup="menu" onClick={(event) => openMenuFrom(event.currentTarget, areaActions(group.area!))}><MoreGlyph /></button>}
             </div>
           </div>
           <div className="projects-card-grid">
