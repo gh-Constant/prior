@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Icon, type IconName } from "./Icon";
+import { NoteGlyph } from "./notes/NoteGlyph";
+import { NotesInspector } from "./notes/NotesInspector";
+import { countWords, extractOutline, extractTags, folderChain, foldersWithNotes, relativeTime, shortDate } from "./notes/noteInsights";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { DEFAULT_AREA_ICON, DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import { NOTE_FOLDER_COLORS, getFolderDescendants, getFolderPath, notesStore, type Note, type NoteAttachment, type NoteFolder } from "../lib/notes";
@@ -13,6 +16,8 @@ import "katex/dist/katex.min.css";
 
 type NotesWorkspaceProps = { readonly onOpenNote?: (note: Note) => void; readonly projectId?: string };
 type EditorMode = "live" | "source" | "reading";
+type MobileView = "list" | "note";
+const HEADING_SELECTOR = "h1, h2, h3, h4, h5, h6";
 type NoteModalState =
   | { kind: "folder-name"; mode: "create"; parentId: string | null }
   | { kind: "folder-name"; mode: "rename"; folder: NoteFolder }
@@ -75,18 +80,34 @@ export function renderMarkdown(source: string, attachments: Record<string, strin
   let language = "";
   let code: string[] = [];
   let listType: "ul" | "ol" | null = null;
+  let quote: string[] | null = null;
   const closeList = () => { if (listType) { html.push(`</${listType}>`); listType = null; } };
+  const codeBlock = (lang: string, body: string) => `<pre class="note-code"${lang ? ` data-lang="${escapeHtml(lang)}"` : ""}><code>${escapeHtml(body)}</code></pre>`;
+  // Consecutive "> " lines form one quote; a leading "[!type] Title" turns it into a callout.
+  const closeQuote = () => {
+    if (!quote) return;
+    const quoteLines = quote;
+    quote = null;
+    const callout = quoteLines[0]?.match(/^\[!([a-zA-Z-]+)\][+-]?\s*(.*)$/);
+    const paragraphs = (callout ? quoteLines.slice(1) : quoteLines).filter((item) => item.trim()).map((item) => `<p>${inlineMarkdown(item, attachments, attachmentTypes)}</p>`).join("");
+    if (!callout) { html.push(`<blockquote>${paragraphs}</blockquote>`); return; }
+    const kind = callout[1].toLowerCase();
+    const title = callout[2].trim();
+    html.push(`<div class="note-callout" data-callout="${escapeHtml(kind)}">${title ? `<p class="note-callout-title">${inlineMarkdown(title, attachments, attachmentTypes)}</p>` : ""}${paragraphs}</div>`);
+  };
   for (const line of lines) {
     const fence = line.match(/^\s*```(.*)$/);
     if (fence) {
       if (inCode) {
         if (language.toLowerCase() === "mermaid") html.push(`<div class="note-diagram"><span>${translateStored("notes.render.mermaid")}</span><pre>${escapeHtml(code.join("\n"))}</pre></div>`);
-        else html.push(`<pre class="note-code"><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+        else html.push(codeBlock(language, code.join("\n")));
         inCode = false; code = []; language = "";
-      } else { closeList(); inCode = true; language = fence[1].trim(); }
+      } else { closeList(); closeQuote(); inCode = true; language = fence[1].trim(); }
       continue;
     }
     if (inCode) { code.push(line); continue; }
+    if (/^>/.test(line)) { closeList(); (quote ??= []).push(line.replace(/^>\s?/, "")); continue; }
+    closeQuote();
     if (!line.trim()) { closeList(); continue; }
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) { closeList(); const level = heading[1].length; html.push(`<h${level}>${inlineMarkdown(heading[2], attachments, attachmentTypes)}</h${level}>`); continue; }
@@ -100,12 +121,12 @@ export function renderMarkdown(source: string, attachments: Record<string, strin
       else html.push(`<li>${inlineMarkdown(ordered![1], attachments, attachmentTypes)}</li>`);
       continue;
     }
-    if (/^>/.test(line)) { closeList(); html.push(`<blockquote>${inlineMarkdown(line.replace(/^>\s?/, ""), attachments, attachmentTypes)}</blockquote>`); continue; }
     if (/^---+$/.test(line.trim())) { closeList(); html.push("<hr />"); continue; }
     closeList();
     html.push(`<p>${inlineMarkdown(line, attachments, attachmentTypes)}</p>`);
   }
-  if (inCode) html.push(`<pre class="note-code"><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+  if (inCode) html.push(codeBlock(language, code.join("\n")));
+  closeQuote();
   closeList();
   return html.join("");
 }
@@ -116,6 +137,39 @@ function folderIconFallback(folder: NoteFolder): IconName {
   if (folder.workspaceKind === "area") return DEFAULT_AREA_ICON;
   if (folder.workspaceKind === "project") return DEFAULT_PROJECT_ICON;
   return "folder";
+}
+
+/** Vertical offset of the caret at `pos` inside the textarea's content box, in pixels. */
+function caretOffsetTop(textarea: HTMLTextAreaElement, pos: number): number {
+  const mirror = document.createElement("div");
+  const style = window.getComputedStyle(textarea);
+  for (const property of ["fontFamily", "fontSize", "fontWeight", "letterSpacing", "lineHeight", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "whiteSpace", "wordWrap", "overflowWrap", "tabSize"] as const) {
+    mirror.style[property] = style[property];
+  }
+  mirror.style.position = "absolute";
+  mirror.style.visibility = "hidden";
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.width = `${textarea.clientWidth}px`;
+  mirror.textContent = textarea.value.slice(0, pos);
+  const marker = document.createElement("span");
+  marker.textContent = "​";
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+  const top = marker.offsetTop;
+  document.body.removeChild(mirror);
+  return top;
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function isCompactViewport(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 760px)").matches;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(target.closest("input, textarea, select, [contenteditable]:not([contenteditable=\"false\"])"));
 }
 
 function caretMenuPosition(textarea: HTMLTextAreaElement, pos: number): { top: number; left: number } {
@@ -143,48 +197,87 @@ function caretMenuPosition(textarea: HTMLTextAreaElement, pos: number): { top: n
   return { top: Math.max(0, position.top), left: Math.max(0, position.left) };
 }
 
-function FolderTree({
-  folders,
-  notes,
-  parentId,
-  selectedId,
-  collapsedIds,
-  onSelect,
-  onToggleCollapse,
-  onRenameFolder,
-  onOpenFolderMenu,
-  onOpenNoteMenu,
-  onOpenFolderEmptyMenu,
-}: {
-  folders: NoteFolder[];
-  notes: Note[];
-  parentId: string | null;
-  selectedId: string | null;
-  collapsedIds: Set<string>;
+type TreeHandlers = {
   onSelect: (note: Note) => void;
   onToggleCollapse: (id: string) => void;
   onRenameFolder: (folder: NoteFolder) => void;
   onOpenFolderMenu: (event: React.MouseEvent, folder: NoteFolder) => void;
   onOpenNoteMenu: (event: React.MouseEvent, note: Note) => void;
   onOpenFolderEmptyMenu: (event: React.MouseEvent, folderId: string | null) => void;
-}) {
-  const children = folderChildren(folders, parentId);
+};
+
+/** Enter/Space toggles a folder row; Right expands and Left collapses, like a native tree. */
+function treeRowKeyDown(event: React.KeyboardEvent<HTMLElement>, isCollapsed: boolean, toggle: () => void): void {
+  if (event.target !== event.currentTarget) return;
+  if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); }
+  else if (event.key === "ArrowRight" && isCollapsed) { event.preventDefault(); toggle(); }
+  else if (event.key === "ArrowLeft" && !isCollapsed) { event.preventDefault(); toggle(); }
+}
+
+function NoteRow({ note, depth, selected, showFavorite, onSelect, onOpenNoteMenu }: { note: Note; depth: number; selected: boolean; showFavorite?: boolean; onSelect: (note: Note) => void; onOpenNoteMenu: (event: React.MouseEvent, note: Note) => void }) {
+  return (
+    <button
+      type="button"
+      className={`note-file-row ${selected ? "active" : ""}`}
+      style={{ "--depth": depth } as CSSProperties}
+      aria-current={selected ? "page" : undefined}
+      onClick={() => onSelect(note)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpenNoteMenu(event, note);
+      }}
+    >
+      <span className="note-tree-chevron" aria-hidden="true" />
+      <span className="note-file-icon">{showFavorite ? <Icon name="star" /> : <Icon name="file" />}</span>
+      <span className="note-row-label">{note.title}</span>
+      {!showFavorite && note.favorite && <span className="note-row-favorite" aria-hidden="true"><Icon name="star" /></span>}
+    </button>
+  );
+}
+
+function FolderTree({
+  folders,
+  notes,
+  parentId,
+  depth,
+  selectedId,
+  collapsedIds,
+  visibleFolderIds,
+  ...handlers
+}: {
+  folders: NoteFolder[];
+  notes: Note[];
+  parentId: string | null;
+  depth: number;
+  selectedId: string | null;
+  collapsedIds: Set<string>;
+  /** When set (while searching), only these folders are shown. */
+  visibleFolderIds: Set<string> | null;
+} & TreeHandlers) {
+  const { onSelect, onToggleCollapse, onRenameFolder, onOpenFolderMenu, onOpenNoteMenu, onOpenFolderEmptyMenu } = handlers;
+  const children = folderChildren(folders, parentId).filter((folder) => !visibleFolderIds || visibleFolderIds.has(folder.id));
   const notesInFolder = notes.filter((note) => note.folderId === parentId);
   return (
     <>
       {children.map((folder) => {
-        const isCollapsed = collapsedIds.has(folder.id);
+        // A search expands every matching branch so results are never hidden behind a collapsed folder.
+        const isCollapsed = !visibleFolderIds && collapsedIds.has(folder.id);
         return (
           <div
             className="note-folder-group"
             key={folder.id}
+            role="group"
             style={folder.color ? ({ "--folder-color": folder.color } as CSSProperties) : undefined}
           >
             <div
               className={`note-folder-row ${folder.workspaceKind ? "workspace-folder" : ""}`}
+              style={{ "--depth": depth } as CSSProperties}
               role="treeitem"
+              tabIndex={0}
               aria-expanded={!isCollapsed}
               onClick={() => onToggleCollapse(folder.id)}
+              onKeyDown={(event) => treeRowKeyDown(event, isCollapsed, () => onToggleCollapse(folder.id))}
               onDoubleClick={() => { if (!folder.workspaceKind) onRenameFolder(folder); }}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -192,11 +285,11 @@ function FolderTree({
                 onOpenFolderMenu(event, folder);
               }}
             >
-              <Icon name={isCollapsed ? "chevron-right" : "chevron-down"} />
+              <span className="note-tree-chevron" aria-hidden="true"><Icon name={isCollapsed ? "chevron-right" : "chevron-down"} /></span>
               <span className="note-folder-icon" style={folder.color ? { color: folder.color } : undefined}>
                 <WorkspaceIcon icon={folder.icon} fallback={folderIconFallback(folder)} />
               </span>
-              <strong>{folder.name}</strong>
+              <span className="note-row-label">{folder.name}</span>
             </div>
             {!isCollapsed && (
               <div
@@ -212,14 +305,11 @@ function FolderTree({
                   folders={folders}
                   notes={notes}
                   parentId={folder.id}
+                  depth={depth + 1}
                   selectedId={selectedId}
                   collapsedIds={collapsedIds}
-                  onSelect={onSelect}
-                  onToggleCollapse={onToggleCollapse}
-                  onRenameFolder={onRenameFolder}
-                  onOpenFolderMenu={onOpenFolderMenu}
-                  onOpenNoteMenu={onOpenNoteMenu}
-                  onOpenFolderEmptyMenu={onOpenFolderEmptyMenu}
+                  visibleFolderIds={visibleFolderIds}
+                  {...handlers}
                 />
               </div>
             )}
@@ -227,22 +317,7 @@ function FolderTree({
         );
       })}
       {notesInFolder.map((note) => (
-        <button
-          type="button"
-          className={`note-file-row ${selectedId === note.id ? "active" : ""}`}
-          key={note.id}
-          onClick={() => onSelect(note)}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onOpenNoteMenu(event, note);
-          }}
-        >
-          <span className="note-file-icon">
-            {note.favorite ? <Icon name="star" /> : <Icon name="file" />}
-          </span>
-          <span>{note.title}</span>
-        </button>
+        <NoteRow key={note.id} note={note} depth={depth} selected={selectedId === note.id} onSelect={onSelect} onOpenNoteMenu={onOpenNoteMenu} />
       ))}
     </>
   );
@@ -580,13 +655,18 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   const [folders, setFolders] = useState<NoteFolder[]>(() => notesStore.listFolders());
   const [selectedId, setSelectedId] = useState<string | null>(() => scopedNotes()[0]?.id ?? null);
   const [openIds, setOpenIds] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("prior.notes.tabs") ?? "[]") as string[]; } catch { return []; } });
-  const [mode, setMode] = useState<EditorMode>("live");
+  // "Write" maps to the source editor (optionally with the side-by-side preview), "Read" to the rendered note.
+  const [reading, setReading] = useState(true);
+  const [splitPreview, setSplitPreview] = useState(false);
+  const mode: EditorMode = reading ? "reading" : splitPreview ? "live" : "source";
   const [query, setQuery] = useState("");
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(() => { try { return localStorage.getItem("prior.notes.library") !== "false"; } catch { return true; } });
-  const [explorerOpen, setExplorerOpen] = useState(false);
+  const [mobileView, setMobileView] = useState<MobileView>("list");
   const [graphOpen, setGraphOpen] = useState(false);
+  const [activeHeading, setActiveHeading] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const [slash, setSlash] = useState<{ query: string; start: number } | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
@@ -595,6 +675,10 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   const [modal, setModal] = useState<NoteModalState>(null);
   const { menu, openMenu: showMenu, closeMenu } = useContextMenu();
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const renderedRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const selected = notes.find((note) => note.id === selectedId) ?? null;
@@ -656,12 +740,37 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
     const unsubscribe = notesStore.subscribe(refreshAttachments);
     return () => { cancelled = true; unsubscribe(); for (const url of urls) URL.revokeObjectURL(url); if (saveTimer.current) window.clearTimeout(saveTimer.current); };
   }, []);
+  // Keeps "Modified 2 min ago" honest without re-rendering on every second.
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(timer); }, []);
+  // "/" jumps to the note search from anywhere outside a text field.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+      if (isTypingTarget(event.target) || modal || menu || graphOpen) return;
+      event.preventDefault();
+      setLibraryOpen(true);
+      setMobileView("list");
+      requestAnimationFrame(() => searchRef.current?.focus());
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [graphOpen, menu, modal]);
 
-  const visibleNotes = useMemo(() => notes.filter((note) => (!folderFilter || folderFilter === "favorites" || note.folderId === folderFilter) && (!query.trim() || `${note.title} ${note.body}`.toLowerCase().includes(query.toLowerCase()))), [folderFilter, notes, query]);
+  const visibleNotes = useMemo(() => notes.filter((note) => (!folderFilter || folderFilter === "favorites" || note.folderId === folderFilter) && (!query.trim() || `${note.title} ${note.body}`.toLowerCase().includes(query.trim().toLowerCase()))), [folderFilter, notes, query]);
+  const searching = query.trim().length > 0;
+  const matchingFolderIds = useMemo(() => searching ? foldersWithNotes(visibleNotes, visibleFolders) : null, [searching, visibleFolders, visibleNotes]);
+  const favoriteNotes = useMemo(() => visibleNotes.filter((note) => note.favorite), [visibleNotes]);
   const currentAttachments = useMemo(() => Object.fromEntries(notesStore.attachmentMeta().map((item) => [item.id, attachmentUrls[item.id] ?? ""])), [attachmentUrls]);
   const currentAttachmentTypes = useMemo(() => Object.fromEntries(notesStore.attachmentMeta().map((item) => [item.id, item.type])), [attachmentUrls]);
-  const backlinks = useMemo(() => selected ? notes.filter((note) => note.id !== selected.id && (note.body.includes(`[[${selected.title}]]`) || note.body.includes(`[[${selected.title}|`))).slice(0, 8) : [], [notes, selected]);
-  const headings = useMemo(() => selected?.body.split("\n").filter((line) => /^#{1,6}\s/.test(line)).map((line) => line.replace(/^#+\s/, "")) ?? [], [selected]);
+  const outline = useMemo(() => selected ? extractOutline(selected.body) : [], [selected?.body]);
+  const tags = useMemo(() => selected ? extractTags(selected.body) : [], [selected?.body]);
+  const renderedHtml = useMemo(() => selected ? renderMarkdown(selected.body, currentAttachments, currentAttachmentTypes) : "", [selected?.body, currentAttachments, currentAttachmentTypes]);
+  const breadcrumb = useMemo(() => selected ? folderChain(selected.folderId, folders) : [], [folders, selected?.folderId]);
+  const folderLabel = breadcrumb.map((folder) => folder.name).join(" / ") || t("notes.common.library");
+  const projectLabel = selected?.projectId ? folders.find((folder) => folder.workspaceKind === "project" && folder.workspaceId === selected.projectId)?.name ?? null : null;
+  const effectiveMobileView: MobileView = selected ? mobileView : "list";
+
+  useEffect(() => { setActiveHeading(0); }, [selected?.id]);
 
   useEffect(() => {
     if (!renderedRef.current || !selected || mode === "source") return undefined;
@@ -670,7 +779,22 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
       if (cancelled || !renderedRef.current) return;
       const mermaid = mermaidModule.default;
       const katex = katexModule.default;
-      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "base" });
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: "base",
+        themeVariables: {
+          fontFamily: "\"DM Sans Variable\", -apple-system, \"Segoe UI\", sans-serif",
+          fontSize: "13px",
+          primaryColor: "#ffffff",
+          primaryBorderColor: "#dcdad5",
+          primaryTextColor: "#1d1c1a",
+          secondaryColor: "#f6f6f4",
+          tertiaryColor: "#fafaf9",
+          lineColor: "#9d9a93",
+          textColor: "#3f3d39",
+        },
+      });
       const diagrams = Array.from(renderedRef.current.querySelectorAll<HTMLElement>(".note-diagram pre"));
       await Promise.all(diagrams.map(async (pre, index) => {
         const source = pre.textContent ?? "";
@@ -678,7 +802,10 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
           const rendered = await mermaid.render(`prior-note-diagram-${selected.id}-${index}`.replace(/[^a-zA-Z0-9_-]/g, "-"), source);
           if (!cancelled && pre.parentElement) pre.parentElement.innerHTML = `<span>${translateStored("notes.render.mermaid")}</span>${rendered.svg}`;
         } catch {
-          if (!cancelled && pre.parentElement) pre.parentElement.classList.add("has-error");
+          if (!cancelled && pre.parentElement) {
+            pre.parentElement.classList.add("has-error");
+            pre.parentElement.setAttribute("data-error", translateStored("notes.workspace.diagramError"));
+          }
         }
       }));
       if (!cancelled && renderedRef.current) {
@@ -700,8 +827,35 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
     return () => { cancelled = true; };
   }, [currentAttachments, mode, selected?.id, selected?.body]);
 
-  function selectNote(note: Note): void { setSelectedId(note.id); setOpenIds((current) => current.includes(note.id) ? current : [...current, note.id]); setExplorerOpen(false); onOpenNote?.(note); }
-  function createNoteIn(folderId: string | null): void { const note = notesStore.create(projectId ? t("notes.editor.untitledProject") : t("notes.editor.untitled"), folderId, projectId ?? null); setNotes(scopedNotes()); selectNote(note); setExplorerOpen(false); }
+  // The editor grows with its content so the title, meta and body scroll as one document.
+  function fitEditor(): void {
+    const textarea = editorRef.current;
+    if (!textarea) return;
+    const container = scrollRef.current;
+    const containerTop = container?.scrollTop ?? 0;
+    const windowTop = window.scrollY;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+    if (container) container.scrollTop = containerTop;
+    if (window.scrollY !== windowTop) window.scrollTo(0, windowTop);
+  }
+  useLayoutEffect(fitEditor, [selected?.id, selected?.body, mode]);
+  useEffect(() => { window.addEventListener("resize", fitEditor); return () => window.removeEventListener("resize", fitEditor); });
+
+  function selectNote(note: Note): void {
+    setSelectedId(note.id);
+    setOpenIds((current) => current.includes(note.id) ? current : [...current, note.id]);
+    setMobileView("note");
+    if (isCompactViewport()) setReading(true);
+    onOpenNote?.(note);
+  }
+  function createNoteIn(folderId: string | null): void {
+    const note = notesStore.create(projectId ? t("notes.editor.untitledProject") : t("notes.editor.untitled"), folderId, projectId ?? null);
+    setNotes(scopedNotes());
+    selectNote(note);
+    setReading(false);
+    requestAnimationFrame(() => titleRef.current?.select());
+  }
   function newNote(): void { createNoteIn(folderFilter && folderFilter !== "favorites" ? folderFilter : null); }
   function toggleCollapse(id: string): void { setCollapsedIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
   function newFolder(parentId: string | null): void { setModal({ kind: "folder-name", mode: "create", parentId }); }
@@ -721,7 +875,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
     setModal(null);
   }
   function toggleFavorite(note: Note): void { notesStore.update({ ...note, favorite: !note.favorite }); setNotes(scopedNotes()); }
-  function doTrashNote(note: Note): void { notesStore.trash(note.id); const remaining = scopedNotes(); setOpenIds((current) => current.filter((id) => id !== note.id)); if (selectedId === note.id) setSelectedId(remaining.find((item) => item.id !== note.id)?.id ?? null); setNotes(remaining); setModal(null); }
+  function doTrashNote(note: Note): void { notesStore.trash(note.id); const remaining = scopedNotes(); setOpenIds((current) => current.filter((id) => id !== note.id)); if (selectedId === note.id) { setSelectedId(remaining.find((item) => item.id !== note.id)?.id ?? null); setMobileView("list"); } setNotes(remaining); setModal(null); }
   function doDeleteFolder(folder: NoteFolder): void {
     notesStore.deleteFolder(folder.id);
     setFolders(notesStore.listFolders());
@@ -762,12 +916,24 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
       { icon: "folder-plus", label: t("notes.menu.newFolderHere"), run: () => newFolder(folderId) },
     ]);
   }
+  /** The toolbar's overflow menu, anchored under its trigger so keyboard activation opens it in place too. */
+  function openMoreMenu(event: React.MouseEvent<HTMLButtonElement>): void {
+    const rect = event.currentTarget.getBoundingClientRect();
+    showMenu({ clientX: rect.right - 232, clientY: rect.bottom + 6, target: null, preventDefault: () => undefined }, [
+      { icon: "columns", label: splitPreview ? t("notes.workspace.hideSplit") : t("notes.workspace.showSplit"), run: () => { setSplitPreview((value) => !value); setReading(false); } },
+      { icon: "folder", label: t("notes.menu.moveTo"), run: moveSelected },
+      { icon: "plus", label: t("notes.toolbar.attach"), run: () => attachmentInputRef.current?.click() },
+      { icon: "download", label: t("notes.toolbar.export"), run: exportNote },
+      { icon: "trash", label: t("notes.menu.deleteNote"), danger: true, run: trashSelected },
+    ]);
+  }
   function updateBody(body: string): void {
     if (!selected) return;
     setNotes((current) => current.map((note) => note.id === selected.id ? { ...note, body, updatedAt: new Date().toISOString() } : note));
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => { const latest = notesStore.list().find((note) => note.id === selected.id); if (latest) notesStore.update({ ...latest, body }); }, 450);
   }
+  function commitTitle(): void { if (!selected) return; const latest = notes.find((note) => note.id === selected.id); if (latest) notesStore.update(latest); }
   function closeTab(id: string): void { setOpenIds((current) => current.filter((item) => item !== id)); if (selectedId === id) setSelectedId(openIds.find((item) => item !== id) ?? visibleNotes[0]?.id ?? null); }
   const slashOptions = useMemo(() => (slash ? filterSlashCommands(slash.query) : []), [slash]);
   function refreshSlash(body: string, caret: number): void {
@@ -808,103 +974,305 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
     if (!selected) return;
     const blob = new Blob([selected.body], { type: "text/markdown;charset=utf-8" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${selected.title.replace(/[^\w\- ]/g, "").trim() || "note"}.md`; link.click(); URL.revokeObjectURL(url);
   }
-  function onRenderedClick(event: React.MouseEvent<HTMLDivElement>): void { const target = (event.target as HTMLElement).closest<HTMLElement>("[data-note]"); if (!target) return; const linked = notes.find((note) => note.title.toLowerCase() === target.dataset.note?.toLowerCase()); if (linked) selectNote(linked); else { const created = notesStore.create(target.dataset.note ?? t("notes.editor.untitled"), selected?.folderId ?? null, projectId ?? null); setNotes(scopedNotes()); selectNote(created); } }
+  function searchFor(value: string): void {
+    setQuery(value);
+    setFolderFilter(null);
+    setLibraryOpen(true);
+    setMobileView("list");
+  }
+  function onRenderedClick(event: React.MouseEvent<HTMLDivElement>): void {
+    const element = event.target as HTMLElement;
+    const tag = element.closest<HTMLElement>(".note-tag");
+    if (tag?.textContent) { searchFor(tag.textContent); return; }
+    const target = element.closest<HTMLElement>("[data-note]");
+    if (!target) return;
+    const linked = notes.find((note) => note.title.toLowerCase() === target.dataset.note?.toLowerCase());
+    if (linked) selectNote(linked);
+    else { const created = notesStore.create(target.dataset.note ?? t("notes.editor.untitled"), selected?.folderId ?? null, projectId ?? null); setNotes(scopedNotes()); selectNote(created); }
+  }
+  /** Outline highlight follows the reading position: the last heading scrolled past the top. */
+  function syncActiveHeading(): void {
+    const container = scrollRef.current;
+    const rendered = renderedRef.current;
+    if (!container || !rendered || mode === "source" || !outline.length) return;
+    const threshold = container.getBoundingClientRect().top + 72;
+    let index = 0;
+    rendered.querySelectorAll<HTMLElement>(HEADING_SELECTOR).forEach((heading, headingIndex) => { if (heading.getBoundingClientRect().top <= threshold) index = headingIndex; });
+    setActiveHeading(index);
+  }
+  function syncActiveHeadingFromCaret(textarea: HTMLTextAreaElement): void {
+    if (!outline.length) return;
+    const caretLine = textarea.value.slice(0, textarea.selectionStart ?? 0).split("\n").length - 1;
+    let index = 0;
+    outline.forEach((heading, headingIndex) => { if (heading.line <= caretLine) index = headingIndex; });
+    setActiveHeading(index);
+  }
+  function jumpToHeading(index: number): void {
+    const heading = outline[index];
+    if (!heading || !selected) return;
+    setActiveHeading(index);
+    const behavior: ScrollBehavior = prefersReducedMotion() ? "auto" : "smooth";
+    if (mode !== "source" && renderedRef.current) {
+      renderedRef.current.querySelectorAll<HTMLElement>(HEADING_SELECTOR)[index]?.scrollIntoView?.({ block: "start", behavior });
+      return;
+    }
+    const textarea = editorRef.current;
+    if (!textarea) return;
+    const offset = textarea.value.split("\n").slice(0, heading.line).reduce((sum, line) => sum + line.length + 1, 0);
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(offset, offset);
+    const container = scrollRef.current;
+    if (container && typeof container.scrollTo === "function") {
+      const top = textarea.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop + caretOffsetTop(textarea, offset) - 24;
+      container.scrollTo({ top: Math.max(0, top), behavior });
+    }
+  }
 
-  return <section className={`notes-workspace ${libraryOpen ? "" : "library-collapsed"}`} aria-label={t("notes.section.label")}>
-    {explorerOpen && <button type="button" className="notes-explorer-scrim" aria-label={t("notes.library.close")} onClick={() => setExplorerOpen(false)} />}
-    <aside className={`notes-explorer ${explorerOpen ? "mobile-open" : ""}`}>
-      <div className="notes-explorer-header"><div><span className="notes-eyebrow">{projectId ? t("notes.library.eyebrowProject") : t("notes.library.eyebrowPersonal")}</span><h2>{projectFolder?.name ?? t("notes.library.title")}</h2></div><div className="notes-explorer-header-actions"><button type="button" className="notes-icon-button" title={t("notes.library.collapse")} aria-label={t("notes.library.collapse")} onClick={() => { setLibraryOpen(false); setExplorerOpen(false); }}><Icon name="chevron-left" /></button><button type="button" className="notes-icon-button" title={t("notes.common.newNote")} aria-label={t("notes.common.newNote")} onClick={newNote}><Icon name="plus" /></button></div></div>
-      <div className="notes-search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("notes.library.search")} aria-label={t("notes.library.search")} /></div>
-      <div className="notes-explorer-actions"><button type="button" onClick={() => setFolderFilter(null)} className={!folderFilter ? "active" : ""}>{t("notes.library.allNotes")}</button><button type="button" onClick={() => setFolderFilter("favorites")} className={folderFilter === "favorites" ? "active" : ""}>{t("notes.library.favorites")}</button></div>
+  const relative = selected ? relativeTime(selected.updatedAt, lang, now) : null;
+  const modifiedLabel = selected ? (relative ? t("notes.workspace.modified", { time: relative }) : t("notes.workspace.modifiedOn", { date: shortDate(selected.updatedAt, lang, now) })) : "";
+  const favoriteLabel = selected?.favorite ? t("notes.menu.removeFromFavorites") : t("notes.menu.addToFavorites");
+  const rootCollapsed = !searching && collapsedIds.has(LIBRARY_ROOT_ID);
+  const treeHandlers = { onSelect: selectNote, onToggleCollapse: toggleCollapse, onRenameFolder: renameFolder, onOpenFolderMenu: openFolderMenu, onOpenNoteMenu: openNoteMenu, onOpenFolderEmptyMenu: openFolderEmptyMenu };
+  const treeEmpty = folderFilter === "favorites" ? favoriteNotes.length === 0 : searching && visibleNotes.length === 0;
+
+  return <section
+    className={`notes-workspace ${libraryOpen ? "" : "library-collapsed"} ${inspectorOpen && selected ? "with-inspector" : ""}`}
+    data-mobile-view={effectiveMobileView}
+    aria-label={t("notes.section.label")}
+  >
+    <aside className="notes-explorer" aria-label={t("notes.library.title")}>
+      <div className="notes-explorer-header">
+        <h2>{projectFolder?.name ?? t("notes.library.title")}</h2>
+        <div className="notes-explorer-header-actions">
+          <button type="button" className="notes-icon-button" title={t("notes.workspace.graph")} aria-label={t("notes.workspace.graph")} disabled={!selected} onClick={() => setGraphOpen(true)}><NoteGlyph name="graph" /></button>
+          <button type="button" className="notes-icon-button bordered" title={t("notes.common.newNote")} aria-label={t("notes.common.newNote")} onClick={newNote}><Icon name="plus" /></button>
+        </div>
+      </div>
+      <label className="notes-search">
+        <Icon name="search" />
+        <input
+          ref={searchRef}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Escape" && query) { event.preventDefault(); setQuery(""); } else if (event.key === "Escape") event.currentTarget.blur(); }}
+          placeholder={t("notes.workspace.search")}
+          aria-label={t("notes.library.search")}
+          aria-keyshortcuts="/"
+          enterKeyHint="search"
+        />
+        {query
+          ? <button type="button" className="notes-search-clear" aria-label={t("notes.workspace.clearSearch")} onClick={() => { setQuery(""); searchRef.current?.focus(); }}><Icon name="close" /></button>
+          : <kbd className="notes-kbd" aria-hidden="true">/</kbd>}
+      </label>
+      <div className="notes-segmented notes-explorer-filter" role="group" aria-label={t("notes.workspace.filterLabel")}>
+        <button type="button" aria-pressed={folderFilter !== "favorites"} className={folderFilter !== "favorites" ? "active" : ""} onClick={() => setFolderFilter(null)}>{t("notes.workspace.all")}</button>
+        <button type="button" aria-pressed={folderFilter === "favorites"} className={folderFilter === "favorites" ? "active" : ""} onClick={() => setFolderFilter("favorites")}><Icon name="star" />{t("notes.library.favorites")}</button>
+      </div>
       <div
         className="notes-tree"
         role="tree"
+        aria-label={t("notes.common.library")}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
           openFolderEmptyMenu(event, null);
         }}
       >
-        <div
-          className="note-folder-row root"
-          role="treeitem"
-          aria-expanded={!collapsedIds.has(LIBRARY_ROOT_ID)}
-          onClick={() => toggleCollapse(LIBRARY_ROOT_ID)}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            openFolderEmptyMenu(event, null);
-          }}
-        >
-          <Icon name={collapsedIds.has(LIBRARY_ROOT_ID) ? "chevron-right" : "chevron-down"} />
-          <Icon name="folder" />
-          <strong>{t("notes.common.library")}</strong>
-          <button
-            type="button"
-            aria-label={t("notes.common.newFolder")}
-            title={t("notes.common.newFolder")}
-            onClick={(event) => {
-              event.stopPropagation();
-              newFolder(null);
-            }}
-          >
-            <Icon name="plus" />
-          </button>
-        </div>
-        {!collapsedIds.has(LIBRARY_ROOT_ID) && (
-          <div
-            className="note-folder-children root-children"
-            data-folder-id=""
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              openFolderEmptyMenu(event, null);
-            }}
-          >
-            {folderFilter === "favorites" ? (
-              notes.filter((note) => note.favorite).map((note) => (
-                <button
-                  type="button"
-                  className={`note-file-row ${selectedId === note.id ? "active" : ""}`}
-                  key={note.id}
-                  onClick={() => selectNote(note)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    openNoteMenu(event, note);
-                  }}
-                >
-                  <span className="note-file-icon"><Icon name="star" /></span>
-                  <span>{note.title}</span>
-                </button>
-              ))
-            ) : (
-              <FolderTree
-                folders={visibleFolders}
-                notes={visibleNotes}
-                parentId={null}
-                selectedId={selectedId}
-                collapsedIds={collapsedIds}
-                onSelect={selectNote}
-                onToggleCollapse={toggleCollapse}
-                onRenameFolder={renameFolder}
-                onOpenFolderMenu={openFolderMenu}
-                onOpenNoteMenu={openNoteMenu}
-                onOpenFolderEmptyMenu={openFolderEmptyMenu}
-              />
+        {folderFilter === "favorites" ? (
+          favoriteNotes.map((note) => <NoteRow key={note.id} note={note} depth={0} selected={selectedId === note.id} showFavorite onSelect={selectNote} onOpenNoteMenu={openNoteMenu} />)
+        ) : (
+          <>
+            <div
+              className="note-folder-row root"
+              style={{ "--depth": 0 } as CSSProperties}
+              role="treeitem"
+              tabIndex={0}
+              aria-expanded={!rootCollapsed}
+              onClick={() => toggleCollapse(LIBRARY_ROOT_ID)}
+              onKeyDown={(event) => treeRowKeyDown(event, rootCollapsed, () => toggleCollapse(LIBRARY_ROOT_ID))}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openFolderEmptyMenu(event, null);
+              }}
+            >
+              <span className="note-tree-chevron" aria-hidden="true"><Icon name={rootCollapsed ? "chevron-right" : "chevron-down"} /></span>
+              <span className="note-folder-icon"><Icon name="folder" /></span>
+              <span className="note-row-label">{t("notes.common.library")}</span>
+              <button
+                type="button"
+                className="note-row-action"
+                aria-label={t("notes.common.newFolder")}
+                title={t("notes.common.newFolder")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  newFolder(null);
+                }}
+              >
+                <Icon name="plus" />
+              </button>
+            </div>
+            {!rootCollapsed && (
+              <div
+                className="note-folder-children root-children"
+                role="group"
+                data-folder-id=""
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  openFolderEmptyMenu(event, null);
+                }}
+              >
+                <FolderTree
+                  folders={visibleFolders}
+                  notes={visibleNotes}
+                  parentId={null}
+                  depth={1}
+                  selectedId={selectedId}
+                  collapsedIds={collapsedIds}
+                  visibleFolderIds={matchingFolderIds}
+                  {...treeHandlers}
+                />
+              </div>
             )}
-          </div>
+          </>
         )}
+        {treeEmpty && <p className="notes-tree-empty">{searching ? t("notes.workspace.noResults", { query: query.trim() }) : t("notes.workspace.noFavorites")}</p>}
       </div>
+      <p className="notes-explorer-footer">{tp("notes.workspace.count", notes.length)}</p>
     </aside>
-    {!libraryOpen && <aside className="notes-rail" aria-label={t("notes.library.collapsedLabel")}><button type="button" className="notes-icon-button" title={t("notes.library.expand")} aria-label={t("notes.library.expand")} onClick={() => setLibraryOpen(true)}><Icon name="chevron-right" /></button><button type="button" className="notes-icon-button" title={t("notes.common.newNote")} aria-label={t("notes.common.newNote")} onClick={newNote}><Icon name="plus" /></button></aside>}
-      <div className="notes-main">
-      <div className="notes-tabs" role="tablist">{openIds.map((id) => { const note = notes.find((item) => item.id === id); if (!note) return null; return <button type="button" role="tab" aria-selected={selectedId === note.id} className={`notes-tab ${selectedId === note.id ? "active" : ""}`} key={id} onClick={() => setSelectedId(id)}><span className="notes-tab-icon">{note.favorite ? <Icon name="star" /> : <Icon name="file" />}</span><span className="notes-tab-title">{note.title}</span><span className="notes-tab-close" onClick={(event) => { event.stopPropagation(); closeTab(id); }}>×</span></button>; })}<button type="button" className="notes-tab-add" aria-label={t("notes.common.newNote")} onClick={newNote}><Icon name="plus" /></button></div>
-      {selected ? <><div className="notes-toolbar"><div className="notes-breadcrumb"><button type="button" className="notes-files-toggle" aria-label={t("notes.library.toggle")} aria-expanded={libraryOpen} onClick={() => { setLibraryOpen((open) => { const next = !open; setExplorerOpen(next); return next; }); }}>{t("notes.common.library")}</button><span>{folders.find((folder) => folder.id === selected.folderId)?.name ?? t("notes.common.library")}</span><span>/</span><strong>{selected.title}</strong></div><div className="notes-toolbar-actions"><button type="button" className={mode === "live" ? "active" : ""} onClick={() => setMode("live")}>{t("notes.toolbar.live")}</button><button type="button" className={mode === "source" ? "active" : ""} onClick={() => setMode("source")}>{t("notes.toolbar.source")}</button><button type="button" className={mode === "reading" ? "active" : ""} onClick={() => setMode("reading")}>{t("notes.toolbar.read")}</button><span className="notes-toolbar-separator" /><button type="button" title={t("notes.toolbar.moveNote")} onClick={moveSelected}>{t("notes.toolbar.move")}</button><button type="button" title={t("notes.toolbar.attach")} aria-label={t("notes.toolbar.attach")} onClick={() => document.getElementById("notes-attachment-input")?.click()}><Icon name="plus" /></button><input id="notes-attachment-input" type="file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = ""; }} /><button type="button" title={t("notes.toolbar.export")} aria-label={t("notes.toolbar.export")} onClick={exportNote}><Icon name="download" /></button><button type="button" title={t("notes.toolbar.trash")} aria-label={t("notes.toolbar.trash")} onClick={trashSelected}><Icon name="trash" /></button><button type="button" title={t("notes.toolbar.graph")} aria-label={t("notes.toolbar.graph")} onClick={() => setGraphOpen(true)}><Icon name="grid" /></button><button type="button" title={t("notes.toolbar.inspector")} aria-label={t("notes.toolbar.inspector")} className={inspectorOpen ? "active" : ""} onClick={() => setInspectorOpen((open) => !open)}><Icon name="columns" /></button></div></div><div className="notes-title-row"><input value={selected.title} aria-label={t("notes.titleRow.title")} onChange={(event) => { const title = event.target.value; setNotes((current) => current.map((note) => note.id === selected.id ? { ...note, title } : note)); }} onBlur={() => { const latest = notes.find((note) => note.id === selected.id); if (latest) notesStore.update(latest); }} /><button type="button" className={`note-favorite ${selected.favorite ? "active" : ""}`} aria-label={t("notes.titleRow.favorite")} onClick={() => { const saved = notesStore.update({ ...selected, favorite: !selected.favorite }); setNotes(scopedNotes()); setSelectedId(saved.id); }}><Icon name="star" /></button></div><div className={`notes-editor-layout ${inspectorOpen ? "with-inspector" : ""}`}>
-        {mode === "reading" ? <div key={`reading-${selected.id}`} ref={renderedRef} className="notes-reading" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(selected.body, currentAttachments, currentAttachmentTypes) }} /> : <div className={`notes-editor-pair ${mode === "source" ? "source-only" : ""}`}><div className="notes-editor-pane"><textarea ref={editorRef} value={selected.body} onChange={(event) => { updateBody(event.target.value); refreshSlash(event.target.value, event.target.selectionStart ?? event.target.value.length); }} onKeyDown={onEditorKeyDown} onClick={(event) => refreshSlash(event.currentTarget.value, event.currentTarget.selectionStart ?? 0)} onKeyUp={(event) => { if (!["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) refreshSlash(event.currentTarget.value, event.currentTarget.selectionStart ?? 0); }} spellCheck aria-label={t("notes.editor.label")} placeholder={t("notes.editor.placeholder")} />{slash && slashOptions.length > 0 && <div className="notes-slash-menu" role="listbox" aria-label={t("notes.editor.insertBlock")} style={{ top: slashPos.top, left: slashPos.left }}>{slashOptions.map((command, index) => <button key={command.id} type="button" role="option" aria-selected={index === slashIndex} className={index === slashIndex ? "active" : ""} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseSlashCommand(command)} onMouseEnter={() => setSlashIndex(index)}><span className="notes-slash-icon"><Icon name={command.icon} /></span><span className="notes-slash-text"><strong>{command.label}</strong><small>{command.hint}</small></span></button>)}</div>}</div>{mode === "live" && <div key={`live-${selected.id}`} ref={renderedRef} className="notes-preview-pane" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderMarkdown(selected.body, currentAttachments, currentAttachmentTypes) }} />}</div>}
-        {inspectorOpen && <aside className="notes-inspector"><div><span className="notes-inspector-label">{t("notes.inspector.outline")}</span>{headings.length ? headings.map((heading) => <button type="button" key={heading}>{heading}</button>) : <p>{t("notes.inspector.noHeadings")}</p>}</div><div><span className="notes-inspector-label">{t("notes.inspector.backlinks")}</span>{backlinks.length ? backlinks.map((note) => <button type="button" key={note.id} onClick={() => selectNote(note)}>{note.title}</button>) : <p>{t("notes.inspector.noBacklinks")}</p>}</div><div><span className="notes-inspector-label">{t("notes.inspector.details")}</span><p>{tp("notes.inspector.words", selected.body.trim().split(/\s+/).filter(Boolean).length)}</p><p>{t("notes.inspector.edited", { date: new Date(selected.updatedAt).toLocaleDateString(lang) })}</p></div></aside>}
-      </div>{graphOpen && <NoteGraph notes={notes} selected={selected} onSelect={(note) => { selectNote(note); setGraphOpen(false); }} onClose={() => setGraphOpen(false)} />}</> : <div className="notes-empty"><div className="notes-empty-mark"><Icon name="file-text" /></div><h2>{t("notes.empty.title")}</h2><p>{t("notes.empty.body")}</p><button type="button" className="primary-button" onClick={newNote}><Icon name="plus" />{t("notes.common.newNote")}</button></div>}
+
+    <div className="notes-main">
+      {selected && <header className="notes-mobilebar">
+        <button type="button" className="notes-mobilebar-button" aria-label={t("notes.workspace.back")} onClick={() => setMobileView("list")}><Icon name="chevron-left" /></button>
+        <span className="notes-mobilebar-title">{breadcrumb[breadcrumb.length - 1]?.name ?? t("notes.common.library")}</span>
+        <span className="notes-mobilebar-actions">
+          <button type="button" className={`notes-mobilebar-button ${selected.favorite ? "is-favorite" : ""}`} aria-pressed={selected.favorite} aria-label={favoriteLabel} onClick={() => toggleFavorite(selected)}><Icon name="star" /></button>
+          <button type="button" className={`notes-mobilebar-button ${reading ? "" : "is-active"}`} aria-label={reading ? t("notes.workspace.edit") : t("notes.workspace.doneEditing")} onClick={() => setReading((value) => !value)}><Icon name={reading ? "pencil" : "check"} /></button>
+        </span>
+      </header>}
+
+      <div className="notes-tabs" role="tablist" aria-label={t("notes.workspace.openNotes")}>
+        {openIds.map((id) => {
+          const note = notes.find((item) => item.id === id);
+          if (!note) return null;
+          const active = selectedId === note.id;
+          return <div className={`notes-tab ${active ? "active" : ""}`} key={id}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className="notes-tab-button"
+              title={note.title}
+              onClick={() => setSelectedId(id)}
+              onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); closeTab(id); } }}
+            >
+              <span className="notes-tab-icon"><Icon name="file" /></span>
+              <span className="notes-tab-title">{note.title || t("notes.editor.untitled")}</span>
+            </button>
+            <button type="button" className="notes-tab-close" aria-label={t("notes.workspace.closeTab")} title={t("notes.workspace.closeTab")} onClick={() => closeTab(id)}><Icon name="close" /></button>
+          </div>;
+        })}
+        <button type="button" className="notes-tab-add" aria-label={t("notes.common.newNote")} title={t("notes.common.newNote")} onClick={newNote}><Icon name="plus" /></button>
+      </div>
+
+      {selected ? <>
+        <div className="notes-toolbar">
+          <div className="notes-toolbar-leading">
+            <button type="button" className="notes-icon-button" aria-label={libraryOpen ? t("notes.library.collapse") : t("notes.library.expand")} title={libraryOpen ? t("notes.library.collapse") : t("notes.library.expand")} aria-pressed={libraryOpen} onClick={() => setLibraryOpen((open) => !open)}><NoteGlyph name="sidebar-left" /></button>
+            <nav className="notes-breadcrumb" aria-label={t("notes.workspace.breadcrumb")}>
+              <ol>
+                <li>{t("notes.common.library")}</li>
+                {breadcrumb.map((folder) => <li key={folder.id}>{folder.name}</li>)}
+                <li aria-current="page">{selected.title || t("notes.editor.untitled")}</li>
+              </ol>
+            </nav>
+          </div>
+          <div className="notes-toolbar-actions">
+            <div className="notes-segmented" role="group" aria-label={t("notes.workspace.modeLabel")}>
+              <button type="button" aria-pressed={!reading} className={!reading ? "active" : ""} onClick={() => setReading(false)}><Icon name="pencil" />{t("notes.workspace.write")}</button>
+              <button type="button" aria-pressed={reading} className={reading ? "active" : ""} onClick={() => setReading(true)}><Icon name="book-open" />{t("notes.workspace.read")}</button>
+            </div>
+            <button type="button" className={`notes-icon-button ${selected.favorite ? "is-favorite" : ""}`} aria-pressed={selected.favorite} aria-label={favoriteLabel} title={favoriteLabel} onClick={() => toggleFavorite(selected)}><Icon name="star" /></button>
+            <button type="button" className="notes-icon-button" aria-pressed={inspectorOpen} aria-label={t("notes.toolbar.inspector")} title={t("notes.toolbar.inspector")} onClick={() => setInspectorOpen((open) => !open)}><NoteGlyph name="sidebar-right" /></button>
+            <button type="button" className="notes-icon-button" aria-haspopup="menu" aria-label={t("notes.workspace.more")} title={t("notes.workspace.more")} onClick={openMoreMenu}><NoteGlyph name="more" /></button>
+            <input ref={attachmentInputRef} type="file" accept="image/*,video/*,audio/*,application/pdf" multiple hidden onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = ""; }} />
+          </div>
+        </div>
+
+        <div className="notes-document-scroll" ref={scrollRef} onScroll={syncActiveHeading}>
+          <article className={`notes-document ${mode === "live" ? "is-split" : ""}`}>
+            <header className="notes-document-header">
+              {reading
+                ? <h1 className={`notes-document-title ${selected.title ? "" : "is-placeholder"}`}>{selected.title || t("notes.editor.untitled")}</h1>
+                : <input
+                    ref={titleRef}
+                    className="notes-document-title"
+                    value={selected.title}
+                    placeholder={t("notes.editor.untitled")}
+                    aria-label={t("notes.titleRow.title")}
+                    onChange={(event) => { const title = event.target.value; setNotes((current) => current.map((note) => note.id === selected.id ? { ...note, title } : note)); }}
+                    onBlur={commitTitle}
+                    onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); editorRef.current?.focus(); } }}
+                  />}
+              <div className="notes-document-meta">
+                {tags.length > 0 && <ul className="notes-tags" aria-label={t("notes.workspace.tags")}>
+                  {tags.map((tag) => <li key={tag}><button type="button" className="notes-chip" title={t("notes.workspace.searchTag", { tag: `#${tag}` })} onClick={() => searchFor(`#${tag}`)}><NoteGlyph name="hash" />{tag}</button></li>)}
+                </ul>}
+                <span className="notes-document-stats">
+                  <time dateTime={selected.updatedAt} title={new Date(selected.updatedAt).toLocaleString(lang)}>{modifiedLabel}</time>
+                  <span aria-hidden="true"> · </span>
+                  {tp("notes.inspector.words", countWords(selected.body))}
+                </span>
+              </div>
+            </header>
+
+            {reading ? (
+              selected.body.trim()
+                ? <div key={`reading-${selected.id}`} ref={renderedRef} className="notes-prose notes-reading" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+                : <div className="notes-empty-body">
+                    <p>{t("notes.workspace.emptyBody")}</p>
+                    <button type="button" className="notes-button" onClick={() => { setReading(false); requestAnimationFrame(() => editorRef.current?.focus()); }}><Icon name="pencil" />{t("notes.workspace.startWriting")}</button>
+                  </div>
+            ) : (
+              <div className="notes-editor-pair">
+                <div className="notes-editor-pane">
+                  <textarea
+                    ref={editorRef}
+                    value={selected.body}
+                    rows={12}
+                    onChange={(event) => { updateBody(event.target.value); refreshSlash(event.target.value, event.target.selectionStart ?? event.target.value.length); }}
+                    onKeyDown={onEditorKeyDown}
+                    onClick={(event) => refreshSlash(event.currentTarget.value, event.currentTarget.selectionStart ?? 0)}
+                    onKeyUp={(event) => { if (!["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) refreshSlash(event.currentTarget.value, event.currentTarget.selectionStart ?? 0); }}
+                    onSelect={(event) => syncActiveHeadingFromCaret(event.currentTarget)}
+                    spellCheck
+                    aria-label={t("notes.editor.label")}
+                    placeholder={t("notes.editor.placeholder")}
+                  />
+                  {slash && slashOptions.length > 0 && <div className="notes-slash-menu" role="listbox" aria-label={t("notes.editor.insertBlock")} style={{ top: slashPos.top, left: slashPos.left }}>{slashOptions.map((command, index) => <button key={command.id} type="button" role="option" aria-selected={index === slashIndex} className={index === slashIndex ? "active" : ""} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseSlashCommand(command)} onMouseEnter={() => setSlashIndex(index)}><span className="notes-slash-icon"><Icon name={command.icon} /></span><span className="notes-slash-text"><strong>{command.label}</strong><small>{command.hint}</small></span></button>)}</div>}
+                </div>
+                {mode === "live" && <div key={`live-${selected.id}`} ref={renderedRef} className="notes-prose notes-preview-pane" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} />}
+              </div>
+            )}
+          </article>
+        </div>
+        {graphOpen && <NoteGraph notes={notes} selected={selected} onSelect={(note) => { selectNote(note); setGraphOpen(false); }} onClose={() => setGraphOpen(false)} />}
+      </> : <div className="notes-empty"><div className="notes-empty-mark"><Icon name="file-text" /></div><h2>{t("notes.empty.title")}</h2><p>{t("notes.empty.body")}</p><button type="button" className="primary-button" onClick={newNote}><Icon name="plus" />{t("notes.common.newNote")}</button></div>}
     </div>
+
+    {inspectorOpen && selected && <NotesInspector
+      note={selected}
+      notes={notes}
+      folderLabel={folderLabel}
+      projectLabel={projectLabel}
+      outline={outline}
+      activeHeading={activeHeading}
+      onJumpToHeading={jumpToHeading}
+      onSelectNote={selectNote}
+      onOpenGraph={() => setGraphOpen(true)}
+    />}
+
     {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
     {modal?.kind === "folder-name" && <FolderNameModal title={modal.mode === "create" ? t("notes.folderModal.newTitle") : t("notes.folderModal.renameTitle")} initialName={modal.mode === "create" ? "" : modal.folder.name} initialColor={modal.mode === "create" ? null : modal.folder.color} submitLabel={modal.mode === "create" ? t("notes.folderModal.create") : t("notes.common.rename")} onSubmit={(name, color) => submitFolderName(name, color, modal.mode === "create" ? { mode: "create", parentId: modal.parentId } : { mode: "rename", folder: modal.folder })} onClose={() => setModal(null)} />}
     {modal?.kind === "move-note" && <MoveNoteModal note={modal.note} folders={folders} onMove={(folderId) => { notesStore.move(modal.note.id, folderId); setNotes(scopedNotes()); setModal(null); }} onClose={() => setModal(null)} />}
