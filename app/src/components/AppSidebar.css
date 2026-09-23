@@ -14,6 +14,11 @@
 .sidebar-nav-group + .sidebar-nav-group { margin-top: 18px; }
 .sidebar-nav-label { margin: 0 10px 4px; color: var(--sidebar-faint); font-size: 11px; font-weight: 550; letter-spacing: 0; }
 
+/* Live counts sit at the right edge, quiet until the row is active. */
+.nav-item-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item-count { flex: 0 0 auto; color: var(--sidebar-faint); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.nav-item.active .nav-item-count { color: var(--sidebar-muted); }
+
 .sidebar-collapse-button {
   display: grid;
   place-items: center;
@@ -33,21 +38,6 @@
 }
 
 .sidebar-collapse-button svg { width: 15px; height: 15px; }
-
-.sidebar-close-button {
-  display: none;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 auto;
-  padding: 0;
-  border: 1px solid #ffffff14;
-  border-radius: 9px;
-  background: #2a2a29;
-  color: #d2d0ca;
-}
-
-.sidebar-close-button svg { width: 16px; height: 16px; }
 
 .sidebar-bottom { display: flex; flex-direction: column; gap: 2px; }
 
@@ -88,6 +78,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.sidebar-sync-meta { flex: 0 0 auto; color: var(--sidebar-faint); font-size: 11px; font-weight: 500; white-space: nowrap; }
 
 @keyframes sidebar-sync-spin {
   from { transform: rotate(0deg); }
@@ -193,9 +185,8 @@
   to { transform: rotate(360deg); }
 }
 
-/* Collapsed rail is a desktop-only concept. The collapse toggle lives in
-   .sidebar-top, which is hidden on phones, so these rules must never leak
-   into the mobile bottom bar (min-width gate keeps them desktop-only). */
+/* Collapsed rail is a desktop-only concept: phones hide the sidebar and
+   navigate with the bottom tab bar, so these rules stay behind a min-width gate. */
 @media (min-width: 761px) {
   .sidebar.is-collapsed { padding-right: 10px; padding-left: 10px; }
   .sidebar.is-collapsed .sidebar-top { justify-content: center; margin-right: 0; margin-left: 0; flex-direction: column; gap: 13px; }
@@ -211,33 +202,13 @@
   .sidebar.is-collapsed .prior-agent-label,
   .sidebar.is-collapsed .prior-agent-button kbd { display: none; }
   .sidebar.is-collapsed .sidebar-sync-button { justify-content: center; padding: 0; }
-  .sidebar.is-collapsed .sidebar-sync-label { display: none; }
+  .sidebar.is-collapsed .sidebar-sync-label,
+  .sidebar.is-collapsed .sidebar-sync-meta { display: none; }
   .sidebar.is-collapsed .sidebar-account-row { flex-direction: column; align-items: center; gap: 8px; }
   .sidebar.is-collapsed .account-trigger { justify-content: center; padding: 4px; }
 }
 
 .app-shell.sidebar-collapsed { grid-template-columns: 60px minmax(0, 1fr); }
-
-@media (max-width: 760px) {
-  /* Drawer mode: the collapse toggle is desktop-only, the X button takes over. */
-  .sidebar-top { margin: 0 4px 24px 8px; }
-  .sidebar-collapse-button { display: none; }
-  .sidebar-close-button { display: grid; }
-  .sidebar-nav { overflow-y: auto; }
-  .sidebar.is-collapsed .sidebar-brand { display: block; }
-  /* Touch-sized rows in the drawer */
-  .nav-item, .sidebar-sync-button, .account-trigger, .prior-agent-button { min-height: 44px; font-size: 15px; }
-  .prior-agent-label { font-size: 15px; }
-  .nav-item svg, .sidebar-sync-button svg { width: 18px; height: 18px; }
-  .sidebar-nav-label { font-size: 12px; }
-}
-
-@media (max-width: 380px) {
-  .sidebar { gap: 2px; padding-right: max(8px, env(safe-area-inset-right)); padding-left: max(8px, env(safe-area-inset-left)); }
-  .sidebar-nav { gap: 2px; }
-  .nav-item,
-  .account-trigger { padding-right: 2px; padding-left: 2px; }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .sidebar-sync-button.is-syncing svg { animation: none; }

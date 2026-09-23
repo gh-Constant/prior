@@ -64,6 +64,25 @@ export const common = {
     sync: "Sincronizar agora",
     syncing: "Sincronizando…",
   },
+  shell: {
+    tabBar: "Navegação principal",
+    tabs: {
+      today: "Hoje",
+      tasks: "Tarefas",
+      calendar: "Agenda",
+      more: "Mais",
+    },
+    more: {
+      title: "Mais",
+      destinations: "Outras visualizações",
+      openAgent: "Abrir Prior Agent",
+    },
+    pageActions: "Ações da página",
+    synced: "Sincronizado",
+    syncedAgo: "Sincronizado {time}",
+    justNow: "agora mesmo",
+    syncNowSynced: "Sincronizar · sincronizado {time}",
+  },
   window: { minimize: "Minimizar", toggleMaximize: "Maximizar ou restaurar", close: "Fechar" },
   header: {
     newTask: "Nova tarefa",

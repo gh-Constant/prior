@@ -25,6 +25,9 @@ import { CompletionBurst } from "./components/CompletionBurst";
 import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/completionExit";
 import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
 import { MobileTopBar } from "./components/MobileTopBar";
+import { MobileTabBar } from "./components/MobileTabBar";
+import { MobileMoreScreen } from "./components/MobileMoreScreen";
+import { habitProgressForDay, waitingTaskCount } from "./lib/navCounts";
 import { DesktopTitleBar } from "./components/DesktopTitleBar";
 import { pullAssistantSettings } from "./lib/settingsSync";
 import { SettingsPage } from "./components/SettingsPage";
@@ -215,7 +218,8 @@ export function App() {
   // The assistant always starts closed: it only opens when the user asks
   // for it (sidebar button or ⌘/Ctrl J), never on arrival or after a sync.
   const [agentOpen, setAgentOpen] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Phone "More" screen, opened from the bottom tab bar.
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
   const aiShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ J" : "Ctrl J";
@@ -834,7 +838,7 @@ export function App() {
         setHabitComposerOpen(false);
         setAuthOpen(false);
         setAgentOpen(false);
-        setMobileNavOpen(false);
+        setMobileMoreOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1301,6 +1305,10 @@ export function App() {
 
   const grouped = useMemo(() => Object.fromEntries(QUADRANTS.map((quadrant) => [quadrant.key, visibleTasks.filter((task) => quadrantFor(task) === quadrant.key)])), [visibleTasks]);
 
+  // Live navigation counts for the sidebar and the phone "More" screen.
+  const waitingCount = useMemo(() => waitingTaskCount(tasks), [tasks]);
+  const habitProgress = habitProgressForDay(habits);
+
   function handleAuthenticated(nextUser: SessionUser) {
     sessionGeneration.current += 1;
     setUser(nextUser);
@@ -1357,7 +1365,7 @@ export function App() {
   function changeView(view: WorkspaceView): void {
     if (view !== "project") setSelectedProjectId(null);
     if (view === "notes") setNotesProjectId(null);
-    setMobileNavOpen(false);
+    setMobileMoreOpen(false);
     setActiveView(view);
   }
 
@@ -1413,8 +1421,8 @@ export function App() {
         activeView={activeView}
         user={user}
         collapsed={sidebarCollapsed}
-        mobileOpen={mobileNavOpen}
         agentOpen={agentOpen}
+        counts={{ waiting: waitingCount }}
         aiShortcut={aiShortcut}
         updateAvailable={desktopUpdate !== null}
         updateInstalling={updateInstalling}
@@ -1424,16 +1432,12 @@ export function App() {
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onToggleAgent={() => setAgentOpen((value) => !value)}
-        onCloseMobile={() => setMobileNavOpen(false)}
         syncing={syncing}
         onSync={() => void syncNow()}
       />
 
-      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}>
-        <MobileTopBar
-          menuOpen={mobileNavOpen}
-          onMenu={() => setMobileNavOpen((value) => !value)}
-        />
+      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || mobileMoreOpen}>
+        <MobileTopBar view={activeView} title={viewTitle(activeView, t)} agentOpen={agentOpen} onAgent={() => setAgentOpen((value) => !value)} />
         <WorkspaceHeader
           activeView={activeView}
           layout={layout}
@@ -1480,6 +1484,26 @@ export function App() {
         </CompletionExitProvider>
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => openNewTask()}><Icon name="plus" /> {t("common.header.newTask")}</button>}
       </main>
+
+      {mobileMoreOpen && <MobileMoreScreen
+        activeView={activeView}
+        user={user}
+        badges={{ waiting: waitingCount > 0 ? String(waitingCount) : undefined, habits: habitProgress.total > 0 ? `${habitProgress.done}/${habitProgress.total}` : undefined }}
+        agentOpen={agentOpen}
+        onNavigate={changeView}
+        onAgent={() => setAgentOpen(true)}
+        onAccount={() => setAuthOpen(true)}
+        onClose={() => setMobileMoreOpen(false)}
+      />}
+      <MobileTabBar
+        activeView={activeView}
+        moreOpen={mobileMoreOpen}
+        createLabel={activeView === "habits" ? t("common.header.newHabit") : t("common.header.newTask")}
+        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
+        onNavigate={changeView}
+        onCreate={() => activeView === "habits" ? setHabitComposerOpen(true) : openNewTask()}
+        onToggleMore={() => setMobileMoreOpen((value) => !value)}
+      />
 
       <AgentSidebar
         open={agentOpen}
