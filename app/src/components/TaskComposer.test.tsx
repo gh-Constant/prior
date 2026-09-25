@@ -129,7 +129,7 @@ describe("compact TaskComposer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Task created."));
     expect(onSave).toHaveBeenCalledTimes(2);
-    expect(screen.getByLabelText("Task title")).toHaveValue("");
+    await waitFor(() => expect(screen.getByLabelText("Task title")).toHaveValue(""));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -210,7 +210,7 @@ describe("compact TaskComposer", () => {
     fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "First" } });
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: "First", projectId: "p1", status: "backlog" }), { keepOpen: true }));
-    expect(screen.getByLabelText("Task title")).toHaveValue("");
+    await waitFor(() => expect(screen.getByLabelText("Task title")).toHaveValue(""));
     fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "Second" } });
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Second", projectId: "p1", areaId: "a", status: "backlog" }), { keepOpen: true }));
