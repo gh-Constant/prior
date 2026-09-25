@@ -148,7 +148,7 @@ function parseDateWords(title: string, now: Date, lang: string): TaskTitleToken[
 
 function parseTimes(title: string, lang: string): TaskTitleToken[] {
   const result: TaskTitleToken[] = [];
-  const prefixed = /(?:^|\s)(?:at|à|a)\s+(\d{1,2})(?:(?::|h)(\d{2}))?\s*(am|pm)?\b/giu;
+  const prefixed = /(?:^|\s)(?:at|à|a)\s+(\d{1,2})(?:(?::|h)(\d{2})|h)?\s*(am|pm)?\b/giu;
   for (const match of title.matchAll(prefixed)) {
     const raw = match[0].trimStart();
     const start = (match.index ?? 0) + (match[0].length - raw.length);
@@ -195,6 +195,9 @@ function parseExplicitFields(title: string, context: TaskTitleParserContext, lan
       const prefix = prefixes.join("|");
       const pattern = new RegExp(`\\b(?:${prefix})\\s*:\\s*${escapeRegExp(item.name)}(?=\\s|$|[,;])`, "gi");
       addSimple(pattern, field, () => item.id, () => item.name);
+      // "#Name" shorthand, as in "Call Lea tomorrow #Personal".
+      const hashPattern = new RegExp(`(?<![\\p{L}\\d#])#${escapeRegExp(item.name)}(?=\\s|$|[,;.!?])`, "giu");
+      addSimple(hashPattern, field, () => item.id, () => item.name);
     }
   };
   named("projectId", ["project", "projet"], context.projects ?? []);

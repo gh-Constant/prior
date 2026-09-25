@@ -1,54 +1,101 @@
+/* Prior Agent mark — the cream Prior "P" on a dark tile, a coral focus dot
+   held in its bowl. Sizes come from --identity-size. */
 .agent-identity {
-  --identity-size: 36px;
+  --identity-size: 26px;
+  --mark-ring: #f4ece2;
+  --mark-core: #f56a4d;
   position: relative;
   display: inline-grid;
   place-items: center;
   width: var(--identity-size);
   height: var(--identity-size);
   flex: 0 0 auto;
+  border-radius: calc(var(--identity-size) * 0.3);
+  background:
+    radial-gradient(120% 90% at 30% 0%, #3a3633 0%, transparent 60%),
+    linear-gradient(165deg, #2a2725 0%, #151413 100%);
+  box-shadow:
+    inset 0 1px 0 #ffffff1f,
+    inset 0 0 0 1px #ffffff0d,
+    0 0 0 1px #0000004d,
+    0 1px 2px #00000033;
   isolation: isolate;
 }
 
-.agent-identity-tiny { --identity-size: 28px; }
-.agent-identity-small { --identity-size: 34px; }
-.agent-identity-hero { --identity-size: 118px; }
+.agent-identity-tiny { --identity-size: 20px; }
+.agent-identity-small { --identity-size: 26px; }
+.agent-identity-hero {
+  --identity-size: 60px;
+  box-shadow:
+    inset 0 1px 0 #ffffff24,
+    inset 0 0 0 1px #ffffff0d,
+    0 0 0 1px #00000059,
+    0 2px 4px #00000026,
+    0 14px 32px -10px #1d1c1a80;
+}
 
-/* Agent identity: no box, the orange/white wave floats directly on the UI. */
-.agent-fluid {
-  position: absolute;
-  inset: 0;
+.agent-mark {
+  width: 70%;
+  height: 70%;
+  margin: 6% 0 0 4%;
   overflow: visible;
-  background: transparent;
-  transition: filter 300ms ease;
 }
 
-/* Siri canvas fills the slot; the wave itself is the identity. */
-.agent-siri {
-  position: absolute;
-  inset: 0;
-  width: 100% !important;
-  height: 100% !important;
-  transition: filter 300ms ease;
+.agent-mark-stroke,
+.agent-mark-trace {
+  fill: none;
+  stroke-width: 34;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.agent-mark-stroke { stroke: var(--mark-ring); }
+
+/* A coral segment that travels the bowl while the agent is thinking. */
+.agent-mark-trace {
+  stroke: var(--mark-core);
+  stroke-dasharray: 22 78;
+  opacity: 0;
+  transition: opacity 200ms ease;
 }
 
-.agent-identity.is-thinking .agent-siri {
-  filter: saturate(1.25) brightness(1.1);
+.agent-mark-core {
+  fill: var(--mark-core);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: agent-core-breathe 3.6s ease-in-out infinite;
 }
 
-/* Static fallback: transparent, visible only when WebGL is unavailable
-   or when reduced motion is requested (no Siri canvas then). */
-.agent-fluid-fallback {
-  position: absolute;
-  inset: 0;
-  background: transparent;
+.agent-identity.is-thinking .agent-mark-trace {
+  opacity: 1;
+  animation: agent-trace-run 1.3s linear infinite;
+}
+.agent-identity.is-thinking .agent-mark-core {
+  animation: agent-core-pulse 1.3s ease-in-out infinite;
+}
+.agent-identity.is-thinking {
+  box-shadow:
+    inset 0 1px 0 #ffffff1f,
+    inset 0 0 0 1px #ffffff0d,
+    0 0 0 1px #0000004d,
+    0 0 0 3px #f35f4324,
+    0 1px 2px #00000033;
+}
+
+@keyframes agent-core-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.84); }
+}
+@keyframes agent-core-pulse {
+  0%, 100% { transform: scale(0.8); }
+  50% { transform: scale(1.08); }
+}
+@keyframes agent-trace-run {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-identity,
-  .agent-identity *,
-  .agent-identity *::before,
-  .agent-identity *::after {
-    animation: none !important;
-    transition: none !important;
-  }
+  .agent-mark-core,
+  .agent-identity.is-thinking .agent-mark-trace,
+  .agent-identity.is-thinking .agent-mark-core { animation: none; }
 }

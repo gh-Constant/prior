@@ -942,10 +942,21 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       <dialog ref={panelRef} id="prior-ai-assistant" open inert={inert} className={`agent-sidebar ${isOverlay ? "overlay" : "docked"}`} aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
       <header className="agent-header">
         <div className="agent-title-row">
-          <AgentIdentity size="small" />
+          <AgentIdentity size="small" thinking={loading} />
           <h3 id="prior-ai-assistant-title">{t("agent.header.title")}</h3>
         </div>
         <div className="agent-header-actions">
+          <button
+            type="button"
+            className={`icon-button agent-history-toggle ${historyOpen ? "active" : ""}`}
+            title={t("agent.history.toggle")}
+            aria-label={t("agent.history.toggle")}
+            aria-expanded={historyOpen}
+            aria-controls="prior-chat-history"
+            onClick={() => setHistoryOpen((value) => !value)}
+          >
+            <Icon name="clock" />
+          </button>
           <button
             type="button"
             className="icon-button agent-new-chat"
@@ -954,36 +965,33 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
             onClick={startNewChat}
             disabled={dictation.isActive}
           >
-            <Icon name="plus" />
+            <Icon name="pencil" />
           </button>
-          <button type="button" className="icon-button" aria-label={t("agent.header.close")} onClick={handleClose}>
+          <button type="button" className="icon-button" aria-label={t("agent.header.close")} title={t("agent.header.close")} onClick={handleClose}>
             <Icon name="close" />
           </button>
         </div>
+        <nav id="prior-chat-history" className="agent-chat-history" aria-label={t("agent.history.toggle")} hidden={!historyOpen}>
+          <span className="agent-chat-history-title">{t("agent.history.toggle")}</span>
+          {historyLoading && <span className="agent-history-note">{t("agent.history.loading")}</span>}
+          {!historyLoading && chatHistory.map((chat) => (
+            <button
+              key={chat.id}
+              type="button"
+              className={`agent-chat-item ${chat.id === activeChatId ? "active" : ""}`}
+              aria-current={chat.id === activeChatId ? "page" : undefined}
+              aria-label={chat.title}
+              title={chat.title}
+              onClick={() => { setHistoryOpen(false); void selectChat(chat.id); }}
+              disabled={chatLoading || dictation.isActive}
+            >
+              <Icon name="file-text" />
+              <span>{chat.title}</span>
+            </button>
+          ))}
+          {!historyLoading && !chatHistory.length && !user && <span className="agent-history-note">{t("agent.history.signIn")}</span>}
+        </nav>
       </header>
-
-      <button className="agent-history-toggle" type="button" aria-expanded={historyOpen} aria-controls="prior-chat-history" onClick={() => setHistoryOpen((value) => !value)}>
-        <span>{t("agent.history.toggle")}</span>
-        <Icon name="chevron-down" />
-      </button>
-      <nav id="prior-chat-history" className="agent-chat-history" aria-label={t("agent.history.toggle")} hidden={!historyOpen}>
-        {historyLoading && <span className="agent-history-note">{t("agent.history.loading")}</span>}
-        {!historyLoading && chatHistory.map((chat) => (
-          <button
-            key={chat.id}
-            type="button"
-            className={`agent-chat-item ${chat.id === activeChatId ? "active" : ""}`}
-            aria-current={chat.id === activeChatId ? "page" : undefined}
-            aria-label={chat.title}
-            title={chat.title}
-            onClick={() => void selectChat(chat.id)}
-            disabled={chatLoading || dictation.isActive}
-          >
-            <span>{chat.title}</span>
-          </button>
-        ))}
-        {!historyLoading && !chatHistory.length && !user && <span className="agent-history-note">{t("agent.history.signIn")}</span>}
-      </nav>
 
       <div className="agent-body">
         {messages.length === 0 ? (
@@ -993,6 +1001,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
               <AgentIdentity size="hero" />
             </div>
             <h4>{t("agent.welcome.title")}</h4>
+            <p>{t("agent.welcome.subtitle")}</p>
 
             <div className="starter-prompts-grid">
               {starterPrompts.map((item) => (
@@ -1011,8 +1020,9 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                     }
                   }}
                 >
-                  <Icon name={item.icon} />
-                  <span>{item.title}</span>
+                  <span className="starter-chip-icon"><Icon name={item.icon} /></span>
+                  <span className="starter-chip-label">{item.title}</span>
+                  <Icon name="arrow" className="starter-chip-arrow" />
                 </button>
               ))}
             </div>
@@ -1064,109 +1074,10 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           <span><strong>{t("agent.provider.codexTitle")}</strong><small>{t("agent.provider.codexSub")}</small></span>
         </div>
       )}
-      <div className="agent-model-row">
-        <label id="prior-agent-model-label">{settings.provider === "codex" ? t("agent.model.labelCodex") : t("agent.model.label")}</label>
-        <div className="agent-model-picker" ref={modelPickerRef}>
-          <button
-            type="button"
-            className="agent-model-trigger"
-            aria-haspopup="listbox"
-            aria-expanded={modelPickerOpen}
-            aria-labelledby="prior-agent-model-label prior-agent-model-value"
-            onClick={() => {
-              setReasoningPickerOpen(false);
-              setModelPickerOpen((open) => !open);
-            }}
-          >
-            <span id="prior-agent-model-value" className="agent-model-trigger-copy">
-              <strong>{selectedModel?.label ?? shortModelName(settings.model, t("agent.model.free"))}</strong>
-            </span>
-            <Icon name="chevron-down" />
-          </button>
-          {modelPickerOpen && (
-            <div className="agent-model-popover" role="dialog" aria-label={t("agent.model.choose")}>
-              <label className="agent-model-search">
-                <Icon name="search" />
-                <input
-                  autoFocus
-                  type="search"
-                  autoComplete="off"
-                  value={modelQuery}
-                  onChange={(event) => setModelQuery(event.target.value)}
-                  placeholder={settings.provider === "codex" ? t("agent.model.searchCodex") : t("agent.model.searchOpenrouter")}
-                  aria-label={settings.provider === "codex" ? t("agent.model.searchCodex") : t("agent.model.searchOpenrouterLabel")}
-                />
-                {modelQuery && <button type="button" aria-label={t("agent.model.clearSearch")} onClick={() => setModelQuery("")}><Icon name="close" /></button>}
-              </label>
-              <div className="agent-model-results" role="listbox" aria-label={settings.provider === "codex" ? t("agent.model.listCodex") : t("agent.model.listOpenrouter")}>
-                {(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && <span className="agent-model-note">{t("agent.model.loading", { provider: settings.provider === "codex" ? "Codex" : "OpenRouter" })}</span>}
-                {!(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && !filteredModelOptions.length && <span className="agent-model-note">{t("agent.model.noMatch")}</span>}
-                {filteredModelOptions.map((model) => (
-                  <button
-                    key={model.id}
-                    type="button"
-                    role="option"
-                    aria-selected={model.id === activeModelId}
-                    className={`agent-model-option ${model.id === activeModelId ? "active" : ""}`}
-                    onClick={() => { handleModelChange(model.id); setModelPickerOpen(false); setModelQuery(""); }}
-                  >
-                    <span className="agent-model-name">{model.label}</span>
-                    {model.id === activeModelId && <Icon name="check" className="agent-model-check" />}
-                  </button>
-                ))}
-                {filteredModelOptions.length === 80 && <span className="agent-model-note">{t("agent.model.firstEighty")}</span>}
-              </div>
-            </div>
-          )}
-        </div>
-        {showReasoning && (
-          <div className="agent-reasoning-picker" ref={reasoningPickerRef}>
-            <button
-              type="button"
-              className="agent-reasoning-trigger"
-              aria-haspopup="listbox"
-              aria-expanded={reasoningPickerOpen}
-              aria-label={t("agent.reasoning.label")}
-              onClick={() => {
-                setModelPickerOpen(false);
-                setReasoningPickerOpen((open) => !open);
-              }}
-            >
-              <span className="agent-reasoning-trigger-copy">
-                <small>{t("agent.reasoning.title")}</small>
-                <strong>{t(`agent.reasoning.${activeReasoning}`)}</strong>
-              </span>
-              <Icon name="chevron-down" />
-            </button>
-            {reasoningPickerOpen && (
-              <div className="agent-reasoning-popover" role="dialog" aria-label={t("agent.reasoning.choose")}>
-                <div className="agent-reasoning-results" role="listbox">
-                  {REASONING_EFFORTS.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      role="option"
-                      aria-selected={option.id === activeReasoning}
-                      className={`agent-reasoning-option ${option.id === activeReasoning ? "active" : ""}`}
-                      onClick={() => {
-                        handleReasoningChange(option.id);
-                        setReasoningPickerOpen(false);
-                      }}
-                    >
-                      <span>{t(`agent.reasoning.${option.id}`)}</span>
-                      {option.id === activeReasoning && <Icon name="check" className="agent-model-check" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
       {settings.provider !== "codex" && !settings.apiKey && (
         <div className="agent-key-notice" role="note">
-          <span>{t("agent.keyNotice.text")}</span>
+          <span className="agent-key-notice-icon"><Icon name="key" /></span>
+          <span className="agent-key-notice-text">{t("agent.keyNotice.text")}</span>
           <button type="button" className="secondary-button" onClick={() => { dictation.stop(); onOpenSettings(); }}>
             {t("agent.keyNotice.open")}
           </button>
@@ -1208,11 +1119,105 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           />
           <div className="agent-input-actions">
             <div className="agent-input-tools">
-              {messages.length > 0 && (
-                <button type="button" className="clear-chat-btn" title={t("agent.input.clearTitle")} onClick={startNewChat} disabled={dictation.isActive}>
-                  {t("agent.input.clear")}
+            <div className="agent-model-row">
+              <label id="prior-agent-model-label">{settings.provider === "codex" ? t("agent.model.labelCodex") : t("agent.model.label")}</label>
+              <div className="agent-model-picker" ref={modelPickerRef}>
+                <button
+                  type="button"
+                  className="agent-model-trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded={modelPickerOpen}
+                  aria-labelledby="prior-agent-model-label prior-agent-model-value"
+                  onClick={() => {
+                    setReasoningPickerOpen(false);
+                    setModelPickerOpen((open) => !open);
+                  }}
+                >
+                  <span id="prior-agent-model-value" className="agent-model-trigger-copy">
+                    <strong>{selectedModel?.label ?? shortModelName(settings.model, t("agent.model.free"))}</strong>
+                  </span>
+                  <Icon name="chevron-down" />
                 </button>
+                {modelPickerOpen && (
+                  <div className="agent-model-popover" role="dialog" aria-label={t("agent.model.choose")}>
+                    <label className="agent-model-search">
+                      <Icon name="search" />
+                      <input
+                        autoFocus
+                        type="search"
+                        autoComplete="off"
+                        value={modelQuery}
+                        onChange={(event) => setModelQuery(event.target.value)}
+                        placeholder={settings.provider === "codex" ? t("agent.model.searchCodex") : t("agent.model.searchOpenrouter")}
+                        aria-label={settings.provider === "codex" ? t("agent.model.searchCodex") : t("agent.model.searchOpenrouterLabel")}
+                      />
+                      {modelQuery && <button type="button" aria-label={t("agent.model.clearSearch")} onClick={() => setModelQuery("")}><Icon name="close" /></button>}
+                    </label>
+                    <div className="agent-model-results" role="listbox" aria-label={settings.provider === "codex" ? t("agent.model.listCodex") : t("agent.model.listOpenrouter")}>
+                      {(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && <span className="agent-model-note">{t("agent.model.loading", { provider: settings.provider === "codex" ? "Codex" : "OpenRouter" })}</span>}
+                      {!(settings.provider === "codex" ? codexModelsLoading : modelsLoading) && !filteredModelOptions.length && <span className="agent-model-note">{t("agent.model.noMatch")}</span>}
+                      {filteredModelOptions.map((model) => (
+                        <button
+                          key={model.id}
+                          type="button"
+                          role="option"
+                          aria-selected={model.id === activeModelId}
+                          className={`agent-model-option ${model.id === activeModelId ? "active" : ""}`}
+                          onClick={() => { handleModelChange(model.id); setModelPickerOpen(false); setModelQuery(""); }}
+                        >
+                          <span className="agent-model-name">{model.label}</span>
+                          {model.id === activeModelId && <Icon name="check" className="agent-model-check" />}
+                        </button>
+                      ))}
+                      {filteredModelOptions.length === 80 && <span className="agent-model-note">{t("agent.model.firstEighty")}</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {showReasoning && (
+                <div className="agent-reasoning-picker" ref={reasoningPickerRef}>
+                  <button
+                    type="button"
+                    className="agent-reasoning-trigger"
+                    aria-haspopup="listbox"
+                    aria-expanded={reasoningPickerOpen}
+                    aria-label={t("agent.reasoning.label")}
+                    onClick={() => {
+                      setModelPickerOpen(false);
+                      setReasoningPickerOpen((open) => !open);
+                    }}
+                  >
+                    <span className="agent-reasoning-trigger-copy">
+                      <small>{t("agent.reasoning.title")}</small>
+                      <strong>{t(`agent.reasoning.${activeReasoning}`)}</strong>
+                    </span>
+                    <Icon name="chevron-down" />
+                  </button>
+                  {reasoningPickerOpen && (
+                    <div className="agent-reasoning-popover" role="dialog" aria-label={t("agent.reasoning.choose")}>
+                      <div className="agent-reasoning-results" role="listbox">
+                        {REASONING_EFFORTS.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            role="option"
+                            aria-selected={option.id === activeReasoning}
+                            className={`agent-reasoning-option ${option.id === activeReasoning ? "active" : ""}`}
+                            onClick={() => {
+                              handleReasoningChange(option.id);
+                              setReasoningPickerOpen(false);
+                            }}
+                          >
+                            <span>{t(`agent.reasoning.${option.id}`)}</span>
+                            {option.id === activeReasoning && <Icon name="check" className="agent-model-check" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
+            </div>
             </div>
             <DictationControls
               status={dictation.status}

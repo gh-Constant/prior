@@ -12,6 +12,7 @@ export const agent = {
   },
   welcome: {
     title: "Was steht an?",
+    subtitle: "Planen, priorisieren und festhalten – mit deinen Aufgaben, Gewohnheiten und Notizen im Blick.",
   },
   suggest: {
     setup: {

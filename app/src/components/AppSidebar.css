@@ -3,16 +3,21 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin: 0 8px 42px 13px;
+  margin: 0 2px 22px 8px;
 }
 
 .sidebar-top .sidebar-brand { min-width: 0; margin: 0; }
 .sidebar-top .brand-lockup { min-width: 0; }
 .sidebar-top .brand-title { overflow: hidden; }
 
-.sidebar-nav-group { display: flex; flex-direction: column; gap: 5px; }
+.sidebar-nav-group { display: flex; flex-direction: column; gap: 1px; }
 .sidebar-nav-group + .sidebar-nav-group { margin-top: 18px; }
-.sidebar-nav-label { margin: 0 14px 3px; color: #77746f; font-size: 9px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+.sidebar-nav-label { margin: 0 10px 4px; color: var(--sidebar-faint); font-size: 11px; font-weight: 550; letter-spacing: 0; }
+
+/* Live counts sit at the right edge, quiet until the row is active. */
+.nav-item-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item-count { flex: 0 0 auto; color: var(--sidebar-faint); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.nav-item.active .nav-item-count { color: var(--sidebar-muted); }
 
 .sidebar-collapse-button {
   display: grid;
@@ -22,35 +27,19 @@
   flex: 0 0 auto;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   background: transparent;
-  color: #8d8b86;
+  color: var(--sidebar-faint);
 }
 
 .sidebar-collapse-button:hover {
-  border-color: #ffffff12;
-  background: #2a2a29;
-  color: #fff;
+  background: var(--sidebar-2);
+  color: var(--sidebar-ink);
 }
 
 .sidebar-collapse-button svg { width: 15px; height: 15px; }
 
-.sidebar-close-button {
-  display: none;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 auto;
-  padding: 0;
-  border: 1px solid #ffffff14;
-  border-radius: 9px;
-  background: #2a2a29;
-  color: #d2d0ca;
-}
-
-.sidebar-close-button svg { width: 16px; height: 16px; }
-
-.sidebar-bottom { display: flex; flex-direction: column; gap: 8px; }
+.sidebar-bottom { display: flex; flex-direction: column; gap: 2px; }
 
 /* Manual + status sync entry point: the icon spins for the whole sync,
    whether the user pressed it or an auto-sync is running. */
@@ -59,26 +48,26 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 40px;
-  padding: 6px 12px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
   background: transparent;
-  color: #a5a39e;
-  font-size: 12.5px;
-  font-weight: 600;
+  color: var(--sidebar-muted);
+  font-size: 13px;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
 
 .sidebar-sync-button:hover {
-  background: #2a2a29;
-  color: #fff;
+  background: var(--sidebar-2);
+  color: var(--sidebar-ink);
 }
 
-.sidebar-sync-button svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.sidebar-sync-button svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--sidebar-faint); }
 
-.sidebar-sync-button.is-syncing { color: #ff9e88; }
+.sidebar-sync-button.is-syncing, .sidebar-sync-button.is-syncing svg { color: #ff9e88; }
 
 .sidebar-sync-button.is-syncing svg { animation: sidebar-sync-spin 1s linear infinite; }
 
@@ -90,39 +79,39 @@
   white-space: nowrap;
 }
 
+.sidebar-sync-meta { flex: 0 0 auto; color: var(--sidebar-faint); font-size: 11px; font-weight: 500; white-space: nowrap; }
+
 @keyframes sidebar-sync-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
-/* Prior Agent: gradient-bordered entry point next to the account button. */
+/* Prior Agent: a raised row carrying the agent mark; it lights up when open. */
 .prior-agent-button {
-  --agent-gradient: linear-gradient(135deg, #ff8a72 0%, #fa654a 48%, #c93820 100%);
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   width: 100%;
-  min-height: 48px;
-  padding: 6px 12px 6px 9px;
-  border: 1px solid transparent;
-  border-radius: 11px;
-  background: linear-gradient(#262524, #262524) padding-box, var(--agent-gradient) border-box;
-  color: #f8f7f4;
+  min-height: 38px;
+  margin: 4px 0;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
+  background: var(--sidebar-2);
+  color: var(--sidebar-ink);
   text-align: left;
-  box-shadow: 0 2px 10px #fa654a14;
+  box-shadow: inset 0 1px 0 #ffffff0a;
 }
 
-.prior-agent-button:hover {
-  background: linear-gradient(#2f2e2c, #2f2e2c) padding-box, var(--agent-gradient) border-box;
-  box-shadow: 0 2px 16px #fa654a30;
-}
+.prior-agent-button:hover { border-color: #ffffff1c; background: #252422; }
 
 .prior-agent-button.active {
-  background: linear-gradient(#38302b, #2b2724) padding-box, var(--agent-gradient) border-box;
-  box-shadow: 0 0 0 1px #fa654a44, 0 4px 20px #fa654a35;
+  border-color: #f35f4359;
+  background: #2a2421;
+  box-shadow: inset 0 1px 0 #ffffff0a, 0 0 0 3px #f35f431f;
 }
 
-.prior-agent-button .agent-identity { --identity-size: 26px; }
+.prior-agent-button .agent-identity { --identity-size: 24px; }
 
 .prior-agent-label {
   min-width: 0;
@@ -130,16 +119,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: linear-gradient(92deg, #ffb59f 0%, #ff8d75 48%, #f6b878 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--sidebar-ink);
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: -.01em;
+  font-weight: 550;
+  letter-spacing: -.005em;
 }
 
-.prior-agent-button kbd { opacity: .5; font-family: inherit; font-size: 10px; font-weight: 600; }
+.prior-agent-button kbd { padding: 1px 5px; border: 1px solid #ffffff14; border-radius: var(--r-xs); color: var(--sidebar-faint); font-family: inherit; font-size: 10px; font-weight: 550; }
 
 .sidebar-account-row {
   display: flex;
@@ -199,9 +185,8 @@
   to { transform: rotate(360deg); }
 }
 
-/* Collapsed rail is a desktop-only concept. The collapse toggle lives in
-   .sidebar-top, which is hidden on phones, so these rules must never leak
-   into the mobile bottom bar (min-width gate keeps them desktop-only). */
+/* Collapsed rail is a desktop-only concept: phones hide the sidebar and
+   navigate with the bottom tab bar, so these rules stay behind a min-width gate. */
 @media (min-width: 761px) {
   .sidebar.is-collapsed { padding-right: 10px; padding-left: 10px; }
   .sidebar.is-collapsed .sidebar-top { justify-content: center; margin-right: 0; margin-left: 0; flex-direction: column; gap: 13px; }
@@ -213,34 +198,17 @@
   .sidebar.is-collapsed .sidebar-top .brand-lockup { gap: 0; }
   .sidebar.is-collapsed .nav-item { justify-content: center; padding: 0; }
   .sidebar.is-collapsed .nav-item.active::before { left: 0; }
-  .sidebar.is-collapsed .prior-agent-button { justify-content: center; padding: 6px 4px; }
+  .sidebar.is-collapsed .prior-agent-button { justify-content: center; padding: 0; }
   .sidebar.is-collapsed .prior-agent-label,
   .sidebar.is-collapsed .prior-agent-button kbd { display: none; }
-  .sidebar.is-collapsed .sidebar-sync-button { justify-content: center; padding: 6px 4px; }
-  .sidebar.is-collapsed .sidebar-sync-label { display: none; }
+  .sidebar.is-collapsed .sidebar-sync-button { justify-content: center; padding: 0; }
+  .sidebar.is-collapsed .sidebar-sync-label,
+  .sidebar.is-collapsed .sidebar-sync-meta { display: none; }
   .sidebar.is-collapsed .sidebar-account-row { flex-direction: column; align-items: center; gap: 8px; }
   .sidebar.is-collapsed .account-trigger { justify-content: center; padding: 4px; }
 }
 
-.app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
-
-@media (max-width: 760px) {
-  /* Drawer mode: the collapse toggle is desktop-only, the X button takes over. */
-  .sidebar-top { margin: 0 4px 24px 8px; }
-  .sidebar-collapse-button { display: none; }
-  .sidebar-close-button { display: grid; }
-  .sidebar-nav { overflow-y: auto; }
-  .sidebar.is-collapsed .sidebar-brand { display: block; }
-}
-
-@media (max-width: 380px) {
-  .sidebar { gap: 2px; padding-right: max(8px, env(safe-area-inset-right)); padding-left: max(8px, env(safe-area-inset-left)); }
-  .sidebar-nav { gap: 2px; }
-  .nav-item,
-  .account-trigger { padding-right: 2px; padding-left: 2px; }
-  .nav-item,
-  .account-trigger-label-mobile { font-size: 9.5px; }
-}
+.app-shell.sidebar-collapsed { grid-template-columns: 60px minmax(0, 1fr); }
 
 @media (prefers-reduced-motion: reduce) {
   .sidebar-sync-button.is-syncing svg { animation: none; }

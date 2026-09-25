@@ -180,12 +180,45 @@ describe("compact TaskComposer", () => {
     expect(screen.queryByText("More details", { selector: "summary" })).not.toBeInTheDocument();
     const details = screen.getByText(/More options/).closest("details")!;
     expect(details).not.toHaveAttribute("open");
-    for (const label of ["Task description", "Assignee", "Follow up", "Labels"]) {
+    // Description and assignee sit on the main surface; the rest stays tucked away.
+    for (const label of ["Task description", "Assignee"]) {
+      expect(screen.getByLabelText(label).closest("details")).toBeNull();
+    }
+    for (const label of ["Follow up", "Labels"]) {
       expect(screen.getByLabelText(label).closest("details")).not.toHaveAttribute("open");
     }
     expect(screen.getByRole("region", { name: "Task people" }).closest("details")).not.toHaveAttribute("open");
     fireEvent.click(screen.getByText(/More options/));
     expect(details).toHaveAttribute("open");
+  });
+
+  it("shows the project breadcrumb and submits with Ctrl/Cmd + Enter", async () => {
+    const onSave = vi.fn(async (_draft: TaskDraft) => undefined);
+    render(<TaskComposer projects={projects} initialContext={{ projectId: "p1" }} onSave={onSave} onCancel={vi.fn()} />);
+    const breadcrumb = screen.getByRole("navigation", { name: "Task location" });
+    expect(breadcrumb).toHaveTextContent("Launch");
+    expect(breadcrumb).toHaveTextContent("New task");
+    fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "Keyboard only" } });
+    fireEvent.keyDown(screen.getByLabelText("Task title"), { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: "Keyboard only", projectId: "p1" })));
+  });
+
+  it("keeps the sheet in its creation context when Create more is on", async () => {
+    const onSave = vi.fn(async (_draft: TaskDraft, _options?: { keepOpen: boolean }) => undefined);
+    render(<TaskComposer areas={areas} projects={projects} initialContext={{ projectId: "p1", status: "backlog" }} allowCreateMore onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Create more" }));
+    fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "First" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: "First", projectId: "p1", status: "backlog" }), { keepOpen: true }));
+    expect(screen.getByLabelText("Task title")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "Second" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
+    await waitFor(() => expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Second", projectId: "p1", areaId: "a", status: "backlog" }), { keepOpen: true }));
+  });
+
+  it("does not offer Create more when editing", () => {
+    render(<TaskComposer task={task} projects={projects} allowCreateMore onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.queryByRole("switch", { name: "Create more" })).not.toBeInTheDocument();
   });
 
   it("allows viewers to inspect details but disables all mutations and guards direct submission", () => {

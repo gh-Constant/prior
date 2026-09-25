@@ -1,0 +1,70 @@
+/* Phone tab bar: 60px of targets on top of the home-indicator inset
+   (at least 24px, so the bar is 84px on devices without one). */
+.mobile-tabbar { display: none; }
+
+@media (max-width: 760px) {
+  .mobile-tabbar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: start;
+    height: var(--mobile-tabbar-h);
+    padding: 6px max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+    border-top: 1px solid var(--line);
+    background: oklch(1 0 0 / 0.94);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    backdrop-filter: blur(12px) saturate(1.4);
+  }
+
+  .mobile-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 48px;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: transparent;
+    color: var(--faint);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 1.2;
+  }
+
+  .mobile-tab svg { width: 22px; height: 22px; }
+  .mobile-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-tab.active { color: var(--ink); font-weight: 600; }
+  .mobile-tab:active { scale: 1; background: var(--hover); }
+  .mobile-tab:focus-visible { outline-offset: -2px; }
+
+  .mobile-tab-fab-slot { display: grid; place-items: start center; }
+
+  .mobile-tab-fab {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    margin-top: -16px;
+    padding: 0;
+    border: 0;
+    border-radius: 16px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    box-shadow: 0 8px 20px -6px oklch(0.68 0.19 33 / 0.6), inset 0 1px 0 #ffffff33;
+  }
+
+  .mobile-tab-fab svg { width: 24px; height: 24px; stroke-width: 2; }
+  .mobile-tab-fab:hover { background: var(--accent-hover); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-tab-fab:active { scale: 1; }
+}

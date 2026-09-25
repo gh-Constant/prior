@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { Habit } from "../types";
 import { useI18n } from "../lib/i18n";
 import {
@@ -17,7 +17,6 @@ import {
   monthGrid,
   minutesFromTime,
   parseDateKey,
-  positionOverlappingEvents,
   parseIcsCalendar,
   saveCalendarState,
   timeFromMinutes,
@@ -42,131 +41,415 @@ import { CalendarSourceEditor } from "./CalendarSourceEditor";
 import "./CalendarView.css";
 
 type Props = { readonly habits: Habit[] };
+type Translate = (key: string) => string;
 
-const TIME_START = 0;
-const TIME_END = 24 * 60;
-const HOUR_HEIGHT = 64;
+const DAY_MINUTES = 24 * 60;
+/** Height of one hour row in the time grid, in pixels (one pixel per minute). */
+const HOUR_HEIGHT = 60;
+const PX_PER_MINUTE = HOUR_HEIGHT / 60;
+/** Breathing room above 00:00 so the first hour label is never clipped. */
+const GRID_TOP_PAD = 8;
+/** Events shorter than this render on a single line ("Title · 09:00"). */
+const SHORT_EVENT_MINUTES = 40;
+/** Minimum rendered duration, so very short events stay clickable and readable. */
+const MIN_EVENT_MINUTES = 22;
+const MONTH_VISIBLE_EVENTS = 3;
 const WEEKDAY_KEYS = ["common.calendar.weekdays.monday", "common.calendar.weekdays.tuesday", "common.calendar.weekdays.wednesday", "common.calendar.weekdays.thursday", "common.calendar.weekdays.friday", "common.calendar.weekdays.saturday", "common.calendar.weekdays.sunday"] as const;
+const VIEW_MODES = ["day", "week", "month", "agenda"] as const;
 const IMPORT_OPTIONS = [
   { type: "google", icon: "google", labelKey: "common.calendar.import.google" } as const,
   ...(import.meta.env.DEV ? [{ type: "outlook", icon: "cloud", labelKey: "common.calendar.import.outlook" } as const] : []),
   { type: "ics", icon: "file", labelKey: "common.calendar.import.ics" } as const,
 ];
 
-function isToday(value: string): boolean {
-  return value === dateKey();
-}
-
 function dayLabel(value: Date, lang: string, options: Intl.DateTimeFormatOptions): string {
   return new Intl.DateTimeFormat(lang, options).format(value);
 }
 
-function formatTimeRange(event: CalendarEvent, lang: string): string {
-  if (!event.startTime) return "";
-  const start = new Date(`2020-01-01T${event.startTime}`);
-  const end = event.endTime ? new Date(`2020-01-01T${event.endTime}`) : null;
-  const format = new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" });
-  return end ? `${format.format(start)} – ${format.format(end)}` : format.format(start);
+function capitalize(value: string, lang: string): string {
+  return value ? value.charAt(0).toLocaleUpperCase(lang) + value.slice(1) : value;
 }
 
-function eventLabel(event: CalendarEvent, t: (key: string) => string): string {
+function isWeekend(day: Date): boolean {
+  return day.getDay() === 0 || day.getDay() === 6;
+}
+
+function firstOfMonth(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), 1);
+}
+
+function isoWeek(value: Date): number {
+  const date = new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+  const weekday = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - weekday);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+}
+
+function uses12HourClock(lang: string): boolean {
+  try { return new Intl.DateTimeFormat(lang, { hour: "numeric" }).resolvedOptions().hour12 === true; }
+  catch { return false; }
+}
+
+function hourLabel(hour: number, lang: string, twelveHour: boolean): string {
+  if (!twelveHour) return timeFromMinutes(hour * 60);
+  return new Intl.DateTimeFormat(lang, { hour: "numeric" }).format(new Date(2020, 0, 1, hour));
+}
+
+function formatClock(time: string | null, lang: string): string {
+  if (!time) return "";
+  return new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" }).format(new Date(`2020-01-01T${time}`));
+}
+
+function formatTimeRange(event: CalendarEvent, lang: string): string {
+  if (!event.startTime) return "";
+  return event.endTime ? `${formatClock(event.startTime, lang)} – ${formatClock(event.endTime, lang)}` : formatClock(event.startTime, lang);
+}
+
+function eventLabel(event: CalendarEvent, t: Translate): string {
   if (event.kind === "habit") return `${event.title} · ${t("common.calendar.habit")}`;
   return event.title;
 }
 
-function EventChip({ event, compact = false, onOpen }: { readonly event: CalendarEvent; readonly compact?: boolean; readonly onOpen: (event: CalendarEvent) => void }) {
+function dayModeLabel(lang: string): string {
+  try {
+    const label = new Intl.DisplayNames(lang, { type: "dateTimeField" }).of("day");
+    if (label) return capitalize(label, lang);
+  } catch { /* Older engines: fall back below. */ }
+  return lang === "fr" ? "Jour" : "Day";
+}
+
+function groupByDate(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
+  const map = new Map<string, CalendarEvent[]>();
+  for (const event of events) {
+    const list = map.get(event.date);
+    if (list) list.push(event); else map.set(event.date, [event]);
+  }
+  return map;
+}
+
+function eventClasses(base: string, event: CalendarEvent): string {
+  return `${base}${event.kind === "habit" ? " is-habit" : ""}${event.completed ? " is-done" : ""}`;
+}
+
+/** Re-renders once per minute, aligned to the minute boundary, for the now indicator. */
+function useMinuteClock(): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    let interval: number | undefined;
+    const timeout = window.setTimeout(() => {
+      setNow(new Date());
+      interval = window.setInterval(() => setNow(new Date()), 60_000);
+    }, 60_000 - (Date.now() % 60_000));
+    return () => { window.clearTimeout(timeout); window.clearInterval(interval); };
+  }, []);
+  return now;
+}
+
+type LaidOutEvent = { readonly event: CalendarEvent; readonly start: number; readonly end: number; readonly column: number; readonly columns: number };
+
+/**
+ * Side-by-side layout for timed events of one day. Events are split into
+ * collision groups (chains of visually overlapping events); every event of a
+ * group gets the first free column and the group's column count, so
+ * overlapping events share the width equally instead of cascading.
+ */
+function layoutDayEvents(events: CalendarEvent[]): LaidOutEvent[] {
+  const items = events
+    .map((event) => {
+      const start = Math.min(DAY_MINUTES - 1, Math.max(0, minutesFromTime(event.startTime) ?? 0));
+      const end = Math.min(DAY_MINUTES, Math.max(start + 1, minutesFromTime(event.endTime) ?? start + 45));
+      return { event, start, end, visualEnd: Math.min(DAY_MINUTES, Math.max(end, start + MIN_EVENT_MINUTES)) };
+    })
+    .sort((left, right) => left.start - right.start || right.end - left.end);
+  const result: LaidOutEvent[] = [];
+  let group: { event: CalendarEvent; start: number; end: number; column: number }[] = [];
+  let columnEnds: number[] = [];
+  let groupEnd = -1;
+  const flush = () => {
+    for (const item of group) result.push({ ...item, columns: columnEnds.length });
+    group = []; columnEnds = []; groupEnd = -1;
+  };
+  for (const item of items) {
+    if (group.length > 0 && item.start >= groupEnd) flush();
+    let column = columnEnds.findIndex((columnEnd) => columnEnd <= item.start);
+    if (column < 0) { column = columnEnds.length; columnEnds.push(item.visualEnd); }
+    else columnEnds[column] = item.visualEnd;
+    group.push({ event: item.event, start: item.start, end: item.end, column });
+    groupEnd = Math.max(groupEnd, item.visualEnd);
+  }
+  flush();
+  return result;
+}
+
+function slotTime(event: ReactMouseEvent<HTMLButtonElement>, hour: number): string {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const lowerHalf = event.detail > 0 && rect.height > 0 && event.clientY - rect.top >= rect.height / 2;
+  return timeFromMinutes(hour * 60 + (lowerHalf ? 30 : 0));
+}
+
+function EventPill({ event, lang, t, showTime = false, onOpen }: { readonly event: CalendarEvent; readonly lang: string; readonly t: Translate; readonly showTime?: boolean; readonly onOpen: (event: CalendarEvent) => void }) {
+  const time = formatTimeRange(event, lang);
   return (
     <button
       type="button"
-      className={`calendar-event-chip ${compact ? "compact" : ""} ${event.kind === "habit" ? "habit" : ""} ${event.completed ? "completed" : ""}`.trim()}
+      className={eventClasses(`cal-pill${event.startTime ? " is-timed" : ""}`, event)}
       style={{ "--event-color": event.color } as CSSProperties}
       onClick={() => onOpen(event)}
-      title={event.title}
+      title={time ? `${event.title} · ${time}` : event.title}
+      aria-label={time ? `${eventLabel(event, t)} · ${time}` : eventLabel(event, t)}
     >
-      <span className="calendar-event-dot" aria-hidden="true" />
-      <span className="calendar-event-chip-title">{event.locked ? "🔒 " : ""}{event.title}</span>
-      {event.startTime && <small>{event.startTime}</small>}
+      <span className="cal-pill-dot" aria-hidden="true" />
+      <span className="cal-pill-title">{event.locked && <Icon name="lock" className="cal-lock" aria-hidden="true" />}{event.title}</span>
+      {showTime && event.startTime && <span className="cal-pill-time">{formatClock(event.startTime, lang)}</span>}
     </button>
   );
 }
 
-function WeekCalendar({ days, events, t, onOpen, onCreate }: { readonly days: Date[]; readonly events: CalendarEvent[]; readonly t: (key: string) => string; readonly onOpen: (event: CalendarEvent) => void; readonly onCreate: (date: string, time?: string) => void }) {
+function TimedEvent({ item, lang, t, onOpen }: { readonly item: LaidOutEvent; readonly lang: string; readonly t: Translate; readonly onOpen: (event: CalendarEvent) => void }) {
+  const { event, start, end, column, columns } = item;
+  const duration = end - start;
+  const short = duration < SHORT_EVENT_MINUTES;
+  const range = formatTimeRange(event, lang);
+  const detail = short ? formatClock(event.startTime, lang) : `${range}${event.location ? ` · ${event.location}` : ""}`;
+  return (
+    <button
+      type="button"
+      className={eventClasses(`cal-event${short ? " is-short" : ""}`, event)}
+      style={{ top: start * PX_PER_MINUTE, height: Math.max(MIN_EVENT_MINUTES, duration) * PX_PER_MINUTE - 1, "--event-color": event.color, "--col": column, "--cols": columns } as CSSProperties}
+      onClick={() => onOpen(event)}
+      title={`${event.title} · ${range}${event.location ? ` · ${event.location}` : ""}`}
+      aria-label={`${eventLabel(event, t)} · ${range}${event.location ? ` · ${event.location}` : ""}`}
+    >
+      <span className="cal-event-title">{event.locked && <Icon name="lock" className="cal-lock" aria-hidden="true" />}{event.title}</span>
+      <span className="cal-event-time">{detail}</span>
+    </button>
+  );
+}
+
+type TimeGridProps = {
+  readonly days: Date[];
+  readonly events: CalendarEvent[];
+  readonly now: Date;
+  readonly lang: string;
+  readonly t: Translate;
+  readonly onOpen: (event: CalendarEvent) => void;
+  readonly onCreate: (date: string, time?: string) => void;
+  readonly onDay?: (date: string) => void;
+};
+
+function TimeGrid({ days, events, now, lang, t, onOpen, onCreate, onDay }: TimeGridProps) {
   const l = useCalendarLabels();
   const scroll = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (scroll.current) scroll.current.scrollTop = 7 * HOUR_HEIGHT; }, []);
-  const eventByDate = useMemo(() => new Map(days.map((day) => [dateKey(day), events.filter((event) => event.date === dateKey(day))])), [days, events]);
-  const timeLabels = Array.from({ length: 25 }, (_, index) => TIME_START + index * 60);
+  const todayKey = dateKey(now);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const showsToday = days.some((day) => dateKey(day) === todayKey);
+  const initialMinute = useRef(showsToday ? Math.max(0, nowMinutes - 60) : 8 * 60);
+  useEffect(() => {
+    if (scroll.current) scroll.current.scrollTop = GRID_TOP_PAD + initialMinute.current * PX_PER_MINUTE;
+  }, []);
+  const byDate = useMemo(() => groupByDate(events), [events]);
+  const twelveHour = useMemo(() => uses12HourClock(lang), [lang]);
+  const hours = Array.from({ length: 24 }, (_, hour) => hour);
   return (
-    <div className="calendar-week-scroll" ref={scroll}>
-      <div className={`calendar-week-grid ${days.length === 1 ? "calendar-single-day" : ""}`} style={{ "--calendar-days": days.length } as CSSProperties}>
-        <div className="calendar-week-header">
-          <span className="calendar-time-gutter" />
-          {days.map((day) => <div className={`calendar-day-heading ${isToday(dateKey(day)) ? "today" : ""}`} key={dateKey(day)}><span>{t(WEEKDAY_KEYS[(day.getDay() + 6) % 7])}</span><strong>{day.getDate()}</strong></div>)}
-        </div>
-        <div className="calendar-anytime-row">
-          <span className="calendar-time-gutter">{t("common.calendar.anytime")}</span>
+    <div className="cal-time-scroll" ref={scroll}>
+      <div className={`cal-time-grid${days.length === 1 ? " is-single" : ""}`} style={{ "--cal-days": days.length, "--hour-h": `${HOUR_HEIGHT}px` } as CSSProperties}>
+        <div className="cal-dayhead-row">
+          <div className="cal-corner" aria-hidden="true" />
           {days.map((day) => {
-            const anytime = eventByDate.get(dateKey(day))?.filter((event) => !event.startTime) ?? [];
-            return <div className="calendar-anytime-cell" key={dateKey(day)}>{anytime.map((event) => <EventChip key={event.id} event={event} compact onOpen={onOpen} />)}</div>;
+            const key = dateKey(day);
+            const className = `cal-dayhead${key === todayKey ? " is-today" : ""}${isWeekend(day) ? " is-weekend" : ""}`;
+            const content = <><span className="cal-dayhead-weekday">{t(WEEKDAY_KEYS[(day.getDay() + 6) % 7])}</span><span className="cal-dayhead-date">{day.getDate()}</span></>;
+            return onDay
+              ? <button type="button" className={className} key={key} aria-label={dayLabel(day, lang, { dateStyle: "full" })} onClick={() => onDay(key)}>{content}</button>
+              : <div className={className} key={key}>{content}</div>;
           })}
         </div>
-        <div className="calendar-time-body">
-          <div className="calendar-time-labels">{timeLabels.map((minutes) => <span key={minutes}>{minutes === TIME_END ? "24:00" : timeFromMinutes(minutes)}</span>)}</div>
-          <div className="calendar-day-columns" style={{ "--calendar-hours": timeLabels.length - 1 } as CSSProperties}>
-            {days.map((day) => {
-              const timedEvents = positionOverlappingEvents(eventByDate.get(dateKey(day))?.filter((event) => event.startTime) ?? []);
-              return (
-                <div className={`calendar-day-column ${isToday(dateKey(day)) ? "today" : ""}`} key={dateKey(day)}>
-                  <div className="calendar-grid-slots">{timeLabels.slice(0, -1).map((minutes) => <button type="button" key={minutes} aria-label={`${l.createAt} · ${dateKey(day)} ${timeFromMinutes(minutes)}`} onClick={() => onCreate(dateKey(day), timeFromMinutes(minutes))} />)}</div>
-                  {timedEvents.map((event) => {
-                    const start = Math.max(TIME_START, minutesFromTime(event.startTime) ?? TIME_START);
-                    const end = Math.min(TIME_END, Math.max(start + 1, minutesFromTime(event.endTime) ?? start + 45));
-                    return <button key={event.id} type="button" className={`calendar-timed-event ${event.kind === "habit" ? "habit" : ""} ${event.completed ? "completed" : ""}`} style={{ top: (start - TIME_START) * (HOUR_HEIGHT / 60), height: Math.max(30, (end - start) * (HOUR_HEIGHT / 60)), left: `calc(${(event.column / event.columns) * 100}% + 3px)`, width: `calc(${(100 / event.columns)}% - 6px)`, "--event-color": event.color } as CSSProperties} onClick={() => onOpen(event)} title={event.title}><strong>{event.locked ? "🔒 " : ""}{event.title}</strong><span>{event.startTime}{event.location ? ` · ${event.location}` : ""}</span></button>;
-                  })}
-                </div>
-              );
-            })}
+        <div className="cal-allday-row">
+          <div className="cal-gutter cal-allday-label">{t("common.calendar.anytime")}</div>
+          {days.map((day) => {
+            const key = dateKey(day);
+            const anytime = byDate.get(key)?.filter((event) => !event.startTime) ?? [];
+            return <div className={`cal-allday-cell${isWeekend(day) ? " is-weekend" : ""}`} key={key}>{anytime.map((event) => <EventPill key={event.id} event={event} lang={lang} t={t} onOpen={onOpen} />)}</div>;
+          })}
+        </div>
+        <div className="cal-time-body">
+          <div className="cal-gutter cal-hours" aria-hidden="true">
+            {hours.map((hour) => <span key={hour} style={{ top: hour * HOUR_HEIGHT }}>{hourLabel(hour, lang, twelveHour)}</span>)}
+            {showsToday && <span className="cal-now-label" style={{ top: nowMinutes * PX_PER_MINUTE }}>{formatClock(timeFromMinutes(nowMinutes), lang)}</span>}
           </div>
+          {days.map((day) => {
+            const key = dateKey(day);
+            const timed = layoutDayEvents(byDate.get(key)?.filter((event) => event.startTime && minutesFromTime(event.startTime) !== null) ?? []);
+            return (
+              <div className={`cal-day-col${key === todayKey ? " is-today" : ""}${isWeekend(day) ? " is-weekend" : ""}`} key={key}>
+                {hours.map((hour) => <button type="button" className="cal-slot" key={hour} aria-label={`${l.createAt} · ${key} ${timeFromMinutes(hour * 60)}`} onClick={(event) => onCreate(key, slotTime(event, hour))} />)}
+                {timed.map((item) => <TimedEvent key={item.event.id} item={item} lang={lang} t={t} onOpen={onOpen} />)}
+                {key === todayKey && <div className="cal-now" style={{ top: nowMinutes * PX_PER_MINUTE }} aria-hidden="true" />}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
-function MonthCalendar({ days, events, onOpen, onCreate, onDay }: { readonly days: Date[]; readonly events: CalendarEvent[]; readonly onOpen: (event: CalendarEvent) => void; readonly onCreate: (date: string) => void; readonly onDay: (date: string) => void }) {
+type MonthGridProps = {
+  readonly days: Date[];
+  readonly anchor: Date;
+  readonly events: CalendarEvent[];
+  readonly now: Date;
+  readonly lang: string;
+  readonly t: Translate;
+  readonly onOpen: (event: CalendarEvent) => void;
+  readonly onCreate: (date: string) => void;
+  readonly onDay: (date: string) => void;
+};
+
+function MonthGrid({ days, anchor, events, now, lang, t, onOpen, onCreate, onDay }: MonthGridProps) {
   const l = useCalendarLabels();
+  const byDate = useMemo(() => groupByDate(events), [events]);
+  const todayKey = dateKey(now);
+  const month = anchor.getMonth();
+  // Drop trailing weeks that sit entirely in the next month so rows fill the height.
+  let visible = days;
+  while (visible.length > 28 && visible.slice(-7).every((day) => day.getMonth() !== month)) visible = visible.slice(0, -7);
   return (
-    <div className="calendar-month-shell"><div className="calendar-month-weekdays">{[1, 2, 3, 4, 5, 6, 0].map((day) => <span key={day}>{l.weekdays[day]}</span>)}</div><div className="calendar-month-grid">
-      {days.map((day) => {
-        const key = dateKey(day);
-        const dayEvents = events.filter((event) => event.date === key);
-        return <div className={`calendar-month-cell ${day.getMonth() !== days[15].getMonth() ? "outside" : ""} ${isToday(key) ? "today" : ""}`} key={key}>
-          <div className="calendar-month-date"><span>{day.getDate()}</span><button type="button" aria-label={`${l.createAt} · ${key}`} onClick={() => onCreate(key)}>+</button></div>
-          <div className="calendar-month-events">{dayEvents.slice(0, 4).map((event) => <EventChip key={event.id} event={event} compact onOpen={onOpen} />)}{dayEvents.length > 4 && <button type="button" className="calendar-more-events" onClick={() => onDay(key)}>+{dayEvents.length - 4} {l.more}</button>}</div>
-        </div>;
-      })}
-    </div></div>
+    <div className="cal-month">
+      <div className="cal-month-head" aria-hidden="true">{WEEKDAY_KEYS.map((key) => <span key={key}>{t(key)}</span>)}</div>
+      <div className="cal-month-grid" style={{ "--cal-weeks": visible.length / 7 } as CSSProperties}>
+        {visible.map((day) => {
+          const key = dateKey(day);
+          const dayEvents = [...(byDate.get(key) ?? [])].sort((left, right) => Number(Boolean(left.startTime)) - Number(Boolean(right.startTime)));
+          const hidden = dayEvents.length - MONTH_VISIBLE_EVENTS;
+          return (
+            <div className={`cal-month-cell${day.getMonth() !== month ? " is-outside" : ""}${key === todayKey ? " is-today" : ""}${isWeekend(day) ? " is-weekend" : ""}`} key={key}>
+              <div className="cal-month-cell-head">
+                <button type="button" className="cal-month-num" aria-label={dayLabel(day, lang, { dateStyle: "full" })} onClick={() => onDay(key)}>
+                  {day.getDate() === 1 ? dayLabel(day, lang, { day: "numeric", month: "short" }) : day.getDate()}
+                </button>
+                <button type="button" className="cal-month-add" aria-label={`${l.createAt} · ${key}`} onClick={() => onCreate(key)}><Icon name="plus" /></button>
+              </div>
+              <div className="cal-month-events">
+                {dayEvents.slice(0, MONTH_VISIBLE_EVENTS).map((event) => <EventPill key={event.id} event={event} lang={lang} t={t} showTime onOpen={onOpen} />)}
+                {hidden > 0 && <button type="button" className="cal-month-more" aria-label={`+${hidden} ${l.more}`} onClick={() => onDay(key)}>+{hidden}</button>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
-function AgendaCalendar({ events, lang, t, onOpen }: { readonly events: CalendarEvent[]; readonly lang: string; readonly t: (key: string) => string; readonly onOpen: (event: CalendarEvent) => void }) {
-  const grouped = events.reduce<Record<string, CalendarEvent[]>>((result, event) => { (result[event.date] ??= []).push(event); return result; }, {});
-  const entries = Object.entries(grouped);
-  return <div className="calendar-agenda">{entries.length === 0 ? <div className="calendar-empty-state"><Icon name="calendar-check" /><strong>{t("common.calendar.empty")}</strong><span>{t("common.calendar.emptyHint")}</span></div> : entries.map(([date, dayEvents]) => <section className="calendar-agenda-day" key={date}><div className="calendar-agenda-date"><strong>{dayLabel(parseDateKey(date), lang, { weekday: "long", day: "numeric", month: "long" })}</strong>{isToday(date) && <span>{t("common.calendar.today")}</span>}</div><div className="calendar-agenda-events">{dayEvents.map((event) => <button type="button" className="calendar-agenda-event" style={{ "--event-color": event.color } as CSSProperties} key={event.id} onClick={() => onOpen(event)}><span className="calendar-event-dot" /><span><strong>{event.title}</strong><small>{event.startTime ? formatTimeRange(event, lang) : t("common.calendar.anytime")}{event.location ? ` · ${event.location}` : ""}</small></span><Icon name="chevron-right" /></button>)}</div></section>)}</div>;
+function AgendaList({ events, sources, now, lang, t, onOpen }: { readonly events: CalendarEvent[]; readonly sources: CalendarSource[]; readonly now: Date; readonly lang: string; readonly t: Translate; readonly onOpen: (event: CalendarEvent) => void }) {
+  const byDate = groupByDate(events);
+  const entries = [...byDate.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const todayKey = dateKey(now);
+  const sourceNames = new Map(sources.map((source) => [source.id, source.name]));
+  if (entries.length === 0) {
+    return <div className="cal-agenda"><div className="cal-empty"><span className="cal-empty-icon"><Icon name="calendar-check" /></span><strong>{t("common.calendar.empty")}</strong><span>{t("common.calendar.emptyHint")}</span></div></div>;
+  }
+  return (
+    <div className="cal-agenda">
+      {entries.map(([date, dayEvents]) => {
+        const day = parseDateKey(date);
+        return (
+          <section className={`cal-agenda-day${date === todayKey ? " is-today" : ""}`} key={date} aria-label={dayLabel(day, lang, { dateStyle: "full" })}>
+            <header className="cal-agenda-dayhead">
+              <span className="cal-agenda-daynum">{day.getDate()}</span>
+              <span className="cal-agenda-daytext"><strong>{capitalize(dayLabel(day, lang, { weekday: "long" }), lang)}</strong><span>{capitalize(dayLabel(day, lang, { month: "long", year: "numeric" }), lang)}</span></span>
+              {date === todayKey && <span className="cal-today-tag">{t("common.calendar.today")}</span>}
+            </header>
+            <ul className="cal-agenda-list">
+              {dayEvents.map((event) => {
+                const meta = [event.kind === "habit" ? t("common.calendar.habitsTitle") : sourceNames.get(event.sourceId), event.location].filter(Boolean).join(" · ");
+                return (
+                  <li key={event.id}>
+                    <button type="button" className={eventClasses("cal-agenda-row", event)} style={{ "--event-color": event.color } as CSSProperties} onClick={() => onOpen(event)}>
+                      <span className="cal-agenda-time">
+                        {event.startTime ? <><span>{formatClock(event.startTime, lang)}</span>{event.endTime && <span>{formatClock(event.endTime, lang)}</span>}</> : <span>{t("common.calendar.anytime")}</span>}
+                      </span>
+                      <span className="cal-agenda-bar" aria-hidden="true" />
+                      <span className="cal-agenda-main">
+                        <strong>{event.locked && <Icon name="lock" className="cal-lock" aria-hidden="true" />}{eventLabel(event, t)}</strong>
+                        {meta && <small>{meta}</small>}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+type MiniMonthProps = {
+  readonly month: Date;
+  readonly selection: { readonly from: string; readonly to: string } | null;
+  readonly now: Date;
+  readonly lang: string;
+  readonly t: Translate;
+  readonly onMonth: (amount: number) => void;
+  readonly onPick: (day: Date) => void;
+};
+
+function MiniMonth({ month, selection, now, lang, t, onMonth, onPick }: MiniMonthProps) {
+  const days = monthGrid(month);
+  const todayKey = dateKey(now);
+  const initials = useMemo(() => Array.from({ length: 7 }, (_, index) => dayLabel(new Date(2024, 0, 1 + index), lang, { weekday: "narrow" })), [lang]);
+  return (
+    <div className="cal-mini">
+      <div className="cal-mini-head">
+        <strong>{capitalize(dayLabel(month, lang, { month: "long", year: "numeric" }), lang)}</strong>
+        <div className="cal-mini-nav">
+          <button type="button" className="cal-icon-btn is-small" aria-label={t("common.datePicker.previousMonth")} onClick={() => onMonth(-1)}><Icon name="chevron-left" /></button>
+          <button type="button" className="cal-icon-btn is-small" aria-label={t("common.datePicker.nextMonth")} onClick={() => onMonth(1)}><Icon name="chevron-right" /></button>
+        </div>
+      </div>
+      <div className="cal-mini-grid">
+        {initials.map((initial, index) => <span className="cal-mini-weekday" key={index} aria-hidden="true">{initial}</span>)}
+        {days.map((day) => {
+          const key = dateKey(day);
+          const inRange = selection !== null && key >= selection.from && key <= selection.to;
+          const className = `cal-mini-day${day.getMonth() !== month.getMonth() ? " is-outside" : ""}${key === todayKey ? " is-today" : ""}${inRange ? " in-range" : ""}${inRange && key === selection?.from ? " range-start" : ""}${inRange && key === selection?.to ? " range-end" : ""}`;
+          return (
+            <button type="button" className={className} key={key} aria-label={dayLabel(day, lang, { dateStyle: "full" })} aria-current={key === todayKey ? "date" : undefined} aria-pressed={inRange} onClick={() => onPick(day)}>
+              <span>{day.getDate()}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function CalendarView({ habits }: Props) {
   const { t, lang } = useI18n();
   const l = useCalendarLabels();
+  const now = useMinuteClock();
   const [state, setState] = useState<CalendarState>(() => loadCalendarState());
   const stateRef = useRef(state);
   const [storageError, setStorageError] = useState("");
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [editor, setEditor] = useState<{ initial: CalendarEvent; original?: CalendarEvent } | null>(null);
   const [sourceEditor, setSourceEditor] = useState<{ source: CalendarSource; isNew: boolean; thenCreate?: { date: string; time: string } } | null>(null);
-  const [mode, setMode] = useState<CalendarViewMode>("week");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mode, setMode] = useState<CalendarViewMode>(() => typeof window !== "undefined" && window.matchMedia?.("(max-width: 760px)").matches ? "day" : "week");
+  const [railOpen, setRailOpen] = useState(false);
   const [anchorDate, setAnchorDate] = useState(() => new Date());
+  const anchorMonthKey = `${anchorDate.getFullYear()}-${anchorDate.getMonth()}`;
+  const [miniMonthState, setMiniMonthState] = useState(() => ({ key: anchorMonthKey, month: firstOfMonth(anchorDate) }));
+  let miniMonth = miniMonthState.month;
+  if (miniMonthState.key !== anchorMonthKey) {
+    // Follow the main calendar when navigation crosses into another month.
+    miniMonth = firstOfMonth(anchorDate);
+    setMiniMonthState({ key: anchorMonthKey, month: miniMonth });
+  }
   const [importOpen, setImportOpen] = useState(false);
   const [importMode, setImportMode] = useState<"options" | "ics">("options");
   const [icsName, setIcsName] = useState("");
@@ -207,6 +490,13 @@ export function CalendarView({ habits }: Props) {
     return () => window.removeEventListener("prior-auth-change", resetAccount);
   }, []);
 
+  useEffect(() => {
+    if (!railOpen) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setRailOpen(false); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [railOpen]);
+
   const range = useMemo(() => {
     if (mode === "day") {
       const day = parseDateKey(dateKey(anchorDate));
@@ -220,9 +510,27 @@ export function CalendarView({ habits }: Props) {
     return { from: days[0], to: days[days.length - 1], days };
   }, [anchorDate, mode]);
   const events = useMemo(() => eventsInRange(state, habits, range.from, range.to).filter((event) => normalizeCalendarText(`${event.title} ${event.location ?? ""} ${event.description ?? ""}`).includes(normalizeCalendarText(query))), [habits, range.from, range.to, state, query]);
-  const rangeLabel = mode === "month"
-    ? dayLabel(anchorDate, lang, { month: "long", year: "numeric" })
-    : `${dayLabel(range.from, lang, { day: "numeric", month: "short" })} – ${dayLabel(range.to, lang, { day: "numeric", month: "short", year: "numeric" })}`;
+  const eventCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const event of events) counts.set(event.sourceId, (counts.get(event.sourceId) ?? 0) + 1);
+    return counts;
+  }, [events]);
+  const heading = useMemo(() => {
+    const format = (value: Date, options: Intl.DateTimeFormatOptions) => capitalize(dayLabel(value, lang, options), lang);
+    const fullRange = `${dayLabel(range.from, lang, { day: "numeric", month: "short" })} – ${dayLabel(range.to, lang, { day: "numeric", month: "short", year: "numeric" })}`;
+    if (mode === "day") return { title: format(anchorDate, { day: "numeric", month: "long", year: "numeric" }), detail: format(anchorDate, { weekday: "long" }), full: format(anchorDate, { dateStyle: "full" }) };
+    if (mode === "month") return { title: format(anchorDate, { month: "long", year: "numeric" }), detail: "", full: format(anchorDate, { month: "long", year: "numeric" }) };
+    const { from, to } = range;
+    const title = from.getMonth() === to.getMonth()
+      ? format(from, { month: "long", year: "numeric" })
+      : from.getFullYear() === to.getFullYear()
+        ? `${format(from, { month: "short" })} – ${format(to, { month: "short", year: "numeric" })}`
+        : `${format(from, { month: "short", year: "numeric" })} – ${format(to, { month: "short", year: "numeric" })}`;
+    return { title, detail: `${t("common.calendar.views.week")} ${isoWeek(from)}`, full: fullRange };
+  }, [anchorDate, lang, mode, range, t]);
+  const miniSelection = mode === "month" ? null : { from: dateKey(range.from), to: dateKey(range.to) };
+  const localSources = state.sources.filter((source) => source.type === "local");
+  const importedSources = state.sources.filter((source) => source.type !== "local");
 
   const updateState = useCallback((value: CalendarState | ((current: CalendarState) => CalendarState)): boolean => {
     try {
@@ -449,48 +757,128 @@ export function CalendarView({ habits }: Props) {
     }
   }
 
+  function toggleSource(source: CalendarSource) {
+    updateState({ ...state, sources: state.sources.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item) });
+  }
+
+  function pickDay(day: Date) {
+    setAnchorDate(day);
+    setSelectedEvent(null);
+    setRailOpen(false);
+  }
+
+  function openDay(date: string) {
+    setAnchorDate(parseDateKey(date));
+    setMode("day");
+    setSelectedEvent(null);
+  }
+
+  function renderSource(source: CalendarSource) {
+    const count = source.enabled ? eventCounts.get(source.id) ?? 0 : 0;
+    return (
+      <li className={`cal-source${source.enabled ? "" : " is-off"}`} key={source.id} style={{ "--source-color": source.color } as CSSProperties}>
+        <button type="button" className="cal-source-toggle" aria-pressed={source.enabled} onClick={() => toggleSource(source)}>
+          <span className="cal-check" aria-hidden="true"><Icon name="check" /></span>
+          <span className="cal-source-name">{source.name}</span>
+          {syncingSourceId === source.id && <Icon name="refresh" className="cal-source-syncing" aria-hidden="true" />}
+          {source.syncError && <span className="cal-source-error" title={l.syncError}>!</span>}
+          {count > 0 && <span className="cal-source-count">{count}</span>}
+        </button>
+        <button type="button" className="cal-icon-btn is-small cal-source-more" aria-label={`${l.settings} · ${source.name}`} title={l.settings} onClick={() => setSourceEditor({ source, isNew: false })}><Icon name="gear" /></button>
+      </li>
+    );
+  }
+
   return (
     <section className="calendar-page" aria-label={t("common.views.calendar")}>
-      <div className="calendar-toolbar">
-        <div className="calendar-navigation"><button type="button" className="calendar-icon-button" aria-label={t("common.calendar.previous")} onClick={() => moveRange(-1)}><Icon name="chevron-left" /></button><button type="button" className="calendar-range-label" onClick={() => setAnchorDate(new Date())}>{rangeLabel}</button><button type="button" className="calendar-icon-button" aria-label={t("common.calendar.next")} onClick={() => moveRange(1)}><Icon name="chevron-right" /></button><button type="button" className="calendar-today-button" onClick={() => setAnchorDate(new Date())}>{t("common.calendar.today")}</button></div>
-        <div className="calendar-toolbar-actions"><div className="calendar-view-switch" role="tablist" aria-label={t("common.calendar.viewMode")}>
-          {(["day", "week", "month", "agenda"] as const).map((option) => <button type="button" role="tab" aria-selected={mode === option} className={mode === option ? "active" : ""} key={option} onClick={() => setMode(option)}>{option === "day" ? (lang === "fr" ? "Jour" : "Day") : t(`common.calendar.views.${option}`)}</button>)}
-        </div><button type="button" className="primary-button calendar-add-button" onClick={() => createEvent()}><Icon name="plus" /><span>{l.newEvent}</span></button></div>
-      </div>
-
-      {storageError && <p role="alert" className="calendar-import-error">{storageError}</p>}
-      <div className="calendar-tools">
-        <button type="button" className={`calendar-sources-toggle${sidebarOpen ? " active" : ""}`} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen((value) => !value)}>
-          <Icon name="calendar-check" /><span>{t("common.calendar.sourcesTitle")}</span><em>{state.sources.length}</em>
-        </button>
-        <button type="button" role="switch" aria-checked={state.showHabits} aria-label={t("common.calendar.habitsTitle")} className={`calendar-habits-toggle${state.showHabits ? " on" : ""}`} onClick={() => updateState({ ...state, showHabits: !state.showHabits })}>
-          <span className="calendar-toggle-dot" aria-hidden="true" /><span>{t("common.calendar.habitsTitle")}</span>
-        </button>
-        <input type="search" aria-label={l.search} placeholder={l.search} value={query} onChange={(event) => setQuery(event.target.value)} /><label>{l.jump}<input type="date" value={dateKey(anchorDate)} onChange={(event) => { if (event.target.value) setAnchorDate(parseDateKey(event.target.value)); }} /></label>
-      </div>
-      <div className={`calendar-layout${sidebarOpen ? "" : " sidebar-collapsed"}`}>
-        {sidebarOpen && <aside className="calendar-sidebar" aria-label={t("common.calendar.sourcesLabel")}>
-          <div className="calendar-sidebar-section"><div className="calendar-sidebar-heading"><h2>{t("common.calendar.sourcesTitle")}</h2><span>{state.sources.length}</span></div>
-            {(["local", "imported"] as const).map((group) => <div className="calendar-source-group" key={group}><h3>{group === "local" ? l.personal : l.imported}</h3><div className="calendar-sources">{state.sources.filter((source) => (source.type === "local") === (group === "local")).map((source) => <div className="calendar-source-item" key={source.id}><button type="button" className={`calendar-source-row ${source.enabled ? "enabled" : "disabled"}`} aria-pressed={source.enabled} onClick={() => updateState({ ...state, sources: state.sources.map((item) => item.id === source.id ? { ...item, enabled: !item.enabled } : item) })}><span className="calendar-source-swatch" style={{ background: source.color }} /><span className="calendar-source-copy"><strong>{source.name}</strong>{source.syncError && <small title={l.syncError}>!</small>}</span><span className="calendar-source-check">{source.enabled && <Icon name="check" />}</span></button><button type="button" className="calendar-icon-button" aria-label={`${l.settings} · ${source.name}`} onClick={() => setSourceEditor({ source, isNew: false })}>···</button></div>)}</div></div>)}
-            <button type="button" className="calendar-sidebar-add" onClick={() => setSourceEditor({ source: createLocalCalendar(l.personal), isNew: true })}><Icon name="plus" />{l.newCalendar}</button>
-            <button type="button" className="calendar-sidebar-add" onClick={openImport}><Icon name="plus" />{t("common.calendar.importAnother")}</button>
+      <aside id="calendar-rail" className={`cal-rail${railOpen ? " is-open" : ""}`} aria-label={t("common.calendar.sourcesLabel")}>
+        <MiniMonth
+          month={miniMonth}
+          selection={miniSelection}
+          now={now}
+          lang={lang}
+          t={t}
+          onMonth={(amount) => setMiniMonthState((current) => ({ ...current, month: new Date(miniMonth.getFullYear(), miniMonth.getMonth() + amount, 1) }))}
+          onPick={pickDay}
+        />
+        <section className="cal-rail-section">
+          <div className="cal-rail-heading">
+            <h3>{l.personal}</h3>
+            <button type="button" className="cal-icon-btn is-small" aria-label={l.newCalendar} title={l.newCalendar} onClick={() => setSourceEditor({ source: createLocalCalendar(l.personal), isNew: true })}><Icon name="plus" /></button>
           </div>
-        </aside>}
-        <div className="calendar-board">
-          {(mode === "week" || mode === "day") && <WeekCalendar days={range.days} events={events} t={t} onOpen={setSelectedEvent} onCreate={createEvent} />}
-          {mode === "month" && <MonthCalendar days={range.days} events={events} onOpen={setSelectedEvent} onCreate={createEvent} onDay={(date) => { setAnchorDate(parseDateKey(date)); setMode("day"); }} />}
-          {mode === "agenda" && <AgendaCalendar events={events} lang={lang} t={t} onOpen={setSelectedEvent} />}
+          {localSources.length > 0 ? <ul className="cal-source-list">{localSources.map(renderSource)}</ul> : <p className="cal-rail-hint">{l.emptyLocal}</p>}
+        </section>
+        <section className="cal-rail-section">
+          <div className="cal-rail-heading">
+            <h3>{l.imported}</h3>
+            <button type="button" className="cal-icon-btn is-small" aria-label={t("common.calendar.importAnother")} title={t("common.calendar.importAnother")} onClick={openImport}><Icon name="plus" /></button>
+          </div>
+          {importedSources.length > 0
+            ? <ul className="cal-source-list">{importedSources.map(renderSource)}</ul>
+            : <button type="button" className="cal-rail-ghost" onClick={openImport}><Icon name="download" /><span>{t("common.calendar.addCalendar")}</span></button>}
+        </section>
+        <section className="cal-rail-section">
+          <button type="button" role="switch" aria-checked={state.showHabits} aria-label={t("common.calendar.habitsTitle")} className="cal-switch-row" onClick={() => updateState({ ...state, showHabits: !state.showHabits })}>
+            <Icon name="sun" className="cal-switch-icon" aria-hidden="true" />
+            <span className="cal-switch-label">{t("common.calendar.habitsTitle")}</span>
+            <span className="cal-switch" aria-hidden="true" />
+          </button>
+        </section>
+        <p className="cal-rail-foot">{l.timezone}</p>
+      </aside>
+      {railOpen && <button type="button" className="cal-rail-backdrop" aria-label={t("common.actions.close")} tabIndex={-1} onClick={() => setRailOpen(false)} />}
 
+      <div className="cal-main">
+        <header className="cal-header">
+          <button type="button" className="cal-icon-btn cal-rail-toggle" aria-label={t("common.calendar.sourcesTitle")} aria-expanded={railOpen} aria-controls="calendar-rail" onClick={() => setRailOpen((value) => !value)}><Icon name="calendar-check" /></button>
+          <div className="cal-title" title={heading.full}>
+            <h2>{heading.title}</h2>
+            {heading.detail && <span>{heading.detail}</span>}
+          </div>
+          <div className="cal-header-controls">
+            <div className="cal-nav" role="group" aria-label={heading.full}>
+              <button type="button" className="cal-nav-arrow" aria-label={t("common.calendar.previous")} onClick={() => moveRange(-1)}><Icon name="chevron-left" /></button>
+              <button type="button" className="cal-nav-today" onClick={() => { setAnchorDate(new Date()); setSelectedEvent(null); }}>{t("common.calendar.today")}</button>
+              <button type="button" className="cal-nav-arrow" aria-label={t("common.calendar.next")} onClick={() => moveRange(1)}><Icon name="chevron-right" /></button>
+            </div>
+            <div className="cal-views" role="tablist" aria-label={t("common.calendar.viewMode")}>
+              {VIEW_MODES.map((option) => <button type="button" role="tab" aria-selected={mode === option} className={mode === option ? "active" : ""} key={option} onClick={() => setMode(option)}>{option === "day" ? dayModeLabel(lang) : t(`common.calendar.views.${option}`)}</button>)}
+            </div>
+          </div>
+          {searchOpen || query ? (
+            <label className="cal-search">
+              <Icon name="search" aria-hidden="true" />
+              <input
+                type="search"
+                aria-label={l.search}
+                placeholder={l.search}
+                value={query}
+                autoFocus
+                onChange={(event) => setQuery(event.target.value)}
+                onBlur={() => { if (!query) setSearchOpen(false); }}
+                onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setQuery(""); setSearchOpen(false); } }}
+              />
+            </label>
+          ) : (
+            <button type="button" className="cal-icon-btn cal-search-button" aria-label={l.search} title={l.search} onClick={() => setSearchOpen(true)}><Icon name="search" /></button>
+          )}
+          <button type="button" className="primary-button cal-new" aria-label={l.newEvent} onClick={() => createEvent()}><Icon name="plus" /><span>{l.newEvent}</span></button>
+        </header>
+
+        {storageError && <p role="alert" className="cal-banner">{storageError}</p>}
+        <div className="cal-body">
+          {(mode === "week" || mode === "day") && <TimeGrid key={mode} days={range.days} events={events} now={now} lang={lang} t={t} onOpen={setSelectedEvent} onCreate={createEvent} onDay={mode === "week" ? openDay : undefined} />}
+          {mode === "month" && <MonthGrid days={range.days} anchor={anchorDate} events={events} now={now} lang={lang} t={t} onOpen={setSelectedEvent} onCreate={createEvent} onDay={openDay} />}
+          {mode === "agenda" && <AgendaList events={events} sources={state.sources} now={now} lang={lang} t={t} onOpen={setSelectedEvent} />}
         </div>
       </div>
 
-
-      {selectedEvent && <Modal title={selectedEvent.title} onClose={() => setSelectedEvent(null)} className="calendar-editor-modal"><div className="calendar-editor-form">
+      {selectedEvent && <Modal title={selectedEvent.title} onClose={() => setSelectedEvent(null)} className="calendar-editor-modal"><div className="calendar-editor-form calendar-detail">
         <div className="calendar-detail-heading"><span style={{ background: selectedEvent.color }} className="calendar-source-swatch" /><strong>{eventLabel(selectedEvent, t)}</strong></div>
-        <p>{dayLabel(parseDateKey(selectedEvent.date), lang, { dateStyle: "full" })} · {formatTimeRange(selectedEvent, lang) || l.allDay}</p>
-        {selectedEvent.location && <p>{selectedEvent.location}</p>}{selectedEvent.description && <p className="calendar-description">{selectedEvent.description}</p>}
+        <p className="calendar-detail-meta"><Icon name="clock" aria-hidden="true" /><span>{capitalize(dayLabel(parseDateKey(selectedEvent.date), lang, { dateStyle: "full" }), lang)} · {formatTimeRange(selectedEvent, lang) || l.allDay}</span></p>
+        {selectedEvent.location && <p className="calendar-detail-meta"><Icon name="map-pin" aria-hidden="true" /><span>{selectedEvent.location}</span></p>}{selectedEvent.description && <p className="calendar-description">{selectedEvent.description}</p>}
         {selectedEvent.kind !== "habit" && (state.sources.find((source) => source.id === selectedEvent.sourceId)?.type === "local" ? <>
-          <p>{state.sources.find((source) => source.id === selectedEvent.sourceId)?.name}{selectedEvent.locked ? ` · 🔒 ${l.locked}` : ""}</p>
+          <p className="calendar-detail-meta"><span className="calendar-source-swatch" style={{ background: state.sources.find((source) => source.id === selectedEvent.sourceId)?.color }} /><span>{state.sources.find((source) => source.id === selectedEvent.sourceId)?.name}</span>{selectedEvent.locked && <span className="calendar-detail-lock"><Icon name="lock" aria-hidden="true" />{l.locked}</span>}</p>
           <button type="button" className="primary-button" onClick={() => editEvent(selectedEvent)}>{l.editEvent}</button>
           <button type="button" className="secondary-button" onClick={() => { const original = state.sources.find((source) => source.id === selectedEvent.sourceId)?.events.find((event) => event.id === selectedEvent.seriesId); if (original) { setEditor({ initial: { ...original, id: generateUuid(), excludedDates: undefined } }); setSelectedEvent(null); } }}>{l.duplicate}</button>
         </> : <>

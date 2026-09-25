@@ -13,6 +13,19 @@ describe("task title parser", () => {
     expect(parsed.tokens[0]?.label).toContain("Due date");
   });
 
+  it("accepts #Name as a project or area shorthand, preferring projects", () => {
+    const parsed = parseTaskTitle("Call Lea demain à 15h #Launch website", {
+      now,
+      projects: [{ id: "project-1", name: "Launch website" }, { id: "project-2", name: "Launch" }],
+      areas: [{ id: "area-1", name: "Launch website" }],
+    });
+    expect(parsed.cleanTitle).toBe("Call Lea");
+    expect(parsed.fields).toMatchObject({ dueDate: "2026-09-20", dueTime: "15:00", projectId: "project-1" });
+    expect(parsed.fields.areaId).toBeUndefined();
+    expect(parseTaskTitle("Plan #Home", { now, areas: [{ id: "area-2", name: "Home" }] }).fields).toMatchObject({ areaId: "area-2" });
+    expect(parseTaskTitle("Tag#Home stays text", { now, areas: [{ id: "area-2", name: "Home" }] }).fields.areaId).toBeUndefined();
+  });
+
   it("extracts explicit workflow, ownership, project, area, and flag fields", () => {
     const parsed = parseTaskTitle("Ship it tomorrow project:Website area:Work responsible:Alex p2 status:waiting !urgent", {
       now,

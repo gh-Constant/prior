@@ -1,13 +1,15 @@
-/* Modern, refined Task Composer for Prior (Desktop Mac & Mobile Android/iOS) */
+/* Task Composer for Prior (desktop + mobile) — Linear-style "new issue" sheet:
+   breadcrumb, large tokenized title, inline description, one row of property
+   pills, secondary fields behind "More options", and a quiet footer. */
 
 .task-composer-modal.modal {
-  width: min(calc(100% - 32px), 540px);
+  width: min(calc(100% - 32px), 640px);
   max-height: min(88vh, 720px);
   padding: 0;
-  border-radius: 16px;
-  background: var(--panel, #ffffff);
-  border: 1px solid var(--line, #e9e8e4);
-  box-shadow: 0 20px 60px -15px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.04);
+  border-radius: var(--r-xl);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-pop);
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -30,94 +32,124 @@
   padding: 0;
 }
 
-/* Header */
+/* Header: project chip › Nouvelle tâche */
 .task-composer-modal .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--line, #f0eee9);
-  background: var(--panel, #ffffff);
+  gap: 12px;
+  padding: 12px 12px 0 20px;
+  border-bottom: 0;
+  background: var(--panel);
   position: sticky;
   top: 0;
   z-index: 2;
   flex-shrink: 0;
 }
 
-.task-composer-title-group {
+.task-composer-breadcrumb {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
+  color: var(--muted);
+}
+
+.task-composer-breadcrumb-separator {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  color: var(--faint);
 }
 
 .task-composer-modal .modal-header h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  color: var(--ink, #272522);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 450;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-composer-context-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: #f4f2ee;
-  color: var(--muted, #797773);
-  font-size: 11px;
-  font-weight: 550;
+  gap: 5px;
+  min-width: 0;
+  max-width: 220px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+}
+
+.task-composer-context-badge span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-composer-context-badge svg {
   width: 12px;
   height: 12px;
+  flex: 0 0 auto;
+  color: var(--violet);
 }
 
 /* Close button - clean reset so no red focus outline on touch/modal open */
 .task-composer-modal .icon-button {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: transparent;
-  color: var(--muted, #8a867f);
+  color: var(--faint);
   cursor: pointer;
   outline: none;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.task-composer-modal .icon-button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .task-composer-modal .icon-button:hover:not(:disabled) {
-  background: #f3f1ed;
-  color: var(--ink, #272522);
+  background: var(--hover);
+  color: var(--ink);
 }
 
 .task-composer-modal .icon-button:focus-visible {
-  outline: 2px solid var(--accent, #fa654a);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 /* Form body */
 .task-composer-modal .task-composer-body {
-  padding: 16px 20px 12px;
+  padding: 12px 20px 16px;
   margin: 0;
   border: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
-/* Seamless Hero Title Area */
+/* Title + description read as one writing surface */
 .task-composer-hero {
   display: flex;
   flex-direction: column;
-  padding: 2px 0 4px;
+  gap: 4px;
 }
 
 .task-composer-title-input {
@@ -125,27 +157,71 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--ink, #272522);
+  color: var(--ink);
   font-family: inherit;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.35;
+  font-size: 19px;
+  font-weight: 550;
+  line-height: 1.45;
+  letter-spacing: -0.015em;
   padding: 2px 0;
   box-sizing: border-box;
 }
 
 .task-composer-title-input::placeholder {
-  color: #b0aca3;
+  color: var(--faint);
   font-weight: 450;
 }
 
-/* Primary Metadata Toolbar (Pills) */
+.task-composer-modal .task-title-highlight-layer,
+.task-composer-modal .task-title-input-control {
+  min-height: 34px;
+  font-size: 19px;
+  line-height: 1.45;
+}
+
+.task-composer-desc-input {
+  display: block;
+  width: 100%;
+  min-height: 24px;
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: none;
+  field-sizing: content;
+  box-sizing: border-box;
+}
+
+.task-composer-desc-input:focus {
+  outline: none;
+}
+
+.task-composer-desc-input::placeholder {
+  color: var(--faint);
+}
+
+/* Property pills */
 .task-composer-toolbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 4px 0 2px;
+  gap: 6px;
+}
+
+.task-composer-toolbar .custom-select-wrap.custom-select-pill .custom-select-trigger,
+.task-composer-toolbar .date-time-picker.pill .date-time-picker-trigger,
+.task-composer-flag-btn,
+.task-composer-assignee-pill,
+.task-composer-toolbar .task-status-badge {
+  min-height: 28px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-xs);
 }
 
 /* Keep the date pill as a real flex item on narrow sheets. Without an
@@ -155,114 +231,145 @@
   min-width: max-content;
 }
 
-/* Date pill */
-.task-composer-date-pill-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
+.task-composer-toolbar .date-time-picker.pill .date-time-picker-trigger {
+  padding: 2px 9px;
 }
 
-.task-composer-date-pill {
-  position: relative;
+.task-composer-toolbar .date-time-picker.pill .date-time-picker-trigger.has-value {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.task-composer-toolbar .date-time-picker.pill .date-time-picker-trigger.has-value svg {
+  color: var(--accent);
+}
+
+.task-composer-flag-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: #fbfbf9;
-  border: 1px solid var(--line, #e9e8e4);
-  color: var(--ink, #272522);
-  font-size: 12px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  box-shadow: var(--shadow-xs);
+  color: var(--ink-2);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
-  user-select: none;
-  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 
-.task-composer-date-pill:hover {
-  border-color: #d1cbc4;
-  background: #f3f1ed;
+.task-composer-flag-btn:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--ink);
 }
 
-.task-composer-date-pill svg {
+.task-composer-flag-btn.selected.important {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}
+
+.task-composer-flag-btn.selected.urgent {
+  background: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red);
+}
+
+.task-composer-flag-btn.selected svg {
+  color: currentColor;
+}
+
+.task-composer-flag-btn svg {
   width: 13px;
   height: 13px;
-  color: var(--muted, #797773);
+  color: var(--faint);
 }
 
-.task-composer-date-pill.has-date {
-  background: #f1f8f3;
-  border-color: #c4dec9;
-  color: #246536;
-  font-weight: 550;
+/* Assignee: a pill you type into */
+.task-composer-assignee-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  box-shadow: var(--shadow-xs);
+  color: var(--muted);
+  cursor: text;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 
-.task-composer-date-pill.has-date svg {
-  color: #246536;
+.task-composer-assignee-pill:hover {
+  background: var(--hover);
 }
 
-.task-composer-date-native {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
+.task-composer-assignee-pill:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+  background: var(--panel);
 }
 
-.task-composer-date-clear {
-  position: absolute;
-  right: -5px;
-  top: -5px;
-  z-index: 5;
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
+.task-composer-assignee-pill.has-value {
+  border-color: var(--violet-line);
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+
+.task-composer-assignee-pill svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.task-composer-assignee-pill input {
+  min-width: 0;
+  max-width: 170px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: var(--muted, #797773);
-  color: #ffffff;
-  cursor: pointer;
-  transition: background 0.15s ease;
+  outline: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-weight: 500;
 }
 
-.task-composer-date-clear:hover {
-  background: var(--ink, #272522);
+.task-composer-assignee-pill.has-value input {
+  color: var(--violet);
 }
 
-.task-composer-date-clear svg {
-  width: 9px;
-  height: 9px;
+.task-composer-assignee-pill input::placeholder {
+  color: var(--muted);
 }
 
-/* Secondary Details Accordion */
+/* Secondary details accordion */
 .task-composer-details {
-  border-top: 1px solid var(--line, #f0eee9);
-  padding-top: 8px;
-  margin-top: 2px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 6px;
 }
 
 .task-composer-details-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 0 8px;
-  color: var(--muted, #797773);
-  font-size: 12px;
-  font-weight: 550;
+  min-height: 28px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
   list-style: none;
   user-select: none;
-  transition: color 0.15s ease;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 
 .task-composer-details-trigger:hover {
-  color: var(--ink, #272522);
+  background: var(--hover);
+  color: var(--ink);
 }
 
 .task-composer-details-trigger::-webkit-details-marker,
@@ -273,7 +380,8 @@
 .task-composer-chevron {
   width: 13px;
   height: 13px;
-  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+  color: var(--faint);
+  transition: transform 0.2s var(--ease);
 }
 
 .task-composer-details[open] .task-composer-chevron {
@@ -287,136 +395,57 @@
   padding-top: 8px;
 }
 
-.task-composer-desc-input {
-  width: 100%;
-  min-height: 60px;
-  max-height: 180px;
-  border: 1px solid var(--line, #e9e8e4);
-  border-radius: 8px;
-  background: #faf9f7;
-  color: var(--ink, #272522);
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.5;
-  resize: vertical;
-  padding: 8px 11px;
-  box-sizing: border-box;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
-}
-
-.task-composer-desc-input:focus {
-  outline: none;
-  border-color: var(--accent, #fa654a);
-  box-shadow: 0 0 0 2px rgba(250, 101, 74, 0.1);
-  background: #ffffff;
-}
-
-.task-composer-desc-input::placeholder {
-  color: #b5b0a6;
-}
-
 .task-composer-details-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
 .task-composer-input-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 }
 
 .task-composer-input-field > span {
-  font-size: 11px;
-  font-weight: 550;
-  color: var(--muted, #797773);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .task-composer-input-field input {
   width: 100%;
-  min-height: 34px;
-  padding: 5px 9px;
-  border: 1px solid var(--line, #e9e8e4);
-  border-radius: 8px;
-  background: #faf9f7;
-  color: var(--ink, #272522);
+  min-height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-control);
+  color: var(--ink);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   box-sizing: border-box;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.task-composer-input-field input::placeholder {
+  color: var(--faint);
 }
 
 .task-composer-input-field input:focus {
   outline: none;
-  border-color: var(--accent, #fa654a);
-  box-shadow: 0 0 0 2px rgba(250, 101, 74, 0.1);
-  background: #ffffff;
-}
-
-.task-composer-input-field .task-composer-date-pill-wrap {
-  width: 100%;
-}
-
-.task-composer-input-field .task-composer-date-pill {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Flag pills */
-.task-composer-flags {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-top: 2px;
-}
-
-.task-composer-flag-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--line, #e9e8e4);
-  border-radius: 8px;
-  background: #fbfbf9;
-  color: var(--muted, #797773);
-  font-size: 12px;
-  font-weight: 550;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.task-composer-flag-btn:hover {
-  border-color: #d1cbc4;
-  background: #f3f1ed;
-  color: var(--ink, #272522);
-}
-
-.task-composer-flag-btn.selected.important {
-  background: #fff8eb;
-  border-color: #f1cf93;
-  color: #b47b19;
-}
-
-.task-composer-flag-btn.selected.urgent {
-  background: #fff1eb;
-  border-color: #f5b19c;
-  color: #c9442a;
-}
-
-.task-composer-flag-btn svg {
-  width: 13px;
-  height: 13px;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+  background: var(--panel);
 }
 
 /* Collaborators section */
 .task-composer-section-heading {
   margin: 8px 0 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted, #797773);
+  font-size: var(--fs-xs);
+  font-weight: 550;
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -429,14 +458,14 @@
 
 .task-composer-avatars .collab-avatar + .collab-avatar {
   margin-left: -5px;
-  border: 2px solid var(--panel, #ffffff);
+  border: 2px solid var(--panel);
 }
 
 .task-composer-modal .collab-people-picker {
-  border: 1px solid var(--line, #e9e8e4);
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   padding: 10px 12px;
-  background: #fdfdfc;
+  background: var(--panel);
 }
 
 .task-composer-modal .collab-people-picker h3 {
@@ -449,9 +478,9 @@
 
 /* Feedback notices */
 .task-composer-feedback {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--muted, #797773);
+  margin: 0 20px 10px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
 .task-composer-feedback:empty {
@@ -459,7 +488,7 @@
 }
 
 .task-composer-error {
-  color: #b43b25;
+  color: var(--red);
 }
 
 /* Footer */
@@ -468,52 +497,122 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--line, #f0eee9);
-  background: #fbfbf9;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
   position: sticky;
   bottom: 0;
   z-index: 2;
   flex-shrink: 0;
 }
 
-.task-composer-footer .secondary-button {
-  min-height: 34px;
-  padding: 0 14px;
-  border-radius: 8px;
-  border: 1px solid var(--line, #e9e8e4);
-  background: #ffffff;
-  color: var(--ink, #272522);
-  font-size: 13px;
-  font-weight: 550;
+/* "Create more" switch */
+.task-composer-create-more {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-h);
+  margin-right: auto;
+  color: var(--muted);
+  font-size: var(--fs-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.task-composer-create-more input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.task-composer-switch {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  transition: background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.task-composer-switch::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.18);
+  content: "";
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.task-composer-create-more input:checked + .task-composer-switch {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.task-composer-create-more input:checked + .task-composer-switch::after {
+  transform: translateX(12px);
+}
+
+.task-composer-create-more input:focus-visible + .task-composer-switch {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.task-composer-create-more:hover {
+  color: var(--ink);
+}
+
+.task-composer-footer .secondary-button {
+  min-height: var(--control-h);
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  box-shadow: var(--shadow-control);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .task-composer-footer .secondary-button:hover:not(:disabled) {
-  background: #f3f1ed;
-  border-color: #d1cbc4;
+  background: var(--hover);
+  border-color: var(--line-strong);
 }
 
 .task-composer-footer .primary-button {
-  min-height: 34px;
-  padding: 0 16px;
-  border-radius: 8px;
-  background: var(--accent, #fa654a);
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 600;
-  border: 0;
-  box-shadow: 0 1px 3px rgba(250, 101, 74, 0.3);
+  min-height: var(--control-h);
+  padding: 0 8px 0 14px;
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  font-weight: 550;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
-.task-composer-footer .primary-button:hover:not(:disabled) {
-  background: var(--accent-dark, #df4d33);
+/* Keyboard hint, drawn by CSS so the button's text stays its accessible label. */
+.task-composer-footer .primary-button[data-shortcut]::after {
+  display: inline-grid;
+  place-items: center;
+  height: 18px;
+  margin-left: 2px;
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  background: #ffffff26;
+  content: attr(data-shortcut);
+  font-size: 10px;
+  font-weight: 600;
 }
 
-/* Mobile Bottom Sheet (< 640px) */
+/* Mobile bottom sheet (< 640px) */
 @media (max-width: 640px) {
   dialog.task-composer-modal.modal,
   .task-composer-modal.modal {
@@ -526,11 +625,11 @@
     width: 100% !important;
     max-width: 100% !important;
     max-height: 90dvh !important;
-    border-radius: 20px 20px 0 0 !important;
+    border-radius: 18px 18px 0 0 !important;
     border-bottom: 0 !important;
     border-left: 0 !important;
     border-right: 0 !important;
-    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.18) !important;
+    box-shadow: 0 0 0 1px oklch(0 0 0 / 0.05), 0 -12px 40px -8px oklch(0 0 0 / 0.18) !important;
     animation: modal-sheet-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
@@ -539,13 +638,18 @@
     width: 36px;
     height: 4px;
     border-radius: 4px;
-    background: #d8d4cc;
-    margin: 10px auto 4px;
+    background: var(--line-strong);
+    margin: 8px auto 0;
     flex-shrink: 0;
   }
 
   .task-composer-modal .modal-header {
-    padding: 6px 18px 10px;
+    padding: 4px 6px 0 18px;
+  }
+
+  .task-composer-modal .icon-button {
+    width: 44px;
+    height: 44px;
   }
 
   .task-composer-modal .icon-button:focus,
@@ -555,62 +659,99 @@
   }
 
   .task-composer-modal .task-composer-body {
-    padding: 12px 18px 10px;
-    gap: 10px;
+    padding: 8px 18px 14px;
+    gap: 12px;
   }
 
-  .task-composer-title-input {
-    font-size: 17px;
+  .task-composer-title-input,
+  .task-composer-modal .task-title-highlight-layer,
+  .task-composer-modal .task-title-input-control {
+    font-size: 19px;
   }
 
-  /* Let the date chip wrap instead of hiding it off the right edge on phones. */
+  /* Let pills wrap instead of hiding them off the right edge on phones. */
   .task-composer-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    overflow-x: visible;
     gap: 8px;
-    margin: 0 -18px;
-    padding: 4px 18px 8px;
-  }
-
-  .task-composer-toolbar .custom-select-wrap.custom-select-pill,
-  .task-composer-toolbar .task-composer-date-pill-wrap {
-    flex-shrink: 0;
   }
 
   .task-composer-toolbar .custom-select-wrap.custom-select-pill .custom-select-trigger,
-  .task-composer-toolbar .task-composer-date-pill {
-    min-height: 34px;
-    padding: 6px 11px;
-    font-size: 12.5px;
+  .task-composer-toolbar .date-time-picker.pill .date-time-picker-trigger,
+  .task-composer-flag-btn,
+  .task-composer-assignee-pill,
+  .task-composer-toolbar .task-status-badge {
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: var(--r-md);
+    font-size: var(--fs-sm);
+  }
+
+  .task-composer-assignee-pill input {
+    font-size: 16px; /* Prevents auto-zoom on iOS Safari */
+  }
+
+  .task-composer-details-trigger {
+    min-height: 44px;
+  }
+
+  .task-composer-input-field input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .task-composer-desc-input {
+    font-size: 16px;
   }
 
   .task-composer-details-row {
     grid-template-columns: 1fr;
   }
 
+  .task-composer-feedback {
+    margin: 0 18px 10px;
+  }
+
+  .task-composer-create-more {
+    display: none;
+  }
+
   .task-composer-footer {
-    padding: 12px 18px max(18px, env(safe-area-inset-bottom));
-    display: flex;
+    padding: 12px 16px max(20px, env(safe-area-inset-bottom));
     gap: 10px;
     width: 100%;
     box-sizing: border-box;
   }
 
   .task-composer-footer .secondary-button {
-    flex: 1;
+    flex: 0 0 auto;
     min-height: 44px;
+    padding: 0 16px;
     font-size: 14px;
-    font-weight: 600;
-    border-radius: 10px;
+    border-radius: var(--r-lg);
   }
 
   .task-composer-footer .primary-button {
-    flex: 2;
+    flex: 1 1 auto;
     min-height: 44px;
+    padding: 0 16px;
     font-size: 14px;
-    font-weight: 600;
-    border-radius: 10px;
+    border-radius: var(--r-lg);
+  }
+
+  .task-composer-footer .primary-button[data-shortcut]::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-composer-modal.modal,
+  dialog.task-composer-modal.modal {
+    animation: none;
+  }
+
+  .task-composer-switch,
+  .task-composer-switch::after,
+  .task-composer-chevron {
+    transition: none;
   }
 }
 

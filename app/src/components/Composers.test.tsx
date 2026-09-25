@@ -67,7 +67,8 @@ describe("TaskComposer", () => {
     expect(screen.queryByText("No project")).not.toBeInTheDocument();
     const details = screen.getByText(/More options/).closest("details")!;
     expect(details).not.toHaveAttribute("open");
-    expect(screen.getByLabelText("Assignee").closest("details")).not.toHaveAttribute("open");
+    // The assignee is a primary property pill, next to priority and due date.
+    expect(screen.getByLabelText("Assignee").closest("details")).toBeNull();
     fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "Scoped" } });
     fireEvent.click(screen.getByText("Create task"));
     expect(scopedSave).toHaveBeenCalledWith(expect.objectContaining({ title: "Scoped", projectId: "p1" }));

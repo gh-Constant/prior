@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { api } from "./lib/api";
 import { AUTH_REQUIRED_EVENT, clearSession, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
 import { useI18n } from "./lib/i18n";
@@ -9,10 +9,11 @@ import { isDesktop, isMac, isTauri } from "./lib/platform";
 import { checkForUpdate, installAvailableUpdate, type UpdateInfo } from "./lib/updater";
 import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
-import { Quadrant } from "./components/Quadrant";
-import { TaskComposer } from "./components/TaskComposer";
-import { CompletionExitProvider, TaskRow } from "./components/TaskRow";
+import { EisenhowerMatrix } from "./components/EisenhowerMatrix";
+import { TaskComposer, type TaskComposerContext } from "./components/TaskComposer";
+import { CompletionExitProvider } from "./components/TaskRow";
 import { TaskColumns } from "./components/TaskColumns";
+import { AllTasksView } from "./components/AllTasksView";
 import { AccountDialog } from "./components/AccountDialog";
 import { AuthGate } from "./components/AuthGate";
 import { updateAndroidWidget } from "./lib/widget";
@@ -25,6 +26,9 @@ import { CompletionBurst } from "./components/CompletionBurst";
 import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/completionExit";
 import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
 import { MobileTopBar } from "./components/MobileTopBar";
+import { MobileTabBar } from "./components/MobileTabBar";
+import { MobileMoreScreen } from "./components/MobileMoreScreen";
+import { habitProgressForDay, waitingTaskCount } from "./lib/navCounts";
 import { DesktopTitleBar } from "./components/DesktopTitleBar";
 import { pullAssistantSettings } from "./lib/settingsSync";
 import { SettingsPage } from "./components/SettingsPage";
@@ -65,7 +69,7 @@ function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
   if (view === "projects") return t("common.views.projects");
   if (view === "project") return t("common.views.project");
   if (view === "waiting") return t("common.views.waiting");
-  if (view === "eisenhower") return t("common.views.eisenhower");
+  if (view === "eisenhower") return t("tasks.matrix.title");
   if (view === "habits") return t("common.views.habits");
   if (view === "notes") return t("common.views.notes");
   if (view === "settings") return t("common.views.settings");
@@ -79,21 +83,26 @@ type WorkspaceHeaderProps = {
   readonly shortcut: string;
   readonly shortcutKey: string;
   readonly onNewTask: () => void;
+  /** Muted count next to the title (all tasks, priorities). */
+  readonly subtitle?: string;
+  /** Extra header controls placed before the primary action. */
+  readonly extraActions?: ReactNode;
 };
 
-function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask }: WorkspaceHeaderProps) {
+function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask, subtitle, extraActions }: WorkspaceHeaderProps) {
   const { t } = useI18n();
   if (["today", "inbox", "projects", "project", "waiting", "notes", "settings"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
-    <header className="workspace-header">
-      <h1>{viewTitle(activeView, t)}</h1>
+    <header className={`workspace-header ${activeView === "all" || activeView === "eisenhower" ? "tasks-header" : ""}`}>
+      {subtitle ? <div className="workspace-heading"><h1>{viewTitle(activeView, t)}</h1><span className="workspace-subtitle">{subtitle}</span></div> : <h1>{viewTitle(activeView, t)}</h1>}
       {activeView !== "calendar" && <div className="workspace-actions">
-        {activeView === "all" && <div className="layout-switch" role="toolbar" aria-label={t("common.header.layout")}>
-          <button type="button" className={layout === "list" ? "active" : ""} aria-label={t("common.header.listView")} aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /></button>
-          <button type="button" className={layout === "board" ? "active" : ""} aria-label={t("common.header.columnView")} title={t("common.header.columnView")} aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /></button>
+        {activeView === "all" && <div className="layout-switch layout-switch-labeled" role="toolbar" aria-label={t("common.header.layout")}>
+          <button type="button" className={layout === "list" ? "active" : ""} aria-label={t("tasks.list.layoutList")} aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /><span>{t("tasks.list.layoutList")}</span></button>
+          <button type="button" className={layout === "board" ? "active" : ""} aria-label={t("tasks.list.layoutBoard")} aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /><span>{t("tasks.list.layoutBoard")}</span></button>
         </div>}
+        {extraActions}
         <button className="primary-button new-task-button" type="button" aria-label={newTaskLabel} title={t("common.header.newActionTitle", { label: newTaskLabel, shortcut })} aria-keyshortcuts={shortcutKey} onClick={onNewTask}><Icon name="plus" /><span>{newTaskLabel}</span><kbd>{shortcut}</kbd></button>
       </div>}
     </header>
@@ -124,43 +133,38 @@ type WorkspaceContentProps = {
   readonly onOpenProject: (projectId: string) => void;
   readonly onOpenNotes: (projectId?: string) => void;
   readonly onOpenWaiting: () => void;
-  readonly onNewTask: (context?: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void;
+  readonly onNewTask: (context?: TaskComposerContext) => void;
+  readonly taskFilters: TaskFilterState;
   readonly onWorkspaceChange: () => void;
   readonly collaborationByProject: Readonly<Record<string, Omit<ProjectCollaborationProps, "project">>>;
   readonly onMailCreateTask: (draft: TaskDraft) => Promise<void>;
   readonly onMailCreateTaskAI: (message: MailMessage) => Promise<void>;
+  readonly onQuickAddTask: (draft: TaskDraft) => Promise<void>;
+  readonly onOpenAgent: () => void;
+  readonly onViewChange: (view: WorkspaceView) => void;
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI }: WorkspaceContentProps) {
-  const { t } = useI18n();
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange }: WorkspaceContentProps) {
   if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
   if (activeView === "calendar") return <CalendarView habits={habits} />;
-  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} />;
+  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} habits={habits} onHabitComplete={onHabitComplete} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={() => onViewChange("calendar")} onOpenHabits={() => onViewChange("habits")} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
   }
   if (activeView === "eisenhower") {
-    return (
-      <div className="quadrant-grid">
-        {QUADRANTS.map((quadrant) => <Quadrant key={quadrant.key} id={quadrant.key} label={quadrant.label} tasks={grouped[quadrant.key] ?? []} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} projects={projects} hideNextStatus />)}
-      </div>
-    );
+    return <EisenhowerMatrix grouped={grouped} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
   }
   if (layout === "board") {
-    return <TaskColumns tasks={visibleTasks} hideNextStatus onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />;
+    return <TaskColumns tasks={visibleTasks} projects={projects} showDone={taskFilters.status !== "open"} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
   }
-  return (
-    <section className="list-view" aria-label={t("common.views.allTasks")}>
-      {visibleTasks.map((task) => <TaskRow key={task.id} task={task} hideNextStatus onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}
-    </section>
-  );
+  return <AllTasksView tasks={tasks} visibleTasks={visibleTasks} filters={taskFilters} projects={projects} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
 }
 
 export function App() {
-  const { t } = useI18n();
+  const { t, tp } = useI18n();
   const productionAuthRequired = import.meta.env.DEV !== true;
   const [authReady, setAuthReady] = useState(!productionAuthRequired);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -169,7 +173,7 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>(() => workspaceStore.listProjects());
   const [, bumpCollaboration] = useReducer((value: number) => value + 1, 0);
   const [composerOpen, setComposerOpen] = useState(false);
-  const [newTaskContext, setNewTaskContext] = useState<Pick<TaskDraft, "areaId" | "projectId" | "status"> | undefined>(undefined);
+  const [newTaskContext, setNewTaskContext] = useState<TaskComposerContext | undefined>(undefined);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [mailDraft, setMailDraft] = useState<TaskDraft | null>(null);
   const [mailComposerOpen, setMailComposerOpen] = useState(false);
@@ -215,7 +219,8 @@ export function App() {
   // The assistant always starts closed: it only opens when the user asks
   // for it (sidebar button or ⌘/Ctrl J), never on arrival or after a sync.
   const [agentOpen, setAgentOpen] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Phone "More" screen, opened from the bottom tab bar.
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
   const aiShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ J" : "Ctrl J";
@@ -834,7 +839,7 @@ export function App() {
         setHabitComposerOpen(false);
         setAuthOpen(false);
         setAgentOpen(false);
-        setMobileNavOpen(false);
+        setMobileMoreOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -843,17 +848,19 @@ export function App() {
     return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("online", syncNow); window.removeEventListener("focus", syncOnActive); };
   }, [activeView, syncNow, syncOnActive]);
 
-  function openNewTask(context?: Pick<TaskDraft, "areaId" | "projectId" | "status">): void {
+  function openNewTask(context?: TaskComposerContext): void {
     setNewTaskContext(context);
     setComposerProjectId(context?.projectId ?? null);
     setComposerOpen(true);
   }
 
-  async function saveTask(input: TaskDraft) {
+  async function saveTask(input: TaskDraft, options?: { keepOpen?: boolean }) {
     if (input.projectId && collaborationStore.role(input.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
     await localStore.saveTask({ ...newTaskContext, ...input, completed: input.status === "done", peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
-    setComposerOpen(false);
-    setNewTaskContext(undefined);
+    if (!options?.keepOpen) {
+      setComposerOpen(false);
+      setNewTaskContext(undefined);
+    }
     await refresh();
     void syncNow();
   }
@@ -1151,7 +1158,7 @@ export function App() {
           return { ...cycle, phase: cycle.endsOn < today ? "past" as const : cycle.startsOn > today ? "upcoming" as const : "current" as const, dateLabel: `${cycle.startsOn} – ${cycle.endsOn}`, issueCount: assigned.length, completedCount: assigned.filter((issue) => issue.stateId === "done").length };
         }),
         readOnly,
-        onCreateIssue: readOnly ? undefined : () => openNewTask({ projectId: project.id, status: "backlog" }),
+        onCreateIssue: readOnly ? undefined : (stateId) => openNewTask({ projectId: project.id, status: stateOptions.find((state) => state.id === stateId)?.id as Task["status"] ?? "backlog" }),
         onEditProject: readOnly ? undefined : () => setProjectEditor(project),
         onCreateCycle: readOnly ? undefined : () => setCycleEditor({ projectId: project.id }),
         onEditCycle: readOnly ? undefined : (cycleId) => setCycleEditor({ projectId: project.id, cycleId }),
@@ -1299,7 +1306,13 @@ export function App() {
     [tasks, taskFilters, completionExitDeadlines],
   );
 
+  const openTaskCount = useMemo(() => tasks.filter((task) => !task.completed).length, [tasks]);
+
   const grouped = useMemo(() => Object.fromEntries(QUADRANTS.map((quadrant) => [quadrant.key, visibleTasks.filter((task) => quadrantFor(task) === quadrant.key)])), [visibleTasks]);
+
+  // Live navigation counts for the sidebar and the phone "More" screen.
+  const waitingCount = useMemo(() => waitingTaskCount(tasks), [tasks]);
+  const habitProgress = habitProgressForDay(habits);
 
   function handleAuthenticated(nextUser: SessionUser) {
     sessionGeneration.current += 1;
@@ -1357,7 +1370,7 @@ export function App() {
   function changeView(view: WorkspaceView): void {
     if (view !== "project") setSelectedProjectId(null);
     if (view === "notes") setNotesProjectId(null);
-    setMobileNavOpen(false);
+    setMobileMoreOpen(false);
     setActiveView(view);
   }
 
@@ -1413,8 +1426,8 @@ export function App() {
         activeView={activeView}
         user={user}
         collapsed={sidebarCollapsed}
-        mobileOpen={mobileNavOpen}
         agentOpen={agentOpen}
+        counts={{ waiting: waitingCount }}
         aiShortcut={aiShortcut}
         updateAvailable={desktopUpdate !== null}
         updateInstalling={updateInstalling}
@@ -1424,16 +1437,12 @@ export function App() {
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onToggleAgent={() => setAgentOpen((value) => !value)}
-        onCloseMobile={() => setMobileNavOpen(false)}
         syncing={syncing}
         onSync={() => void syncNow()}
       />
 
-      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}>
-        <MobileTopBar
-          menuOpen={mobileNavOpen}
-          onMenu={() => setMobileNavOpen((value) => !value)}
-        />
+      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || mobileMoreOpen}>
+        <MobileTopBar view={activeView} title={viewTitle(activeView, t)} agentOpen={agentOpen} onAgent={() => setAgentOpen((value) => !value)} />
         <WorkspaceHeader
           activeView={activeView}
           layout={layout}
@@ -1441,9 +1450,14 @@ export function App() {
           shortcut={shortcut}
           shortcutKey={shortcutKey}
           onNewTask={() => activeView === "habits" ? setHabitComposerOpen(true) : openNewTask()}
+          subtitle={activeView === "all" ? tp("tasks.list.activeCount", openTaskCount) : activeView === "eisenhower" ? tp("tasks.matrix.subtitle", visibleTasks.length) : undefined}
+          extraActions={activeView === "eisenhower" ? <div className="scope-switch" role="group" aria-label={t("tasks.matrix.scopeLabel")}>
+            <button type="button" aria-pressed={taskFilters.status === "open"} onClick={() => setTaskFilters({ ...taskFilters, status: "open" })}>{t("tasks.matrix.scopeActive")}</button>
+            <button type="button" aria-pressed={taskFilters.status === "all"} onClick={() => setTaskFilters({ ...taskFilters, status: "all" })}>{t("tasks.matrix.scopeAll")}</button>
+          </div> : undefined}
         />
 
-        {(activeView === "all" || activeView === "eisenhower") && <TaskFilters value={taskFilters} onChange={setTaskFilters} />}
+        {(activeView === "all" || activeView === "eisenhower") && <TaskFilters value={taskFilters} onChange={setTaskFilters} taskCount={activeView === "all" ? openTaskCount : undefined} />}
 
         <CompletionExitProvider deadlines={completionExitDeadlines}>
           <WorkspaceContent
@@ -1472,14 +1486,38 @@ export function App() {
             onOpenNotes={openNotes}
             onOpenWaiting={openWaiting}
             onNewTask={openNewTask}
+            taskFilters={taskFilters}
             onWorkspaceChange={refreshWorkspace}
             collaborationByProject={collaborationByProject}
             onMailCreateTask={(draft) => { openMailTask(draft); return Promise.resolve(); }}
             onMailCreateTaskAI={createMailTaskAI}
+            onQuickAddTask={saveTask}
+            onOpenAgent={() => setAgentOpen(true)}
+            onViewChange={changeView}
           />
         </CompletionExitProvider>
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => openNewTask()}><Icon name="plus" /> {t("common.header.newTask")}</button>}
       </main>
+
+      {mobileMoreOpen && <MobileMoreScreen
+        activeView={activeView}
+        user={user}
+        badges={{ waiting: waitingCount > 0 ? String(waitingCount) : undefined, habits: habitProgress.total > 0 ? `${habitProgress.done}/${habitProgress.total}` : undefined }}
+        agentOpen={agentOpen}
+        onNavigate={changeView}
+        onAgent={() => setAgentOpen(true)}
+        onAccount={() => setAuthOpen(true)}
+        onClose={() => setMobileMoreOpen(false)}
+      />}
+      <MobileTabBar
+        activeView={activeView}
+        moreOpen={mobileMoreOpen}
+        createLabel={activeView === "habits" ? t("common.header.newHabit") : t("common.header.newTask")}
+        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
+        onNavigate={changeView}
+        onCreate={() => activeView === "habits" ? setHabitComposerOpen(true) : openNewTask()}
+        onToggleMore={() => setMobileMoreOpen((value) => !value)}
+      />
 
       <AgentSidebar
         open={agentOpen}
@@ -1499,7 +1537,7 @@ export function App() {
         onOpenSettings={() => { setAgentOpen(false); changeView("settings"); }}
       />
 
-      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onProjectChange={setComposerProjectId} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); setComposerProjectId(undefined); }} />}
+      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onProjectChange={setComposerProjectId} allowCreateMore={!editingTask} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); setComposerProjectId(undefined); }} />}
       {mailComposerOpen && mailDraft && (
         <TaskComposer
           key="mail-task"
