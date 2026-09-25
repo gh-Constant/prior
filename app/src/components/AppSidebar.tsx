@@ -21,6 +21,7 @@ type AppSidebarProps = {
   readonly updateInstalling?: boolean;
   readonly onInstallUpdate?: () => void;
   readonly syncing: boolean;
+  readonly syncIssue?: boolean;
   readonly onSync: () => void;
   readonly onViewChange: (view: WorkspaceView) => void;
   readonly onAccount: () => void;
@@ -47,6 +48,7 @@ export function AppSidebar({
   updateInstalling,
   onInstallUpdate,
   syncing,
+  syncIssue,
   onSync,
   onViewChange,
   onAccount,
@@ -57,8 +59,8 @@ export function AppSidebar({
   const lastSyncedAt = useLastSyncedAt();
   const now = useNow();
   const syncedAgo = lastSyncedAt !== null ? formatSyncedAgo(lastSyncedAt, now, lang, t("common.shell.justNow")) : null;
-  const syncLabel = syncing ? t("common.sidebar.syncing") : syncedAgo ? t("common.shell.synced") : t("common.sidebar.sync");
-  const syncTitle = syncing ? t("common.sidebar.syncing") : syncedAgo ? t("common.shell.syncNowSynced", { time: syncedAgo }) : t("common.sidebar.sync");
+  const syncLabel = syncing ? t("common.sidebar.syncing") : syncIssue ? t("common.sidebar.syncIssue") : syncedAgo ? t("common.shell.synced") : t("common.sidebar.sync");
+  const syncTitle = syncing ? t("common.sidebar.syncing") : syncIssue ? t("common.sidebar.syncIssueHint") : syncedAgo ? t("common.shell.syncNowSynced", { time: syncedAgo }) : t("common.sidebar.sync");
 
   return (
     <aside id="prior-sidebar" className={`sidebar ${collapsed ? "is-collapsed" : ""}`} inert={inert} aria-label={t("common.sidebar.primary")}>
@@ -94,14 +96,14 @@ export function AppSidebar({
       <div className="sidebar-bottom">
         <button
           type="button"
-          className={`sidebar-sync-button ${syncing ? "is-syncing" : ""}`}
+          className={`sidebar-sync-button ${syncing ? "is-syncing" : ""} ${syncIssue ? "has-issue" : ""}`}
           aria-label={syncTitle}
           title={syncTitle}
           onClick={onSync}
         >
           <Icon name="refresh" aria-hidden="true" />
           <span className="sidebar-sync-label">{syncLabel}</span>
-          {!syncing && syncedAgo && <span className="sidebar-sync-meta" aria-hidden="true">{syncedAgo}</span>}
+          {!syncing && !syncIssue && syncedAgo && <span className="sidebar-sync-meta" aria-hidden="true">{syncedAgo}</span>}
         </button>
         <button
           type="button"

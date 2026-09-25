@@ -322,8 +322,7 @@ async function findPreviousHabit(db: SqlDatabase | null, accountId: string, id: 
   return raw ? normalizeHabit(raw) : undefined;
 }
 
-async function mergeRemoteTasksIntoDb(db: SqlDatabase, pendingIds: Set<string>, tasks: Task[]): Promise<void> {
-  const accountId = getAccountId();
+async function mergeRemoteTasksIntoDb(db: SqlDatabase, accountId: string, pendingIds: Set<string>, tasks: Task[]): Promise<void> {
   const candidates = tasks.filter((task) => !pendingIds.has(task.id));
   if (!candidates.length) return;
   await withDbLock(async () => {
@@ -354,8 +353,7 @@ function mergeRemoteTasksLocally(pendingIds: Set<string>, tasks: Task[]): void {
   write(TASKS_KEY, [...merged.values()]);
 }
 
-async function mergeRemoteHabitsIntoDb(db: SqlDatabase, pendingIds: Set<string>, habits: Habit[]): Promise<void> {
-  const accountId = getAccountId();
+async function mergeRemoteHabitsIntoDb(db: SqlDatabase, accountId: string, pendingIds: Set<string>, habits: Habit[]): Promise<void> {
   const candidates = habits.filter((habit) => !pendingIds.has(habit.id));
   if (!candidates.length) return;
   await withDbLock(async () => {
@@ -579,16 +577,17 @@ export const localStore = {
     return { tasks: pendingEntityIds(pending, "task"), habits: pendingEntityIds(pending, "habit") };
   },
 
-  async removeMutations(ids: string[]): Promise<void> {
+  async removeMutations(ids: string[], expectedAccountId = getAccountId()): Promise<void> {
     if (!ids.length) return;
+    if (expectedAccountId !== getAccountId()) return;
     const db = await getSqlDatabase();
+    if (expectedAccountId !== getAccountId()) return;
     if (db) {
-      const accountId = getAccountId();
       await withDbLock(async () => {
         for (let i = 0; i < ids.length; i += 100) {
           const chunk = ids.slice(i, i + 100);
           const placeholders = chunk.map(() => "?").join(",");
-          await db.execute(`DELETE FROM outbox WHERE account_id = ? AND id IN (${placeholders})`, [accountId, ...chunk]);
+          await db.execute(`DELETE FROM outbox WHERE account_id = ? AND id IN (${placeholders})`, [expectedAccountId, ...chunk]);
         }
       });
       return;
@@ -607,38 +606,45 @@ export const localStore = {
     return { ...read<SyncState>(SYNC_KEY, { lastServerRevision: 0, pendingCount: 0 }), pendingCount: read<Mutation[]>(OUTBOX_KEY, []).length };
   },
 
-  async setSyncRevision(revision: number): Promise<void> {
+  async setSyncRevision(revision: number, expectedAccountId = getAccountId()): Promise<void> {
+    if (expectedAccountId !== getAccountId()) return;
     const db = await getSqlDatabase();
+    if (expectedAccountId !== getAccountId()) return;
     if (db) {
       await withDbLock(() =>
         db.execute(
           "INSERT INTO sync_state (account_id, last_server_revision) VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET last_server_revision = excluded.last_server_revision",
-          [getAccountId(), revision],
+          [expectedAccountId, revision],
         )
       );
       return;
     }
     const current = await this.getSyncState();
+    if (expectedAccountId !== getAccountId()) return;
     write(SYNC_KEY, { ...current, lastServerRevision: revision });
   },
 
-  async applyRemoteTasks(tasks: Task[], pendingIds?: Set<string>): Promise<void> {
+  async applyRemoteTasks(tasks: Task[], pendingIds?: Set<string>, expectedAccountId = getAccountId()): Promise<void> {
+    if (expectedAccountId !== getAccountId()) return;
     const pendingTaskIds = pendingIds ?? await this.pendingIdsFor("task");
     const normalizedTasks = tasks.map(normalizeTask);
     const db = await getSqlDatabase();
+    if (expectedAccountId !== getAccountId()) return;
     if (db) {
-      await mergeRemoteTasksIntoDb(db, pendingTaskIds, normalizedTasks);
+      await mergeRemoteTasksIntoDb(db, expectedAccountId, pendingTaskIds, normalizedTasks);
       return;
     }
     mergeRemoteTasksLocally(pendingTaskIds, normalizedTasks);
   },
 
-  async applyRemoteHabits(habits: Habit[], pendingIds?: Set<string>): Promise<void> {
+  async applyRemoteHabits(habits: Habit[], pendingIds?: Set<string>, expectedAccountId = getAccountId()): Promise<void> {
+    if (expectedAccountId !== getAccountId()) return;
     const pendingHabitIds = pendingIds ?? await this.pendingIdsFor("habit");
     const normalizedHabits = habits.map(normalizeHabit);
     const db = await getSqlDatabase();
+    if (expectedAccountId !== getAccountId()) return;
     if (db) {
-      await mergeRemoteHabitsIntoDb(db, pendingHabitIds, normalizedHabits);
+      await mergeRemoteHabitsIntoDb(db, expectedAccountId, pendingHabitIds, normalizedHabits);
       return;
     }
     mergeRemoteHabitsLocally(pendingHabitIds, normalizedHabits);

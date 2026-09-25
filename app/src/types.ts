@@ -246,6 +246,8 @@ export type AgentChat = AgentChatSummary & {
 
 export type AgentSettings = {
   apiKey: string;
+  recommendationApiKey?: string;
+  recommendationModel?: string;
   transcriptionApiKey: string;
   model: string;
   codexModel?: string;

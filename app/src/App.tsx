@@ -3,6 +3,7 @@ import { api } from "./lib/api";
 import { AUTH_REQUIRED_EVENT, clearSession, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
 import { useI18n } from "./lib/i18n";
 import { localStore } from "./lib/localStore";
+import { getAccountId } from "./lib/accountScope";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
 import { isDesktop, isMac, isTauri } from "./lib/platform";
@@ -55,6 +56,7 @@ import { emitMailAccountChange, saveMailAccount } from "./lib/mailAuth";
 import { emitCalendarAccountChange, parseCalendarConnectedUrl, startGoogleCalendarConnect } from "./lib/calendarAuth";
 import { parseWidgetUrl, refreshWidgetSnapshot } from "./lib/widgetSnapshot";
 import { logger } from "./lib/logger";
+import { resetLastSyncedAt } from "./lib/syncStatus";
 import { purgeProductionDemoData } from "./lib/productionData";
 import type { MailMessage } from "./types";
 
@@ -205,6 +207,7 @@ export function App() {
   const syncInFlight = useRef<Promise<void> | null>(null);
   const syncQueued = useRef(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncIssue, setSyncIssue] = useState(false);
   const lastActiveSyncAt = useRef(0);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const workspaceSyncTimer = useRef<number | undefined>(undefined);
@@ -396,6 +399,7 @@ export function App() {
         const generation = sessionGeneration.current;
         const token = await getToken();
         if (!token || generation !== sessionGeneration.current) return;
+        const syncAccountId = getAccountId();
 
         logger.info("sync", "Starting sync cycle");
         const incomplete: string[] = [];
@@ -424,90 +428,115 @@ export function App() {
           console.warn("Prior profile sync failed:", profileError);
         }
 
-        // navigator.onLine is unreliable in Tauri webviews. The API request has
-        // its own timeout and is the source of truth for connectivity.
-        const state = await localStore.getSyncState();
-        let highestPushedRevision = state.lastServerRevision;
-        const pending = await localStore.pendingMutations();
-        // Server push batches are capped at 100 mutations; chunk client-side.
-        for (let offset = 0; offset < pending.length; offset += 100) {
-          const chunk = pending.slice(offset, offset + 100);
-          const pushed = await api.push(chunk, token);
-          if (generation !== sessionGeneration.current) return;
-          await localStore.removeMutations(pushed.applied.map((item) => item.mutationId));
-          highestPushedRevision = pushed.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
-        }
-
-        // Paged pull: server caps a single response at PullPageSize (200
-        // revisions). Follow nextSince/hasMore so large histories converge.
-        async function pullAll(since: number) {
-          const first = await api.pull(since, token as string);
-          if (generation !== sessionGeneration.current) return first;
-          let combined = first;
-          let previousCursor = since;
-          while (combined.hasMore && typeof combined.nextSince === "number") {
-            const cursor: number = combined.nextSince;
-            if (cursor <= previousCursor) throw new Error("Sync pagination did not advance");
-            previousCursor = cursor;
-            const next = await api.pull(cursor, token as string);
-            if (generation !== sessionGeneration.current) return combined;
-            combined = {
-              ...next,
-              tasks: [...combined.tasks, ...next.tasks],
-              habits: [...(combined.habits ?? []), ...(next.habits ?? [])],
-            };
-          }
-          if (combined.hasMore) throw new Error("Sync history was incomplete; retaining the previous cursor for retry.");
-          return combined;
-        }
-
-        let pulled = await pullAll(state.lastServerRevision);
-        if (generation !== sessionGeneration.current) return;
-
-        const accountId = getUser()?.id;
-        if (accountId && localStore.needsLegacySync(accountId)) {
-          logger.info("sync", "Running legacy migration for account", { accountId });
-          const fullHistory = state.lastServerRevision === 0 ? pulled : await pullAll(0);
-          if (generation !== sessionGeneration.current) return;
-          const legacy = await localStore.legacyMutations(
-            accountId,
-            new Set(fullHistory.tasks.map((task) => task.id)),
-            new Set((fullHistory.habits ?? []).map((habit) => habit.id)),
-          );
-          for (let offset = 0; offset < legacy.length; offset += 100) {
-            const pushedLegacy = await api.push(legacy.slice(offset, offset + 100), token);
-            if (generation !== sessionGeneration.current) return;
-            await localStore.removeMutations(pushedLegacy.applied.map((item) => item.mutationId));
-            highestPushedRevision = pushedLegacy.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
-          }
-          localStore.markLegacySyncComplete(accountId);
-          logger.info("sync", "Legacy migration completed", { mutationsCount: legacy.length });
-          if (legacy.length) {
-            pulled = await pullAll(state.lastServerRevision);
-            if (generation !== sessionGeneration.current) return;
-          }
-        }
-
-        // Snapshot pending ids once per sync so remote merges skip exactly the
-        // edits that were still queued when this sync started.
-        const pendingSnapshot = await localStore.pendingIdsSnapshot();
-        await localStore.applyRemoteTasks(pulled.tasks, pendingSnapshot.tasks);
-        await localStore.applyRemoteHabits(pulled.habits ?? [], pendingSnapshot.habits);
-
-        // Update task/habit revision and refresh UI immediately
-        const finalRevision = Math.max(pulled.revision, highestPushedRevision);
-        await localStore.setSyncRevision(finalRevision);
-        await refresh();
-
-        // Workspace sync in an isolated try/catch so a workspace snapshot issue never halts tasks/habits
+        // Calendar and preference sync must run even when a task mutation or
+        // task pull fails. These domains have independent server storage.
         try {
           initializeCalendarSync(loadLegacyCalendarState());
           initializeAccountPreferences();
           await syncAccountDocuments(token, () => generation === sessionGeneration.current);
+          if (generation === sessionGeneration.current) applyAccountPreferences();
         } catch (accountDataError) {
           incomplete.push("calendars/preferences");
           logger.error("sync", "Calendar/account data sync failed; local changes remain queued", { error: String(accountDataError) });
           console.warn("Prior account data sync failed; will retry.");
+        }
+        if (generation !== sessionGeneration.current) return;
+
+        let taskSyncComplete = false;
+        let finalRevision = 0;
+        let pendingSnapshot = { tasks: new Set<string>(), habits: new Set<string>() };
+        let pullAll: ((since: number) => Promise<Awaited<ReturnType<typeof api.pull>>>) | null = null;
+        try {
+          // navigator.onLine is unreliable in Tauri webviews. The API request has
+          // its own timeout and is the source of truth for connectivity.
+          const state = await localStore.getSyncState();
+          let highestPushedRevision = state.lastServerRevision;
+          const pending = await localStore.pendingMutations();
+          // Server push batches are capped at 100 mutations; chunk client-side.
+          for (let offset = 0; offset < pending.length; offset += 100) {
+            if (generation !== sessionGeneration.current || syncAccountId !== getAccountId()) return;
+            const chunk = pending.slice(offset, offset + 100);
+            const pushed = await api.push(chunk, token);
+            if (generation !== sessionGeneration.current) return;
+            await localStore.removeMutations(pushed.applied.map((item) => item.mutationId), syncAccountId);
+            highestPushedRevision = pushed.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
+          }
+
+          // Paged pull: server caps a single response at PullPageSize (200
+          // revisions). Follow nextSince/hasMore so large histories converge.
+          pullAll = async function (since: number) {
+            const first = await api.pull(since, token as string);
+            if (generation !== sessionGeneration.current) return first;
+            let combined = first;
+            let previousCursor = since;
+            while (combined.hasMore && typeof combined.nextSince === "number") {
+              const cursor: number = combined.nextSince;
+              if (cursor <= previousCursor) throw new Error("Sync pagination did not advance");
+              previousCursor = cursor;
+              const next = await api.pull(cursor, token as string);
+              if (generation !== sessionGeneration.current) return combined;
+              combined = {
+                ...next,
+                tasks: [...combined.tasks, ...next.tasks],
+                habits: [...(combined.habits ?? []), ...(next.habits ?? [])],
+              };
+            }
+            if (combined.hasMore) throw new Error("Sync history was incomplete; retaining the previous cursor for retry.");
+            return combined;
+          };
+
+          let pulled = await pullAll(state.lastServerRevision);
+          if (generation !== sessionGeneration.current) return;
+
+          const accountId = syncAccountId;
+          if (accountId && localStore.needsLegacySync(accountId)) {
+            logger.info("sync", "Running legacy migration for account", { accountId });
+            const fullHistory = state.lastServerRevision === 0 ? pulled : await pullAll(0);
+            if (generation !== sessionGeneration.current) return;
+            const legacy = await localStore.legacyMutations(
+              accountId,
+              new Set(fullHistory.tasks.map((task) => task.id)),
+              new Set((fullHistory.habits ?? []).map((habit) => habit.id)),
+            );
+            for (let offset = 0; offset < legacy.length; offset += 100) {
+              if (generation !== sessionGeneration.current || syncAccountId !== getAccountId()) return;
+              const pushedLegacy = await api.push(legacy.slice(offset, offset + 100), token);
+              if (generation !== sessionGeneration.current) return;
+              await localStore.removeMutations(pushedLegacy.applied.map((item) => item.mutationId), syncAccountId);
+              highestPushedRevision = pushedLegacy.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
+            }
+            localStore.markLegacySyncComplete(accountId);
+            logger.info("sync", "Legacy migration completed", { mutationsCount: legacy.length });
+            if (legacy.length) {
+              pulled = await pullAll(state.lastServerRevision);
+              if (generation !== sessionGeneration.current) return;
+            }
+          }
+
+          // Snapshot pending ids once per sync so remote merges skip exactly the
+          // edits that were still queued when this sync started.
+          pendingSnapshot = await localStore.pendingIdsSnapshot();
+          await localStore.applyRemoteTasks(pulled.tasks, pendingSnapshot.tasks, syncAccountId);
+          await localStore.applyRemoteHabits(pulled.habits ?? [], pendingSnapshot.habits, syncAccountId);
+          if (generation !== sessionGeneration.current || syncAccountId !== getAccountId()) return;
+
+          // Update task/habit revision and refresh UI immediately
+          finalRevision = Math.max(pulled.revision, highestPushedRevision);
+          await localStore.setSyncRevision(finalRevision, syncAccountId);
+          await refresh();
+          taskSyncComplete = true;
+        } catch (taskError) {
+          if (await handleAuthError(taskError)) {
+            if (generation !== sessionGeneration.current) return;
+            setUser(null);
+            setAuthError(taskError instanceof Error ? taskError.message : t("common.session.expired"));
+            setAuthOpen(true);
+            setToast(t("common.toasts.sessionExpired"));
+            return;
+          }
+          incomplete.push("tasks/habits");
+          logger.error("sync", "Task and habit sync failed; queued edits will retry", { error: String(taskError) });
+          console.warn("Prior task and habit sync failed:", taskError);
         }
 
         if (generation !== sessionGeneration.current) return;
@@ -525,7 +554,6 @@ export function App() {
           if (generation === sessionGeneration.current) {
             refreshWorkspace();
             await refresh();
-            if (generation === sessionGeneration.current) applyAccountPreferences();
           }
         } catch (workspaceError) {
           incomplete.push("workspace");
@@ -561,13 +589,18 @@ export function App() {
         // A newly accepted/shared project may contain task revisions older than
         // this account's normal sync cursor. Pull the authorized history once
         // when the project ACL changes so the member sees the existing work.
-        if (collaborationChanged) {
-          const collaborationHistory = await pullAll(0);
-          if (generation !== sessionGeneration.current) return;
-          await localStore.applyRemoteTasks(collaborationHistory.tasks, pendingSnapshot.tasks);
-          const updatedRevision = Math.max(finalRevision, collaborationHistory.revision);
-          await localStore.setSyncRevision(updatedRevision);
-          await refresh();
+        if (collaborationChanged && taskSyncComplete && pullAll) {
+          try {
+            const collaborationHistory = await pullAll(0);
+            if (generation !== sessionGeneration.current || syncAccountId !== getAccountId()) return;
+            await localStore.applyRemoteTasks(collaborationHistory.tasks, pendingSnapshot.tasks, syncAccountId);
+            const updatedRevision = Math.max(finalRevision, collaborationHistory.revision);
+            await localStore.setSyncRevision(updatedRevision, syncAccountId);
+            await refresh();
+          } catch (historyError) {
+            incomplete.push("collaboration history");
+            logger.warn("sync", "Shared project history remains pending", { error: String(historyError) });
+          }
         }
 
         // Assistant settings follow the account after workspace data.
@@ -578,8 +611,6 @@ export function App() {
           logger.warn("sync", "Agent messages remain queued", { error: String(chatError) });
         }
         if (generation !== sessionGeneration.current) return;
-        window.dispatchEvent(new Event("prior-sync-complete"));
-
         try {
           const settingsOk = await pullAssistantSettings();
           if (!settingsOk) { incomplete.push("settings"); logger.warn("sync", "Assistant settings not yet synced; will retry on next sync"); }
@@ -597,9 +628,15 @@ export function App() {
           console.warn("Prior assistant settings sync failed:", settingsError);
         }
 
+        if (generation !== sessionGeneration.current || syncAccountId !== getAccountId()) return;
+        setSyncIssue(incomplete.length > 0);
         if (incomplete.length) logger.warn("sync", "Sync partially completed; pending sections will retry", { sections: incomplete });
-        else logger.info("sync", "Sync cycle completed successfully", { revision: finalRevision });
+        else {
+          window.dispatchEvent(new Event("prior-sync-complete"));
+          logger.info("sync", "Sync cycle completed successfully", { revision: finalRevision });
+        }
       } catch (error) {
+        setSyncIssue(true);
         logger.error("sync", "Prior sync failed", { error: String(error) });
         if (await handleAuthError(error)) {
           setUser(null);
@@ -688,6 +725,8 @@ export function App() {
     void attachRealtime().catch((error) => console.warn("Prior realtime attach failed:", error));
     const dispose = listenForAuth((nextUser) => {
       sessionGeneration.current += 1;
+      resetLastSyncedAt();
+      setSyncIssue(false);
       setUser(nextUser);
       setAuthError("");
       setAuthOpen(false);
@@ -1438,6 +1477,7 @@ export function App() {
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onToggleAgent={() => setAgentOpen((value) => !value)}
         syncing={syncing}
+        syncIssue={syncIssue}
         onSync={() => void syncNow()}
       />
 
@@ -1502,6 +1542,9 @@ export function App() {
       {mobileMoreOpen && <MobileMoreScreen
         activeView={activeView}
         user={user}
+        syncing={syncing}
+        syncIssue={syncIssue}
+        onSync={() => void syncNow()}
         badges={{ waiting: waitingCount > 0 ? String(waitingCount) : undefined, habits: habitProgress.total > 0 ? `${habitProgress.done}/${habitProgress.total}` : undefined }}
         agentOpen={agentOpen}
         onNavigate={changeView}

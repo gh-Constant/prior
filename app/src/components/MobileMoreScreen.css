@@ -89,6 +89,9 @@
   .mobile-more-chevron { width: 15px; height: 15px; flex: 0 0 auto; color: var(--faint); }
 
   .mobile-more-account { gap: 12px; min-height: 68px; padding-top: 12px; padding-bottom: 12px; }
+  .mobile-more-sync { border-bottom: 1px solid var(--line-soft); }
+  .mobile-more-sync > svg { width: 18px; height: 18px; color: var(--muted); }
+  .mobile-more-sync.has-issue, .mobile-more-sync.has-issue > svg { color: var(--red); }
   .mobile-more-account + .mobile-more-row { border-top: 1px solid var(--line-soft); }
 
   .mobile-more-avatar {

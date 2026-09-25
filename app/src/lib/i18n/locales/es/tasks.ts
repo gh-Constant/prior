@@ -194,6 +194,10 @@ export const tasks = {
     scopeAll: "Todas",
   },
   today: {
+    aiPlanTitle: "Plan de IA para hoy",
+    aiPlanRefresh: "Actualizar plan",
+    aiPlanLoading: "Revisando tus prioridades y calendario…",
+    aiPlanError: "No se pudo actualizar el plan. Inténtalo de nuevo en un momento.",
     greetingMorning: "Buenos días.",
     greetingAfternoon: "Buenas tardes.",
     greetingEvening: "Buenas noches.",

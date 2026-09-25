@@ -6,6 +6,8 @@ import { SettingsPage } from "./SettingsPage";
 
 vi.mock("../lib/api", () => ({
   api: { updateProfile: vi.fn(), getSettings: vi.fn(), saveSettings: vi.fn() },
+  isAuthError: () => false,
+  isRetriableError: () => false,
 }));
 
 vi.mock("../lib/auth", () => ({
@@ -46,9 +48,22 @@ describe("SettingsPage profile", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Prior Agent" }));
     await waitFor(() => expect(api.getSettings).toHaveBeenCalledWith("session-token"));
     fireEvent.change(screen.getByPlaceholderText("sk-..."), { target: { value: "sk-openai" } });
+    fireEvent.change(screen.getByLabelText("OpenRouter key for Today recommendations"), { target: { value: "sk-today" } });
+    fireEvent.change(screen.getByLabelText("Today recommendation model"), { target: { value: "vendor/planner" } });
     fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
 
-    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ openrouterApiKey: "", openaiApiKey: "sk-openai", webSearch: false }, "session-token"));
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ openrouterApiKey: "", recommendationOpenrouterApiKey: "sk-today", openaiApiKey: "sk-openai", webSearch: false }, "session-token"));
+  });
+
+  it("shows that a key is still local when account sync fails", async () => {
+    vi.mocked(api.getSettings).mockResolvedValue({ initialized: true, openrouterApiKey: "", openaiApiKey: "", webSearch: false });
+    vi.mocked(api.saveSettings).mockRejectedValue(new Error("offline"));
+    render(<SettingsPage user={user} onUserUpdated={vi.fn()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Prior Agent" }));
+    await waitFor(() => expect(api.getSettings).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("OpenRouter key for Today recommendations"), { target: { value: "sk-pending" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved on this device. Account sync is pending.");
   });
 });
 

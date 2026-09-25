@@ -194,6 +194,10 @@ export const tasks = {
     scopeAll: "Alle",
   },
   today: {
+    aiPlanTitle: "KI-Plan für heute",
+    aiPlanRefresh: "Plan aktualisieren",
+    aiPlanLoading: "Prioritäten und Kalender werden geprüft…",
+    aiPlanError: "Der Plan konnte nicht aktualisiert werden. Versuche es gleich erneut.",
     greetingMorning: "Guten Morgen.",
     greetingAfternoon: "Guten Tag.",
     greetingEvening: "Guten Abend.",

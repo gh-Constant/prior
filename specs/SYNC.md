@@ -14,7 +14,7 @@ La connexion au même compte Prior active la synchronisation navigateur/native. 
 | Pièces jointes des notes | IndexedDB local, envoi authentifié PostgreSQL, métadonnées synchronisées, téléchargement à l'ouverture (8 Mio par fichier) |
 | Discussions IA | Historique serveur, file locale durable avec identifiants de chat/message idempotents |
 | Modèle IA, fournisseur, raisonnement | Documents du compte |
-| Clés API et recherche web | Route settings existante, marqueur local d'envoi en attente ; une suppression sur le serveur ne réimporte pas une ancienne clé locale |
+| Clés API et recherche web | Route settings existante, marqueur local d'envoi en attente ; une suppression sur le serveur ne réimporte pas une ancienne clé locale. La clé OpenRouter des recommandations Aujourd'hui est facultative et utilise la clé principale si elle est vide |
 | Langue, panneaux et navigation des notes | Préférences du compte |
 | Profil, collaboration, comptes mail/Google | Routes serveur existantes |
 
@@ -28,12 +28,18 @@ Les tâches et habitudes conservent leur protocole existant : snapshots complets
 
 Deux modifications de champs différents d'un même événement se combinent. Pour le même champ, la dernière mutation reçue par le serveur gagne. Les séries et leurs listes d'exceptions sont des champs indivisibles. Les suppressions d'événements et calendriers gardent un tombstone : une vieille copie hors ligne ne les recrée pas. Une nouvelle entité reçoit un nouvel identifiant. Les règles et préférences d'import ont un état activé/désactivé pour permettre leur réactivation.
 
-La synchronisation démarre à la connexion, sur les modifications locales, au retour en ligne/au premier plan, sur notification temps réel et périodiquement lorsque l'app est visible. Une panne conserve l'outbox. Les logs signalent les sections encore en attente et ne déclarent pas un succès complet si une section a échoué. Les snapshots de workspace inchangés ne provoquent plus une boucle de notifications entre appareils.
+La synchronisation démarre à la connexion, sur les modifications locales, au retour en ligne/au premier plan, sur notification temps réel et périodiquement lorsque l'app est visible. Une panne conserve l'outbox. Les calendriers et préférences se synchronisent avant les tâches : une erreur de tâche ne bloque plus ces documents. Les préférences reçues s'appliquent même si le workspace échoue. Les logs et l'interface signalent les sections encore en attente et ne déclarent pas un succès complet si une section a échoué. La vue « Plus » sur téléphone permet de relancer la synchronisation. Les snapshots de workspace inchangés ne provoquent plus une boucle de notifications entre appareils.
+
+Lors d'un changement de compte, les réponses réseau et les écritures SQLite sont vérifiées contre l'identifiant de compte qui a lancé le cycle. Les clés de recommandations sont conservées lorsque d'anciennes versions du client enregistrent leurs paramètres sans ce champ ; une chaîne vide explicite les efface.
+
+## Incident de synchronisation des tâches planifiées
+
+La lecture PostgreSQL de `task_changes.scheduled_date` et `follow_up_date` (`DATE`) dans des champs Go `*string` pouvait faire échouer tout le pull. L'ancien ordre du cycle empêchait alors le transfert des calendriers et des espaces. Le pull convertit désormais ces colonnes en texte ISO et chaque domaine poursuit son cycle indépendamment. Le curseur des tâches n'avance qu'après l'application des données reçues ; une panne laisse les mutations locales en attente ou récupérables au prochain pull.
 
 Les pièces jointes sont immuables par UUID et accessibles uniquement à leur propriétaire. Les anciens blobs locaux sont repris lors du prochain envoi. La suppression d'une note conserve actuellement ses blobs serveur ; la collecte des fichiers orphelins et le stockage objet pour gros fichiers restent à prévoir.
 
 ## Déploiement et tests
 
-Déployer l'API avec la migration additive/idempotente `021_account_documents.sql` avant d'utiliser la nouvelle synchronisation en production. Un ancien serveur retourne 404 sur ces routes : les changements restent locaux en attente. La release client et le déploiement Coolify sont indépendants.
+Déployer l'API avec les migrations additives/idempotentes `021_account_documents.sql` et `022_recommendation_settings.sql` avant d'utiliser la nouvelle synchronisation en production. Un ancien serveur retourne 404 sur les routes des documents : les changements restent locaux en attente. La release client et le déploiement Coolify sont indépendants.
 
-Les tests clients couvrent la reprise réseau, les changements en cours d'envoi, les comptes, la migration, les caches, les filtres, la suppression de clés et les messages en attente. Le test PostgreSQL crée un schéma isolé, applique les migrations deux fois et vérifie idempotence, fusion, tombstones, pièces jointes et chats. Exécution locale explicite : `PRIOR_TEST_DATABASE_URL=... go test ./internal/store -v`. La CI utilise son propre PostgreSQL éphémère. Aucun test par computer use.
+Les tests clients couvrent la reprise réseau, les changements en cours d'envoi, les comptes, la migration, les caches, les filtres, la suppression de clés et les messages en attente. Les tests PostgreSQL créent des schémas isolés et vérifient aussi les dates de tâches planifiées et la compatibilité des anciens clients avec la nouvelle clé. Exécution locale explicite : `PRIOR_TEST_DATABASE_URL=... go test ./internal/store -v`. La CI utilise son propre PostgreSQL éphémère. Aucun test par computer use.

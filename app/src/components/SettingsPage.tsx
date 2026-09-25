@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
+import { DEFAULT_MODEL, getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
 import { clearCachedCodexAccount, codexBinaryAvailable, getCachedCodexAccount, logoutCodex, setCachedCodexAccount, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
 import type { AgentProvider } from "../types";
 import { getToken, type SessionUser } from "../lib/auth";
@@ -233,12 +233,16 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
 function AssistantSettings() {
   const { t } = useI18n();
   const [apiKey, setApiKey] = useState(() => getAgentSettings().apiKey);
+  const [recommendationApiKey, setRecommendationApiKey] = useState(() => getAgentSettings().recommendationApiKey ?? "");
+  const [recommendationModel, setRecommendationModel] = useState(() => getAgentSettings().recommendationModel || DEFAULT_MODEL);
   const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => getAgentSettings().transcriptionApiKey);
   const [provider, setProvider] = useState<AgentProvider>(() => getAgentSettings().provider ?? "openrouter");
   const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
+  const [showRecommendationKey, setShowRecommendationKey] = useState(false);
   const [showTranscriptionKey, setShowTranscriptionKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savePending, setSavePending] = useState(false);
   const settingsDirtyRef = useRef(false);
 
   // The key follows the account: pull the shared copy when signed in.
@@ -255,6 +259,8 @@ function AssistantSettings() {
           }
           const current = getAgentSettings();
           setApiKey(current.apiKey);
+          setRecommendationApiKey(current.recommendationApiKey ?? "");
+          setRecommendationModel(current.recommendationModel || DEFAULT_MODEL);
           setTranscriptionApiKey(current.transcriptionApiKey);
           setProvider(current.provider ?? "openrouter");
         }
@@ -266,14 +272,22 @@ function AssistantSettings() {
     if (saving) return;
     setSaving(true);
     const current = getAgentSettings();
-    const updated = { ...current, apiKey: apiKey.trim(), transcriptionApiKey: transcriptionApiKey.trim() };
+    const updated = { ...current, apiKey: apiKey.trim(), recommendationApiKey: recommendationApiKey.trim(), recommendationModel: recommendationModel.trim() || DEFAULT_MODEL, transcriptionApiKey: transcriptionApiKey.trim() };
     saveAgentSettings(updated);
     settingsDirtyRef.current = false;
     notifyAgentSettingsChanged();
-    await pushAssistantSettings(undefined, updated);
-    setSaved(true);
-    setSaving(false);
-    window.setTimeout(() => setSaved(false), 2500);
+    try {
+      const synced = await pushAssistantSettings(undefined, updated);
+      setSavePending(!synced);
+      setSaved(true);
+      if (synced) window.setTimeout(() => setSaved(false), 2500);
+    } catch (error) {
+      console.warn("Prior assistant settings are saved locally but still need account sync:", error);
+      setSavePending(true);
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleProviderChange(next: AgentProvider) {
@@ -293,7 +307,7 @@ function AssistantSettings() {
           <button type="button" className="primary-button" onClick={() => void handleSaveKeys()} disabled={saving}>
             {saving ? t("settings.common.saving") : t("settings.assistant.saveKeys")}
           </button>
-          {saved && <span className="settings-saved" role="status">{t("settings.common.saved")}</span>}
+          {saved && <span className="settings-saved" role="status">{savePending ? t("settings.assistant.savedLocally") : t("settings.common.saved")}</span>}
         </>}
       >
         <SettingsRow
@@ -320,6 +334,19 @@ function AssistantSettings() {
             <button type="button" className="show-key-btn" aria-pressed={showOpenRouterKey} onClick={() => setShowOpenRouterKey((value) => !value)}>
               {showOpenRouterKey ? t("settings.assistant.hide") : t("settings.assistant.show")}
             </button>
+          </div>
+        </SettingsRow>
+        <SettingsRow stacked htmlFor="settings-recommendation-key" label={t("settings.assistant.recommendationKeyLabel")} description={t("settings.assistant.recommendationKeyHint")}>
+          <div className="field settings-field">
+            <Icon name="lock" />
+            <input id="settings-recommendation-key" type={showRecommendationKey ? "text" : "password"} placeholder={t("settings.assistant.recommendationKeyPlaceholder")} value={recommendationApiKey} autoComplete="off" spellCheck={false} onChange={(event) => { settingsDirtyRef.current = true; setRecommendationApiKey(event.target.value); setSaved(false); }} />
+            <button type="button" className="show-key-btn" aria-pressed={showRecommendationKey} onClick={() => setShowRecommendationKey((value) => !value)}>{showRecommendationKey ? t("settings.assistant.hide") : t("settings.assistant.show")}</button>
+          </div>
+        </SettingsRow>
+        <SettingsRow stacked htmlFor="settings-recommendation-model" label={t("settings.assistant.recommendationModelLabel")} description={t("settings.assistant.recommendationModelHint")}>
+          <div className="field settings-field">
+            <Icon name="sparkles" />
+            <input id="settings-recommendation-model" type="text" value={recommendationModel} placeholder={DEFAULT_MODEL} autoComplete="off" spellCheck={false} onChange={(event) => { settingsDirtyRef.current = true; setRecommendationModel(event.target.value); setSaved(false); }} />
           </div>
         </SettingsRow>
         <SettingsRow

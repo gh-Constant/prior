@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Task } from "../types";
+import { saveCalendarState } from "./calendar";
+import { memoryStorage } from "../test/memoryStorage";
 import { buildWidgetSnapshot, parseWidgetUrl } from "./widgetSnapshot";
 
 function task(overrides: Partial<Task> & { id: string; title: string }): Task {
@@ -18,9 +21,11 @@ function task(overrides: Partial<Task> & { id: string; title: string }): Task {
 }
 
 const NOW = new Date("2026-09-19T10:00:00.000Z");
+beforeEach(() => vi.stubGlobal("localStorage", memoryStorage()));
 
 describe("buildWidgetSnapshot", () => {
   it("selects today tasks and counts matrix quadrants", () => {
+    saveCalendarState({ showHabits: true, sources: [{ id: "personal", name: "Personal", type: "local", enabled: true, color: "blue", events: [{ id: "event", sourceId: "personal", title: "Meeting", date: "2026-09-19", startTime: "11:00", endTime: "11:30", color: "blue", kind: "event" }] }] });
     const tasks = [
       task({ id: "1", title: "Due today", dueDate: "2026-09-19", status: "next", important: true, urgent: true }),
       task({ id: "2", title: "Overdue", dueDate: "2026-09-10", status: "next" }),

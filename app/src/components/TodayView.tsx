@@ -5,6 +5,9 @@ import { rankFocusTasks } from "../lib/taskFocus";
 import { parseTaskTitle, type TaskTitleToken } from "../lib/taskTitleParser";
 import { eventsInRange, loadCalendarState, type CalendarEvent, type CalendarState } from "../lib/calendar";
 import { ACCOUNT_DATA_CHANGED } from "../lib/accountDocuments";
+import { getAccountId } from "../lib/accountScope";
+import { AGENT_SETTINGS_EVENT, getAgentSettings } from "../lib/ai";
+import { generateTodayRecommendations, todayRecommendationInput, type TodayRecommendation } from "../lib/todayRecommendations";
 import {
   DAY_END_MINUTES,
   DAY_START_MINUTES,
@@ -55,6 +58,53 @@ const DAY_SPAN = DAY_END_MINUTES - DAY_START_MINUTES;
 const HOURS = Array.from({ length: (DAY_END_MINUTES - DAY_START_MINUTES) / 60 + 1 }, (_, index) => DAY_START_MINUTES / 60 + index);
 const RING_RADIUS = 18;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+const recommendationCache = new Map<string, { at: number; value: TodayRecommendation }>();
+
+function useTodayRecommendations(tasks: Task[], events: CalendarEvent[], now: Date, lang: string) {
+  const [settingsVersion, setSettingsVersion] = useState(0);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const lastRefreshVersion = useRef(0);
+  const [recommendations, setRecommendations] = useState<TodayRecommendation | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    const refresh = () => { recommendationCache.clear(); setSettingsVersion((value) => value + 1); };
+    window.addEventListener(AGENT_SETTINGS_EVENT, refresh);
+    window.addEventListener("prior-auth-change", refresh);
+    return () => { window.removeEventListener(AGENT_SETTINGS_EVENT, refresh); window.removeEventListener("prior-auth-change", refresh); };
+  }, []);
+  const settings = useMemo(getAgentSettings, [settingsVersion]);
+  const enabled = Boolean(settings.recommendationApiKey || settings.apiKey);
+  const bucket = Math.floor(now.getTime() / 900_000);
+  const requestTime = useMemo(() => new Date(bucket * 900_000), [bucket]);
+  const input = todayRecommendationInput(tasks, events, requestTime, lang);
+  const cacheKey = `${getAccountId()}:${settings.recommendationModel}:${input}`;
+  useEffect(() => {
+    if (!enabled || tasks.length === 0) { setRecommendations(null); setError(false); setLoading(false); return; }
+    const cached = recommendationCache.get(cacheKey);
+    const forced = refreshVersion > lastRefreshVersion.current;
+    lastRefreshVersion.current = refreshVersion;
+    if (!forced && cached && Date.now() - cached.at < 5 * 60_000) { setRecommendations(cached.value); setError(false); setLoading(false); return; }
+    const controller = new AbortController();
+    setRecommendations(null);
+    setLoading(true);
+    setError(false);
+    const timer = window.setTimeout(() => {
+      void generateTodayRecommendations(tasks, events, requestTime, lang, settings, controller.signal).then((value) => {
+        if (controller.signal.aborted) return;
+        if (recommendationCache.size >= 50) recommendationCache.clear();
+        recommendationCache.set(cacheKey, { at: Date.now(), value });
+        setRecommendations(value);
+      }).catch((failure) => {
+        if (controller.signal.aborted) return;
+        console.warn("Today recommendations could not refresh:", failure);
+        setError(true);
+      }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }, 900);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [cacheKey, enabled, refreshVersion, settings, tasks, events, requestTime, lang]);
+  return { recommendations, loading, error, enabled, refresh: () => setRefreshVersion((value) => value + 1) };
+}
 
 type TimelineBlock = { readonly id: string; readonly kind: "event" | "habit"; readonly title: string; readonly start: number; readonly end: number; readonly color: string; readonly lane: number };
 
@@ -154,6 +204,10 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
   const sourceName = useMemo(() => new Map((calendar?.sources ?? []).map((source) => [source.id, source.name])), [calendar]);
   const todayEvents = useMemo(() => events.filter((event) => event.date === todayKey), [events, todayKey]);
   const tomorrowEvents = useMemo(() => events.filter((event) => event.date === tomorrowKey), [events, tomorrowKey]);
+  const recommendationTasks = useMemo(() => [...ranked.slice(0, 15), ...waitingTasks.slice(0, 5)], [ranked, waitingTasks]);
+  const recommendationEvents = useMemo(() => [...todayEvents, ...tomorrowEvents], [todayEvents, tomorrowEvents]);
+  const aiPlan = useTodayRecommendations(recommendationTasks, recommendationEvents, now, lang);
+  const recommendationTaskById = useMemo(() => new Map(recommendationTasks.map((task) => [task.id, task])), [recommendationTasks]);
 
   const todaysHabits = useMemo(() => habits
     .filter((habit) => !habit.deletedAt && habitScheduledOn(habit, now))
@@ -307,6 +361,16 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
 
       <div className="today-dash-grid">
         <div className="today-dash-main">
+          {aiPlan.enabled && <section className="today-card today-ai-plan" aria-labelledby="today-ai-plan-title">
+            <div className="today-card-head"><div className="today-card-heading"><Icon name="sparkles" aria-hidden="true" /><h3 id="today-ai-plan-title" className="today-card-title">{t("tasks.today.aiPlanTitle")}</h3></div><button type="button" className="today-ghost-button" onClick={aiPlan.refresh} disabled={aiPlan.loading}><Icon name="refresh" aria-hidden="true" /><span>{t("tasks.today.aiPlanRefresh")}</span></button></div>
+            {aiPlan.loading && !aiPlan.recommendations && <p className="today-ai-plan-status" role="status">{t("tasks.today.aiPlanLoading")}</p>}
+            {aiPlan.error && <p className="today-ai-plan-status is-error" role="alert">{t("tasks.today.aiPlanError")}</p>}
+            {aiPlan.recommendations && <div className="today-ai-plan-content">
+              {aiPlan.recommendations.summary && <p className="today-ai-plan-summary">{aiPlan.recommendations.summary}</p>}
+              {aiPlan.recommendations.focus.length > 0 && <ol className="today-ai-plan-focus">{aiPlan.recommendations.focus.map((item) => <li key={item.taskId}><strong>{recommendationTaskById.get(item.taskId)?.title}</strong><span>{item.reason}</span>{item.suggestedStart && <time>{item.suggestedStart}</time>}</li>)}</ol>}
+              {aiPlan.recommendations.tips.length > 0 && <ul className="today-ai-plan-tips">{aiPlan.recommendations.tips.map((tip) => <li key={tip}>{tip}</li>)}</ul>}
+            </div>}
+          </section>}
           <section className="today-card today-priorities" aria-labelledby="today-priorities-title">
             <div className="today-card-head">
               <div className="today-card-heading">

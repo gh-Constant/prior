@@ -70,6 +70,7 @@
 .sidebar-sync-button.is-syncing, .sidebar-sync-button.is-syncing svg { color: #ff9e88; }
 
 .sidebar-sync-button.is-syncing svg { animation: sidebar-sync-spin 1s linear infinite; }
+.sidebar-sync-button.has-issue, .sidebar-sync-button.has-issue svg { color: #ff9e88; }
 
 .sidebar-sync-label {
   min-width: 0;

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { applyDocumentMutation, readAccountDocuments, reconcileDocuments, stageDocument, syncAccountDocuments, writeAccountDocuments, type AccountDocuments } from "./accountDocuments";
 import { api } from "./api";
 import { loadCalendarState, saveCalendarState, type CalendarState } from "./calendar";
+import { initializeCalendarSync } from "./calendarSync";
 import { memoryStorage } from "../test/memoryStorage";
 
 vi.mock("./api", () => ({ api: { syncAccountData: vi.fn() } }));
@@ -78,5 +79,19 @@ describe("calendar sync persistence", () => {
     const docs = readAccountDocuments();
     expect(docs.records["calendar/source/iut"]?.icsData).toContain("BEGIN:VCALENDAR");
     expect(docs.records["calendar/source/iut"]?.events).toBeUndefined();
+  });
+  it("restores a personal calendar and its events on a second device", async () => {
+    const state: CalendarState = { showHabits: false, sources: [{ id: "personal", name: "Personal", type: "local", enabled: true, color: "blue", events: [{ id: "meeting", sourceId: "personal", title: "Planning", date: "2026-09-25", startTime: "09:00", endTime: "10:00", color: "blue", kind: "event" }] }] };
+    saveCalendarState(state);
+    const serverRecords = Object.entries(readAccountDocuments().records).map(([key, value]) => ({ key, value }));
+
+    vi.stubGlobal("localStorage", memoryStorage());
+    localStorage.setItem("prior.session.user", JSON.stringify({ id: "account-a" }));
+    initializeCalendarSync({ showHabits: true, sources: [] });
+    vi.mocked(api.syncAccountData).mockResolvedValueOnce({ records: serverRecords, applied: readAccountDocuments().pending.map((mutation) => mutation.id) });
+    await syncAccountDocuments("token", () => true);
+
+    expect(loadCalendarState().showHabits).toBe(false);
+    expect(loadCalendarState().sources[0]).toMatchObject({ id: "personal", name: "Personal", events: [{ id: "meeting", title: "Planning" }] });
   });
 });

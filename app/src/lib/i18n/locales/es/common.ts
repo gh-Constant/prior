@@ -63,6 +63,8 @@ export const common = {
     agentShortcut: "Prior Agent ({shortcut})",
     sync: "Sincronizar ahora",
     syncing: "Sincronizando…",
+    syncIssue: "Sincronización incompleta",
+    syncIssueHint: "Algunos cambios no se han sincronizado. Reintentar ahora.",
   },
   shell: {
     tabBar: "Navegación principal",

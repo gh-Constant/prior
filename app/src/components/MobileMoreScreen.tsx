@@ -24,6 +24,9 @@ type Props = {
   readonly user: SessionUser | null;
   readonly badges?: Partial<Record<WorkspaceView, string>>;
   readonly agentOpen: boolean;
+  readonly syncing?: boolean;
+  readonly syncIssue?: boolean;
+  readonly onSync?: () => void;
   readonly onNavigate: (view: WorkspaceView) => void;
   readonly onAgent: () => void;
   readonly onAccount: () => void;
@@ -40,7 +43,7 @@ function initials(user: SessionUser): string {
  * remaining views, the account and settings. Closes on navigation, Escape
  * (handled by App), or when the window grows past the phone breakpoint.
  */
-export function MobileMoreScreen({ activeView, user, badges, agentOpen, onNavigate, onAgent, onAccount, onClose }: Props) {
+export function MobileMoreScreen({ activeView, user, badges, agentOpen, syncing, syncIssue, onSync, onNavigate, onAgent, onAccount, onClose }: Props) {
   const { t, lang } = useI18n();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const lastSyncedAt = useLastSyncedAt();
@@ -58,7 +61,7 @@ export function MobileMoreScreen({ activeView, user, badges, agentOpen, onNaviga
     return () => desktop.removeEventListener?.("change", onChange);
   }, [onClose]);
 
-  const accountDetail = lastSyncedAt !== null
+  const accountDetail = syncIssue ? t("common.sidebar.syncIssue") : lastSyncedAt !== null
     ? t("common.shell.syncedAgo", { time: formatSyncedAgo(lastSyncedAt, now, lang, t("common.shell.justNow")) })
     : user?.email ?? "";
 
@@ -98,6 +101,7 @@ export function MobileMoreScreen({ activeView, user, badges, agentOpen, onNaviga
       </nav>
 
       <div className="mobile-more-card">
+        {onSync && <button type="button" className={`mobile-more-row mobile-more-sync ${syncIssue ? "has-issue" : ""}`} onClick={onSync} disabled={syncing} aria-label={syncing ? t("common.sidebar.syncing") : syncIssue ? t("common.sidebar.syncIssueHint") : t("common.sidebar.sync")}><Icon name="refresh" /><span className="mobile-more-label">{syncing ? t("common.sidebar.syncing") : syncIssue ? t("common.sidebar.syncIssue") : t("common.sidebar.sync")}</span></button>}
         <button type="button" className="mobile-more-account" onClick={onAccount}>
           <span className="mobile-more-avatar" aria-hidden="true">
             {user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : user && initials(user) ? initials(user) : <Icon name="user" />}

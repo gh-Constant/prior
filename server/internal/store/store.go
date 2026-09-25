@@ -1865,7 +1865,7 @@ func pullChangelogTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUI
 		return result, nil
 	}
 	rows, err := pool.Query(ctx, `
-		SELECT task_id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date, scheduled_time, assignee_name, follow_up_date, follow_up_time, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		SELECT task_id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date::text, scheduled_time, assignee_name, follow_up_date::text, follow_up_time, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision
 		FROM task_changes c WHERE revision = ANY($2) AND (c.user_id = $1 OR EXISTS (
 			SELECT 1 FROM project_members pm
 			WHERE pm.project_id = c.project_id AND pm.user_id = $1 AND pm.status = 'active'
@@ -1937,10 +1937,11 @@ func scanHabitRow(habitRows pgx.Rows) (tasks.Habit, error) {
 // UserSettings holds per-user assistant settings. API keys are the stored
 // (possibly sealed) values; sealing is handled by the HTTP layer.
 type UserSettings struct {
-	OpenRouterAPIKey string
-	OpenAIAPIKey     string
-	WebSearch        bool
-	UpdatedAt        time.Time
+	OpenRouterAPIKey               string
+	RecommendationOpenRouterAPIKey string
+	OpenAIAPIKey                   string
+	WebSearch                      bool
+	UpdatedAt                      time.Time
 }
 
 // MailAccount is a connected Gmail account. The refresh token is stored
@@ -2027,28 +2028,29 @@ func (s *Store) DeleteMailAccount(ctx context.Context, userID, id uuid.UUID) err
 func (s *Store) GetUserSettings(ctx context.Context, userID uuid.UUID) (UserSettings, error) {
 	var settings UserSettings
 	err := s.pool.QueryRow(ctx, `
-		SELECT openrouter_api_key, openai_api_key, web_search, updated_at
+		SELECT openrouter_api_key, recommendation_openrouter_api_key, openai_api_key, web_search, updated_at
 		FROM user_settings
 		WHERE user_id = $1`, userID).
-		Scan(&settings.OpenRouterAPIKey, &settings.OpenAIAPIKey, &settings.WebSearch, &settings.UpdatedAt)
+		Scan(&settings.OpenRouterAPIKey, &settings.RecommendationOpenRouterAPIKey, &settings.OpenAIAPIKey, &settings.WebSearch, &settings.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return UserSettings{}, ErrNotFound
 	}
 	return settings, err
 }
 
-func (s *Store) SaveUserSettings(ctx context.Context, userID uuid.UUID, openRouterAPIKey, openAIAPIKey string, webSearch bool) (UserSettings, error) {
+func (s *Store) SaveUserSettings(ctx context.Context, userID uuid.UUID, openRouterAPIKey string, recommendationOpenRouterAPIKey *string, openAIAPIKey string, webSearch bool) (UserSettings, error) {
 	var settings UserSettings
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO user_settings (user_id, openrouter_api_key, openai_api_key, web_search, updated_at)
-		VALUES ($1, $2, $3, $4, now())
+		INSERT INTO user_settings (user_id, openrouter_api_key, recommendation_openrouter_api_key, openai_api_key, web_search, updated_at)
+		VALUES ($1, $2, COALESCE($3, ''), $4, $5, now())
 		ON CONFLICT (user_id) DO UPDATE SET
 			openrouter_api_key = EXCLUDED.openrouter_api_key,
+			recommendation_openrouter_api_key = COALESCE($3, user_settings.recommendation_openrouter_api_key),
 			openai_api_key = EXCLUDED.openai_api_key,
 			web_search = EXCLUDED.web_search,
 			updated_at = now()
-		RETURNING openrouter_api_key, openai_api_key, web_search, updated_at`, userID, openRouterAPIKey, openAIAPIKey, webSearch).
-		Scan(&settings.OpenRouterAPIKey, &settings.OpenAIAPIKey, &settings.WebSearch, &settings.UpdatedAt)
+		RETURNING openrouter_api_key, recommendation_openrouter_api_key, openai_api_key, web_search, updated_at`, userID, openRouterAPIKey, recommendationOpenRouterAPIKey, openAIAPIKey, webSearch).
+		Scan(&settings.OpenRouterAPIKey, &settings.RecommendationOpenRouterAPIKey, &settings.OpenAIAPIKey, &settings.WebSearch, &settings.UpdatedAt)
 	return settings, err
 }
 
