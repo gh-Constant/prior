@@ -13,6 +13,8 @@ const SETTINGS_KEY = "prior.ai.settings.v1";
 export function mergeServerSettings(local: AgentSettings, server: ServerSettings): { merged: AgentSettings; shouldPush: boolean } {
   const merged: AgentSettings = {
     apiKey: server.initialized ? server.openrouterApiKey : server.openrouterApiKey || local.apiKey,
+    recommendationApiKey: server.recommendationOpenrouterApiKey === undefined ? local.recommendationApiKey : server.initialized ? server.recommendationOpenrouterApiKey : server.recommendationOpenrouterApiKey || local.recommendationApiKey,
+    recommendationModel: local.recommendationModel,
     transcriptionApiKey: server.initialized ? server.openaiApiKey : server.openaiApiKey || local.transcriptionApiKey,
     model: local.model,
     webSearch: server.webSearch,
@@ -22,7 +24,7 @@ export function mergeServerSettings(local: AgentSettings, server: ServerSettings
   if (local.reasoningEffort) merged.reasoningEffort = local.reasoningEffort;
   return {
     merged,
-    shouldPush: !server.initialized && ((!server.openrouterApiKey && local.apiKey !== "") || (!server.openaiApiKey && local.transcriptionApiKey !== "")),
+    shouldPush: !server.initialized && ((!server.openrouterApiKey && local.apiKey !== "") || (!server.recommendationOpenrouterApiKey && !!local.recommendationApiKey) || (!server.openaiApiKey && local.transcriptionApiKey !== "")),
   };
 }
 
@@ -43,10 +45,13 @@ export async function pullAssistantSettings(): Promise<boolean> {
       const server = await api.getSettings(token);
       if (account !== getAccountId()) return false;
       if ((JSON.parse(readScopedStorage(SETTINGS_KEY) ?? "{}") as { pendingId?: string }).pendingId) return false;
-      const { merged, shouldPush } = mergeServerSettings(getAgentSettings(), server);
-      saveAgentSettings(merged, false);
-      notifyAgentSettingsChanged();
-      if (shouldPush) await pushAssistantSettings(token);
+      const current = getAgentSettings();
+      const { merged, shouldPush } = mergeServerSettings(current, server);
+      if (JSON.stringify(merged) !== JSON.stringify(current)) {
+        saveAgentSettings(merged, false);
+        notifyAgentSettingsChanged();
+      }
+      if (shouldPush && !await pushAssistantSettings(token)) return false;
       return true;
     } catch (error) {
       lastError = error;
@@ -69,7 +74,7 @@ export async function pushAssistantSettings(token?: string, settings?: AgentSett
   const local = settings ?? getAgentSettings();
   const pendingId = (JSON.parse(readScopedStorage(SETTINGS_KEY) ?? "{}") as { pendingId?: string }).pendingId;
   try {
-    await api.saveSettings({ openrouterApiKey: local.apiKey, openaiApiKey: local.transcriptionApiKey, webSearch: local.webSearch !== false }, resolved);
+    await api.saveSettings({ openrouterApiKey: local.apiKey, recommendationOpenrouterApiKey: local.recommendationApiKey ?? "", openaiApiKey: local.transcriptionApiKey, webSearch: local.webSearch !== false }, resolved);
     if (account !== getAccountId()) return false;
     const latest = JSON.parse(readScopedStorage(SETTINGS_KEY) ?? "{}") as { pendingId?: string };
     if (latest.pendingId === pendingId) { delete latest.pendingId; writeScopedStorage(SETTINGS_KEY, JSON.stringify(latest)); }

@@ -89,6 +89,19 @@ describe("two-account same-id isolation (localStorage adapter)", () => {
     localStorage.setItem("prior.session.user", JSON.stringify({ id: "account-a" }));
     expect((await localStore.listHabits())[0]).toMatchObject({ title: "A habit", interval: 1 });
   });
+
+  it("ignores a late sync response after the active account changes", async () => {
+    const { localStore } = await import("./localStore");
+    localStorage.setItem("prior.session.user", JSON.stringify({ id: "account-a" }));
+    const task = await localStore.saveTask({ title: "A only", important: false, urgent: false });
+    localStorage.setItem("prior.session.user", JSON.stringify({ id: "account-b" }));
+
+    await localStore.applyRemoteTasks([{ ...task, title: "Remote A", serverRevision: 9 }], new Set(), "account-a");
+    await localStore.setSyncRevision(9, "account-a");
+
+    expect(await localStore.listTasks()).toEqual([]);
+    expect((await localStore.getSyncState()).lastServerRevision).toBe(0);
+  });
 });
 
 describe("two-account same-id isolation (SQLite adapter)", () => {

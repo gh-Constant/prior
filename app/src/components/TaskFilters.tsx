@@ -11,6 +11,8 @@ type TFn = (key: string, vars?: Vars) => string;
 type Props = {
   readonly value: TaskFilterState;
   readonly onChange: (next: TaskFilterState) => void;
+  /** Number of tasks being searched, shown in the placeholder when known. */
+  readonly taskCount?: number;
 };
 
 type Pill = {
@@ -148,7 +150,7 @@ function ActivePills({ pills, onClearAll }: { readonly pills: readonly Pill[]; r
   );
 }
 
-export function TaskFilters({ value, onChange }: Props) {
+export function TaskFilters({ value, onChange, taskCount }: Props) {
   const { t, tp } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const activeCount = activeFilterCount(value);
@@ -163,7 +165,7 @@ export function TaskFilters({ value, onChange }: Props) {
             type="search"
             value={value.query}
             aria-label={t("tasks.filters.searchLabel")}
-            placeholder={t("tasks.filters.searchPlaceholder")}
+            placeholder={taskCount ? tp("tasks.list.searchIn", taskCount) : t("tasks.filters.searchPlaceholder")}
             onChange={(event) => onChange({ ...value, query: event.target.value })}
           />
           {value.query.trim() && (
@@ -177,6 +179,7 @@ export function TaskFilters({ value, onChange }: Props) {
             </button>
           )}
         </label>
+        <ActivePills pills={pills} onClearAll={() => { onChange(defaultTaskFilters); setExpanded(false); }} />
         <div className="filters-toolbar-actions">
           <button
             type="button"
@@ -185,10 +188,9 @@ export function TaskFilters({ value, onChange }: Props) {
             aria-controls="task-filter-panel"
             onClick={() => setExpanded((prev) => !prev)}
           >
-            <Icon name="list" />
+            <Icon name="sliders" />
             <span>{t("tasks.filters.toggle")}</span>
             {activeCount > 0 && <span className="filter-count" aria-label={tp("tasks.filters.active", activeCount)}>{activeCount}</span>}
-            <Icon name="chevron-down" />
           </button>
           <div className="filter-sort">
             <span className="filter-sort-label">{t("tasks.filters.sortLabel")}</span>
@@ -209,7 +211,6 @@ export function TaskFilters({ value, onChange }: Props) {
       </div>
 
       {expanded && <FiltersPanel value={value} onChange={onChange} />}
-      <ActivePills pills={pills} onClearAll={() => { onChange(defaultTaskFilters); setExpanded(false); }} />
     </div>
   );
 }

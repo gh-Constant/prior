@@ -33,12 +33,14 @@ describe("ProjectCollaboration", () => {
     const onCreateIssue = vi.fn();
     render(<ProjectCollaboration {...base} readOnly={false} onOpenIssue={onOpenIssue} onCreateIssue={onCreateIssue} />);
     expect(screen.getByText(project.description)).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Board" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
     expect(screen.getByRole("progressbar", { name: "Project completion" })).toHaveAttribute("value", "1");
     fireEvent.click(screen.getByRole("button", { name: "New issue" }));
     expect(onCreateIssue).toHaveBeenCalledOnce();
-    const overviewTab = screen.getByRole("tab", { name: "Overview" });
-    overviewTab.focus();
-    fireEvent.keyDown(overviewTab, { key: "ArrowRight" });
+    const boardTab = screen.getByRole("tab", { name: "Board" });
+    boardTab.focus();
+    fireEvent.keyDown(boardTab, { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: "Issues" })).toHaveFocus();
     expect(screen.getByRole("tabpanel", { name: "Issues" })).toBeVisible();
     fireEvent.change(screen.getByRole("searchbox", { name: "Find an issue" }), { target: { value: "PR-1" } });
@@ -227,14 +229,14 @@ describe("WorkHubView opt-in integration", () => {
 
   it("preserves personal project tabs until collaboration props are supplied", () => {
     const { rerender } = render(<WorkHubView {...props} />);
-    expect(screen.getByRole("tab", { name: /Tasks/ })).toBeVisible();
+    expect(screen.getByRole("tab", { name: /List/ })).toBeVisible();
     expect(screen.getByRole("tab", { name: "Board" })).toBeVisible();
     expect(screen.getByRole("tab", { name: /Notes/ })).toBeVisible();
     expect(screen.queryByRole("tab", { name: "Overview" })).not.toBeInTheDocument();
     rerender(<WorkHubView {...props} collaborationByProject={{ [project.id]: base }} />);
     expect(screen.getByRole("tab", { name: "Overview" })).toBeVisible();
-    expect(screen.queryByRole("tab", { name: /Tasks/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "All projects" }));
+    expect(screen.queryByRole("tab", { name: /List/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Projects" }));
     expect(props.onOpenProject).toHaveBeenCalledWith("");
   });
 });

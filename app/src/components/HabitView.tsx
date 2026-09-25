@@ -43,6 +43,8 @@ type HabitCardProps = {
   readonly period: HabitPeriod;
   readonly from: Date;
   readonly to: Date;
+  readonly weekDays: Date[];
+  readonly streak: number;
   readonly snapshot?: CompletionSnapshot;
   readonly onComplete: Props["onComplete"];
   readonly onChange: Props["onChange"];
@@ -55,6 +57,7 @@ type HabitCardProps = {
 
 const VISUAL_HOLD_MS = 600;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const PERIODS: readonly HabitPeriod[] = ["today", "week", "month", "all"];
 const GROUP_ORDER: ScheduleGroup[] = ["daily", "weekly", "monthly", "custom"];
 const GROUP_KEYS: Record<ScheduleGroup, { label: string; hint: string }> = {
   daily: { label: "habits.view.groupDaily", hint: "habits.view.groupDailyHint" },
@@ -118,17 +121,6 @@ function scheduleLabelFor(input: Pick<Habit, "interval" | "unit" | "daysOfWeek">
   return tp("habits.schedule.year", interval);
 }
 
-function statusLabelFor(habit: Habit, reference: Date, t: TFn): string {
-  const status = habitStatus(habit, reference);
-  if (status === "complete") return t("habits.card.statusDone");
-  if (status === "due") return t("habits.card.statusDue");
-  if (status === "overdue") return t("habits.card.statusOverdue");
-  if (status === "ended") return t("habits.card.statusEnded");
-  const start = startOfDay(reference);
-  const next = habitOccurrenceDates(habit, start, new Date(start.getTime() + 370 * DAY_MS))[0];
-  return next ? t("habits.card.nextOn", { date: next }) : t("habits.card.statusUpcoming");
-}
-
 function startOfDay(value: Date): Date {
   const result = new Date(value);
   result.setHours(0, 0, 0, 0);
@@ -142,8 +134,14 @@ function addDays(value: Date, amount: number): Date {
 }
 
 function dateFromKey(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
   return new Date(year, month - 1, day);
+}
+
+function formatShortDate(value: string, lang: string): string {
+  const parsed = dateFromKey(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat(lang, { month: "short", day: "numeric" }).format(parsed);
 }
 
 function rangeFor(period: HabitPeriod, reference: Date): [Date, Date] {
@@ -189,16 +187,48 @@ function compareHabits(left: Habit, right: Habit, reference: Date, lang: string)
     || left.id.localeCompare(right.id);
 }
 
+/**
+ * Consecutive completed occurrences, counted back from the most recent one.
+ * Today's still-open occurrence does not break the streak.
+ */
+function currentStreak(habit: Habit, reference: Date): number {
+  const today = startOfDay(reference);
+  const start = dateFromKey(habit.startDate ?? "");
+  if (Number.isNaN(start.getTime()) || today < start) return 0;
+  const todayKey = dateKey(today);
+  const completed = new Set(habit.completedDates ?? []);
+  const occurrences = habitOccurrenceDates(habit, start, today);
+  let streak = 0;
+  for (let index = occurrences.length - 1; index >= 0; index -= 1) {
+    const occurrence = occurrences[index];
+    if (completed.has(occurrence)) streak += 1;
+    else if (occurrence === todayKey) continue;
+    else break;
+  }
+  return streak;
+}
+
+/** Scheduled vs. completed occurrences for the summary ring. "all" measures today. */
+function periodProgress(habits: Habit[], period: HabitPeriod, from: Date, to: Date): { done: number; total: number } {
+  const [rangeStart, rangeEnd] = period === "all" ? [from, from] : [from, to];
+  let done = 0;
+  let total = 0;
+  for (const habit of habits) {
+    const completed = new Set(habit.completedDates ?? []);
+    for (const occurrence of habitOccurrenceDates(habit, rangeStart, rangeEnd)) {
+      total += 1;
+      if (completed.has(occurrence)) done += 1;
+    }
+  }
+  return { done, total };
+}
+
 const PERIOD_KEYS: Record<HabitPeriod, string> = {
   today: "habits.view.periodToday",
   week: "habits.view.periodWeek",
   month: "habits.view.periodMonth",
   all: "habits.view.periodAll",
 };
-
-function periodLabel(period: HabitPeriod, t: TFn): string {
-  return t(PERIOD_KEYS[period]);
-}
 
 const EMPTY_KEYS: Record<HabitPeriod, string> = {
   today: "habits.view.emptyToday",
@@ -223,8 +253,10 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
   const [period, setPeriod] = useState<HabitPeriod>("today");
   const reference = new Date();
   const [from, to] = rangeFor(period, reference);
+  const [weekStart] = rangeFor("week", reference);
   const [completionSnapshots, setCompletionSnapshots] = useState<Record<string, CompletionSnapshot>>({});
   const snapshotTimers = useRef(new Map<string, number>());
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => () => {
     snapshotTimers.current.forEach((timer) => window.clearTimeout(timer));
@@ -301,146 +333,221 @@ export function HabitView({ habits, onAdd, onComplete, onChange, onDelete, onEdi
   const sections = GROUP_ORDER
     .map((group) => ({ group, items: visibleItems.filter(({ habit }) => scheduleGroupFor(habit) === group) }))
     .filter(({ items }) => items.length > 0);
-  const emptyTitle = t(EMPTY_KEYS[period]);
+  const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+  const todayKey = dateKey(reference);
+
+  // Summary figures are derived from the live habit data (not the held visual snapshots).
+  const liveVisible = visibleHabits.map((habit) => habits.find((candidate) => candidate.id === habit.id) ?? habit);
+  const streaks = new Map(visibleItems.map(({ habit }) => [habit.id, currentStreak(habit, reference)]));
+  const progress = periodProgress(liveVisible, period, from, to);
+  const overdueCount = liveVisible.filter((habit) => habitStatus(habit, reference) === "overdue").length;
+  const bestStreak = Math.max(0, ...streaks.values());
+
+  function focusTab(index: number) {
+    const next = PERIODS[(index + PERIODS.length) % PERIODS.length];
+    setPeriod(next);
+    tabRefs.current[PERIODS.indexOf(next)]?.focus();
+  }
 
   return (
     <section className="habits-view" aria-label={t("habits.view.label")}>
       <div className="habit-period-bar">
         <div className="habit-period-tabs" role="tablist" aria-label={t("habits.view.periodLabel")}>
-          {(["today", "week", "month", "all"] as const).map((value) => (
-            <button key={value} type="button" role="tab" aria-selected={period === value} className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>
-              {periodLabel(value, t)}
+          {PERIODS.map((value, index) => (
+            <button
+              key={value}
+              ref={(node) => { tabRefs.current[index] = node; }}
+              type="button"
+              role="tab"
+              aria-selected={period === value}
+              tabIndex={period === value ? 0 : -1}
+              className={period === value ? "active" : ""}
+              onClick={() => setPeriod(value)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowRight") { event.preventDefault(); focusTab(index + 1); }
+                else if (event.key === "ArrowLeft") { event.preventDefault(); focusTab(index - 1); }
+              }}
+            >
+              {t(PERIOD_KEYS[value])}
             </button>
           ))}
         </div>
         <span className="habit-range-label">{rangeLabel(period, from, to, lang, t)}</span>
       </div>
 
-      {period === "week" && <HabitWeekStrip habits={visibleItems.map(({ habit }) => habit)} reference={reference} from={from} />}
-
       {sections.length ? (
-        <div className="habit-groups">
-          {sections.map(({ group, items }) => (
-            <section className={`habit-group habit-group-${group}`} key={group} aria-labelledby={`habit-group-${group}`}>
-              <div className="habit-group-heading">
-                <div className="habit-group-title-wrap">
-                  <h2 id={`habit-group-${group}`} className="habit-group-title">{t(GROUP_KEYS[group].label)}</h2>
-                  <span className="habit-group-hint">{t(GROUP_KEYS[group].hint)}</span>
+        <>
+          <HabitSummary
+            done={progress.done}
+            total={progress.total}
+            remaining={Math.max(0, progress.total - progress.done)}
+            overdue={overdueCount}
+            bestStreak={bestStreak}
+            periodName={t(PERIOD_KEYS[period === "all" ? "today" : period])}
+          />
+
+          <div className="habit-board">
+            {sections.map(({ group, items }) => (
+              <section className={`habit-group habit-group-${group}`} key={group} aria-labelledby={`habit-group-${group}`}>
+                <div className="habit-group-heading">
+                  <div className="habit-group-title-wrap" title={t(GROUP_KEYS[group].hint)}>
+                    <h2 id={`habit-group-${group}`} className="habit-group-title">{t(GROUP_KEYS[group].label)}</h2>
+                    <span className="habit-group-count">{items.length}</span>
+                  </div>
+                  <ol className="habit-week-legend" aria-hidden="true">
+                    {weekDays.map((day) => (
+                      <li key={day.getTime()} className={dateKey(day) === todayKey ? "is-today" : ""}>
+                        {new Intl.DateTimeFormat(lang, { weekday: "narrow" }).format(day)}
+                      </li>
+                    ))}
+                  </ol>
+                  <span className="habit-group-spacer" aria-hidden="true" />
                 </div>
-                <span className="habit-group-count">{items.length}</span>
-              </div>
-              <div className="habit-list">
-                {items.map(({ habit, snapshot }, index) => (
-                  <HabitCard
-                    key={habit.id}
-                    habit={habit}
-                    reference={reference}
-                    period={period}
-                    from={from}
-                    to={to}
-                    snapshot={snapshot}
-                    order={index}
-                    onComplete={onComplete}
-                    onChange={onChange}
-                    onDelete={onDelete}
-                    onEdit={onEdit}
-                    onVisualCompletionStart={holdVisualCompletion}
-                    onVisualCompletionFailure={clearVisualCompletion}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+                <div className="habit-list">
+                  {items.map(({ habit, snapshot }, index) => (
+                    <HabitCard
+                      key={habit.id}
+                      habit={habit}
+                      reference={reference}
+                      period={period}
+                      from={from}
+                      to={to}
+                      weekDays={weekDays}
+                      streak={streaks.get(habit.id) ?? 0}
+                      snapshot={snapshot}
+                      order={index}
+                      onComplete={onComplete}
+                      onChange={onChange}
+                      onDelete={onDelete}
+                      onEdit={onEdit}
+                      onVisualCompletionStart={holdVisualCompletion}
+                      onVisualCompletionFailure={clearVisualCompletion}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
       ) : (
         <div className="habits-empty">
-          <span className="habits-empty-mark"><Icon name="calendar-check" /></span>
-          <h2>{emptyTitle}</h2>
+          <HabitEmptyIllustration />
+          <h2>{t(EMPTY_KEYS[period])}</h2>
           <p>{t("habits.view.emptyHint")}</p>
-          <button className="secondary-button" type="button" onClick={onAdd}><Icon name="plus" /> {t("habits.view.createHabit")}</button>
+          <div className="habits-empty-actions">
+            <button className="primary-button" type="button" onClick={onAdd}><Icon name="plus" /> {t("habits.view.createHabit")}</button>
+            {period !== "all" && habits.length > 0 && (
+              <button className="secondary-button" type="button" onClick={() => setPeriod("all")}>{t("habits.view.periodAll")}</button>
+            )}
+          </div>
         </div>
       )}
     </section>
   );
 }
 
-function HabitWeekStrip({ habits, reference, from }: { readonly habits: Habit[]; readonly reference: Date; readonly from: Date }) {
-  const { t, lang } = useI18n();
-  const today = dateKey(reference);
-  const days = Array.from({ length: 7 }, (_, index) => addDays(from, index));
-  const stats = days.map((day) => {
-    const key = dateKey(day);
-    let scheduled = 0;
-    let completed = 0;
-    for (const habit of habits) {
-      if (!habitOccurrenceDates(habit, day, day).includes(key)) continue;
-      scheduled += 1;
-      if ((habit.completedDates ?? []).includes(key)) completed += 1;
-    }
-    return { day, key, scheduled, completed };
-  });
-  const totalScheduled = stats.reduce((total, day) => total + day.scheduled, 0);
-  const totalCompleted = stats.reduce((total, day) => total + day.completed, 0);
+type HabitSummaryProps = {
+  readonly done: number;
+  readonly total: number;
+  readonly remaining: number;
+  readonly overdue: number;
+  readonly bestStreak: number;
+  readonly periodName: string;
+};
 
+function HabitSummary({ done, total, remaining, overdue, bestStreak, periodName }: HabitSummaryProps) {
+  const { t } = useI18n();
+  const ratio = total > 0 ? done / total : 0;
+  const percent = Math.round(ratio * 100);
+  const allDone = total > 0 && done >= total;
   return (
-    <div className="habit-week-card" aria-label={t("habits.week.label")}>
-      <div className="habit-week-heading">
-        <span>{t("habits.week.title")}</span>
-        <span>{t("habits.week.progress", { completed: totalCompleted, scheduled: totalScheduled })}</span>
+    <div className={`habit-summary ${allDone ? "is-complete" : ""}`} role="group" aria-label={t("habits.view.summaryLabel")}>
+      <div className="habit-summary-main">
+        <span className="habit-ring" role="img" aria-label={t("habits.view.progress", { completed: done, scheduled: total })}>
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <circle className="habit-ring-track" cx="24" cy="24" r="20" pathLength={100} />
+            <circle className="habit-ring-value" cx="24" cy="24" r="20" pathLength={100} style={{ strokeDashoffset: 100 - percent }} />
+          </svg>
+          <span className="habit-ring-center" aria-hidden="true">
+            {allDone ? <Icon name="check" /> : `${percent}%`}
+          </span>
+        </span>
+        <div className="habit-summary-figure">
+          <strong>{done}<span>/{total}</span></strong>
+          <span>{allDone ? t("habits.view.allClear") : `${t("habits.view.summaryDone")} · ${periodName}`}</span>
+        </div>
       </div>
-      <ul className="habit-week-strip" aria-label={t("habits.week.label")}>
-        {stats.map(({ day, key, scheduled, completed }) => {
-          const isToday = key === today;
-          const isMissed = key < today && scheduled > completed;
-          return (
-            <li className={`habit-week-day ${isToday ? "is-today" : ""} ${scheduled ? "is-scheduled" : ""} ${completed === scheduled && scheduled ? "is-done" : ""} ${isMissed ? "is-missed" : ""}`} key={key} aria-label={t("habits.week.dayLabel", { date: new Intl.DateTimeFormat(lang, { weekday: "long", month: "long", day: "numeric" }).format(day), completed, scheduled })}>
-              <span className="habit-week-day-name">{new Intl.DateTimeFormat(lang, { weekday: "short" }).format(day)}</span>
-              <span className="habit-week-day-number">{day.getDate()}</span>
-              <span className="habit-week-day-progress">{scheduled ? `${completed}/${scheduled}` : "—"}</span>
-            </li>
-          );
-        })}
-      </ul>
+      <dl className="habit-summary-stats">
+        <div className="habit-stat">
+          <dt>{t("habits.view.summaryRemaining")}</dt>
+          <dd>{remaining}</dd>
+        </div>
+        <div className={`habit-stat ${overdue ? "is-alert" : ""}`}>
+          <dt>{t("habits.card.statusOverdue")}</dt>
+          <dd>{overdue}</dd>
+        </div>
+        <div className="habit-stat">
+          <dt>{t("habits.view.summaryStreak")}</dt>
+          <dd><Icon name="trending-up" aria-hidden="true" />{bestStreak}</dd>
+        </div>
+      </dl>
     </div>
   );
 }
 
-function HabitOccurrenceTrail({ habit, period, from, to }: { readonly habit: Habit; readonly period: HabitPeriod; readonly from: Date; readonly to: Date }) {
+function HabitEmptyIllustration() {
+  const filled = new Set([0, 1, 3]);
+  return (
+    <svg className="habits-empty-art" viewBox="0 0 148 64" aria-hidden="true">
+      <rect className="art-card" x="0.5" y="12.5" width="147" height="39" rx="9.5" />
+      {Array.from({ length: 7 }, (_, index) => (
+        <rect
+          key={index}
+          className={filled.has(index) ? "art-day is-done" : index === 4 ? "art-day is-today" : "art-day"}
+          x={12 + index * 18}
+          y={25}
+          width={14}
+          height={14}
+          rx={4}
+        />
+      ))}
+      <circle className="art-badge" cx="130" cy="14" r="11" />
+      <path className="art-check" d="m125 14 3.4 3.4 6.6-6.8" />
+    </svg>
+  );
+}
+
+type WeekCellState = "done" | "missed" | "upcoming" | "open" | "off";
+
+function HabitWeekStrip({ habit, days, reference }: { readonly habit: Habit; readonly days: Date[]; readonly reference: Date }) {
   const { t, lang } = useI18n();
-  if (period === "today" || period === "all") return null;
-  const occurrences = habitOccurrenceDates(habit, from, to);
-  if (!occurrences.length) return null;
-  const completedDates = new Set(habit.completedDates ?? []);
+  const today = dateKey(reference);
+  const scheduled = new Set(habitOccurrenceDates(habit, days[0], days[days.length - 1]));
+  const completed = new Set(habit.completedDates ?? []);
+  const cells = days.map((day) => {
+    const key = dateKey(day);
+    let state: WeekCellState = "off";
+    if (completed.has(key)) state = "done";
+    else if (scheduled.has(key)) state = key < today ? "missed" : key === today ? "open" : "upcoming";
+    return { day, key, state, isToday: key === today };
+  });
+  const scheduledCount = cells.filter((cell) => cell.state !== "off").length;
+  const doneCount = cells.filter((cell) => cell.state === "done").length;
+  const dayFormat = new Intl.DateTimeFormat(lang, { weekday: "long", day: "numeric", month: "short" });
 
-  if (period === "week") {
-    return (
-      <div className="habit-occurrence-trail" aria-label={t("habits.view.scheduledWeek")}>
-        {occurrences.map((occurrence) => {
-          const occurrenceDate = dateFromKey(occurrence);
-          return (
-            <span className={`habit-occurrence-chip ${completedDates.has(occurrence) ? "is-complete" : ""}`} key={occurrence} title={occurrence}>
-              {new Intl.DateTimeFormat(lang, { weekday: "short" }).format(occurrenceDate)} {occurrenceDate.getDate()}
-            </span>
-          );
-        })}
-      </div>
-    );
-  }
-
-  const completed = occurrences.filter((occurrence) => completedDates.has(occurrence)).length;
-  return <span className="habit-month-progress">{t("habits.view.monthProgress", { completed, total: occurrences.length })}</span>;
+  return (
+    <ol className="habit-week" role="img" aria-label={`${t("habits.week.label")} · ${t("habits.week.progress", { completed: doneCount, scheduled: scheduledCount })}`}>
+      {cells.map(({ day, key, state, isToday }) => (
+        <li key={key} className={`habit-week-cell is-${state} ${isToday ? "is-today" : ""}`} title={dayFormat.format(day)} />
+      ))}
+    </ol>
+  );
 }
 
 function checkAccessibilityLabel(habitTitle: string, isSaving: boolean, checkVisible: boolean, t: TFn): string {
   if (isSaving) return t("habits.card.savingTitle", { title: habitTitle });
   if (checkVisible) return t("habits.card.markIncompleteTitle", { title: habitTitle });
   return t("habits.card.markCompleteTitle", { title: habitTitle });
-}
-
-function cardStatusLabel(isSettling: boolean, isSaving: boolean, habit: Habit, reference: Date, t: TFn): string {
-  if (isSettling) return t("habits.card.saved");
-  if (isSaving) return t("habits.card.saving");
-  return statusLabelFor(habit, reference, t);
 }
 
 type HabitCardActionsProps = {
@@ -474,7 +581,7 @@ async function runGuarded(action: () => Promise<void>, onError: (message: string
   }
 }
 
-function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, onChange, onDelete, onEdit, onVisualCompletionStart, onVisualCompletionFailure, order }: HabitCardProps) {
+function HabitCard({ habit, reference, period, from, to, weekDays, streak, snapshot, onComplete, onChange, onDelete, onEdit, onVisualCompletionStart, onVisualCompletionFailure, order }: HabitCardProps) {
   const { t, tp, lang } = useI18n();
   const status = habitStatus(habit, reference);
   const today = dateKey(reference);
@@ -543,31 +650,46 @@ function HabitCard({ habit, reference, period, from, to, snapshot, onComplete, o
 
   const disabled = isSaving || actionBusy || isSettling;
   const checkVisible = checkedToday || isSettlingDateComplete;
-  const statusLabel = cardStatusLabel(isSettling, isSaving, habit, reference, t);
+  const nextOccurrence = status === "upcoming"
+    ? habitOccurrenceDates(habit, startOfDay(reference), new Date(startOfDay(reference).getTime() + 370 * DAY_MS))[0]
+    : undefined;
+  const monthOccurrences = period === "month" ? habitOccurrenceDates(habit, from, to) : [];
+  const monthDone = monthOccurrences.filter((occurrence) => completedDates.has(occurrence)).length;
+
+  let chip: { tone: string; label: string } | null = null;
+  if (isSettling) chip = { tone: "saved", label: t("habits.card.saved") };
+  else if (isSaving) chip = { tone: "saving", label: t("habits.card.saving") };
+  else if (status === "overdue") chip = { tone: "overdue", label: t("habits.card.statusOverdue") };
 
   return (
-    <article className={`habit-card habit-${status} ${isSettling ? "is-completing" : ""}`}>
+    <article className={`habit-card habit-${status} ${checkVisible ? "is-checked" : ""} ${isSettling ? "is-completing" : ""}`}>
       <span className="habit-check-wrap">
-        <button className={`complete-button habit-check ${checkVisible ? "checked" : ""}`} type="button" aria-label={checkAccessibilityLabel(habit.title, isSaving, checkVisible, t)} onClick={() => void complete()} disabled={disabled || !completionDate}>
-          <Icon name="check" aria-hidden="true" />
+        <button className={`habit-check ${checkVisible ? "checked" : ""}`} type="button" aria-label={checkAccessibilityLabel(habit.title, isSaving, checkVisible, t)} onClick={() => void complete()} disabled={disabled || !completionDate}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.6 8.4 2.9 2.9 5.9-6.1" pathLength={1} /></svg>
         </button>
         <CompletionBurst trigger={burst} />
       </span>
       <div className="habit-card-content">
         <div className="habit-card-heading">
           <h3>{habit.title}</h3>
-          <span className={`habit-status status-${status} ${isSettling ? "is-saved" : ""}`}>{statusLabel}</span>
+          {chip && <span className={`habit-status status-${chip.tone}`}>{chip.label}</span>}
         </div>
         <div className="habit-meta">
           <span className="habit-schedule-label">{scheduleLabelFor(habit, t, tp, lang)}</span>
-          {habit.timeOfDay && <span className="habit-time"><Icon name="clock" /> {habit.timeOfDay}</span>}
-          {habit.endDate && <span className="habit-end-date">{t("habits.card.until", { date: habit.endDate })}</span>}
-          {habit.important && <span className="habit-flag important"><Icon name="star" /> {t("habits.card.important")}</span>}
-          {habit.urgent && <span className="habit-flag urgent"><Icon name="bolt" /> {t("habits.card.urgent")}</span>}
+          {habit.timeOfDay && <span className="habit-time"><Icon name="clock" aria-hidden="true" /><span>{habit.timeOfDay}</span></span>}
+          {nextOccurrence && <span className="habit-next">{t("habits.card.nextOn", { date: formatShortDate(nextOccurrence, lang) })}</span>}
+          {status === "upcoming" && !nextOccurrence && <span className="habit-next">{t("habits.card.statusUpcoming")}</span>}
+          {status === "ended" && <span className="habit-next">{t("habits.card.statusEnded")}</span>}
+          {habit.endDate && status !== "ended" && <span className="habit-end-date">{t("habits.card.until", { date: formatShortDate(habit.endDate, lang) })}</span>}
+          {monthOccurrences.length > 0 && <span className="habit-month-progress">{t("habits.view.monthProgress", { completed: monthDone, total: monthOccurrences.length })}</span>}
         </div>
-        <HabitOccurrenceTrail habit={habit} period={period} from={from} to={to} />
         {error && <p className="habit-card-error" role="alert">{error}</p>}
       </div>
+      <HabitWeekStrip habit={habit} days={weekDays} reference={reference} />
+      <span className={`habit-streak ${streak > 0 ? "is-active" : ""}`} role="img" title={t("habits.card.streak", { count: streak })} aria-label={t("habits.card.streak", { count: streak })}>
+        <Icon name="trending-up" aria-hidden="true" />
+        <span>{streak}</span>
+      </span>
       <HabitCardActions
         habit={habit}
         disabled={disabled}

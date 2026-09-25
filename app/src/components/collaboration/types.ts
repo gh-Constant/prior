@@ -79,7 +79,7 @@ export type ProjectSharingProps = {
   onCopyLink?: () => void;
 };
 export type ProjectCollaborationProps = {
-  project: Pick<Project, "id" | "name" | "description" | "status" | "icon">;
+  project: Pick<Project, "id" | "name" | "description" | "status" | "icon"> & Partial<Pick<Project, "projectType" | "targetDate" | "health">>;
   issues: readonly ProjectIssue[];
   states: readonly WorkflowState[];
   cycles: readonly ProjectCycle[];
@@ -87,7 +87,8 @@ export type ProjectCollaborationProps = {
   overview?: ProjectOverview;
   loading?: boolean;
   readOnly?: boolean;
-  onCreateIssue?: () => void;
+  /** Creates an issue, optionally directly in a workflow state (board column). */
+  onCreateIssue?: (stateId?: string) => void;
   onEditProject?: () => void;
   onMoveIssue?: (issueId: string, stateId: string) => Promise<void>;
   onCreateCycle?: () => void;

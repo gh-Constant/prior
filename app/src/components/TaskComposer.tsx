@@ -21,17 +21,35 @@ const PRIORITY_COLORS: Record<number, string> = {
   4: "#888888",
 };
 
-type Props = { readonly task?: Task; readonly areas?: Area[]; readonly projects?: Project[]; readonly initialContext?: Pick<TaskDraft, "areaId" | "projectId" | "status">; readonly planning?: TaskPlanningProps; readonly onProjectChange?: (projectId: string | null) => void; readonly onSave: (input: TaskDraft) => Promise<void>; readonly onCancel: () => void };
+/** Preset fields for a new task (project, status group, matrix quadrant). */
+export type TaskComposerContext = Pick<TaskDraft, "areaId" | "projectId" | "status"> & Partial<Pick<TaskDraft, "important" | "urgent">>;
 
-export function TaskComposer({ task, areas = [], projects = [], initialContext, planning, onProjectChange, onSave, onCancel }: Props) {
+export type TaskComposerSaveOptions = { readonly keepOpen: boolean };
+
+type Props = {
+  readonly task?: Task;
+  readonly areas?: Area[];
+  readonly projects?: Project[];
+  readonly initialContext?: TaskComposerContext;
+  readonly planning?: TaskPlanningProps;
+  readonly onProjectChange?: (projectId: string | null) => void;
+  /** Shows the "Create more" switch; the parent keeps the sheet open when `keepOpen` is set. */
+  readonly allowCreateMore?: boolean;
+  readonly onSave: (input: TaskDraft, options?: TaskComposerSaveOptions) => Promise<void>;
+  readonly onCancel: () => void;
+};
+
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform);
+
+export function TaskComposer({ task, areas = [], projects = [], initialContext, planning, onProjectChange, allowCreateMore = false, onSave, onCancel }: Props) {
   const { t, lang } = useI18n();
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
   const [dueTime, setDueTime] = useState(task?.dueTime ?? null);
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 4);
-  const [important, setImportant] = useState(task?.important ?? false);
-  const [urgent, setUrgent] = useState(task?.urgent ?? false);
+  const [important, setImportant] = useState(task?.important ?? initialContext?.important ?? false);
+  const [urgent, setUrgent] = useState(task?.urgent ?? initialContext?.urgent ?? false);
   const [areaId, setAreaId] = useState(task?.areaId ?? initialContext?.areaId ?? null);
   const [projectId, setProjectId] = useState(task?.projectId ?? initialContext?.projectId ?? planning?.fields.find((field) => field.key === "project")?.selectedIds[0] ?? null);
 
@@ -66,6 +84,10 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
       ?? (plannedStatus as TaskStatus | undefined);
     return explicit ?? "next";
   });
+  // The creation context a "Create more" reset returns to.
+  const initialDraft = useRef({ status, projectId, areaId });
+  const [createMore, setCreateMore] = useState(false);
+  const refocusAfterSave = useRef(false);
   const [assigneeName, setAssigneeName] = useState(task?.assigneeName ?? "");
   const [followUpDate, setFollowUpDate] = useState(task?.followUpDate ?? "");
   const [followUpTime, setFollowUpTime] = useState(task?.followUpTime ?? null);
@@ -94,7 +116,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const isAreaLocked = Boolean(initialContext?.areaId ?? (isProjectLocked ? lockedProject?.areaId : null));
   const isStatusLocked = Boolean(!task && initialContext?.status);
   const effectiveAreaId = areaId ?? (isAreaLocked ? initialContext?.areaId ?? lockedProject?.areaId ?? null : null);
-  const hasOptionalDetail = Boolean(description.trim() || assigneeName.trim() || followUpDate || important || urgent || (!isAreaLocked && areaId) || planningPeople.length || extraFields.some((field) => field.selectedIds.length > 0));
+  const hasOptionalDetail = Boolean(followUpDate || (!isAreaLocked && areaId) || planningPeople.length || extraFields.some((field) => field.selectedIds.length > 0));
   const parsedTitle = useMemo(() => parseTaskTitle(title, {
     lang,
     projects: isProjectLocked ? [] : projects,
@@ -203,26 +225,32 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     setSaving(true);
     setError("");
     setNotice("");
+    const keepOpen = allowCreateMore && !task && createMore;
     try {
-      await onSave({ title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null });
+      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null };
+      await (allowCreateMore ? onSave(draft, { keepOpen }) : onSave(draft));
       setNotice(task ? t("tasks.composer.saved") : t("tasks.composer.created"));
       if (!task) {
+        // Return to the creation context (project, area, status) so the next
+        // task in a "Create more" run lands in the same place.
+        const initial = initialDraft.current;
         setTitle("");
         setDescription("");
         setDueDate("");
         setDueTime(null);
         setPriority(4);
-        setImportant(false);
-        setUrgent(false);
-        setAreaId(null);
-        if (projectId) {
+        setImportant(initialContext?.important ?? false);
+        setUrgent(initialContext?.urgent ?? false);
+        setAreaId(initial.areaId);
+        if (projectId !== initial.projectId) {
           setPlanningPeople([]);
           peopleSource.current = planning?.people;
           awaitingProjectPeople.current = true;
-          onProjectChange?.(null);
+          onProjectChange?.(initial.projectId);
         }
-        setProjectId(null);
-        setStatus("next");
+        setProjectId(initial.projectId);
+        setStatus(initial.status);
+        refocusAfterSave.current = keepOpen;
         setAssigneeName("");
         setFollowUpDate("");
         setFollowUpTime(null);
@@ -237,27 +265,47 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     }
   }
 
+  // "Create more": once the save settles and the title is enabled again, keep typing.
+  useEffect(() => {
+    if (saving || !refocusAfterSave.current) return;
+    refocusAfterSave.current = false;
+    inputRef.current?.focus();
+  }, [saving]);
+
   function handleCancel(event: React.SyntheticEvent<HTMLDialogElement>) {
     event.preventDefault();
     if (!submitting.current) onCancel();
   }
+
+  function handleFormKeyDown(event: React.KeyboardEvent<HTMLFormElement>) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      void submit();
+    }
+  }
+
+  const submitLabel = saving ? t("tasks.composer.saving") : task ? t("tasks.composer.save") : t("tasks.composer.create");
+  const flagDisabled = saving || planningDisabled;
 
   return (
     <>
       <button type="button" className="modal-backdrop" aria-label={t("tasks.composer.closeDialog")} disabled={saving} onClick={onCancel} />
       <dialog ref={dialogRef} tabIndex={-1} className="modal composer-modal task-composer-modal" aria-labelledby="new-task-title" onCancel={handleCancel}>
         <div className="task-composer-grab-handle" aria-hidden="true" />
-        <form aria-busy={saving} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+        <form aria-busy={saving} onKeyDown={handleFormKeyDown} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <div className="modal-header">
-            <div className="task-composer-title-group">
-              <h2 id="new-task-title">{task ? t("tasks.composer.titleEdit") : t("tasks.composer.titleNew")}</h2>
+            <nav className="task-composer-breadcrumb" aria-label={t("tasks.composerPills.breadcrumb")}>
               {lockedProject && (
-                <span className="task-composer-context-badge">
-                  <Icon name="folder" />
-                  <span>{lockedProject.name}</span>
-                </span>
+                <>
+                  <span className="task-composer-context-badge">
+                    <Icon name="folder" />
+                    <span>{lockedProject.name}</span>
+                  </span>
+                  <Icon name="chevron-right" className="task-composer-breadcrumb-separator" aria-hidden="true" />
+                </>
               )}
-            </div>
+              <h2 id="new-task-title">{task ? t("tasks.composer.titleEdit") : t("tasks.composer.titleNew")}</h2>
+            </nav>
             <button type="button" className="icon-button" aria-label={t("tasks.composer.close")} disabled={saving} onClick={onCancel}>
               <Icon name="close" />
             </button>
@@ -280,26 +328,18 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                 placeholder={t("tasks.composer.titlePlaceholder")}
                 ariaLabel={t("tasks.composer.titleLabel")}
               />
+              <textarea
+                className="task-composer-desc-input"
+                value={description}
+                disabled={saving || planningDisabled}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder={t("tasks.composerPills.addDescription")}
+                aria-label={t("tasks.composer.descriptionLabel")}
+                rows={1}
+              />
             </div>
 
             <div className="task-composer-toolbar">
-              {!isProjectLocked && (
-                <CustomSelect
-                  ariaLabel={t("tasks.composer.project")}
-                  className="custom-select-pill"
-                  disabled={planningDisabled || saving}
-                  value={projectId ?? ""}
-                  onChange={(val) => changeProject(val ? String(val) : null)}
-                  options={[
-                    { value: "", label: t("tasks.composer.noProject"), icon: "folder" },
-                    ...[...projectOptions, ...extraProjects].map((project) => ({
-                      value: project.id,
-                      label: project.name,
-                      icon: "folder" as const,
-                    })),
-                  ]}
-                />
-              )}
               {!isStatusLocked && (
                 <CustomSelect
                   ariaLabel={t("tasks.composer.status")}
@@ -332,7 +372,56 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                   color: PRIORITY_COLORS[value],
                 }))}
               />
+              {!isProjectLocked && (
+                <CustomSelect
+                  ariaLabel={t("tasks.composer.project")}
+                  className="custom-select-pill"
+                  disabled={planningDisabled || saving}
+                  value={projectId ?? ""}
+                  onChange={(val) => changeProject(val ? String(val) : null)}
+                  options={[
+                    { value: "", label: t("tasks.composer.noProject"), icon: "folder" },
+                    ...[...projectOptions, ...extraProjects].map((project) => ({
+                      value: project.id,
+                      label: project.name,
+                      icon: "folder" as const,
+                    })),
+                  ]}
+                />
+              )}
               <DateTimePicker className="pill" value={dueDate} onChange={setDueDate} time={dueTime} onTimeChange={setDueTime} allowTime ariaLabel={t("tasks.composer.dueDate")} placeholder={t("tasks.composer.dueDate")} disabled={saving || planningDisabled} />
+              <button
+                type="button"
+                disabled={flagDisabled}
+                className={`task-composer-flag-btn ${important ? "selected important" : ""}`}
+                aria-pressed={important}
+                onClick={() => setImportant((value) => !value)}
+              >
+                <Icon name="star" />
+                <span>{t("tasks.composer.important")}</span>
+              </button>
+              <button
+                type="button"
+                disabled={flagDisabled}
+                className={`task-composer-flag-btn ${urgent ? "selected urgent" : ""}`}
+                aria-pressed={urgent}
+                onClick={() => setUrgent((value) => !value)}
+              >
+                <Icon name="bolt" />
+                <span>{t("tasks.composer.urgent")}</span>
+              </button>
+              <label className={`task-composer-assignee-pill ${assigneeName.trim() ? "has-value" : ""}`}>
+                <Icon name="user" aria-hidden="true" />
+                <input
+                  value={assigneeName}
+                  disabled={flagDisabled}
+                  onChange={(event) => setAssigneeName(event.target.value)}
+                  placeholder={t("tasks.composerPills.assign")}
+                  aria-label={t("tasks.composer.assignee")}
+                  size={Math.max(t("tasks.composerPills.assign").length, assigneeName.length + 1)}
+                  autoComplete="off"
+                />
+              </label>
             </div>
 
             <details className="task-composer-details">
@@ -341,18 +430,6 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                 <span>{hasOptionalDetail ? t("tasks.composer.moreOptionsSet") : t("tasks.composer.moreOptions")}</span>
               </summary>
               <div className="task-composer-details-content">
-                <div className="task-composer-input-field task-composer-field-full">
-                  <span>{t("tasks.composer.description")}</span>
-                  <textarea
-                    className="task-composer-desc-input"
-                    value={description}
-                    disabled={saving || planningDisabled}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder={t("tasks.composer.descriptionPlaceholder")}
-                    aria-label={t("tasks.composer.descriptionLabel")}
-                    rows={2}
-                  />
-                </div>
                 <div className="task-composer-details-row">
                   {!isAreaLocked && (
                     <div className="task-composer-input-field">
@@ -378,42 +455,9 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                     </div>
                   )}
                   <div className="task-composer-input-field">
-                    <span>{t("tasks.composer.assignee")}</span>
-                    <input
-                      value={assigneeName}
-                      disabled={saving || planningDisabled}
-                      onChange={(event) => setAssigneeName(event.target.value)}
-                      placeholder={t("tasks.composer.assigneePlaceholder")}
-                      aria-label={t("tasks.composer.assignee")}
-                    />
-                  </div>
-                  <div className="task-composer-input-field">
                     <span>{t("tasks.composer.followUp")}</span>
                     <DateTimePicker value={followUpDate} onChange={setFollowUpDate} time={followUpTime} onTimeChange={setFollowUpTime} allowTime ariaLabel={t("tasks.composer.followUp")} placeholder={t("tasks.composer.followUp")} disabled={saving || planningDisabled} />
                   </div>
-                </div>
-
-                <div className="task-composer-flags">
-                  <button
-                    type="button"
-                    disabled={saving || planningDisabled}
-                    className={`task-composer-flag-btn ${important ? "selected important" : ""}`}
-                    aria-pressed={important}
-                    onClick={() => setImportant((value) => !value)}
-                  >
-                    <Icon name="star" />
-                    <span>{t("tasks.composer.important")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={saving || planningDisabled}
-                    className={`task-composer-flag-btn ${urgent ? "selected urgent" : ""}`}
-                    aria-pressed={urgent}
-                    onClick={() => setUrgent((value) => !value)}
-                  >
-                    <Icon name="bolt" />
-                    <span>{t("tasks.composer.urgent")}</span>
-                  </button>
                 </div>
 
                 {planning && (
@@ -513,11 +557,25 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
           {error && <p className="task-composer-feedback task-composer-error" role="alert">{error}</p>}
           <p className="task-composer-feedback" role="status">{saving ? t("tasks.composer.savingStatus") : notice}</p>
           <div className="task-composer-footer">
+            {allowCreateMore && !task && (
+              <label className="task-composer-create-more">
+                <input type="checkbox" role="switch" checked={createMore} disabled={saving} onChange={(event) => setCreateMore(event.target.checked)} />
+                <span className="task-composer-switch" aria-hidden="true" />
+                <span>{t("tasks.composerPills.createMore")}</span>
+              </label>
+            )}
             <button type="button" className="secondary-button" disabled={saving} onClick={onCancel}>
               {t("tasks.composer.cancel")}
             </button>
-            <button className="primary-button" type="submit" disabled={!parsedTitle.cleanTitle.trim() || saving || planningDisabled}>
-              {saving ? t("tasks.composer.saving") : task ? t("tasks.composer.save") : t("tasks.composer.create")}
+            <button
+              className="primary-button"
+              type="submit"
+              aria-label={submitLabel}
+              aria-keyshortcuts={IS_MAC ? "Meta+Enter" : "Control+Enter"}
+              data-shortcut={IS_MAC ? "⌘ ↵" : "Ctrl ↵"}
+              disabled={!parsedTitle.cleanTitle.trim() || saving || planningDisabled}
+            >
+              {submitLabel}
             </button>
           </div>
         </form>

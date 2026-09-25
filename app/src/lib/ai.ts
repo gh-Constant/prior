@@ -76,10 +76,12 @@ export function getAgentSettings(): AgentSettings {
         const parsed = JSON.parse(raw) as Partial<AgentSettings>;
         return {
           apiKey: parsed.apiKey || "",
+          recommendationApiKey: parsed.recommendationApiKey || "",
+          recommendationModel: parsed.recommendationModel || DEFAULT_MODEL,
           transcriptionApiKey: parsed.transcriptionApiKey || "",
           model: parsed.model || DEFAULT_MODEL,
           codexModel: parsed.codexModel || "",
-          webSearch: false,
+          webSearch: parsed.webSearch === true,
           provider: parsed.provider === "codex" ? "codex" : "openrouter",
           reasoningEffort: normalizeReasoningEffort(parsed.reasoningEffort),
         };
@@ -88,7 +90,7 @@ export function getAgentSettings(): AgentSettings {
   } catch {
     // fallback below
   }
-  return { apiKey: "", transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: false, provider: "openrouter", reasoningEffort: "auto" };
+  return { apiKey: "", recommendationApiKey: "", recommendationModel: DEFAULT_MODEL, transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: false, provider: "openrouter", reasoningEffort: "auto" };
 }
 
 export function saveAgentSettings(settings: AgentSettings, localChange = true): void {
@@ -96,10 +98,10 @@ export function saveAgentSettings(settings: AgentSettings, localChange = true): 
     if (typeof localStorage !== "undefined") {
       const previous = getAgentSettings();
       const stored = JSON.parse(readScopedStorage(SETTINGS_KEY) ?? "{}") as { pendingId?: string };
-      const changedKeys = settings.apiKey !== previous.apiKey || settings.transcriptionApiKey !== previous.transcriptionApiKey || settings.webSearch !== previous.webSearch;
+      const changedKeys = settings.apiKey !== previous.apiKey || settings.recommendationApiKey !== previous.recommendationApiKey || settings.transcriptionApiKey !== previous.transcriptionApiKey || settings.webSearch !== previous.webSearch;
       const pendingId = localChange && changedKeys ? generateUuid() : stored.pendingId;
       writeScopedStorage(SETTINGS_KEY, JSON.stringify({ ...settings, pendingId }));
-      if (localChange) setAccountPreference("agent", { model: settings.model, codexModel: settings.codexModel ?? "", provider: settings.provider ?? "openrouter", reasoningEffort: settings.reasoningEffort ?? "auto" });
+      if (localChange) setAccountPreference("agent", { model: settings.model, recommendationModel: settings.recommendationModel || DEFAULT_MODEL, codexModel: settings.codexModel ?? "", provider: settings.provider ?? "openrouter", reasoningEffort: settings.reasoningEffort ?? "auto" });
     }
   } catch {
     console.warn("Prior assistant settings could not be saved.");
@@ -1036,13 +1038,13 @@ export type AskAgentStreamOptions = {
 };
 
 /** Shared provider/settings path for reviewable feature-specific drafts. */
-export async function draftWithAgent(system: string, prompt: string, settings: AgentSettings, sessionToken: string | null, signal: AbortSignal): Promise<string> {
+export async function draftWithAgent(system: string, prompt: string, settings: AgentSettings, sessionToken: string | null, signal: AbortSignal, purpose?: "recommendations"): Promise<string> {
   if (settings.provider === "codex") {
     return (await runCodexStream({ prompt, systemPrompt: system, history: [], model: settings.codexModel || null, reasoningEffort: reasoningEffortParam(settings) }, { signal })).text;
   }
   if (sessionToken) {
     try {
-      const response = await api.agentComplete({ model: settings.model || DEFAULT_MODEL, prompt, system, history: [], webSearch: false, reasoningEffort: reasoningEffortParam(settings) ?? undefined }, sessionToken);
+      const response = await api.agentComplete({ model: settings.model || DEFAULT_MODEL, prompt, system, history: [], webSearch: false, reasoningEffort: reasoningEffortParam(settings) ?? undefined, purpose }, sessionToken);
       signal.throwIfAborted();
       return response.content;
     } catch (error) {

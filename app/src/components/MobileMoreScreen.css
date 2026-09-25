@@ -1,0 +1,129 @@
+/* "More" screen: phone-only, sits between the workspace and the tab bar. */
+.mobile-more { display: none; }
+
+@media (max-width: 760px) {
+  .mobile-more {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: var(--mobile-tabbar-h);
+    left: 0;
+    z-index: 19;
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
+    background: var(--canvas);
+    animation: mobile-more-in 180ms var(--ease-out) both;
+  }
+
+  .mobile-more-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 4px 14px;
+  }
+
+  .mobile-more-header h1 {
+    margin: 0;
+    color: var(--ink);
+    font-size: 28px;
+    font-weight: 650;
+    letter-spacing: -.035em;
+    line-height: 1.15;
+  }
+
+  .mobile-more-header h1:focus { outline: none; }
+
+  .mobile-more-card {
+    margin: 0 0 14px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: var(--r-xl);
+    background: var(--panel);
+    box-shadow: var(--shadow-card);
+  }
+
+  .mobile-more-card ul { margin: 0; padding: 0; list-style: none; }
+  .mobile-more-card li + li { border-top: 1px solid var(--line-soft); }
+
+  .mobile-more-row,
+  .mobile-more-account {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    min-height: 54px;
+    padding: 0 14px 0 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink);
+    font-size: 15px;
+    text-align: left;
+  }
+
+  .mobile-more-row:active,
+  .mobile-more-account:active { scale: 1; background: var(--hover); }
+  .mobile-more-row:focus-visible,
+  .mobile-more-account:focus-visible { outline-offset: -2px; }
+
+  .mobile-more-icon {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--surface-2);
+    color: var(--ink-2);
+  }
+
+  .mobile-more-icon svg { width: 16px; height: 16px; }
+  .mobile-more-row[aria-current="page"] .mobile-more-icon { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-dark); }
+
+  .mobile-more-label { min-width: 0; flex: 1; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-more-badge { flex: 0 0 auto; color: var(--faint); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+  .mobile-more-chevron { width: 15px; height: 15px; flex: 0 0 auto; color: var(--faint); }
+
+  .mobile-more-account { gap: 12px; min-height: 68px; padding-top: 12px; padding-bottom: 12px; }
+  .mobile-more-sync { border-bottom: 1px solid var(--line-soft); }
+  .mobile-more-sync > svg { width: 18px; height: 18px; color: var(--muted); }
+  .mobile-more-sync.has-issue, .mobile-more-sync.has-issue > svg { color: var(--red); }
+  .mobile-more-account + .mobile-more-row { border-top: 1px solid var(--line-soft); }
+
+  .mobile-more-avatar {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .mobile-more-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .mobile-more-avatar svg { width: 17px; height: 17px; }
+
+  .mobile-more-account-text { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+  .mobile-more-account-text strong { overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-more-account-text small { overflow: hidden; color: var(--muted); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
+
+  .mobile-more-settings { min-height: 52px; }
+  .mobile-more-settings-icon { width: 18px; height: 18px; margin: 0 7px 0 1px; color: var(--ink-2); }
+}
+
+@keyframes mobile-more-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-more { animation: fade-in 150ms ease both; }
+}

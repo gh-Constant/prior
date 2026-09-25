@@ -27,4 +27,17 @@ export const mail = {
   tags: { title: "Labels", apply: "Anwenden", remove: "Entfernen", empty: "Noch keine Labels" },
   ai: { generating: "Aufgabe wird erstellt…", failed: "Aus dieser E-Mail konnte keine Aufgabe erstellt werden." },
   toasts: { archived: "Unterhaltung archiviert", unarchived: "In den Posteingang verschoben", deleted: "In den Papierkorb verschoben", updated: "Aktualisiert", updateFailed: "Nachricht konnte nicht aktualisiert werden", newMail: "{count} neue Nachricht", newMail_plural: "{count} neue Nachrichten", connected: "Gmail verbunden als {email}", taskCreated: "Aufgabe aus E-Mail erstellt" },
+  view: {
+    folderNav: "Mail-Ordner", listLabel: "Nachrichten", filterLabel: "Anzeigen", filterAll: "Alle", filterUnread: "Ungelesen",
+    unread: "Ungelesen", unreadCount: "{count} ungelesen", unreadCount_plural: "{count} ungelesen", noUnread: "Hier gibt es keine ungelesenen E-Mails.",
+    searchOpen: "E-Mails durchsuchen", searchClose: "Suche schließen", account: "Gmail-Konto", more: "Weitere Optionen",
+    selectedCount: "{count} ausgewählt", selectedCount_plural: "{count} ausgewählt", doneSelecting: "Fertig",
+    createTask: "Aufgabe erstellen", attachments: "Enthält Anhänge", loading: "Nachrichten werden geladen",
+    taskCard: {
+      title: "In eine Aufgabe umwandeln",
+      body: "Prior Agent liest diese E-Mail und entwirft eine Aufgabe: Titel, Fälligkeit und Priorität. Du prüfst sie, bevor etwas gespeichert wird.",
+      action: "Mit Prior Agent entwerfen", drafting: "Prior Agent entwirft…",
+    },
+    emptyReader: { title: "Keine Nachricht ausgewählt", body: "Wähle eine Nachricht aus, um sie zu lesen. Was zu tun ist, wird mit einem Klick zur Aufgabe." },
+  },
 };

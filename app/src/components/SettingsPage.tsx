@@ -1,14 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { DEFAULT_MODEL, getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
 import { clearCachedCodexAccount, codexBinaryAvailable, getCachedCodexAccount, logoutCodex, setCachedCodexAccount, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
 import type { AgentProvider } from "../types";
 import { getToken, type SessionUser } from "../lib/auth";
 import { api } from "../lib/api";
 import { pullAssistantSettings, pushAssistantSettings } from "../lib/settingsSync";
-import { getAndroidAppVersion, supportsAndroidUpdates } from "../lib/androidUpdater";
-import { getAppVersion, supportsDesktopUpdates } from "../lib/updater";
-import { UpdateCards } from "./UpdateCards";
-import { Icon } from "./Icon";
+import { UpdateControl, useAppUpdate } from "./UpdateControl";
+import { Icon, type IconName } from "./Icon";
 import { LANGUAGES, useI18n, type Language } from "../lib/i18n";
 import { EditableAvatar, IconUpload } from "./IconPicker";
 import { CustomSelect } from "./CustomSelect";
@@ -16,7 +14,7 @@ import { logger } from "../lib/logger";
 import { localStore } from "../lib/localStore";
 import "./SettingsPage.css";
 
-type SettingsTab = "general" | "profile" | "assistant";
+type SettingsTab = "general" | "profile" | "assistant" | "diagnostics" | "developer";
 
 type SettingsPageProps = {
   readonly user: SessionUser | null;
@@ -38,235 +36,96 @@ async function fetchLatestReleaseVersion(): Promise<string | null> {
   }
 }
 
-function DevSeedPanel() {
-  if (!import.meta.env.DEV) return null;
-  return <DevSeedPanelInner />;
-}
+/* ── Layout primitives: titled sections of bordered cards made of rows ── */
 
-function DevSeedPanelInner() {
-  const { t, tp } = useI18n();
-  const [status, setStatus] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function run(action: "load" | "reset") {
-    if (busy) return;
-    setBusy(true);
-    setStatus(null);
-    try {
-      const seed = await import("../lib/devSeed");
-      if (action === "reset") {
-        await seed.clearDevSeedData({ dev: true });
-      }
-      const result = await seed.seedDevDataIfEmpty({ dev: true, force: true, requireAnonymous: false });
-      if (result.seeded) {
-        setStatus(t("settings.devSeed.ready", {
-          tasks: tp("settings.devSeed.tasks", result.tasks),
-          projects: tp("settings.devSeed.projects", result.projects),
-        }));
-        window.setTimeout(() => window.location.reload(), 600);
-      } else {
-        setStatus(t("settings.devSeed.skipped", { reason: result.reason }));
-      }
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : t("settings.devSeed.loadFailed"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
+function SettingsSection({ title, children, footer }: { readonly title: string; readonly children: ReactNode; readonly footer?: ReactNode }) {
+  const headingId = useId();
   return (
-    <section className="settings-codex" aria-label={t("settings.devSeed.ariaLabel")}>
-      <div className="settings-codex-heading">
-        <div className="settings-codex-icon"><Icon name="sparkles" /></div>
-        <div>
-          <div className="settings-codex-title"><strong>{t("settings.devSeed.title")}</strong><span>{t("settings.devSeed.badge")}</span></div>
-          <p>{t("settings.devSeed.description")}</p>
-        </div>
+    <section className="settings-section" aria-labelledby={headingId}>
+      <h2 id={headingId} className="settings-section-title">{title}</h2>
+      <div className="settings-group">
+        {children}
+        {footer && <div className="settings-group-footer">{footer}</div>}
       </div>
-      <div className="settings-page-row">
-        <button type="button" className="secondary-button" disabled={busy} onClick={() => void run("load")}>
-          {busy ? t("settings.devSeed.loading") : t("settings.devSeed.load")}
-        </button>
-        <button type="button" className="secondary-button" disabled={busy} onClick={() => void run("reset")}>
-          {t("settings.devSeed.reset")}
-        </button>
-      </div>
-      {status && <p className="settings-hint" role="status">{status}</p>}
     </section>
   );
 }
 
-function DiagnosticsPanel() {
-  const { t } = useI18n();
-  const [logs, setLogs] = useState(() => logger.getEntries());
-  const [showLogs, setShowLogs] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [syncState, setSyncState] = useState<{ revision: number; pendingCount: number } | null>(null);
+type SettingsRowProps = {
+  readonly label: ReactNode;
+  readonly description?: ReactNode;
+  /** Associates the label with a form control inside the row. */
+  readonly htmlFor?: string;
+  /** Control spans the full width under the text (long inputs, log viewers). */
+  readonly stacked?: boolean;
+  readonly children?: ReactNode;
+};
 
-  useEffect(() => {
-    return logger.subscribe(() => {
-      setLogs(logger.getEntries());
-    });
-  }, []);
-
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      try {
-        const [state, pending] = await Promise.all([
-          localStore.getSyncState(),
-          localStore.pendingMutations(),
-        ]);
-        if (live) {
-          setSyncState({
-            revision: state.lastServerRevision,
-            pendingCount: pending.length,
-          });
-        }
-      } catch {
-        // Safe to ignore in settings preview
-      }
-    })();
-    return () => { live = false; };
-  }, []);
-
-  async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(logger.getLogText());
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback
-    }
-  }
-
-  function handleDownload() {
-    void logger.openLogFile();
-  }
-
-  function handleClear() {
-    logger.clear();
-    setLogs([]);
-  }
-
+function SettingsRow({ label, description, htmlFor, stacked = false, children }: SettingsRowProps) {
   return (
-    <section className="settings-diagnostics" aria-label={t("settings.diagnostics.title")}>
-      <div className="settings-diagnostics-heading">
-        <div className="settings-diagnostics-icon"><Icon name="terminal" /></div>
-        <div>
-          <div className="settings-diagnostics-title">
-            <strong>{t("settings.diagnostics.title")}</strong>
-          </div>
-          <p>{t("settings.diagnostics.description")}</p>
-        </div>
+    <div className={`settings-row ${stacked ? "is-stacked" : ""}`}>
+      <div className="settings-row-text">
+        {htmlFor ? <label className="settings-row-label" htmlFor={htmlFor}>{label}</label> : <div className="settings-row-label">{label}</div>}
+        {description && <div className="settings-row-description">{description}</div>}
       </div>
-
-      {syncState && (
-        <div className="settings-diagnostics-meta">
-          <span>{t("settings.diagnostics.lastSyncRevision", { revision: syncState.revision })}</span>
-          <span>{t("settings.diagnostics.pendingMutations", { count: syncState.pendingCount })}</span>
-        </div>
-      )}
-
-      <div className="settings-page-row">
-        <button type="button" className="secondary-button" onClick={handleDownload}>
-          <Icon name="download" /> {t("settings.diagnostics.downloadLog")}
-        </button>
-        <button type="button" className="secondary-button" onClick={() => void handleCopy()}>
-          <Icon name="clipboard" /> {copied ? t("settings.diagnostics.copied") : t("settings.diagnostics.copyLogs")}
-        </button>
-        {logs.length > 0 && (
-          <button type="button" className="secondary-button settings-diagnostics-clear" onClick={handleClear}>
-            {t("settings.diagnostics.clearLogs")}
-          </button>
-        )}
-      </div>
-
-      <div className="settings-diagnostics-viewer-toggle">
-        <button
-          type="button"
-          onClick={() => setShowLogs(!showLogs)}
-        >
-          {showLogs
-            ? t("settings.diagnostics.hideLogs")
-            : t("settings.diagnostics.showLogs", { count: logs.length })}
-        </button>
-      </div>
-
-      {showLogs && (
-        <div className="settings-diagnostics-viewer" role="region" aria-label="Recent Logs">
-          {logs.length === 0 ? (
-            <p className="settings-diagnostics-empty">{t("settings.diagnostics.empty")}</p>
-          ) : (
-            <pre className="settings-diagnostics-logs">
-              {logs.slice(-50).map((log) => (
-                <div key={log.id} className={`settings-log-line settings-log-${log.level}`}>
-                  <span className="settings-log-time">{log.timestamp.slice(11, 19)}</span>
-                  <span className="settings-log-level">[{log.level.toUpperCase()}]</span>
-                  <span className="settings-log-cat">[{log.category}]</span>
-                  <span className="settings-log-msg">{log.message}</span>
-                  {log.details && <span className="settings-log-data"> {log.details}</span>}
-                </div>
-              ))}
-            </pre>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function GeneralSettings() {
-  const { t, lang, setLang } = useI18n();
-  const [version, setVersion] = useState<string | null>(null);
-  const [latest, setLatest] = useState<string | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      try {
-        const detected = supportsDesktopUpdates()
-          ? await getAppVersion()
-          : supportsAndroidUpdates()
-            ? await getAndroidAppVersion()
-            : null;
-        if (live) setVersion(detected);
-      } catch {
-        if (live) setVersion(null);
-      }
-      // Web builds have no bundled version: show the latest published one.
-      if (live && !supportsDesktopUpdates() && !supportsAndroidUpdates()) {
-        setLatest(await fetchLatestReleaseVersion());
-      }
-    })();
-    return () => { live = false; };
-  }, []);
-
-  const versionLabel = version ? `v${version}` : latest ?? t("settings.general.webApp");
-  return (
-    <div className="settings-general">
-      <div className="settings-version-row">
-        <label htmlFor="settings-language-select">{t("settings.language.label")}</label>
-        <div className="settings-language-select-wrap">
-          <CustomSelect
-            id="settings-language-select"
-            ariaLabel={t("settings.language.label")}
-            value={lang}
-            onChange={(next) => setLang(next as Language)}
-            options={LANGUAGES.map((entry) => ({ value: entry.code, label: entry.nativeName }))}
-          />
-        </div>
-      </div>
-      <div className="settings-version-row">
-        <span>{t("settings.general.version")}</span>
-        <strong>{versionLabel}{!version && latest ? t("settings.general.latestSuffix") : ""}</strong>
-      </div>
-      <UpdateCards />
-      <DiagnosticsPanel />
-      <DevSeedPanel />
+      {children !== undefined && children !== null && children !== false && <div className="settings-row-control">{children}</div>}
     </div>
   );
 }
+
+/* ── General ── */
+
+function GeneralSettings() {
+  const { t, lang, setLang } = useI18n();
+  const update = useAppUpdate();
+  const [latest, setLatest] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Web builds have no bundled version: show the latest published one.
+    if (update.channel) return undefined;
+    let live = true;
+    void fetchLatestReleaseVersion().then((version) => { if (live) setLatest(version); });
+    return () => { live = false; };
+  }, [update.channel]);
+
+  let versionDescription: ReactNode;
+  if (!update.channel) {
+    versionDescription = latest ? t("settings.layout.versionWeb", { version: latest }) : t("settings.general.webApp");
+  } else {
+    const parts = [update.version ? t("settings.layout.versionDesktop", { version: update.version }) : null];
+    if (update.state === "available" && update.nextVersion) parts.push(t("settings.layout.updateAvailable", { version: update.nextVersion }));
+    if (update.state === "error") parts.push(t("settings.layout.checkFailed"));
+    versionDescription = <>
+      {parts.filter(Boolean).join(" · ")}
+      {update.channel === "android" && update.state === "available" && <span className="settings-row-note">{t("settings.updates.apkHint")}</span>}
+    </>;
+  }
+
+  return (
+    <>
+      <SettingsSection title={t("settings.layout.languageRegion")}>
+        <SettingsRow label={t("settings.language.label")} description={t("settings.layout.languageHint")}>
+          <div className="settings-select">
+            <CustomSelect
+              id="settings-language-select"
+              ariaLabel={t("settings.language.label")}
+              value={lang}
+              onChange={(next) => setLang(next as Language)}
+              options={LANGUAGES.map((entry) => ({ value: entry.code, label: entry.nativeName }))}
+            />
+          </div>
+        </SettingsRow>
+      </SettingsSection>
+      <SettingsSection title={t("settings.layout.application")}>
+        <SettingsRow label={t("settings.general.version")} description={versionDescription}>
+          <UpdateControl update={update} />
+        </SettingsRow>
+      </SettingsSection>
+    </>
+  );
+}
+
+/* ── Profile & account ── */
 
 function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
   const { t } = useI18n();
@@ -304,7 +163,11 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
   }
 
   if (!user) {
-    return <p className="settings-hint">{t("settings.profile.signInHint")}</p>;
+    return (
+      <SettingsSection title={t("settings.layout.profile")}>
+        <SettingsRow label={t("settings.profile.fallbackName")} description={t("settings.profile.signInHint")} />
+      </SettingsSection>
+    );
   }
 
   function focusAvatarUpload() {
@@ -313,65 +176,73 @@ function ProfileSettings({ user, onUserUpdated }: SettingsPageProps) {
 
   return (
     <form className="settings-profile" onSubmit={(event) => void handleSave(event)}>
-      <div className="settings-profile-summary">
-        <EditableAvatar
-          person={{ id: user.id, name: user.displayName || user.email, avatarUrl: user.avatarUrl }}
-          canEdit
-          label={t("settings.profile.avatarLabel")}
-          className="settings-profile-avatar-wrap"
-          avatarClassName="settings-profile-avatar"
-          onOpen={focusAvatarUpload}
-        />
-        <div>
-          <strong>{user.displayName || t("settings.profile.fallbackName")}</strong>
-          <span>{user.email}</span>
-        </div>
-      </div>
-      <div className="settings-page-field">
-        <span>{t("settings.profile.photoLabel")}</span>
-        <IconUpload
-          currentIcon={user.avatarUrl || "user"}
-          fallback="user"
-          disabled={avatarBusy}
-          onBusyChange={setAvatarBusy}
-          onUploaded={(avatarUrl) => onUserUpdated({ ...user, avatarUrl })}
-        />
-      </div>
-      <label className="settings-page-field">
-        <span>{t("settings.profile.usernameLabel")}</span>
-        <div className="field">
-          <Icon name="user" />
-          <input
-            value={username}
-            onChange={(event) => { setUsername(event.target.value); setSaved(false); setError(null); }}
-            minLength={1}
-            maxLength={80}
-            required
-            autoComplete="nickname"
-            placeholder={t("settings.profile.usernamePlaceholder")}
+      <SettingsSection
+        title={t("settings.layout.profile")}
+        footer={<>
+          <button type="submit" className="primary-button" disabled={saving || !username.trim()}>
+            {saving ? t("settings.common.saving") : t("settings.profile.save")}
+          </button>
+          {saved && <span className="settings-saved" role="status">{t("settings.common.saved")}</span>}
+          {error && <p className="settings-error" role="alert">{error}</p>}
+        </>}
+      >
+        <div className="settings-row settings-profile-summary">
+          <EditableAvatar
+            person={{ id: user.id, name: user.displayName || user.email, avatarUrl: user.avatarUrl }}
+            canEdit
+            label={t("settings.profile.avatarLabel")}
+            className="settings-profile-avatar-wrap"
+            avatarClassName="settings-profile-avatar"
+            onOpen={focusAvatarUpload}
           />
+          <div>
+            <strong>{user.displayName || t("settings.profile.fallbackName")}</strong>
+            <span>{user.email}</span>
+          </div>
         </div>
-      </label>
-      <div className="settings-page-row">
-        <button type="submit" className="primary-button" disabled={saving || !username.trim()}>
-          {saving ? t("settings.common.saving") : t("settings.profile.save")}
-        </button>
-        {saved && <span className="settings-saved" role="status">{t("settings.common.saved")}</span>}
-      </div>
-      {error && <p className="settings-error" role="alert">{error}</p>}
+        <SettingsRow label={t("settings.profile.photoLabel")} description={t("settings.layout.photoHint")}>
+          <IconUpload
+            currentIcon={user.avatarUrl || "user"}
+            fallback="user"
+            disabled={avatarBusy}
+            onBusyChange={setAvatarBusy}
+            onUploaded={(avatarUrl) => onUserUpdated({ ...user, avatarUrl })}
+          />
+        </SettingsRow>
+        <SettingsRow label={t("settings.profile.usernameLabel")} description={t("settings.layout.usernameHint")} htmlFor="settings-username">
+          <div className="field settings-field">
+            <input
+              id="settings-username"
+              value={username}
+              onChange={(event) => { setUsername(event.target.value); setSaved(false); setError(null); }}
+              minLength={1}
+              maxLength={80}
+              required
+              autoComplete="nickname"
+              placeholder={t("settings.profile.usernamePlaceholder")}
+            />
+          </div>
+        </SettingsRow>
+      </SettingsSection>
     </form>
   );
 }
 
+/* ── Prior Agent ── */
+
 function AssistantSettings() {
   const { t } = useI18n();
   const [apiKey, setApiKey] = useState(() => getAgentSettings().apiKey);
+  const [recommendationApiKey, setRecommendationApiKey] = useState(() => getAgentSettings().recommendationApiKey ?? "");
+  const [recommendationModel, setRecommendationModel] = useState(() => getAgentSettings().recommendationModel || DEFAULT_MODEL);
   const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => getAgentSettings().transcriptionApiKey);
   const [provider, setProvider] = useState<AgentProvider>(() => getAgentSettings().provider ?? "openrouter");
   const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
+  const [showRecommendationKey, setShowRecommendationKey] = useState(false);
   const [showTranscriptionKey, setShowTranscriptionKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savePending, setSavePending] = useState(false);
   const settingsDirtyRef = useRef(false);
 
   // The key follows the account: pull the shared copy when signed in.
@@ -388,6 +259,8 @@ function AssistantSettings() {
           }
           const current = getAgentSettings();
           setApiKey(current.apiKey);
+          setRecommendationApiKey(current.recommendationApiKey ?? "");
+          setRecommendationModel(current.recommendationModel || DEFAULT_MODEL);
           setTranscriptionApiKey(current.transcriptionApiKey);
           setProvider(current.provider ?? "openrouter");
         }
@@ -399,14 +272,22 @@ function AssistantSettings() {
     if (saving) return;
     setSaving(true);
     const current = getAgentSettings();
-    const updated = { ...current, apiKey: apiKey.trim(), transcriptionApiKey: transcriptionApiKey.trim() };
+    const updated = { ...current, apiKey: apiKey.trim(), recommendationApiKey: recommendationApiKey.trim(), recommendationModel: recommendationModel.trim() || DEFAULT_MODEL, transcriptionApiKey: transcriptionApiKey.trim() };
     saveAgentSettings(updated);
     settingsDirtyRef.current = false;
     notifyAgentSettingsChanged();
-    await pushAssistantSettings(undefined, updated);
-    setSaved(true);
-    setSaving(false);
-    window.setTimeout(() => setSaved(false), 2500);
+    try {
+      const synced = await pushAssistantSettings(undefined, updated);
+      setSavePending(!synced);
+      setSaved(true);
+      if (synced) window.setTimeout(() => setSaved(false), 2500);
+    } catch (error) {
+      console.warn("Prior assistant settings are saved locally but still need account sync:", error);
+      setSavePending(true);
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleProviderChange(next: AgentProvider) {
@@ -420,60 +301,81 @@ function AssistantSettings() {
   return (
     <div className="settings-assistant">
       {supportsCodexDesktop() && <CodexSettings provider={provider} onProviderChange={handleProviderChange} />}
-      <label className="settings-page-field">
-        <span>{t("settings.assistant.openRouterLabel")}</span>
-        <div className="field">
-          <Icon name="lock" />
-          <input
-            type={showOpenRouterKey ? "text" : "password"}
-            placeholder={t("settings.assistant.openRouterPlaceholder")}
-            value={apiKey}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => { settingsDirtyRef.current = true; setApiKey(event.target.value); setSaved(false); }}
-          />
-          <button type="button" className="show-key-btn" onClick={() => setShowOpenRouterKey((value) => !value)}>
-            {showOpenRouterKey ? t("settings.assistant.hide") : t("settings.assistant.show")}
+      <SettingsSection
+        title={t("settings.layout.apiKeys")}
+        footer={<>
+          <button type="button" className="primary-button" onClick={() => void handleSaveKeys()} disabled={saving}>
+            {saving ? t("settings.common.saving") : t("settings.assistant.saveKeys")}
           </button>
-        </div>
-        <small className="settings-help">
-          {t("settings.assistant.openRouterPrefix")}{" "}
-          <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">
-            openrouter.ai/keys
-          </a>
-          {t("settings.assistant.openRouterSuffix")}
-        </small>
-      </label>
-      <label className="settings-page-field">
-        <span>{t("settings.assistant.transcriptionLabel")}</span>
-        <div className="field">
-          <Icon name="microphone" />
-          <input
-            type={showTranscriptionKey ? "text" : "password"}
-            placeholder={t("settings.assistant.transcriptionPlaceholder")}
-            value={transcriptionApiKey}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => { settingsDirtyRef.current = true; setTranscriptionApiKey(event.target.value); setSaved(false); }}
-          />
-          <button type="button" className="show-key-btn" onClick={() => setShowTranscriptionKey((value) => !value)}>
-            {showTranscriptionKey ? t("settings.assistant.hide") : t("settings.assistant.show")}
-          </button>
-        </div>
-        <small className="settings-help">
-          {t("settings.assistant.openRouterPrefix")}{" "}
-          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
-            platform.openai.com/api-keys
-          </a>
-          {t("settings.assistant.transcriptionSuffix")}
-        </small>
-      </label>
-      <div className="settings-page-row">
-        <button type="button" className="primary-button" onClick={() => void handleSaveKeys()} disabled={saving}>
-          {saving ? t("settings.common.saving") : t("settings.assistant.saveKeys")}
-        </button>
-        {saved && <span className="settings-saved" role="status">{t("settings.common.saved")}</span>}
-      </div>
+          {saved && <span className="settings-saved" role="status">{savePending ? t("settings.assistant.savedLocally") : t("settings.common.saved")}</span>}
+        </>}
+      >
+        <SettingsRow
+          stacked
+          htmlFor="settings-openrouter-key"
+          label={t("settings.assistant.openRouterLabel")}
+          description={<>
+            {t("settings.assistant.openRouterPrefix")}{" "}
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/keys</a>
+            {t("settings.assistant.openRouterSuffix")}
+          </>}
+        >
+          <div className="field settings-field">
+            <Icon name="lock" />
+            <input
+              id="settings-openrouter-key"
+              type={showOpenRouterKey ? "text" : "password"}
+              placeholder={t("settings.assistant.openRouterPlaceholder")}
+              value={apiKey}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => { settingsDirtyRef.current = true; setApiKey(event.target.value); setSaved(false); }}
+            />
+            <button type="button" className="show-key-btn" aria-pressed={showOpenRouterKey} onClick={() => setShowOpenRouterKey((value) => !value)}>
+              {showOpenRouterKey ? t("settings.assistant.hide") : t("settings.assistant.show")}
+            </button>
+          </div>
+        </SettingsRow>
+        <SettingsRow stacked htmlFor="settings-recommendation-key" label={t("settings.assistant.recommendationKeyLabel")} description={t("settings.assistant.recommendationKeyHint")}>
+          <div className="field settings-field">
+            <Icon name="lock" />
+            <input id="settings-recommendation-key" type={showRecommendationKey ? "text" : "password"} placeholder={t("settings.assistant.recommendationKeyPlaceholder")} value={recommendationApiKey} autoComplete="off" spellCheck={false} onChange={(event) => { settingsDirtyRef.current = true; setRecommendationApiKey(event.target.value); setSaved(false); }} />
+            <button type="button" className="show-key-btn" aria-pressed={showRecommendationKey} onClick={() => setShowRecommendationKey((value) => !value)}>{showRecommendationKey ? t("settings.assistant.hide") : t("settings.assistant.show")}</button>
+          </div>
+        </SettingsRow>
+        <SettingsRow stacked htmlFor="settings-recommendation-model" label={t("settings.assistant.recommendationModelLabel")} description={t("settings.assistant.recommendationModelHint")}>
+          <div className="field settings-field">
+            <Icon name="sparkles" />
+            <input id="settings-recommendation-model" type="text" value={recommendationModel} placeholder={DEFAULT_MODEL} autoComplete="off" spellCheck={false} onChange={(event) => { settingsDirtyRef.current = true; setRecommendationModel(event.target.value); setSaved(false); }} />
+          </div>
+        </SettingsRow>
+        <SettingsRow
+          stacked
+          htmlFor="settings-transcription-key"
+          label={t("settings.assistant.transcriptionLabel")}
+          description={<>
+            {t("settings.assistant.openRouterPrefix")}{" "}
+            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">platform.openai.com/api-keys</a>
+            {t("settings.assistant.transcriptionSuffix")}
+          </>}
+        >
+          <div className="field settings-field">
+            <Icon name="microphone" />
+            <input
+              id="settings-transcription-key"
+              type={showTranscriptionKey ? "text" : "password"}
+              placeholder={t("settings.assistant.transcriptionPlaceholder")}
+              value={transcriptionApiKey}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => { settingsDirtyRef.current = true; setTranscriptionApiKey(event.target.value); setSaved(false); }}
+            />
+            <button type="button" className="show-key-btn" aria-pressed={showTranscriptionKey} onClick={() => setShowTranscriptionKey((value) => !value)}>
+              {showTranscriptionKey ? t("settings.assistant.hide") : t("settings.assistant.show")}
+            </button>
+          </div>
+        </SettingsRow>
+      </SettingsSection>
     </div>
   );
 }
@@ -524,7 +426,8 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
           });
           return;
         }
-        const cached = getCachedCodexAccount();        if (cached) {
+        const cached = getCachedCodexAccount();
+        if (cached) {
           setAccount(cached);
           setError(null);
         } else {
@@ -586,98 +489,279 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
   const chatGptConnected = account?.authMode === "chatgpt";
   const planName = account?.planType ? `${account.planType[0].toUpperCase()}${account.planType.slice(1)}` : null;
   const accountLabel = planName ? t("settings.codex.planLabel", { plan: planName }) : t("settings.codex.fallbackAccount");
+  const unavailable = !loading && (binaryAvailable === false || !account?.available);
+  const title = <span className="settings-row-title">{t("settings.codex.fallbackAccount")}<span className="settings-badge">{t("settings.codex.beta")}</span></span>;
+
+  let status: ReactNode = null;
+  if (loading) status = <span className="settings-row-note">{t("settings.codex.checking")}</span>;
+  else if (unavailable) status = <>
+    <span className="settings-row-note is-error">{error || t("settings.codex.unavailable")}</span>
+    <span className="settings-row-note">{t("settings.codex.installPrefix")}<code>codex</code>{t("settings.codex.installSuffix")}</span>
+  </>;
+  else if (account) status = <>
+    <span className={`settings-connection ${chatGptConnected ? "is-connected" : ""}`}>
+      <span className="settings-status-dot" aria-hidden="true" />
+      {chatGptConnected ? t("settings.codex.connected", { account: accountLabel }) : t("settings.codex.notConnected")}
+    </span>
+    <span className="settings-row-note">{chatGptConnected ? (account.email || t("settings.codex.emailFallback")) : account.authMode === "apikey" ? t("settings.codex.apiKeyNote") : t("settings.codex.connectHint")}</span>
+  </>;
+  const description = <>{t("settings.codex.description")}{status}</>;
 
   return (
-    <section className="settings-codex" aria-label={t("settings.codex.sectionLabel")}>
-      <div className="settings-codex-heading">
-        <div className="settings-codex-icon"><Icon name="sparkles" /></div>
-        <div>
-          <div className="settings-codex-title"><strong>Codex</strong><span>{t("settings.codex.beta")}</span></div>
-          <p>{t("settings.codex.description")}</p>
-        </div>
-      </div>
-
-      {loading ? (
-        <p className="settings-codex-status">{t("settings.codex.checking")}</p>
-      ) : binaryAvailable === false || !account?.available ? (
-        <div className="settings-codex-unavailable">
-          <p>{error || t("settings.codex.unavailable")}</p>
-          <small>{t("settings.codex.installPrefix")}<code>codex</code>{t("settings.codex.installSuffix")}</small>
-        </div>
-      ) : (
-        <>
-          <div className={`settings-codex-connection ${chatGptConnected ? "connected" : ""}`}>
-            <span className="settings-codex-dot" aria-hidden="true" />
-            <div>
-              <strong>{chatGptConnected ? t("settings.codex.connected", { account: accountLabel }) : t("settings.codex.notConnected")}</strong>
-              <small>{chatGptConnected ? (account.email || t("settings.codex.emailFallback")) : account.authMode === "apikey" ? t("settings.codex.apiKeyNote") : t("settings.codex.connectHint")}</small>
-            </div>
-            {chatGptConnected ? (
-              <button type="button" className="text-button settings-codex-disconnect" onClick={() => void handleDisconnect()} disabled={connecting}>{t("settings.codex.disconnect")}</button>
-            ) : (
-              <button type="button" className="secondary-button settings-codex-connect" onClick={() => void handleConnect()} disabled={connecting}>
-                {connecting ? t("settings.codex.waiting") : t("settings.codex.connect")}
-              </button>
-            )}
-          </div>
-          {chatGptConnected && (
-            <label className="settings-codex-use">
-              <input type="checkbox" checked={provider === "codex"} onChange={(event) => onProviderChange(event.target.checked ? "codex" : "openrouter")} />
-              <span><strong>{t("settings.codex.useTitle")}</strong><small>{t("settings.codex.useHint")}</small></span>
-            </label>
-          )}
-        </>
+    <SettingsSection title="Codex">
+      <SettingsRow label={title} description={description}>
+        {!loading && !unavailable && (chatGptConnected ? (
+          <button type="button" className="secondary-button settings-danger-text" onClick={() => void handleDisconnect()} disabled={connecting}>{t("settings.codex.disconnect")}</button>
+        ) : (
+          <button type="button" className="secondary-button" onClick={() => void handleConnect()} disabled={connecting}>
+            {connecting ? t("settings.codex.waiting") : t("settings.codex.connect")}
+          </button>
+        ))}
+      </SettingsRow>
+      {!loading && !unavailable && chatGptConnected && (
+        <SettingsRow label={t("settings.codex.useTitle")} description={t("settings.codex.useHint")}>
+          <button
+            type="button"
+            role="switch"
+            className="settings-switch"
+            aria-checked={provider === "codex"}
+            aria-label={t("settings.codex.useTitle")}
+            onClick={() => onProviderChange(provider === "codex" ? "openrouter" : "codex")}
+          />
+        </SettingsRow>
       )}
-      {error && account?.available && <p className="settings-error" role="alert">{error}</p>}
-    </section>
+      {error && account?.available && <div className="settings-row"><p className="settings-error" role="alert">{error}</p></div>}
+    </SettingsSection>
   );
 }
+
+/* ── Diagnostics ── */
+
+function DiagnosticsSettings() {
+  const { t } = useI18n();
+  const [logs, setLogs] = useState(() => logger.getEntries());
+  const [showLogs, setShowLogs] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [syncState, setSyncState] = useState<{ revision: number; pendingCount: number } | null>(null);
+
+  useEffect(() => {
+    return logger.subscribe(() => {
+      setLogs(logger.getEntries());
+    });
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const [state, pending] = await Promise.all([
+          localStore.getSyncState(),
+          localStore.pendingMutations(),
+        ]);
+        if (live) {
+          setSyncState({
+            revision: state.lastServerRevision,
+            pendingCount: pending.length,
+          });
+        }
+      } catch {
+        // Safe to ignore in settings preview
+      }
+    })();
+    return () => { live = false; };
+  }, []);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(logger.getLogText());
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard can be unavailable (permissions, insecure context).
+    }
+  }
+
+  function handleClear() {
+    logger.clear();
+    setLogs([]);
+  }
+
+  return (
+    <>
+      <SettingsSection title={t("settings.layout.sync")}>
+        <SettingsRow
+          label={t("settings.layout.syncState")}
+          description={syncState
+            ? <span className="settings-mono">{t("settings.diagnostics.lastSyncRevision", { revision: syncState.revision })} · {t("settings.diagnostics.pendingMutations", { count: syncState.pendingCount })}</span>
+            : t("settings.layout.syncStateHint")}
+        />
+      </SettingsSection>
+      <SettingsSection title={t("settings.layout.logs")}>
+        <SettingsRow label={t("settings.layout.logFile")} description={t("settings.diagnostics.description")}>
+          <div className="settings-inline-actions">
+            <button type="button" className="secondary-button" onClick={() => void logger.openLogFile()}>
+              <Icon name="download" />{t("settings.diagnostics.downloadLog")}
+            </button>
+            <button type="button" className="secondary-button" onClick={() => void handleCopy()}>
+              <Icon name="clipboard" />{copied ? t("settings.diagnostics.copied") : t("settings.diagnostics.copyLogs")}
+            </button>
+          </div>
+        </SettingsRow>
+        <SettingsRow label={t("settings.layout.recentLogs")} stacked={showLogs}>
+          <div className="settings-inline-actions">
+            {logs.length > 0 && (
+              <button type="button" className="secondary-button settings-danger-text" onClick={handleClear}>
+                {t("settings.diagnostics.clearLogs")}
+              </button>
+            )}
+            <button type="button" className="secondary-button" aria-expanded={showLogs} aria-controls="settings-log-viewer" onClick={() => setShowLogs((value) => !value)}>
+              {showLogs ? t("settings.diagnostics.hideLogs") : t("settings.diagnostics.showLogs", { count: logs.length })}
+            </button>
+          </div>
+          {showLogs && (
+            <div id="settings-log-viewer" className="settings-diagnostics-viewer" role="region" aria-label={t("settings.layout.recentLogs")}>
+              {logs.length === 0 ? (
+                <p className="settings-diagnostics-empty">{t("settings.diagnostics.empty")}</p>
+              ) : (
+                <pre className="settings-diagnostics-logs">
+                  {logs.slice(-50).map((log) => (
+                    <div key={log.id} className={`settings-log-line settings-log-${log.level}`}>
+                      <span className="settings-log-time">{log.timestamp.slice(11, 19)}</span>
+                      <span className="settings-log-level">[{log.level.toUpperCase()}]</span>
+                      <span className="settings-log-cat">[{log.category}]</span>
+                      <span className="settings-log-msg">{log.message}</span>
+                      {log.details && <span className="settings-log-data"> {log.details}</span>}
+                    </div>
+                  ))}
+                </pre>
+              )}
+            </div>
+          )}
+        </SettingsRow>
+      </SettingsSection>
+    </>
+  );
+}
+
+/* ── Developer (dev builds only) ── */
+
+function DeveloperSettings() {
+  const { t, tp } = useI18n();
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function run(action: "load" | "reset") {
+    if (busy) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      const seed = await import("../lib/devSeed");
+      if (action === "reset") {
+        await seed.clearDevSeedData({ dev: true });
+      }
+      const result = await seed.seedDevDataIfEmpty({ dev: true, force: true, requireAnonymous: false });
+      if (result.seeded) {
+        setStatus(t("settings.devSeed.ready", {
+          tasks: tp("settings.devSeed.tasks", result.tasks),
+          projects: tp("settings.devSeed.projects", result.projects),
+        }));
+        window.setTimeout(() => window.location.reload(), 600);
+      } else {
+        setStatus(t("settings.devSeed.skipped", { reason: result.reason }));
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t("settings.devSeed.loadFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <SettingsSection title={t("settings.layout.demoData")}>
+      <SettingsRow
+        label={<span className="settings-row-title">{t("settings.devSeed.title")}<span className="settings-badge">{t("settings.devSeed.badge")}</span></span>}
+        description={<>
+          {t("settings.devSeed.description")}
+          {status && <span className="settings-row-note" role="status">{status}</span>}
+        </>}
+      >
+        <div className="settings-inline-actions">
+          <button type="button" className="secondary-button" disabled={busy} onClick={() => void run("reset")}>
+            {t("settings.devSeed.reset")}
+          </button>
+          <button type="button" className="secondary-button" disabled={busy} onClick={() => void run("load")}>
+            {busy ? t("settings.devSeed.loading") : t("settings.devSeed.load")}
+          </button>
+        </div>
+      </SettingsRow>
+    </SettingsSection>
+  );
+}
+
+/* ── Page ── */
+
+const TABS: ReadonlyArray<{ readonly id: SettingsTab; readonly icon: IconName; readonly devOnly?: boolean }> = [
+  { id: "general", icon: "sliders" },
+  { id: "profile", icon: "user" },
+  { id: "assistant", icon: "sparkles" },
+  { id: "diagnostics", icon: "terminal" },
+  { id: "developer", icon: "database", devOnly: true },
+];
 
 export function SettingsPage({ user, onUserUpdated }: SettingsPageProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<SettingsTab>("general");
-  const tabLabel = tab === "general" ? t("settings.tabs.general") : tab === "profile" ? t("settings.tabs.profile") : t("settings.tabs.assistant");
+  const tabRefs = useRef(new Map<SettingsTab, HTMLButtonElement>());
+  const tabs = TABS.filter((entry) => !entry.devOnly || import.meta.env.DEV);
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    const index = tabs.findIndex((entry) => entry.id === tab);
+    let next = index;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") next = (index + 1) % tabs.length;
+    else if (event.key === "ArrowUp" || event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    const target = tabs[next].id;
+    setTab(target);
+    tabRefs.current.get(target)?.focus();
+  }
+
   return (
-    <section className="settings-page" aria-label={t("settings.page.ariaLabel")}>
-      <div className="workhub-intro">
-        <div>
-          <p className="eyebrow">{t("settings.page.eyebrow")}</p>
-          <h2>{t("settings.page.title")}</h2>
-          <p>{t("settings.page.subtitle")}</p>
+    <section className="settings-page" aria-labelledby="settings-page-title">
+      <header className="settings-header">
+        <h1 id="settings-page-title">{t("common.views.settings")}</h1>
+      </header>
+      <div className="settings-layout">
+        <div className="settings-nav" role="tablist" aria-orientation="vertical" aria-label={t("settings.page.sectionsLabel")}>
+          {tabs.map((entry) => (
+            <button
+              key={entry.id}
+              ref={(node) => { if (node) tabRefs.current.set(entry.id, node); else tabRefs.current.delete(entry.id); }}
+              type="button"
+              role="tab"
+              id={`settings-tab-${entry.id}`}
+              aria-selected={tab === entry.id}
+              aria-controls={`settings-panel-${entry.id}`}
+              tabIndex={tab === entry.id ? 0 : -1}
+              className={`settings-nav-item ${tab === entry.id ? "active" : ""}`}
+              onClick={() => setTab(entry.id)}
+              onKeyDown={handleTabKeyDown}
+            >
+              <Icon name={entry.icon} />
+              <span>{t(`settings.tabs.${entry.id}`)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="settings-panel" role="tabpanel" id={`settings-panel-${tab}`} aria-labelledby={`settings-tab-${tab}`}>
+          {tab === "general" && <GeneralSettings />}
+          {tab === "profile" && <ProfileSettings user={user} onUserUpdated={onUserUpdated} />}
+          {tab === "assistant" && <AssistantSettings />}
+          {tab === "diagnostics" && <DiagnosticsSettings />}
+          {tab === "developer" && <DeveloperSettings />}
         </div>
       </div>
-      <div className="settings-tabs" role="tablist" aria-label={t("settings.page.sectionsLabel")}>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "general"}
-          className={tab === "general" ? "active" : ""}
-          onClick={() => setTab("general")}
-        >
-          {t("settings.tabs.general")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "profile"}
-          className={tab === "profile" ? "active" : ""}
-          onClick={() => setTab("profile")}
-        >
-          {t("settings.tabs.profile")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "assistant"}
-          className={tab === "assistant" ? "active" : ""}
-          onClick={() => setTab("assistant")}
-        >
-          {t("settings.tabs.assistant")}
-        </button>
-      </div>
-      <section className="settings-card" aria-label={tabLabel}>
-        {tab === "general" ? <GeneralSettings /> : tab === "profile" ? <ProfileSettings user={user} onUserUpdated={onUserUpdated} /> : <AssistantSettings />}
-      </section>
     </section>
   );
 }

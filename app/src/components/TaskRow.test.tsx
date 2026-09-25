@@ -164,3 +164,42 @@ describe("TaskRow context menu", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 });
+
+describe("TaskRow compact variant", () => {
+  afterEach(() => cleanup());
+
+  it("uses the status glyph as the completion toggle and opens details from the title", () => {
+    const onChange = vi.fn(async () => undefined);
+    const onOpen = vi.fn();
+    const onEdit = vi.fn();
+    render(<TaskRow task={{ ...task, status: "in_progress" }} variant="compact" onOpen={onOpen} onEdit={onEdit} onChange={onChange} onDelete={vi.fn(async () => undefined)} />);
+
+    const toggle = screen.getByRole("button", { name: "Mark Ship the fix complete" });
+    expect(toggle).toHaveClass("status-toggle");
+    expect(toggle.querySelector(".status-glyph-in_progress")).not.toBeNull();
+    fireEvent.click(toggle);
+    expect(onChange).toHaveBeenCalledWith({ ...task, status: "in_progress", completed: true });
+
+    fireEvent.click(screen.getByRole("button", { name: task.title }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it("opens the row menu from the more-actions button", () => {
+    const onDelete = vi.fn(async () => undefined);
+    render(<TaskRow task={task} variant="compact" onChange={vi.fn(async () => undefined)} onDelete={onDelete} />);
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Ship the fix" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete task" }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows due, project and assignee metadata on one line", () => {
+    const today = new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    render(<TaskRow task={{ ...task, dueDate: iso, projectId: "p", assigneeName: "Alex Rivera", priority: 2 }} project={{ name: "Launch", icon: null }} variant="compact" onChange={vi.fn(async () => undefined)} onDelete={vi.fn(async () => undefined)} />);
+    expect(screen.getByText("Today").closest(".task-due-chip")).toHaveClass("due-today");
+    expect(screen.getByText("Launch")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Alex Rivera" })).toHaveTextContent("AR");
+    expect(screen.getByRole("img", { name: "Priority 2 · High" })).toBeInTheDocument();
+  });
+});

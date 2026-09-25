@@ -17,7 +17,7 @@ import (
 // calling OpenRouter directly, keeping the secret off the device. The
 // client-direct path in app/src/lib/ai.ts remains as fallback.
 //
-// Guarantees: allowlisted models only, PII redaction before forwarding,
+// Guarantees: validated model IDs (free-only for general chat), PII redaction before forwarding,
 // per-request budget logging (lengths only, never content or keys).
 const openRouterCompletionsURL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -33,6 +33,7 @@ var allowedAgentModels = map[string]struct{}{
 }
 
 var emailRedactor = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
+var openRouterModelID = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._:+-]+$`)
 
 func redactPII(value string) string { return emailRedactor.ReplaceAllString(value, "[redacted-email]") }
 
@@ -76,6 +77,7 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 		} `json:"history"`
 		WebSearch       bool   `json:"webSearch"`
 		ReasoningEffort string `json:"reasoningEffort"`
+		Purpose         string `json:"purpose"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid agent request"))
@@ -85,7 +87,7 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 	if model == "" {
 		model = "openrouter/free"
 	}
-	if !agentModelAllowed(model) {
+	if (body.Purpose != "" && body.Purpose != "recommendations") || (body.Purpose == "recommendations" && (len(model) > 160 || !openRouterModelID.MatchString(model))) || (body.Purpose == "" && !agentModelAllowed(model)) {
 		writeError(w, http.StatusBadRequest, errors.New("model is not allowlisted for the server proxy"))
 		return
 	}
@@ -99,7 +101,11 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("no stored OpenRouter key; add one in Settings first"))
 		return
 	}
-	apiKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenRouterAPIKey)
+	storedKey := stored.OpenRouterAPIKey
+	if body.Purpose == "recommendations" && stored.RecommendationOpenRouterAPIKey != "" {
+		storedKey = stored.RecommendationOpenRouterAPIKey
+	}
+	apiKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, storedKey)
 	if err != nil || strings.TrimSpace(apiKey) == "" {
 		writeError(w, http.StatusBadRequest, errors.New("no stored OpenRouter key; add one in Settings first"))
 		return

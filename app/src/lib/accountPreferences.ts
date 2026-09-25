@@ -1,4 +1,4 @@
-import { getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "./ai";
+import { DEFAULT_MODEL, getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "./ai";
 import { readAccountDocuments, stageDocument, writeAccountDocuments } from "./accountDocuments";
 import type { AgentSettings } from "../types";
 
@@ -10,7 +10,7 @@ export const UI_PREFERENCE_KEYS = ["prior.language", "prior.sidebar.collapsed", 
 export function initializeAccountPreferences(): void {
   const documents = readAccountDocuments();
   const settings = getAgentSettings();
-  if (!("preferences/agent" in documents.records)) stageDocument(documents, "preferences/agent", { model: settings.model, codexModel: settings.codexModel ?? "", provider: settings.provider ?? "openrouter", reasoningEffort: settings.reasoningEffort ?? "auto" }, true);
+  if (!("preferences/agent" in documents.records)) stageDocument(documents, "preferences/agent", { model: settings.model, recommendationModel: settings.recommendationModel || DEFAULT_MODEL, codexModel: settings.codexModel ?? "", provider: settings.provider ?? "openrouter", reasoningEffort: settings.reasoningEffort ?? "auto" }, true);
   if (!("preferences/ui" in documents.records)) stageDocument(documents, "preferences/ui", Object.fromEntries(UI_PREFERENCE_KEYS.map((key) => [key, localStorage.getItem(key)])), true);
   writeAccountDocuments(documents, false);
 }
@@ -22,6 +22,7 @@ export function applyAccountPreferences(): void {
     const current = getAgentSettings();
     const next: AgentSettings = { ...current,
       model: typeof agent.model === "string" ? agent.model : current.model,
+      recommendationModel: typeof agent.recommendationModel === "string" && agent.recommendationModel ? agent.recommendationModel : current.recommendationModel,
       codexModel: typeof agent.codexModel === "string" ? agent.codexModel : current.codexModel,
       provider: agent.provider === "codex" ? "codex" as const : "openrouter" as const,
       reasoningEffort: agent.reasoningEffort === "low" || agent.reasoningEffort === "medium" || agent.reasoningEffort === "high" ? agent.reasoningEffort : "auto" as const,
