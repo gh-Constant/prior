@@ -361,7 +361,7 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
 
       <div className="today-dash-grid">
         <div className="today-dash-main">
-          {aiPlan.enabled && <section className="today-card today-ai-plan" aria-labelledby="today-ai-plan-title">
+          {aiPlan.enabled && recommendationTasks.length > 0 && <section className="today-card today-ai-plan" aria-labelledby="today-ai-plan-title">
             <div className="today-card-head"><div className="today-card-heading"><Icon name="sparkles" aria-hidden="true" /><h3 id="today-ai-plan-title" className="today-card-title">{t("tasks.today.aiPlanTitle")}</h3></div><button type="button" className="today-ghost-button" onClick={aiPlan.refresh} disabled={aiPlan.loading}><Icon name="refresh" aria-hidden="true" /><span>{t("tasks.today.aiPlanRefresh")}</span></button></div>
             {aiPlan.loading && !aiPlan.recommendations && <p className="today-ai-plan-status" role="status">{t("tasks.today.aiPlanLoading")}</p>}
             {aiPlan.error && <p className="today-ai-plan-status is-error" role="alert">{t("tasks.today.aiPlanError")}</p>}
