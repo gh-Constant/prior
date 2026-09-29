@@ -6,6 +6,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+	// Embed the time zone database: the production image (Alpine) ships
+	// none, and players' zones (e.g. Europe/Paris) must always resolve.
+	_ "time/tzdata"
 )
 
 var handlePattern = regexp.MustCompile(`^[a-z0-9_]{3,20}$`)
