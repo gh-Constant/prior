@@ -276,6 +276,9 @@ export const api = {
   revokeSession(sessionId: string, token: string): Promise<void> {
     return request<void>(`/v1/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" }, token);
   },
+  createMcpToken(name: string, token: string): Promise<{ token: string; name: string; expiresAt: string }> {
+    return request<{ token: string; name: string; expiresAt: string }>("/v1/mcp/tokens", { method: "POST", body: JSON.stringify({ name }) }, token);
+  },
   revokeAllSessions(token: string): Promise<void> {
     return request<void>("/v1/sessions", { method: "DELETE" }, token);
   },

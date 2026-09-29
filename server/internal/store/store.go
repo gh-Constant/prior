@@ -910,32 +910,49 @@ func (s *Store) CreateSession(ctx context.Context, userID uuid.UUID, token, devi
 	return err
 }
 
+// UserForToken resolves an account session. Tokens minted for MCP clients
+// are rejected here: they may only reach /mcp (see UserForMCPToken).
 func (s *Store) UserForToken(ctx context.Context, token string) (User, error) {
-	user, _, err := s.userForTokenHash(ctx, tokenHash(token), true)
+	user, _, platform, err := s.userForTokenHash(ctx, tokenHash(token), true)
+	if err == nil && platform == MCPTokenPlatform {
+		return User{}, ErrNotFound
+	}
+	return user, err
+}
+
+// UserForMCPToken resolves any live session for the /mcp endpoint, so both
+// dedicated MCP tokens and regular app sessions can drive the MCP tools.
+func (s *Store) UserForMCPToken(ctx context.Context, token string) (User, error) {
+	user, _, _, err := s.userForTokenHash(ctx, tokenHash(token), true)
 	return user, err
 }
 
 // SessionUserForToken resolves the token without touching last_used_at, for
 // background checks (realtime expiry loop) that must not generate writes.
 func (s *Store) SessionUserForToken(ctx context.Context, token string) (User, time.Time, error) {
-	return s.userForTokenHash(ctx, tokenHash(token), false)
+	user, expiresAt, platform, err := s.userForTokenHash(ctx, tokenHash(token), false)
+	if err == nil && platform == MCPTokenPlatform {
+		return User{}, time.Time{}, ErrNotFound
+	}
+	return user, expiresAt, err
 }
 
 func tokenHash(token string) [32]byte { return sha256.Sum256([]byte(token)) }
 
-func (s *Store) userForTokenHash(ctx context.Context, hash [32]byte, touch bool) (User, time.Time, error) {
+func (s *Store) userForTokenHash(ctx context.Context, hash [32]byte, touch bool) (User, time.Time, string, error) {
 	var user User
 	var expiresAt time.Time
+	var platform string
 	err := s.pool.QueryRow(ctx, `
-		SELECT u.id, u.email, u.email_verified, u.display_name, u.avatar_url, s.expires_at
+		SELECT u.id, u.email, u.email_verified, u.display_name, u.avatar_url, s.expires_at, s.platform
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()`, hash[:]).
-		Scan(&user.ID, &user.Email, &user.EmailVerified, &user.DisplayName, &user.AvatarURL, &expiresAt)
+		Scan(&user.ID, &user.Email, &user.EmailVerified, &user.DisplayName, &user.AvatarURL, &expiresAt, &platform)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return User{}, time.Time{}, ErrNotFound
+		return User{}, time.Time{}, "", ErrNotFound
 	}
 	if err != nil {
-		return User{}, time.Time{}, err
+		return User{}, time.Time{}, "", err
 	}
 	if touch {
 		// Sliding last_used_at without a write on every request: touch
@@ -948,7 +965,7 @@ func (s *Store) userForTokenHash(ctx context.Context, hash [32]byte, touch bool)
 			}()
 		}
 	}
-	return user, expiresAt, nil
+	return user, expiresAt, platform, nil
 }
 
 func (s *Store) RevokeSession(ctx context.Context, token string) error {

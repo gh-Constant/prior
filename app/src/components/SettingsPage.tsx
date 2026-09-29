@@ -3,7 +3,7 @@ import { DEFAULT_MODEL, getAgentSettings, notifyAgentSettingsChanged, saveAgentS
 import { clearCachedCodexAccount, codexBinaryAvailable, getCachedCodexAccount, logoutCodex, setCachedCodexAccount, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
 import type { AgentProvider } from "../types";
 import { getToken, type SessionUser } from "../lib/auth";
-import { api } from "../lib/api";
+import { api, API_URL, type SessionInfo } from "../lib/api";
 import { pullAssistantSettings, pushAssistantSettings } from "../lib/settingsSync";
 import { UpdateControl, useAppUpdate } from "./UpdateControl";
 import { Icon, type IconName } from "./Icon";
@@ -14,7 +14,7 @@ import { logger } from "../lib/logger";
 import { localStore } from "../lib/localStore";
 import "./SettingsPage.css";
 
-type SettingsTab = "general" | "profile" | "assistant" | "diagnostics" | "developer";
+type SettingsTab = "general" | "profile" | "assistant" | "integrations" | "diagnostics" | "developer";
 
 type SettingsPageProps = {
   readonly user: SessionUser | null;
@@ -698,12 +698,115 @@ function DeveloperSettings() {
   );
 }
 
+/* ── Integrations ── */
+
+function claudeCodeCommand(apiUrl: string, key: string): string {
+  return `claude mcp add --transport http prior ${apiUrl.replace(/\/$/, "")}/mcp --header "Authorization: Bearer ${key}"`;
+}
+
+function IntegrationsSettings() {
+  const { t, lang } = useI18n();
+  const [keys, setKeys] = useState<SessionInfo[] | null>(null);
+  const [command, setCommand] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function refresh() {
+    const token = await getToken();
+    if (!token) {
+      setError(t("settings.claudeCode.signIn"));
+      return;
+    }
+    const sessions = await api.listSessions(token);
+    setKeys(sessions.filter((session) => session.platform === "mcp"));
+  }
+
+  useEffect(() => {
+    refresh().catch(() => setKeys([]));
+  }, []);
+
+  async function handleCreate() {
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error(t("settings.claudeCode.signIn"));
+      const created = await api.createMcpToken("Claude Code", token);
+      setCommand(claudeCodeCommand(API_URL, created.token));
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error && cause.message ? cause.message : t("settings.claudeCode.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRevoke(id: string) {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      await api.revokeSession(id, token);
+      await refresh();
+    } catch {
+      setError(t("settings.claudeCode.failed"));
+    }
+  }
+
+  async function handleCopy() {
+    if (!command) return;
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard can be unavailable (permissions, insecure context).
+    }
+  }
+
+  return (
+    <SettingsSection title={t("settings.claudeCode.title")}>
+      <SettingsRow label={t("settings.claudeCode.label")} description={<>
+        {t("settings.claudeCode.description")}
+        {error && <span className="settings-row-note is-error">{error}</span>}
+      </>}>
+        <button type="button" className="secondary-button" disabled={busy} onClick={() => void handleCreate()}>
+          <Icon name="key" />{busy ? t("settings.claudeCode.generating") : t("settings.claudeCode.generate")}
+        </button>
+      </SettingsRow>
+      {command && (
+        <SettingsRow label={t("settings.claudeCode.commandLabel")} description={t("settings.claudeCode.once")} stacked>
+          <pre className="settings-mono settings-command" aria-label={t("settings.claudeCode.commandLabel")}>{command}</pre>
+          <div className="settings-inline-actions">
+            <button type="button" className="secondary-button" onClick={() => void handleCopy()}>
+              <Icon name="clipboard" />{copied ? t("settings.claudeCode.copied") : t("settings.claudeCode.copy")}
+            </button>
+          </div>
+        </SettingsRow>
+      )}
+      <SettingsRow label={t("settings.claudeCode.keys")} description={keys && keys.length === 0 ? t("settings.claudeCode.none") : t("settings.claudeCode.keysHint")} />
+      {keys?.map((key) => (
+        <SettingsRow
+          key={key.id}
+          label={key.deviceName || t("settings.claudeCode.title")}
+          description={t("settings.claudeCode.lastUsed", { date: new Date(key.lastUsedAt).toLocaleDateString(lang) })}
+        >
+          <button type="button" className="secondary-button settings-danger-text" onClick={() => void handleRevoke(key.id)}>
+            {t("settings.claudeCode.revoke")}
+          </button>
+        </SettingsRow>
+      ))}
+    </SettingsSection>
+  );
+}
+
 /* ── Page ── */
 
 const TABS: ReadonlyArray<{ readonly id: SettingsTab; readonly icon: IconName; readonly devOnly?: boolean }> = [
   { id: "general", icon: "sliders" },
   { id: "profile", icon: "user" },
   { id: "assistant", icon: "sparkles" },
+  { id: "integrations", icon: "code" },
   { id: "diagnostics", icon: "terminal" },
   { id: "developer", icon: "database", devOnly: true },
 ];
@@ -758,6 +861,7 @@ export function SettingsPage({ user, onUserUpdated }: SettingsPageProps) {
           {tab === "general" && <GeneralSettings />}
           {tab === "profile" && <ProfileSettings user={user} onUserUpdated={onUserUpdated} />}
           {tab === "assistant" && <AssistantSettings />}
+          {tab === "integrations" && <IntegrationsSettings />}
           {tab === "diagnostics" && <DiagnosticsSettings />}
           {tab === "developer" && <DeveloperSettings />}
         </div>

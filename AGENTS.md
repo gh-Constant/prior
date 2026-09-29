@@ -18,6 +18,8 @@ Task data includes a title, optional description, optional ISO due date, Todoist
 
 The in-app AI assistant is a client-side OpenRouter integration. Its system prompt describes Prior's real capabilities: `list_tasks`, `list_habits`, `create_task`, `create_habit`, and `prioritize_tasks`. Create actions are returned as review cards and only persist after the user confirms them. Chat history is stored in PostgreSQL; OpenRouter API settings remain in local storage and must never be logged or committed.
 
+The API also serves a remote MCP server at `/mcp` so Claude Code can read and edit tasks and habits (`claude mcp add --transport http prior https://api.prior.constantsuchet.fr/mcp --header "Authorization: Bearer <key>"`). Keys come from Settings → Integrations and only work on `/mcp`. Keep MCP writes going through `Store.Push`; see `specs/MCP.md`.
+
 ## Working rules
 
 - Treat the repository as the source of truth.
