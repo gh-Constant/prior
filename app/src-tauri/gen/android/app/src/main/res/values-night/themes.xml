@@ -5,10 +5,11 @@
         <item name="colorPrimaryVariant">#DF4D33</item>
         <item name="colorSecondary">#FA654A</item>
         <item name="android:colorAccent">#FA654A</item>
-        <item name="android:windowBackground">#F7F7F5</item>
-        <item name="android:statusBarColor">#F7F7F5</item>
+        <!-- Night: match the dark canvas (--canvas) so launch does not flash light. -->
+        <item name="android:windowBackground">#191715</item>
+        <item name="android:statusBarColor">#191715</item>
         <item name="android:navigationBarColor">#20201F</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
         <item name="android:forceDarkAllowed">false</item>
     </style>

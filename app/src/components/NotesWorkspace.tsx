@@ -11,6 +11,7 @@ import { applySlashInsert, filterSlashCommands, matchSlashToken, type SlashComma
 import { Modal } from "./Modal";
 import { setAccountPreference } from "../lib/accountDocuments";
 import { PREFERENCES_APPLIED } from "../lib/accountPreferences";
+import { useResolvedTheme, type ResolvedTheme } from "../lib/theme";
 import "./NotesWorkspace.css";
 import "katex/dist/katex.min.css";
 
@@ -28,6 +29,11 @@ type NoteModalState =
   | { kind: "confirm-folder-delete"; folder: NoteFolder }
   | null;
 const LIBRARY_ROOT_ID = "library-root";
+/** Mermaid draws with literal colors, so each theme gets its own set (mirrors the index.css tokens). */
+const MERMAID_COLORS: Record<ResolvedTheme, Record<string, string | boolean>> = {
+  light: { primaryColor: "#ffffff", primaryBorderColor: "#dcdad5", primaryTextColor: "#1d1c1a", secondaryColor: "#f6f6f4", tertiaryColor: "#fafaf9", lineColor: "#9d9a93", textColor: "#3f3d39" },
+  dark: { darkMode: true, background: "#201e1c", primaryColor: "#2d2b29", primaryBorderColor: "#4d4b49", primaryTextColor: "#efece8", secondaryColor: "#262422", tertiaryColor: "#201e1c", lineColor: "#8d8a85", textColor: "#d3d1cd" },
+};
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character] ?? character));
@@ -680,6 +686,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const renderedRef = useRef<HTMLDivElement>(null);
+  const theme = useResolvedTheme();
   const saveTimer = useRef<number | undefined>(undefined);
   const selected = notes.find((note) => note.id === selectedId) ?? null;
   const projectFolder = projectId ? folders.find((folder) => folder.workspaceKind === "project" && folder.workspaceId === projectId) ?? null : null;
@@ -786,13 +793,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
         themeVariables: {
           fontFamily: "\"DM Sans Variable\", -apple-system, \"Segoe UI\", sans-serif",
           fontSize: "13px",
-          primaryColor: "#ffffff",
-          primaryBorderColor: "#dcdad5",
-          primaryTextColor: "#1d1c1a",
-          secondaryColor: "#f6f6f4",
-          tertiaryColor: "#fafaf9",
-          lineColor: "#9d9a93",
-          textColor: "#3f3d39",
+          ...MERMAID_COLORS[theme],
         },
       });
       const diagrams = Array.from(renderedRef.current.querySelectorAll<HTMLElement>(".note-diagram pre"));
@@ -825,7 +826,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
       }
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [currentAttachments, mode, selected?.id, selected?.body]);
+  }, [currentAttachments, mode, selected?.id, selected?.body, theme]);
 
   // The editor grows with its content so the title, meta and body scroll as one document.
   function fitEditor(): void {
@@ -1229,7 +1230,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
 
             {reading ? (
               selected.body.trim()
-                ? <div key={`reading-${selected.id}`} ref={renderedRef} className="notes-prose notes-reading" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+                ? <div key={`reading-${selected.id}-${theme}`} ref={renderedRef} className="notes-prose notes-reading" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} />
                 : <div className="notes-empty-body">
                     <p>{t("notes.workspace.emptyBody")}</p>
                     <button type="button" className="notes-button" onClick={() => { setReading(false); requestAnimationFrame(() => editorRef.current?.focus()); }}><Icon name="pencil" />{t("notes.workspace.startWriting")}</button>
@@ -1252,7 +1253,7 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
                   />
                   {slash && slashOptions.length > 0 && <div className="notes-slash-menu" role="listbox" aria-label={t("notes.editor.insertBlock")} style={{ top: slashPos.top, left: slashPos.left }}>{slashOptions.map((command, index) => <button key={command.id} type="button" role="option" aria-selected={index === slashIndex} className={index === slashIndex ? "active" : ""} onMouseDown={(event) => event.preventDefault()} onClick={() => chooseSlashCommand(command)} onMouseEnter={() => setSlashIndex(index)}><span className="notes-slash-icon"><Icon name={command.icon} /></span><span className="notes-slash-text"><strong>{command.label}</strong><small>{command.hint}</small></span></button>)}</div>}
                 </div>
-                {mode === "live" && <div key={`live-${selected.id}`} ref={renderedRef} className="notes-prose notes-preview-pane" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} />}
+                {mode === "live" && <div key={`live-${selected.id}-${theme}`} ref={renderedRef} className="notes-prose notes-preview-pane" onClick={onRenderedClick} dangerouslySetInnerHTML={{ __html: renderedHtml }} />}
               </div>
             )}
           </article>

@@ -9,6 +9,7 @@ export const settings = {
   tabs: {
     general: "Geral",
     profile: "Perfil e conta",
+    game: "Jogo",
     assistant: "Prior Agent",
     diagnostics: "Diagnóstico",
     developer: "Desenvolvimento",
@@ -36,6 +37,14 @@ export const settings = {
   },
   language: {
     label: "Idioma",
+  },
+  appearance: {
+    title: "Aparência",
+    theme: "Tema",
+    themeHint: "Igual ao seu dispositivo, ou escolha um. A sua escolha acompanha a sua conta.",
+    system: "Sistema",
+    light: "Claro",
+    dark: "Escuro",
   },
   general: {
     version: "Versão",

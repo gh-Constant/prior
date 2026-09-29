@@ -66,7 +66,7 @@
 }
 .notes-segmented button svg { width: 13px; height: 13px; display: block; }
 .notes-segmented button:hover { color: var(--ink); }
-.notes-segmented button.active { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / .06); }
+.notes-segmented button.active { background: var(--seg-active); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / .06); }
 
 .notes-button {
   display: inline-flex;
@@ -290,7 +290,7 @@ input.notes-document-title::placeholder, .notes-document-title.is-placeholder { 
 .notes-editor-pane textarea::placeholder { color: var(--faint); }
 .notes-preview-pane { min-width: 0; padding-left: 28px; border-left: 1px solid var(--line); }
 
-.notes-slash-menu { position: absolute; z-index: 6; width: 264px; max-height: 304px; overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-pop); transform-origin: top left; transition: opacity var(--t-fast) var(--ease), scale var(--t-fast) var(--ease); }
+.notes-slash-menu { position: absolute; z-index: 6; width: 264px; max-height: 304px; overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); box-shadow: var(--shadow-pop); transform-origin: top left; transition: opacity var(--t-fast) var(--ease), scale var(--t-fast) var(--ease); }
 @starting-style { .notes-slash-menu { opacity: 0; scale: 0.97; } }
 .notes-slash-menu button { display: flex; flex-direction: row; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink); text-align: left; }
 .notes-slash-icon { display: grid; place-items: center; width: 26px; height: 26px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--muted); }
@@ -449,8 +449,8 @@ input.notes-document-title::placeholder, .notes-document-title.is-placeholder { 
 .notes-empty p { max-width: 290px; margin: 0 0 18px; color: var(--muted); font-size: var(--fs-md); line-height: 1.55; }
 
 /* ── Modals (folder name, move, color, confirm) ──────────────────────── */
-.note-modal-danger { min-height: var(--control-h); padding: 0 12px; border: 0; border-radius: var(--r-md); background: var(--red); color: var(--accent-ink); font-size: var(--fs-sm); font-weight: 550; box-shadow: var(--shadow-xs); }
-.note-modal-danger:hover { background: color-mix(in srgb, var(--red) 88%, black); }
+.note-modal-danger { min-height: var(--control-h); padding: 0 12px; border: 0; border-radius: var(--r-md); background: var(--red-fill); color: var(--accent-ink); font-size: var(--fs-sm); font-weight: 550; box-shadow: var(--shadow-xs); }
+.note-modal-danger:hover { background: color-mix(in srgb, var(--red-fill) 88%, black); }
 .note-modal-message { margin: 0; color: var(--muted); font-size: var(--fs-md); line-height: 1.55; }
 .note-color-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; }
 .note-color-grid.large { grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 4px; }
@@ -471,7 +471,7 @@ input.notes-document-title::placeholder, .notes-document-title.is-placeholder { 
 /* ── Linked-note graph overlay ───────────────────────────────────────── */
 .notes-eyebrow { display: block; color: var(--muted); font-size: var(--fs-xs); font-weight: 550; letter-spacing: 0; }
 .notes-graph-overlay { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: oklch(0.2 0.005 70 / .4); backdrop-filter: blur(2px); }
-.notes-graph-card { width: min(560px, 100%); border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--panel); color: var(--ink); box-shadow: var(--shadow-pop); }
+.notes-graph-card { width: min(560px, 100%); border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--raised); color: var(--ink); box-shadow: var(--shadow-pop); }
 .notes-graph-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 8px; }
 .notes-graph-header h2 { margin: 2px 0 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.015em; }
 .notes-graph-card svg { width: 100%; height: auto; padding: 8px 18px 0; }
@@ -571,3 +571,6 @@ input.notes-document-title::placeholder, .notes-document-title.is-placeholder { 
 @media (prefers-reduced-motion: reduce) {
   .notes-workspace *, .notes-workspace *::before, .notes-workspace *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* Dark theme: the graph overlay needs a deeper dim to read over a dark page. */
+:root[data-theme="dark"] .notes-graph-overlay { background: var(--overlay); }

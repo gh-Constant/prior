@@ -1,13 +1,17 @@
 import type { CSSProperties } from "react";
 
 export type StatusTone = { color: string; background: string; borderColor: string };
+// CSS custom properties (index.css, --status-*) so the palette follows the light/dark theme.
+function tone(name: string): StatusTone {
+  return { color: `var(--status-${name})`, background: `var(--status-${name}-soft)`, borderColor: `var(--status-${name}-line)` };
+}
 const tones = {
-  neutral: { color: "#596273", background: "#f1f3f5", borderColor: "#dce1e7" },
-  todo: { color: "#2563b8", background: "#edf4ff", borderColor: "#cbdffc" },
-  progress: { color: "#956000", background: "#fff6d9", borderColor: "#eedb9f" },
-  waiting: { color: "#7950b3", background: "#f4eeff", borderColor: "#dfcef5" },
-  done: { color: "#237347", background: "#eaf7ef", borderColor: "#c2e5cf" },
-  canceled: { color: "#b34343", background: "#fff0f0", borderColor: "#efcccc" },
+  neutral: tone("neutral"),
+  todo: tone("todo"),
+  progress: tone("progress"),
+  waiting: tone("waiting"),
+  done: tone("done"),
+  canceled: tone("canceled"),
 } satisfies Record<string, StatusTone>;
 
 /** Stable IDs, never translated labels, determine the shared workflow palette. */

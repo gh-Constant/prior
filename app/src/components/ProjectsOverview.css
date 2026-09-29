@@ -14,13 +14,13 @@
 .projects-status-filters { display: flex; flex-shrink: 0; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
 .projects-status-filters button { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; white-space: nowrap; }
 .projects-status-filters button:hover { color: var(--ink); }
-.projects-status-filters button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / .06); }
+.projects-status-filters button[aria-pressed="true"] { background: var(--seg-active); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / .06); }
 .projects-status-filters button span { color: var(--faint); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .projects-status-filters button[aria-pressed="true"] span { color: var(--muted); }
 .projects-mobile-status { display: none; }
 
 .projects-overview-search { display: flex; align-items: center; gap: 8px; width: 220px; min-width: 0; min-height: var(--control-h); padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-control); color: var(--faint); transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
-.projects-overview-search:hover { border-color: #cfcdc7; }
+.projects-overview-search:hover { border-color: var(--line-hover); }
 .projects-overview-search:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
 .projects-overview-search svg { width: 14px; height: 14px; flex: 0 0 auto; }
 .projects-overview-search input { width: 100%; min-width: 0; min-height: 30px; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: var(--fs-md); }
@@ -71,7 +71,7 @@
 /* Dashed "new project" card */
 .projects-card-new { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 148px; padding: 16px; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: transparent; color: var(--muted); font-size: var(--fs-md); font-weight: 500; line-height: 1.4; text-align: center; }
 .projects-card-new svg { width: 16px; height: 16px; color: var(--faint); }
-.projects-card-new:hover { border-color: #cfcdc7; background: var(--panel); color: var(--ink); }
+.projects-card-new:hover { border-color: var(--line-hover); background: var(--panel); color: var(--ink); }
 .projects-card-new:hover svg { color: var(--ink-2); }
 .projects-card-new:active { scale: .99; }
 

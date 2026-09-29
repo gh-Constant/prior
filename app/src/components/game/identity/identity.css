@@ -1,0 +1,95 @@
+/* Identity cosmetics: shared palette per surface tone + shared keyframes.
+   Every component root carries .gi-light or .gi-dark and .gi-fx-{full,subtle,off}. */
+
+.gi-light {
+  --gi-ink: var(--ink);
+  --gi-ink-2: var(--ink-2);
+  --gi-muted: var(--muted);
+  --gi-faint: var(--faint);
+  --gi-panel: var(--panel);
+  --gi-raised: var(--surface-1);
+  --gi-inset: var(--surface-2);
+  --gi-inset-2: var(--surface-3);
+  --gi-line: var(--line);
+  --gi-line-strong: var(--line-strong);
+  --gi-hover: var(--hover);
+  --gi-accent: var(--accent);
+  --gi-accent-text: var(--accent-dark);
+  --gi-me: var(--accent-soft);
+  --gi-me-line: var(--accent-line);
+  --gi-up: var(--green);
+  --gi-up-soft: var(--green-soft);
+  --gi-up-line: var(--green-line);
+  --gi-down: var(--red);
+  --gi-down-soft: var(--red-soft);
+  --gi-down-line: var(--red-line);
+  --gi-common: #8b8880;
+  --gi-rare: #2f6ad6;
+  --gi-epic: #8a43d6;
+  --gi-legendary: #d9800a;
+  --gi-shadow: 0 1px 2px oklch(0 0 0 / 0.04), 0 8px 24px -12px oklch(0 0 0 / 0.14);
+  --gi-avatar-ring: var(--panel);
+}
+
+.gi-dark {
+  --gi-ink: var(--sidebar-ink);
+  --gi-ink-2: #d9d7d3;
+  --gi-muted: var(--sidebar-muted);
+  --gi-faint: var(--sidebar-faint);
+  --gi-panel: #1e1e1c;
+  --gi-raised: #242422;
+  --gi-inset: #262523;
+  --gi-inset-2: #302f2c;
+  --gi-line: #ffffff12;
+  --gi-line-strong: #ffffff21;
+  --gi-hover: #ffffff0a;
+  --gi-accent: var(--accent);
+  --gi-accent-text: #ff8c75;
+  --gi-me: #f35f431f;
+  --gi-me-line: #f35f4370;
+  --gi-up: #53c98f;
+  --gi-up-soft: #53c98f14;
+  --gi-up-line: #53c98f40;
+  --gi-down: #ff7160;
+  --gi-down-soft: #ff716014;
+  --gi-down-line: #ff716040;
+  --gi-common: #aaa79f;
+  --gi-rare: #6399f7;
+  --gi-epic: #b582f8;
+  --gi-legendary: #f7b33c;
+  --gi-shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 10px 30px -12px oklch(0 0 0 / 0.6);
+  --gi-avatar-ring: #1e1e1c;
+}
+
+/* Rarity accent for any element: set data-rarity and read --gi-rarity. */
+[data-rarity="common"] { --gi-rarity: var(--gi-common); }
+[data-rarity="rare"] { --gi-rarity: var(--gi-rare); }
+[data-rarity="epic"] { --gi-rarity: var(--gi-epic); }
+[data-rarity="legendary"] { --gi-rarity: var(--gi-legendary); }
+
+/* Four-point sparkle, shared by nameplates, frames and emblems. */
+.gi-sparkle {
+  display: block;
+  clip-path: polygon(50% 0, 59% 41%, 100% 50%, 59% 59%, 50% 100%, 41% 59%, 0 50%, 41% 41%);
+}
+
+@keyframes gi-spin { to { transform: rotate(360deg); } }
+@keyframes gi-spin-rev { to { transform: rotate(-360deg); } }
+@keyframes gi-pulse { from { opacity: var(--gi-pulse-from, 0.45); } to { opacity: var(--gi-pulse-to, 1); } }
+@keyframes gi-twinkle {
+  0%, 52%, 100% { opacity: 0; transform: scale(0.1) rotate(0deg); }
+  70% { opacity: 1; transform: scale(1) rotate(45deg); }
+  86% { opacity: 0; transform: scale(0.2) rotate(90deg); }
+}
+@keyframes gi-blink {
+  0%, 100% { opacity: 0.15; transform: scale(0.4); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes gi-sheen-x {
+  0% { transform: translateX(-120%) skewX(-18deg); }
+  60%, 100% { transform: translateX(320%) skewX(-18deg); }
+}
+
+@media (forced-colors: active) {
+  .gi-sparkle { display: none; }
+}

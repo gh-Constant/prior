@@ -140,7 +140,7 @@
 .today-habits-score { color: var(--ink); font-size: 18px; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .today-habit-list { margin: 0; padding: 0 0 8px; list-style: none; }
 .today-habit-row { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 14px; }
-.today-habit-check { display: grid; place-items: center; width: 18px; height: 18px; flex: 0 0 auto; padding: 0; border: 1.5px solid #c9c6bf; border-radius: var(--r-sm); background: var(--panel); color: var(--accent-ink); }
+.today-habit-check { display: grid; place-items: center; width: 18px; height: 18px; flex: 0 0 auto; padding: 0; border: 1.5px solid var(--check-line); border-radius: var(--r-sm); background: var(--panel); color: var(--accent-ink); }
 .today-habit-check svg { width: 11px; height: 11px; opacity: 0; stroke-width: 2.6; transition: opacity var(--t-fast) var(--ease); }
 .today-habit-check:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
 .today-habit-row.is-done .today-habit-check { border-color: var(--accent); background: var(--accent); }
@@ -162,7 +162,7 @@
 .today-view-all { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: 34px; border: 0; border-top: 1px solid var(--line-soft); background: transparent; color: var(--muted); font-size: var(--fs-xs); font-weight: 550; }
 .today-view-all:hover { background: var(--hover); color: var(--ink); }
 .today-view-all svg { width: 12px; height: 12px; }
-.today-avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; background: var(--surface-3); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .01em; }
+.today-avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; background: var(--surface-3); color: var(--on-tone); font-size: 11px; font-weight: 700; letter-spacing: .01em; }
 .today-avatar svg { width: 13px; height: 13px; color: var(--muted); }
 .today-avatar.tone-blue { background: var(--blue); }
 .today-avatar.tone-green { background: var(--green); }
@@ -247,5 +247,5 @@
 .today-pomodoro.is-break .today-pomodoro-phase { color: var(--green, var(--accent)); }
 .today-pomodoro-estimate { color: var(--muted); font-size: var(--fs-xs); }
 .today-pomodoro-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
-.today-pomodoro-primary { min-height: 30px; padding: 0 16px; border: 0; border-radius: var(--r-sm); background: var(--accent); color: #fff; font-size: var(--fs-sm); font-weight: 600; }
+.today-pomodoro-primary { min-height: 30px; padding: 0 16px; border: 0; border-radius: var(--r-sm); background: var(--accent); color: var(--accent-ink); font-size: var(--fs-sm); font-weight: 600; }
 .today-pomodoro-notice { margin: 0; color: var(--muted); font-size: var(--fs-sm); text-align: center; }

@@ -298,6 +298,7 @@ export const common = {
   toasts: {
     sessionExpired: "Sessão expirada — inicia sessão de novo.",
     inviteAccepted: "Convite para o projeto aceite.",
+    projectLinkUnavailable: "Não tem acesso a esse projeto. Peça ao proprietário que o convide.",
     inviteCopied: "Convite enviado para {email}. A pessoa vai vê-lo no Prior; a ligação do convite também foi copiada.",
     inviteDeclined: "Convite recusado.",
     inviteJoined: "Entraste em «{project}».",

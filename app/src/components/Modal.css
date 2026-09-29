@@ -31,7 +31,7 @@
   overscroll-behavior: contain;
   border-radius: var(--r-xl);
   border: 1px solid var(--line);
-  background: var(--panel);
+  background: var(--raised);
   box-shadow: var(--shadow-pop);
   animation: prior-modal-scale-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -267,3 +267,6 @@
     flex: 1;
   }
 }
+
+/* Dark theme: a deeper dim so the card reads over an already dark page. */
+:root[data-theme="dark"] .prior-modal-backdrop { background: var(--overlay); }

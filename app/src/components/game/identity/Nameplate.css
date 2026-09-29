@@ -1,0 +1,421 @@
+/* Nameplate: the name effect ladder.
+   Each effect sets a few custom properties; the shared rules below turn them
+   into a clipped gradient, an optional glow/veil and CSS-only decorations.
+   Only background-position, transform, opacity and filter are animated. */
+
+.gi-np {
+  --np-fs: var(--fs-md);
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: baseline;
+  font-size: var(--np-fs);
+  line-height: 1.3;
+  font-weight: 620;
+  letter-spacing: -0.005em;
+  color: var(--gi-ink);
+  isolation: isolate;
+}
+.gi-np--md { --np-fs: 17px; font-weight: 650; letter-spacing: -0.012em; }
+.gi-np--lg { --np-fs: 27px; font-weight: 700; letter-spacing: -0.022em; line-height: 1.22; }
+
+.gi-np-text,
+.gi-np-glow {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 0.08em;
+}
+.gi-np-text { position: relative; z-index: 1; margin: 0 -0.08em; }
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .gi-np:not(.gi-np--plain) .gi-np-text {
+    background-image: var(--np-bg);
+    background-size: var(--np-size, 100% 100%);
+    background-position: var(--np-rest, var(--np-pos, 0 0));
+    background-repeat: var(--np-repeat, repeat);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    filter: var(--np-filter, none);
+  }
+}
+
+.gi-np .gi-np-text::selection {
+  color: var(--gi-ink);
+  -webkit-text-fill-color: var(--gi-ink);
+  background: color-mix(in srgb, var(--gi-accent) 26%, transparent);
+}
+
+/* Motion: full and subtle animate the gradient; subtle runs it slower. */
+.gi-np.gi-fx-full .gi-np-text { animation: var(--np-anim, none) var(--np-dur, 6s) var(--np-ease, linear) infinite; }
+.gi-np.gi-fx-subtle .gi-np-text { animation: var(--np-anim, none) calc(var(--np-dur, 6s) * 1.9) var(--np-ease, linear) infinite; }
+
+@keyframes gi-np-flow {
+  from { background-position: var(--np-pos); }
+  to { background-position: var(--np-to); }
+}
+@keyframes gi-np-sweep {
+  0% { background-position: var(--np-pos); }
+  58%, 100% { background-position: var(--np-to); }
+}
+
+/* ── Glow: a blurred copy of the name, pulsing with opacity only ── */
+.gi-np-glow {
+  position: absolute;
+  inset: 0 -0.08em;
+  z-index: 0;
+  color: var(--np-glow, transparent);
+  -webkit-text-fill-color: var(--np-glow, transparent);
+  background: var(--np-glow-bg, none);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: blur(var(--np-glow-blur, 0.22em));
+  opacity: calc(var(--np-glow-o, 0.4) * 0.75);
+  user-select: none;
+  pointer-events: none;
+}
+.gi-np.gi-fx-full .gi-np-glow {
+  animation: gi-np-glow var(--np-glow-d, 2.8s) ease-in-out infinite alternate;
+}
+@keyframes gi-np-glow {
+  from { opacity: calc(var(--np-glow-o, 0.4) * 0.4); }
+  to { opacity: var(--np-glow-o, 0.4); }
+}
+
+/* ── Veil: a soft colored light band behind the name ── */
+.gi-np-veil {
+  position: absolute;
+  inset: 12% -10%;
+  z-index: 0;
+  border-radius: 50%;
+  background: var(--np-veil);
+  filter: blur(0.45em);
+  opacity: var(--np-veil-o, 0.25);
+  pointer-events: none;
+}
+.gi-np.gi-fx-full .gi-np-veil { animation: var(--np-veil-anim, gi-np-veil) var(--np-veil-d, 5.5s) ease-in-out infinite alternate; }
+.gi-np.gi-fx-subtle .gi-np-veil { animation: gi-np-veil 11s ease-in-out infinite alternate; }
+@keyframes gi-np-veil {
+  from { transform: translateX(-7%) scaleX(0.86) scaleY(0.9); }
+  to { transform: translateX(7%) scaleX(1.06) scaleY(1.08); }
+}
+@keyframes gi-np-veil-flicker {
+  0% { transform: scaleY(0.85) scaleX(0.96); opacity: calc(var(--np-veil-o) * 0.8); }
+  35% { transform: scaleY(1.12) scaleX(1.02); opacity: var(--np-veil-o); }
+  60% { transform: scaleY(0.95) scaleX(0.98); opacity: calc(var(--np-veil-o) * 0.85); }
+  100% { transform: scaleY(1.18) scaleX(1.04); opacity: var(--np-veil-o); }
+}
+
+/* ── Decoration layer (full intensity only; rendered by React) ── */
+.gi-np-fx {
+  position: absolute;
+  inset: -0.4em -0.3em;
+  pointer-events: none;
+}
+.gi-np-fx > * { position: absolute; }
+
+/* Rising particles: gold embers, mythic flames */
+.gi-np-ember,
+.gi-np-mote {
+  bottom: 0.78em;
+  width: calc(0.17em * var(--np-s, 1));
+  height: calc(0.17em * var(--np-s, 1));
+  margin-left: -0.085em;
+  z-index: 2;
+  border-radius: 50%;
+  opacity: 0;
+  animation: gi-np-rise var(--np-d) linear var(--np-delay) infinite;
+}
+.gi-np-ember {
+  background: radial-gradient(circle, #fffbe8 0 24%, var(--np-ember, #ffc53d) 50%, transparent 72%);
+  box-shadow: 0 0 0.2em 0.03em var(--np-ember-glow, var(--np-ember, #ffc53d));
+}
+.gi-np-mote {
+  width: 0.12em;
+  height: 0.12em;
+  background: radial-gradient(circle, #fff 0 25%, var(--np-mote) 60%, transparent 74%);
+  box-shadow: 0 0 0.22em 0.04em var(--np-mote);
+  animation-name: gi-np-drift;
+}
+@keyframes gi-np-rise {
+  0% { transform: translate(0, 0.1em) scale(0.55); opacity: 0; }
+  14% { opacity: 1; }
+  50% { transform: translate(calc(var(--np-dx) * -0.6), calc(var(--np-rise) * -0.5)) scale(0.8); opacity: 0.9; }
+  100% { transform: translate(var(--np-dx), calc(var(--np-rise) * -1)) scale(0.2); opacity: 0; }
+}
+@keyframes gi-np-drift {
+  0% { transform: translate(0, 0.2em) scale(0.4); opacity: 0; }
+  25% { opacity: 0.95; }
+  50% { transform: translate(var(--np-dx), calc(var(--np-rise) * -0.5)) scale(1); }
+  75% { opacity: 0.8; }
+  100% { transform: translate(calc(var(--np-dx) * -0.4), calc(var(--np-rise) * -1)) scale(0.5); opacity: 0; }
+}
+
+/* Twinkling star specks (sapphire) */
+.gi-np-speck {
+  z-index: 2;
+  width: calc(0.46em * var(--np-s, 1));
+  height: calc(0.46em * var(--np-s, 1));
+  margin: calc(-0.23em * var(--np-s, 1));
+  background:
+    radial-gradient(circle, var(--np-speck-core, #fff) 0 9%, var(--np-speck) 16%, transparent 32%) center / 100% 100% no-repeat,
+    linear-gradient(90deg, transparent, var(--np-speck), transparent) center / 100% 8% no-repeat,
+    linear-gradient(0deg, transparent, var(--np-speck), transparent) center / 8% 100% no-repeat;
+  animation: gi-blink var(--np-d) ease-in-out var(--np-delay) infinite;
+}
+
+/* Four-point glints that hop between seeded spots (emerald small, diamond large) */
+.gi-np-hop {
+  inset: 0.4em 0.3em;
+  z-index: 2;
+  animation: gi-np-hop var(--np-d) step-end var(--np-delay) infinite;
+}
+.gi-np-hop > i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--np-star-size, 0.5em);
+  height: var(--np-star-size, 0.5em);
+  margin: calc(var(--np-star-size, 0.5em) / -2);
+  background: var(--np-star);
+  opacity: 0;
+  animation: gi-twinkle calc(var(--np-d) / 3) ease-in-out var(--np-delay) infinite;
+}
+.gi-np-hop--sparkle { --np-star-size: 0.78em; }
+@keyframes gi-np-hop {
+  0% { transform: translate(var(--x1), var(--y1)); }
+  33.333% { transform: translate(var(--x2), var(--y2)); }
+  66.666% { transform: translate(var(--x3), var(--y3)); }
+}
+
+/* Orbiting particles (mythic): X and Y eased a quarter-cycle apart trace an ellipse;
+   a stepped z-index sends the particle behind the name on the far side. */
+.gi-np-orbit {
+  left: 0.1em;
+  right: 0.1em;
+  top: 50%;
+  height: 0;
+  z-index: 2;
+  animation:
+    gi-np-orbit-x var(--np-d) ease-in-out var(--np-delay) infinite alternate,
+    gi-np-orbit-z calc(var(--np-d) * 2) step-end var(--np-delay) infinite;
+}
+.gi-np-orbit-y {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  animation: gi-np-orbit-y var(--np-d) ease-in-out calc(var(--np-delay) - var(--np-d) / 2) infinite alternate;
+}
+.gi-np-orbit-y > i {
+  position: absolute;
+  width: 0.22em;
+  height: 0.22em;
+  margin: -0.11em;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 28%, var(--np-c) 58%, transparent 74%);
+  box-shadow: 0 0 0.28em 0.06em var(--np-c);
+}
+@keyframes gi-np-orbit-x { from { transform: translateX(-50%); } to { transform: translateX(50%); } }
+@keyframes gi-np-orbit-y {
+  from { transform: translateY(-0.62em) scale(0.5); opacity: 0.5; }
+  to { transform: translateY(0.58em) scale(1.15); opacity: 1; }
+}
+@keyframes gi-np-orbit-z { 0% { z-index: 2; } 50% { z-index: 0; } }
+
+/* ═════════════════════════ The ladder ═════════════════════════ */
+
+/* Copper — warm metal, static, one fixed highlight */
+.gi-np--copper {
+  --np-bg:
+    linear-gradient(112deg, transparent 36%, rgb(255 206 164 / 0.55) 47%, transparent 58%),
+    linear-gradient(180deg, #c27b45 10%, #9d5226 46%, #6f3111 56%, #aa6030 76%, #823f19 100%);
+  --np-filter: drop-shadow(0 0.035em 0 rgb(80 35 10 / 0.18));
+}
+.gi-np--copper.gi-dark {
+  --np-bg:
+    linear-gradient(112deg, transparent 36%, rgb(255 242 228 / 0.7) 47%, transparent 58%),
+    linear-gradient(180deg, #ffd8b8 10%, #f3a56d 44%, #cc6c35 55%, #ee9a61 74%, #ffc79c 100%);
+  --np-filter: drop-shadow(0 0.04em 0 rgb(0 0 0 / 0.4));
+}
+
+/* Silver — cool steel with a slow specular sweep */
+.gi-np--silver {
+  --np-bg:
+    linear-gradient(100deg, transparent 26%, rgb(38 46 58 / 0.5) 40%, rgb(238 243 249 / 0.95) 50%, rgb(38 46 58 / 0.5) 60%, transparent 74%),
+    linear-gradient(180deg, #a3adb9 4%, #6d7784 38%, #2c343d 52%, #818b97 68%, #58616c 100%);
+  --np-size: 3.6em 100%, 100% 100%;
+  --np-repeat: no-repeat, repeat;
+  --np-pos: -3.6em 0, 0 0;
+  --np-to: calc(100% + 3.6em) 0, 0 0;
+  --np-rest: 58% 0, 0 0;
+  --np-anim: gi-np-sweep;
+  --np-dur: 3.8s;
+  --np-ease: cubic-bezier(0.45, 0, 0.3, 1);
+  --np-filter: drop-shadow(0 0.035em 0 rgb(20 30 45 / 0.16));
+}
+.gi-np--silver.gi-dark {
+  --np-bg:
+    linear-gradient(100deg, transparent 26%, rgb(255 255 255 / 1) 50%, transparent 74%),
+    linear-gradient(180deg, #ffffff 6%, #d3d9e0 40%, #7f8a97 53%, #e4e9ee 70%, #a9b3bd 100%);
+  --np-filter: drop-shadow(0 0 0.18em rgb(190 210 235 / 0.22));
+}
+
+/* Gold — rich shimmer bands + rising embers */
+.gi-np--gold {
+  --np-bg:
+    linear-gradient(100deg, transparent 28%, rgb(242 184 36 / 0.9) 42%, rgb(255 234 150 / 0.96) 50%, rgb(242 184 36 / 0.9) 58%, transparent 72%),
+    linear-gradient(180deg, #cc9514 8%, #a96f05 44%, #794800 55%, #ba810b 74%, #8c5b02 100%);
+  --np-size: 4.6em 100%, 100% 100%;
+  --np-pos: 0 0, 0 0;
+  --np-to: 4.6em 0, 0 0;
+  --np-rest: 1.4em 0, 0 0;
+  --np-anim: gi-np-flow;
+  --np-dur: 2.8s;
+  --np-filter: drop-shadow(0 0.04em 0 rgb(105 58 0 / 0.32));
+  --np-ember: #f2a200;
+  --np-ember-glow: rgb(236 150 0 / 0.75);
+}
+.gi-np--gold.gi-dark {
+  --np-bg:
+    linear-gradient(100deg, transparent 26%, rgb(255 228 140 / 0.85) 40%, rgb(255 252 236 / 1) 50%, rgb(255 228 140 / 0.85) 60%, transparent 74%),
+    linear-gradient(180deg, #ffe9a6 8%, #f8c846 44%, #d08e0b 55%, #f5bf40 74%, #ffdc86 100%);
+  --np-filter: drop-shadow(0 0 0.24em rgb(255 176 32 / 0.4));
+  --np-ember: #ffc43d;
+}
+
+/* Emerald — faceted green drift, pulsing glow, glints */
+.gi-np--emerald {
+  --np-bg: linear-gradient(115deg, #075e43 0%, #0b7a55 16%, #1aa771 27%, #06563c 40%, #0c8a5e 57%, #24b27b 67%, #06543b 81%, #075e43 100%);
+  --np-size: 8em 100%;
+  --np-pos: 0 0;
+  --np-to: 8em 0;
+  --np-anim: gi-np-flow;
+  --np-dur: 9s;
+  --np-filter: drop-shadow(0 0.035em 0 rgb(0 55 32 / 0.22));
+  --np-glow: #10b981;
+  --np-glow-o: 0.32;
+  --np-star: radial-gradient(circle, #fff 0 16%, #7df0c0 42%, #0a9a68 72%);
+}
+.gi-np--emerald.gi-dark {
+  --np-bg: linear-gradient(115deg, #2fcf92 0%, #6ee7b7 15%, #dcfcec 25%, #34d399 37%, #10b981 51%, #6ee7b7 65%, #b4f5d8 73%, #2cc189 86%, #2fcf92 100%);
+  --np-filter: none;
+  --np-glow: #10b981;
+  --np-glow-o: 0.7;
+  --np-star: radial-gradient(circle, #fff 0 26%, #c8fbe3 52%, #34d399 78%);
+}
+
+/* Sapphire — deep blue with a drifting starfield inside the letters + twinkles */
+.gi-np--sapphire {
+  --np-bg:
+    radial-gradient(circle at 20% 30%, rgb(255 255 255 / 0.95) 0 0.04em, transparent 0.07em),
+    radial-gradient(circle at 64% 72%, rgb(214 230 255 / 0.9) 0 0.034em, transparent 0.06em),
+    radial-gradient(circle at 86% 18%, #fff 0 0.03em, transparent 0.055em),
+    linear-gradient(160deg, #1c3d9e 0%, #2152d8 30%, #4d89f6 42%, #17338d 56%, #2455cc 78%, #1a3690 100%);
+  --np-size: 1.3em 1.1em, 1.7em 1.35em, 2.3em 1.6em, 100% 100%;
+  --np-pos: 0 0, 0 0, 0 0, 0 0;
+  --np-to: 1.3em -1.1em, -1.7em -1.35em, 2.3em -1.6em, 0 0;
+  --np-anim: gi-np-flow;
+  --np-dur: 11s;
+  --np-filter: drop-shadow(0 0.035em 0 rgb(10 25 85 / 0.24));
+  --np-glow: #3b82f6;
+  --np-glow-o: 0.26;
+  --np-speck: #3b7cf5;
+  --np-speck-core: #fff;
+}
+.gi-np--sapphire.gi-dark {
+  --np-bg:
+    radial-gradient(circle at 20% 30%, #fff 0 0.04em, transparent 0.07em),
+    radial-gradient(circle at 64% 72%, #e3eeff 0 0.034em, transparent 0.06em),
+    radial-gradient(circle at 86% 18%, #fff 0 0.03em, transparent 0.055em),
+    linear-gradient(160deg, #6ca9ff 0%, #2f6df0 30%, #93c6ff 42%, #2352d4 56%, #5195ff 78%, #3a74ee 100%);
+  --np-filter: none;
+  --np-glow-o: 0.66;
+  --np-speck: #9cc6ff;
+}
+
+/* Diamond — prismatic hues shifting across the letters, facet light, big sparkles */
+.gi-np--diamond {
+  --np-bg:
+    linear-gradient(72deg, transparent 36%, rgb(255 255 255 / 0.62) 47%, rgb(255 255 255 / 0.1) 53%, transparent 64%),
+    linear-gradient(100deg, #4338ca 0%, #0b6f8c 14%, #0b7d63 28%, #6d28d9 44%, #b01d62 58%, #1d4ed8 74%, #0a7fa3 88%, #4338ca 100%);
+  --np-size: 2.3em 100%, 7em 100%;
+  --np-pos: 0 0, 0 0;
+  --np-to: -2.3em 0, 7em 0;
+  --np-anim: gi-np-flow;
+  --np-dur: 6.5s;
+  --np-filter: drop-shadow(0 0.035em 0 rgb(40 20 95 / 0.22));
+  --np-glow: #8b5cf6;
+  --np-glow-o: 0.2;
+  --np-star: radial-gradient(circle, #fff 0 14%, #d5c8ff 34%, #7c6cf6 62%, #22b8d6 80%);
+}
+.gi-np--diamond.gi-dark {
+  --np-bg:
+    linear-gradient(72deg, transparent 30%, rgb(255 255 255 / 0.95) 46%, rgb(255 255 255 / 0.2) 54%, transparent 70%),
+    linear-gradient(100deg, #c3cdff 0%, #7feeff 14%, #9ff5c3 28%, #d8bdff 44%, #ffaed8 58%, #a6c8ff 74%, #86e8ff 88%, #c3cdff 100%);
+  --np-filter: none;
+  --np-glow: #c4b5fd;
+  --np-glow-o: 0.5;
+  --np-star: radial-gradient(circle, #fff 0 30%, #e6f4ff 52%, #b3bcff 78%);
+}
+
+/* Aurora — flowing northern-lights hues, curtain light, a colored veil and motes */
+.gi-np--aurora .gi-np-veil { inset: -26% -4% 58%; filter: blur(0.34em); border-radius: 50%; }
+.gi-np--aurora {
+  --np-bg:
+    linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.36) 22%, transparent 42%, rgb(255 255 255 / 0.2) 66%, transparent 86%),
+    linear-gradient(90deg, #0d8f7a 0%, #0f9d58 16%, #0e7fa8 32%, #6d38e0 50%, #b8249f 66%, #1597a0 84%, #0d8f7a 100%);
+  --np-size: 3.4em 100%, 9em 100%;
+  --np-pos: 0 0, 0 0;
+  --np-to: -3.4em 0, 9em 0;
+  --np-anim: gi-np-flow;
+  --np-dur: 8s;
+  --np-filter: drop-shadow(0 0.035em 0 rgb(20 20 70 / 0.2));
+  --np-veil: linear-gradient(90deg, #14b8a6, #22c55e 25%, #6366f1 52%, #c026d3 76%, #14b8a6);
+  --np-veil-o: 0.22;
+}
+.gi-np--aurora.gi-dark {
+  --np-bg:
+    linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.5) 22%, transparent 42%, rgb(255 255 255 / 0.3) 66%, transparent 86%),
+    linear-gradient(90deg, #5eead4 0%, #4ade80 16%, #38bdf8 32%, #a78bfa 50%, #f0abfc 66%, #2dd4bf 84%, #5eead4 100%);
+  --np-filter: drop-shadow(0 0 0.2em rgb(94 234 212 / 0.3));
+  --np-veil: linear-gradient(90deg, #2dd4bf, #4ade80 25%, #818cf8 52%, #e879f9 76%, #2dd4bf);
+  --np-veil-o: 0.5;
+}
+
+/* Mythic — prismatic flame flowing upward, fiery aura, orbiting particles, embers */
+.gi-np--mythic {
+  --np-bg:
+    radial-gradient(38% 52% at 50% 100%, rgb(255 238 200 / 0.62), transparent 100%),
+    linear-gradient(0deg, #d4231a 0%, #e8650c 14%, #c98a00 26%, #d61f8a 42%, #7a3ff0 58%, #0e93b3 74%, #e0461c 88%, #d4231a 100%);
+  --np-size: 0.62em 1.05em, 100% 1.5em;
+  --np-pos: 0 0, 0 0;
+  --np-to: 0 -3.15em, 0 -1.5em;
+  --np-anim: gi-np-flow;
+  --np-dur: 2.6s;
+  --np-filter: drop-shadow(0 0.035em 0 rgb(90 10 30 / 0.26));
+  --np-glow-bg: linear-gradient(90deg, #ff4d2e, #ff4fd8 35%, #8f7bff 65%, #ffb020);
+  --np-glow-o: 0.32;
+  --np-glow-d: 1.3s;
+  --np-veil: linear-gradient(90deg, #ff7a00, #ff2d95 35%, #7c5cff 65%, #ffb300);
+  --np-veil-o: 0.18;
+  --np-veil-anim: gi-np-veil-flicker;
+  --np-veil-d: 1.7s;
+}
+.gi-np--mythic.gi-dark {
+  --np-bg:
+    radial-gradient(38% 52% at 50% 100%, rgb(255 252 236 / 0.7), transparent 100%),
+    linear-gradient(0deg, #ff4d3a 0%, #ff9a2e 14%, #ffe066 26%, #ff5ec8 42%, #a98bff 58%, #4fe3f7 74%, #ff7a45 88%, #ff4d3a 100%);
+  --np-filter: drop-shadow(0 0 0.2em rgb(255 90 60 / 0.35));
+  --np-glow-o: 0.62;
+  --np-veil-o: 0.3;
+}
+
+@media (forced-colors: active) {
+  .gi-np .gi-np-text { background: none; color: CanvasText; -webkit-text-fill-color: CanvasText; filter: none; }
+  .gi-np-fx, .gi-np-glow, .gi-np-veil { display: none; }
+}

@@ -27,7 +27,7 @@
 .waiting-group-title { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
 .waiting-group-title h3 { overflow: hidden; margin: 0; color: var(--ink); font-size: 13px; font-weight: 600; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
 .waiting-group-title span { color: var(--muted); font-size: var(--fs-xs); }
-.waiting-avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; background: var(--surface-3); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .01em; }
+.waiting-avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; background: var(--surface-3); color: var(--on-tone); font-size: 11px; font-weight: 700; letter-spacing: .01em; }
 .waiting-avatar svg { width: 13px; height: 13px; color: var(--muted); }
 .waiting-avatar.tone-blue { background: var(--blue); }
 .waiting-avatar.tone-green { background: var(--green); }

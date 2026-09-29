@@ -1,0 +1,5 @@
+/* Rarity tones shared by chest cards and achievement toasts. Mirrors RARITY_TONES in lib/fx/themes.ts. */
+.fx-rarity-common { --rarity: #9aa1ab; --rarity-light: #dfe3e8; --rarity-dark: #5f6670; --rarity-glow: rgb(170 178 190 / 0.45); }
+.fx-rarity-rare { --rarity: #3d7cf0; --rarity-light: #a8c6ff; --rarity-dark: #1f47a0; --rarity-glow: rgb(61 124 240 / 0.5); }
+.fx-rarity-epic { --rarity: #9b5cf0; --rarity-light: #d6bcff; --rarity-dark: #5a2bb0; --rarity-glow: rgb(155 92 240 / 0.55); }
+.fx-rarity-legendary { --rarity: #f59e1b; --rarity-light: #ffe08a; --rarity-dark: #b8600b; --rarity-glow: rgb(245 158 27 / 0.6); }

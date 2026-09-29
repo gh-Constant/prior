@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
  * unavailable (tests, old GPUs).
  */
 
-export type ShaderVariant = "dawn" | "ember" | "night";
+export type ShaderVariant = "dawn" | "dusk" | "ember" | "night";
 
 const VERTEX = `
 attribute vec2 position;
@@ -61,6 +61,8 @@ void main() {
 const PALETTES: Record<ShaderVariant, [string, string, string, string]> = {
   // Light, airy: cream into peach and coral with a lilac undertone.
   dawn: ["#fff7f1", "#fbd3c4", "#f6a489", "#d9d2f6"],
+  // Dawn for the dark theme: the same currents, turned down to embers.
+  dusk: ["#1c1816", "#3b221b", "#a8472f", "#3a2d55"],
   // Deeper, for the featured plan card.
   ember: ["#1f1b1a", "#f35f43", "#8f3fd6", "#ffb38f"],
   // The admin header: mostly dark, with coral and violet currents.

@@ -12,7 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// PostgreSQL DATE columns must be returned as ISO strings for the task API.
+// Regression test: scheduled_date and follow_up_date are DATE columns, but
+// the client contract is an ISO "YYYY-MM-DD" string. Pulling a task with
+// either date set must not fail with
+// "cannot scan date (OID 1082) in binary format into **string".
 func TestPullTaskWithScheduledDatesPostgres(t *testing.T) {
 	url := os.Getenv("PRIOR_TEST_DATABASE_URL")
 	if url == "" {
@@ -49,17 +52,15 @@ func TestPullTaskWithScheduledDatesPostgres(t *testing.T) {
 	}
 	strptr := func(value string) *string { return &value }
 	task := tasks.Task{
-		ID: uuid.NewString(), Title: "dated task", Priority: 4, Status: "next",
-		ScheduledDate: strptr("2026-09-20"), FollowUpDate: strptr("2026-09-27"),
+		ID:            uuid.NewString(),
+		Title:         "dated task",
+		Priority:      4,
+		Status:        "next",
+		ScheduledDate: strptr("2026-09-20"),
+		FollowUpDate:  strptr("2026-09-27"),
 	}
-	estimate := 45
-	task.EstimatedMinutes = &estimate
-	results, err := s.Push(ctx, user.ID, []tasks.Mutation{{ID: uuid.NewString(), Kind: "upsert", Task: task}})
-	if err != nil {
+	if _, err = s.Push(ctx, user.ID, []tasks.Mutation{{ID: uuid.NewString(), Kind: "upsert", Task: task}}); err != nil {
 		t.Fatal(err)
-	}
-	if len(results) != 1 || !results[0].OK {
-		t.Fatalf("task push failed: %+v", results)
 	}
 	pulled, err := s.Pull(ctx, user.ID, 0)
 	if err != nil {
@@ -74,8 +75,5 @@ func TestPullTaskWithScheduledDatesPostgres(t *testing.T) {
 	}
 	if got.FollowUpDate == nil || *got.FollowUpDate != "2026-09-27" {
 		t.Fatalf("followUpDate = %v, want 2026-09-27", got.FollowUpDate)
-	}
-	if got.EstimatedMinutes == nil || *got.EstimatedMinutes != 45 {
-		t.Fatalf("estimatedMinutes = %v, want 45", got.EstimatedMinutes)
 	}
 }

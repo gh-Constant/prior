@@ -43,7 +43,7 @@
   display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 16px; border: 0; border-radius: 999px;
   background: transparent; color: var(--muted); font-size: var(--fs-md); font-weight: 550;
 }
-.pricing-interval button.is-active { background: var(--ink); color: #fff; }
+.pricing-interval button.is-active { background: var(--ink); color: var(--on-ink); }
 .pricing-save { padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: var(--fs-2xs); font-weight: 650; }
 
 /* Notices and current plan */
@@ -54,7 +54,7 @@
 .pricing-notice.is-success { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
 .pricing-notice > span { flex: 1; }
 .pricing-notice-close { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: var(--r-sm); background: transparent; color: inherit; }
-.pricing-notice-close:hover { background: oklch(0 0 0 / 0.05); }
+.pricing-notice-close:hover { background: color-mix(in oklab, currentColor 8%, transparent); }
 .pricing-notice svg { width: 16px; height: 16px; }
 
 .pricing-current {
@@ -165,3 +165,16 @@
   .pricing-card { transition: none; }
   .pricing-card:hover { translate: none; }
 }
+
+/* Dark theme: the hero keeps its warm currents at night (ShaderCanvas "dusk"),
+   the veil and the interval glass turn dark, and the featured card gets a rim. */
+:root[data-theme="dark"] .pricing-hero {
+  background:
+    radial-gradient(60% 80% at 85% 20%, #3a2d55 0%, transparent 60%),
+    radial-gradient(70% 90% at 15% 90%, #3b221b 0%, transparent 65%),
+    radial-gradient(50% 70% at 60% 60%, #7a3624 0%, transparent 70%),
+    #1c1816;
+}
+:root[data-theme="dark"] .pricing-hero::after { background: linear-gradient(100deg, oklch(0.18 0.006 50 / 0.78) 0%, oklch(0.18 0.006 50 / 0.4) 55%, oklch(0.18 0.006 50 / 0) 100%); }
+:root[data-theme="dark"] .pricing-interval { background: oklch(0.2 0.006 50 / 0.6); border-color: oklch(1 0 0 / 0.08); }
+:root[data-theme="dark"] .pricing-card.is-featured { box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08), 0 24px 48px -20px oklch(0.45 0.18 33 / 0.5); }

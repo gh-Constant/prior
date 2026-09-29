@@ -1613,6 +1613,10 @@ func persistHabitMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, muta
 	if err != nil {
 		return AppliedMutation{}, err
 	}
+	previousDates, err := habitCompletedDatesTx(ctx, tx, userID, habitID)
+	if err != nil {
+		return AppliedMutation{}, err
+	}
 	mc := mutationContext{ctx: ctx, tx: tx, userID: userID, revision: revision}
 	if err := insertHabitRow(mc, mutation.Habit, habitID, completedJSON, createdAt, updatedAt); err != nil {
 		return AppliedMutation{}, err
@@ -1628,6 +1632,7 @@ func persistHabitMutation(ctx context.Context, tx pgx.Tx, userID uuid.UUID, muta
 	if err := recordAppliedMutation(mc, habitID, mutationID, "habit", payload); err != nil {
 		return AppliedMutation{}, err
 	}
+	recordHabitGameTx(ctx, tx, userID, mutation.Habit, habitID, previousDates)
 	return AppliedMutation{MutationID: mutation.ID, Entity: "habit", Habit: mutation.Habit, Revision: revision}, nil
 }
 
@@ -1777,6 +1782,10 @@ func persistTaskMutation(ctx context.Context, tx pgx.Tx, userID, ownerID uuid.UU
 		return AppliedMutation{}, err
 	}
 	createdAt, updatedAt := coalesceTimestamps(mutation.Task.CreatedAt.UTC(), mutation.Task.UpdatedAt.UTC())
+	wasCompleted, err := taskWasCompletedTx(ctx, tx, taskID)
+	if err != nil {
+		return AppliedMutation{}, err
+	}
 	mc := mutationContext{ctx: ctx, tx: tx, userID: userID, ownerID: ownerID, revision: revision}
 	if err := insertTaskRow(mc, mutation.Task, taskID, createdAt, updatedAt); err != nil {
 		return AppliedMutation{}, err
@@ -1795,6 +1804,9 @@ func persistTaskMutation(ctx context.Context, tx pgx.Tx, userID, ownerID uuid.UU
 	if err := recordAppliedMutation(mc, taskID, mutationID, "task", payload); err != nil {
 		return AppliedMutation{}, err
 	}
+	completion := mutation.Task
+	completion.CreatedAt, completion.UpdatedAt = createdAt, updatedAt
+	recordTaskGameTx(ctx, tx, userID, completion, taskID, wasCompleted)
 	return AppliedMutation{MutationID: mutation.ID, Entity: "task", Task: mutation.Task, Revision: revision}, nil
 }
 func (s *Store) Pull(ctx context.Context, userID uuid.UUID, since int64) (PullResult, error) {
@@ -2118,6 +2130,11 @@ func (s *Store) CleanupRetention(ctx context.Context, mutationsDays, sessionsDay
 		return err
 	} else {
 		slog.Info("retention cleanup applied_mutations", "deleted", result.RowsAffected(), "older_than_days", mutationsDays)
+	}
+	if result, err := s.pool.Exec(ctx, `DELETE FROM game_events WHERE seen_at < now() - interval '30 days'`); err != nil {
+		return err
+	} else {
+		slog.Info("retention cleanup game_events", "deleted", result.RowsAffected())
 	}
 	if result, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE expires_at < now() - ($1::int * interval '1 day')`, sessionsDays); err != nil {
 		return err

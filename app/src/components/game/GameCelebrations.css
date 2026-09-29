@@ -1,0 +1,16 @@
+.game-moment .game-moment-body { display: grid; justify-items: center; gap: 14px; padding: 4px 18px 18px; text-align: center; }
+.game-moment-species { font-size: var(--fs-lg); font-weight: 650; color: var(--ink); }
+.game-moment-text { margin: 0; max-width: 32ch; color: var(--muted); font-size: var(--fs-md); line-height: 1.5; }
+.game-moment-name { display: grid; gap: 8px; width: 100%; text-align: left; }
+.game-moment-name label { font-size: var(--fs-sm); color: var(--muted); }
+.game-moment-name-row { display: flex; gap: 8px; }
+.game-moment-name-row input { flex: 1; min-width: 0; }
+.game-moment-skip { justify-self: center; border: 0; background: none; color: var(--muted); font: inherit; font-size: var(--fs-sm); cursor: pointer; padding: 6px 10px; border-radius: var(--r-sm); }
+.game-moment-skip:hover { color: var(--ink); background: var(--hover); }
+.game-moment-skip:focus-visible { outline: none; box-shadow: var(--ring); }
+.game-moment-level {
+  display: grid; place-items: center; width: 88px; height: 88px; border-radius: 28px;
+  font-size: 40px; font-weight: 750; color: var(--accent-ink);
+  background: linear-gradient(145deg, var(--accent-hover), var(--accent-dark));
+  box-shadow: 0 10px 30px color-mix(in oklch, var(--accent) 35%, transparent), inset 0 1px 0 color-mix(in oklch, white 40%, transparent);
+}

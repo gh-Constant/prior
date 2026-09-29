@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { BillingInterval, BillingPlan, BillingState, PlanId } from "../../lib/api";
 import { displayMonthlyCents, formatMoney, formatTokens, openBillingPortal, planRank, startCheckout, yearlySavingPercent } from "../../lib/billing";
 import { useI18n } from "../../lib/i18n";
+import { useResolvedTheme } from "../../lib/theme";
 import { Icon } from "../Icon";
 import { ShaderCanvas } from "./ShaderCanvas";
 import type { CheckoutReturn } from "../../hooks/useBilling";
@@ -31,6 +32,7 @@ function featureVars(plan: BillingPlan, lang: string): Record<string, string | n
 
 export function PricingView({ billing, signedIn, checkoutReturn, onDismissCheckoutReturn }: Props) {
   const { t, lang } = useI18n();
+  const theme = useResolvedTheme();
   const [interval, setBillingInterval] = useState<BillingInterval>(billing?.subscription.interval === "year" ? "year" : "month");
   const [busy, setBusy] = useState<PlanId | "portal" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export function PricingView({ billing, signedIn, checkoutReturn, onDismissChecko
     <section className="pricing-page" aria-labelledby="pricing-title">
       <header className="pricing-hero">
         <div className="pricing-hero-field" aria-hidden="true">
-          <ShaderCanvas variant="dawn" />
+          <ShaderCanvas variant={theme === "dark" ? "dusk" : "dawn"} />
         </div>
         <div className="pricing-hero-copy">
           <span className="pricing-eyebrow">{t("billing.pricing.eyebrow")}</span>

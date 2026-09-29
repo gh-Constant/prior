@@ -1,0 +1,37 @@
+.pet-companion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 12px 6px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--r-lg, 10px);
+  background: transparent;
+  color: var(--sidebar-ink, #edecea);
+  font: inherit;
+  text-align: left;
+}
+.pet-companion:hover { background: var(--sidebar-2, #1f1f1d); }
+.pet-companion:active { scale: 1; }
+.pet-companion--light { color: var(--ink, #1d1c1a); }
+.pet-companion--light:hover { background: var(--hover, #f4f4f2); }
+
+.pet-companion-stage { position: relative; display: grid; place-items: end center; flex: 0 0 auto; }
+/* A soft floor spot so the pet sits on something in the dark rail. */
+.pet-companion-stage::before {
+  content: "";
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  bottom: 2%;
+  height: 16%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(255 255 255 / 0.07), transparent);
+}
+.pet-companion--light .pet-companion-stage::before { background: radial-gradient(closest-side, rgb(120 90 60 / 0.08), transparent); }
+
+.pet-companion-text { display: grid; gap: 1px; min-width: 0; }
+.pet-companion-name { overflow: hidden; font-size: var(--fs-md, 13.5px); font-weight: 600; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.pet-companion-mood { overflow: hidden; color: var(--sidebar-muted, #9c9a94); font-size: var(--fs-xs, 11.5px); line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.pet-companion--light .pet-companion-mood { color: var(--muted, #6f6d67); }

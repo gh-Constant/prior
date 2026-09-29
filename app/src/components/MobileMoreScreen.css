@@ -127,3 +127,6 @@
 @media (prefers-reduced-motion: reduce) {
   .mobile-more { animation: fade-in 150ms ease both; }
 }
+
+/* Dark theme: --green is lifted for dark surfaces, so initials switch to dark ink. */
+:root[data-theme="dark"] .mobile-more-avatar { color: var(--on-tone); }

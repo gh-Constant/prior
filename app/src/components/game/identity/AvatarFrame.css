@@ -1,0 +1,209 @@
+/* Avatar frames. Layers, bottom to top: glow, back ornaments, avatar, conic ring,
+   SVG ring, sheen, spinning ornaments, front ornaments, sparkles, level badge. */
+
+.gi-af {
+  --af-size: 48px;
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--af-size);
+  height: var(--af-size);
+  vertical-align: middle;
+  isolation: isolate;
+}
+
+.gi-af-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.gi-af-layer > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.gi-af-glow { position: absolute; inset: -16%; z-index: 0; border-radius: 50%; background: radial-gradient(closest-side, var(--af-glow, transparent) 30%, transparent 100%); opacity: 0.55; pointer-events: none; }
+.gi-af-back { z-index: 0; }
+.gi-af-avatar {
+  position: absolute;
+  inset: 9%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--gi-inset-2);
+  color: var(--gi-ink-2);
+}
+.gi-af-avatar > * { width: 100%; height: 100%; }
+.gi-af-avatar img { object-fit: cover; }
+.gi-af-conic,
+.gi-af-sheen {
+  position: absolute;
+  inset: var(--af-ring-inset, 3%);
+  z-index: 2;
+  border-radius: 50%;
+  -webkit-mask: radial-gradient(closest-side, transparent var(--af-hole, 86%), #000 calc(var(--af-hole, 86%) + 1.4%), #000 98.2%, transparent 100%);
+  mask: radial-gradient(closest-side, transparent var(--af-hole, 86%), #000 calc(var(--af-hole, 86%) + 1.4%), #000 98.2%, transparent 100%);
+  pointer-events: none;
+}
+.gi-af-conic { background: var(--af-conic); }
+.gi-af-sheen { z-index: 3; background: var(--af-sheen, conic-gradient(transparent 0 72%, rgb(255 255 255 / 0.85) 84%, transparent 94%)); }
+.gi-af-ring { z-index: 2; }
+.gi-af-spin { z-index: 3; }
+.gi-af-front { z-index: 4; }
+
+/* Motion */
+.gi-af.gi-fx-full .gi-af-conic { animation: gi-spin var(--af-spin, 7s) linear infinite; }
+.gi-af.gi-fx-subtle .gi-af-conic { animation: gi-spin calc(var(--af-spin, 7s) * 2.6) linear infinite; }
+.gi-af.gi-fx-full .gi-af-sheen { animation: gi-spin var(--af-sheen-d, 4.5s) linear infinite var(--af-sheen-dir, normal); }
+.gi-af.gi-fx-subtle .gi-af-sheen { animation: gi-spin calc(var(--af-sheen-d, 4.5s) * 2.2) linear infinite var(--af-sheen-dir, normal); }
+.gi-af.gi-fx-full .gi-af-spin { animation: gi-spin var(--af-spin-d, 30s) linear infinite; }
+.gi-af.gi-fx-subtle .gi-af-spin { animation: gi-spin calc(var(--af-spin-d, 30s) * 2) linear infinite; }
+.gi-af.gi-fx-full .gi-af-glow { --gi-pulse-from: 0.3; --gi-pulse-to: 0.7; animation: gi-pulse 2.4s ease-in-out infinite alternate; }
+
+/* Flame tongues flicker from their base */
+.gi-af-tongue { transform-box: fill-box; transform-origin: 50% 100%; }
+.gi-af.gi-fx-full .gi-af-tongue { animation: gi-af-flicker var(--d, 1s) ease-in-out var(--delay, 0s) infinite alternate; }
+.gi-af.gi-fx-subtle .gi-af-tongue { animation: gi-af-flicker calc(var(--d, 1s) * 2.4) ease-in-out var(--delay, 0s) infinite alternate; }
+@keyframes gi-af-flicker {
+  0% { transform: scale(0.94, 0.8) skewX(-4deg); }
+  45% { transform: scale(1.03, 1.05) skewX(3deg); }
+  100% { transform: scale(0.97, 1.16) skewX(-1deg); }
+}
+
+/* Twinkling sparkles around the ring */
+.gi-af-spark {
+  position: absolute;
+  z-index: 5;
+  width: 17%;
+  height: 17%;
+  margin: -8.5% 0 0 -8.5%;
+  background: var(--af-spark, radial-gradient(circle, #fff 0 22%, #fff4c2 45%, #ffc53d 75%));
+  opacity: 0;
+  pointer-events: none;
+  animation: gi-twinkle var(--d, 2.6s) ease-in-out var(--delay, 0s) infinite;
+}
+
+/* Rising embers (flame) */
+.gi-af-ember {
+  position: absolute;
+  z-index: 5;
+  top: 4%;
+  width: 5%;
+  height: 5%;
+  margin-left: -2.5%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff5d0 0 25%, #ffb02e 55%, transparent 72%);
+  box-shadow: 0 0 calc(var(--af-size) * 0.05) #ff8a1f;
+  opacity: 0;
+  pointer-events: none;
+  animation: gi-af-rise var(--d, 2s) linear var(--delay, 0s) infinite;
+}
+@keyframes gi-af-rise {
+  0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translate(calc(var(--af-size) * 0.06), calc(var(--af-size) * -0.34)) scale(0.2); opacity: 0; }
+}
+
+/* Level badge */
+.gi-af-level {
+  position: absolute;
+  right: -7%;
+  bottom: -5%;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  min-width: 40%;
+  height: 31%;
+  padding: 0 7%;
+  border-radius: 999px;
+  background: var(--af-badge, #5f5c56);
+  color: var(--af-badge-ink, #fff);
+  box-shadow: 0 0 0 max(1.5px, calc(var(--af-size) * 0.035)) var(--gi-avatar-ring);
+  font-size: max(9px, calc(var(--af-size) * 0.19));
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Per-frame palettes ── */
+.gi-af--none { --af-badge: #6f6d67; }
+.gi-af--common { --af-badge: linear-gradient(135deg, #8d8a82, #5d5a54); }
+.gi-af--rare { --af-badge: linear-gradient(135deg, #5b97fb, #1f4fbf); --af-spin-d: 36s; --af-ring-inset: 1.7%; --af-hole: 84.5%; --af-sheen-d: 6.5s; --af-sheen: conic-gradient(transparent 0 76%, rgb(255 255 255 / 0.7) 86%, transparent 94%); }
+.gi-af--epic {
+  --af-conic: conic-gradient(from 0deg, #5b21b6, #a855f7, #f5d0fe, #9333ea, #4c1d95, #c084fc, #fae8ff, #7e22ce, #5b21b6);
+  --af-hole: 85%;
+  --af-glow: rgb(168 85 247 / 0.65);
+  --af-spin: 6s;
+  --af-badge: linear-gradient(135deg, #c07cff, #6b21c8);
+  --af-spark: radial-gradient(circle, #fff 0 22%, #f5d0fe 48%, #c026d3 78%);
+}
+.gi-af--legendary {
+  --af-conic: conic-gradient(from 0deg, #8a5a00, #f6c445, #fff3c4, #d99a0b, #7a4a00, #f2b632, #ffe9a0, #b77a05, #8a5a00);
+  --af-ring-inset: 2%;
+  --af-hole: 82.5%;
+  --af-glow: rgb(255 168 30 / 0.75);
+  --af-spin: 5s;
+  --af-spin-d: 3.6s;
+  --af-badge: linear-gradient(135deg, #ffe38f, #f2a516 55%, #c07200);
+  --af-badge-ink: #3d2300;
+}
+.gi-af--flame {
+  --af-glow: rgb(255 96 20 / 0.7);
+  --af-badge: linear-gradient(135deg, #ffb13d, #f0520f 55%, #b3200a);
+}
+.gi-af--laurel {
+  --af-ring-inset: 4.5%;
+  --af-hole: 88%;
+  --af-sheen-d: 5.5s;
+  --af-badge: linear-gradient(135deg, #8cc63f, #3f6a0e);
+}
+.gi-af--frost {
+  --af-ring-inset: 3.4%;
+  --af-hole: 86.5%;
+  --af-glow: rgb(125 211 252 / 0.7);
+  --af-sheen-d: 6s;
+  --af-sheen-dir: reverse;
+  --af-badge: linear-gradient(135deg, #e6f8ff, #7dd3fc 55%, #2b9bd6);
+  --af-badge-ink: #062a40;
+  --af-spark: radial-gradient(circle, #fff 0 26%, #e0f6ff 50%, #5cc8ff 80%);
+}
+.gi-af--prism {
+  --af-conic: conic-gradient(from 0deg, #ff5c8a, #ffb35c, #ffe45c, #6cf59b, #5cd6ff, #7c7cff, #d65cff, #ff5c8a);
+  --af-sheen: conic-gradient(transparent 0 8%, rgb(255 255 255 / 0.9) 13%, transparent 19% 42%, rgb(255 255 255 / 0.75) 48%, transparent 54% 76%, rgb(255 255 255 / 0.85) 82%, transparent 88%);
+  --af-sheen-d: 7s;
+  --af-sheen-dir: reverse;
+  --af-glow: rgb(170 150 255 / 0.7);
+  --af-spin: 8s;
+  --af-badge: linear-gradient(135deg, #ffd1e6, #d7ccff 40%, #bdf2ff 75%, #d9ffe6);
+  --af-badge-ink: #2a1d5c;
+  --af-spark: radial-gradient(circle, #fff 0 24%, #e4dcff 48%, #7fd8ff 78%);
+}
+.gi-af--prism.gi-light { --af-spark: radial-gradient(circle, #fff 0 18%, #b9a8ff 45%, #5b54d6 80%); }
+.gi-af--prism .gi-af-glow { background: conic-gradient(from 90deg, rgb(255 92 138 / 0.6), rgb(255 228 92 / 0.6), rgb(108 245 155 / 0.6), rgb(92 214 255 / 0.6), rgb(214 92 255 / 0.6), rgb(255 92 138 / 0.6)); filter: blur(calc(var(--af-size) * 0.08)); inset: -6%; }
+.gi-af--legendary.gi-light .gi-af-glow,
+.gi-af--flame.gi-light .gi-af-glow { opacity: 0.4; }
+
+/* Placeholder avatar (initial or silhouette on a soft seeded tint) */
+.gi-avatar-ph {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, oklch(0.95 0.035 var(--ph-h)), oklch(0.84 0.06 var(--ph-h)));
+  color: oklch(0.42 0.08 var(--ph-h));
+  font-size: calc(var(--af-size, 32px) * 0.34);
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+.gi-dark .gi-avatar-ph,
+.gi-avatar-ph.gi-dark {
+  background: radial-gradient(circle at 35% 28%, oklch(0.5 0.06 var(--ph-h)), oklch(0.36 0.05 var(--ph-h)));
+  color: oklch(0.92 0.04 var(--ph-h));
+}

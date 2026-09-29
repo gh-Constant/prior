@@ -4,6 +4,15 @@ import "@fontsource-variable/dm-sans";
 import "./index.css";
 import { I18nProvider } from "./lib/i18n";
 import { App } from "./App";
+import { capturePendingLink } from "./lib/pendingLink";
+import { initTheme } from "./lib/theme";
+
+// Theme first: public/theme-init.js already painted the right one; this keeps
+// it in sync with system changes, synced preferences and the native window.
+initTheme();
+
+// Before anything can navigate away (sign-in), keep shared links safe.
+capturePendingLink();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

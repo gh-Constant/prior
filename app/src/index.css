@@ -22,6 +22,19 @@
   --line: #ebeae6;
   --line-strong: #dcdad5;
   --line-soft: #f1f0ed;
+  --line-hover: #cfcdc7;      /* control border on hover */
+  --check-line: #c9c6bf;      /* empty checkbox / completion ring */
+  --raised: #ffffff;          /* menus, popovers, modals, toasts */
+  --on-ink: #ffffff;          /* text on ink-filled (inverted) chips and tooltips */
+  --overlay: oklch(0.18 0.005 60 / 0.32);
+  --overlay-soft: oklch(0.18 0.005 60 / 0.22);
+  --knob: #ffffff;            /* switch thumbs */
+  --seg-active: #ffffff;      /* selected segment in a segmented control */
+  --on-tone: #ffffff;         /* text on tone-filled avatars (--blue, --green…) */
+  --scrollbar: #d6d4cf;
+  --scrollbar-hover: #c2bfb8;
+  --paper: #ffffff;           /* untrusted rich content (email HTML) keeps a light page */
+  --paper-ink: #1d1c1a;
 
   /* ── Brand accent: coral, used sparingly for primary action + selection ── */
   --accent: #f35f43;
@@ -35,12 +48,23 @@
 
   /* ── Semantic tones (text / soft fill / border) ── */
   --red: #d93a2b;    --red-soft: #fdf0ee;    --red-line: #f6d2cd;
+  --red-fill: #d93a2b; --red-soft-hover: #fbe4e0; /* destructive button fill, soft-red hover */
   --amber: #b86e0b;  --amber-soft: #fdf6e9;  --amber-line: #f1ddb4;
   --blue: #2e67d1;   --blue-soft: #eff4fd;   --blue-line: #d3e0f7;
   --green: #2f7d52;  --green-soft: #edf6f0;  --green-line: #cfe6d8;
   --violet: #5f55c4; --violet-soft: #f2f1fc; --violet-line: #dddaf5;
+  --gold: #e0a01a;   /* "plan" quadrant, in-progress, important flag */
+
+  /* ── Task workflow status (text / fill / border), see lib/taskStatusAppearance.ts ── */
+  --status-neutral: #596273;  --status-neutral-soft: #f1f3f5;  --status-neutral-line: #dce1e7;
+  --status-todo: #2563b8;     --status-todo-soft: #edf4ff;     --status-todo-line: #cbdffc;
+  --status-progress: #956000; --status-progress-soft: #fff6d9; --status-progress-line: #eedb9f;
+  --status-waiting: #7950b3;  --status-waiting-soft: #f4eeff;  --status-waiting-line: #dfcef5;
+  --status-done: #237347;     --status-done-soft: #eaf7ef;     --status-done-line: #c2e5cf;
+  --status-canceled: #b34343; --status-canceled-soft: #fff0f0; --status-canceled-line: #efcccc;
 
   /* ── Sidebar (dark rail) ── */
+  --sidebar-edge: #000000;
   --sidebar: #171716;
   --sidebar-2: #1f1f1d;       /* hover */
   --sidebar-3: #282725;       /* active */
@@ -82,8 +106,91 @@
   --shadow-card-hover: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 12px -4px oklch(0 0 0 / 0.07);
   --shadow-pop: 0 0 0 1px oklch(0 0 0 / 0.06), 0 4px 8px -2px oklch(0 0 0 / 0.06), 0 16px 40px -8px oklch(0 0 0 / 0.16);
   --shadow-toast: 0 0 0 1px oklch(0 0 0 / 0.07), 0 4px 10px -2px oklch(0 0 0 / 0.08), 0 14px 36px -10px oklch(0 0 0 / 0.22);
+  color-scheme: light;
+}
+
+/* ── Dark theme (<html data-theme="dark">, set by lib/theme.ts and public/theme-init.js).
+   Same warm hue as light, turned down: a near-black canvas, surfaces that step up in
+   lightness (well < canvas < panel < raised), hairlines that stay visible, tones lifted
+   for text on dark, and shadows that are deeper but carry a faint light rim. ── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: #191715;
+  --panel: #201e1c;
+  --surface-1: #201e1c;
+  --surface-2: #151311;       /* inset wells: inputs tracks, segmented controls */
+  --surface-3: #2d2b29;
+  --hover: #272523;
+  --raised: #262422;
+  --ink: #efece8;
+  --ink-2: #d3d1cd;
+  --muted: #a5a39e;
+  --faint: #7d7a76;
+  --line: #2f2d2b;
+  --line-strong: #3c3a38;
+  --line-soft: #282624;
+  --line-hover: #4d4b49;
+  --check-line: #5d5a58;
+  --on-ink: #191715;
+  --overlay: oklch(0.08 0.004 60 / 0.62);
+  --overlay-soft: oklch(0.08 0.004 60 / 0.45);
+  --knob: #ebe8e3;
+  --seg-active: #33312e;
+  --on-tone: #191715;
+  --scrollbar: #3a3836;
+  --scrollbar-hover: #4d4b48;
+  --paper: #fbfaf8;
+  --paper-ink: #24221f;
+
+  --accent: #f35f43;
+  --accent-hover: #fc7659;
+  --accent-dark: #fc8e71;     /* accent as text: lifted to read on dark surfaces */
+  --accent-ink: #ffffff;
+  --accent-soft: #372520;
+  --accent-soft-2: #4a2b24;
+  --accent-line: #6e3629;
+  --ring: 0 0 0 3px oklch(0.7 0.17 33 / 0.32);
+
+  --red: #f57569;    --red-soft: #3c2926;    --red-line: #603833;
+  --red-fill: #cf4535; --red-soft-hover: #4a302c;
+  --amber: #e7af5c;  --amber-soft: #3a3124;  --amber-line: #5c4a2f;
+  --blue: #7aa9f0;   --blue-soft: #2c3038;   --blue-line: #3b485c;
+  --green: #6fc488;  --green-soft: #2a342a;  --green-line: #38503c;
+  --violet: #a4a1ee; --violet-soft: #312f37; --violet-line: #48455b;
+  --gold: #e8ad3a;
+
+  --status-neutral: #a3acb8;  --status-neutral-soft: #2b2c2e;  --status-neutral-line: #45484c;
+  --status-todo: #72aaf2;     --status-todo-soft: #2b3038;     --status-todo-line: #39485c;
+  --status-progress: #e9b452; --status-progress-soft: #3a3223; --status-progress-line: #5c4b2c;
+  --status-waiting: #b699eb;  --status-waiting-soft: #342e37;  --status-waiting-line: #4d435a;
+  --status-done: #6fc488;     --status-done-soft: #2a342a;     --status-done-line: #38503c;
+  --status-canceled: #ec7b74; --status-canceled-soft: #3b2a27; --status-canceled-line: #5d3a36;
+
+  /* The rail sits a step below the canvas so it keeps reading as its own surface. */
+  --sidebar-edge: #ffffff0a;
+  --sidebar: #0f0e0c;
+  --sidebar-2: #1b1917;
+  --sidebar-3: #252220;
+  --sidebar-ink: #edecea;
+  --sidebar-muted: #9c9a94;
+  --sidebar-faint: #6c6a65;
+  --sidebar-line: #ffffff0d;
+
+  --plan: #272115;
+  --quick: #241b17;
+  --later: #1d1b19;
+
+  --shadow-xs: 0 1px 1px oklch(0 0 0 / 0.3);
+  --shadow-control: 0 1px 1px oklch(0 0 0 / 0.28);
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.32);
+  --shadow-card-hover: 0 1px 2px oklch(0 0 0 / 0.36), 0 6px 16px -4px oklch(0 0 0 / 0.5);
+  --shadow-pop: 0 0 0 1px oklch(1 0 0 / 0.06), 0 4px 10px -2px oklch(0 0 0 / 0.42), 0 20px 48px -8px oklch(0 0 0 / 0.62);
+  --shadow-toast: 0 0 0 1px oklch(1 0 0 / 0.07), 0 4px 12px -2px oklch(0 0 0 / 0.45), 0 16px 40px -10px oklch(0 0 0 / 0.66);
 }
 * { box-sizing: border-box; }
+/* Set for two frames while the theme changes (lib/theme.ts) so colors swap at once. */
+.theme-switching, .theme-switching *, .theme-switching *::before, .theme-switching *::after { transition: none !important; }
 html, body, #root { min-width: 320px; height: 100%; margin: 0; }
 body { height: 100dvh; overflow: hidden; }
 button, input, select { font: inherit; }
@@ -96,10 +203,10 @@ button:disabled { cursor: default; opacity: .45; }
 ::selection { background: var(--accent-soft-2); color: var(--ink); }
 body { font-variant-numeric: tabular-nums; }
 /* Quiet, thin scrollbars everywhere (desktop) */
-* { scrollbar-width: thin; scrollbar-color: #d6d4cf transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
 *::-webkit-scrollbar { width: 10px; height: 10px; }
-*::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: #d6d4cf padding-box; }
-*::-webkit-scrollbar-thumb:hover { background-color: #c2bfb8; }
+*::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: var(--scrollbar) padding-box; }
+*::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-hover); }
 *::-webkit-scrollbar-track { background: transparent; }
 .sidebar, .sidebar * { scrollbar-color: #3a3936 transparent; }
 button, a { transition-property: background-color, border-color, color, box-shadow, opacity, translate, scale; transition-duration: var(--t-fast), var(--t-fast), var(--t-fast), var(--t-fast), var(--t-fast), var(--t-fast), var(--t-press); transition-timing-function: var(--ease); }
@@ -129,14 +236,14 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 }
 .window-caption-btn:active { scale: 1; }
 .window-caption-btn svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.2; }
-.window-caption-btn:hover { background: #00000012; color: var(--ink); }
+.window-caption-btn:hover { background: color-mix(in oklab, var(--ink) 8%, transparent); color: var(--ink); }
 .window-caption-btn.close:hover { background: #e81123; color: #fff; }
 .app-shell.tauri-desktop.platform-mac .sidebar { padding-top: 52px; }
 @media (min-width: 1101px) {
   .app-shell.agent-open { grid-template-columns: 232px minmax(0, 1fr) minmax(360px, 400px); }
   .app-shell.sidebar-collapsed.agent-open { grid-template-columns: 60px minmax(0, 1fr) minmax(360px, 400px); }
 }
-.sidebar { position: sticky; top: 0; height: 100dvh; max-height: 100dvh; display: flex; flex-direction: column; padding: max(18px, env(safe-area-inset-top)) 10px 12px; background: var(--sidebar); color: var(--sidebar-ink); border-right: 1px solid #000; overflow-y: auto; overflow-x: hidden; }
+.sidebar { position: sticky; top: 0; height: 100dvh; max-height: 100dvh; display: flex; flex-direction: column; padding: max(18px, env(safe-area-inset-top)) 10px 12px; background: var(--sidebar); color: var(--sidebar-ink); border-right: 1px solid var(--sidebar-edge); overflow-y: auto; overflow-x: hidden; }
 .sidebar-brand { margin: 0 8px 24px; }
 .brand-lockup { display: inline-flex; align-items: center; gap: 9px; }
 .brand-mark { display: block; width: 26px; height: 26px; object-fit: contain; }
@@ -164,7 +271,7 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .layout-switch { display: flex; align-items: center; gap: 2px; padding: 2px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); }
 .layout-switch button { display: grid; place-items: center; width: 28px; height: 26px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--faint); }
 .layout-switch button:hover { color: var(--ink); }
-.layout-switch button.active { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.06); }
+.layout-switch button.active { background: var(--seg-active); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.06); }
 .layout-switch svg { width: 15px; height: 15px; }
 .primary-button, .secondary-button, .danger-button, .update-button, .update-check { min-height: var(--control-h); padding: 0 12px; border: 1px solid transparent; border-radius: var(--r-md); font-size: var(--fs-sm); font-weight: 550; letter-spacing: -.005em; white-space: nowrap; }
 .primary-button, .update-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-color: color-mix(in oklab, var(--accent) 80%, #000); background: var(--accent); color: var(--accent-ink); box-shadow: inset 0 1px 0 #ffffff2e, 0 1px 2px oklch(0.5 0.15 33 / 0.25); }
@@ -174,9 +281,9 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .new-task-button kbd, .primary-button kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: var(--r-xs); background: #ffffff26; color: inherit; font-family: inherit; font-size: 10px; font-weight: 600; opacity: .9; }
 .secondary-button, .update-check { display: inline-flex; align-items: center; justify-content: center; gap: 7px; background: var(--panel); border-color: var(--line-strong); color: var(--ink-2); box-shadow: var(--shadow-control); }
 .secondary-button svg { width: 15px; height: 15px; }
-.secondary-button:hover, .update-check:hover { background: var(--hover); border-color: #cfcdc7; color: var(--ink); }
+.secondary-button:hover, .update-check:hover { background: var(--hover); border-color: var(--line-hover); color: var(--ink); }
 .danger-button { width: 100%; margin-top: 24px; border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
-.danger-button:hover { background: #fbe4e0; }
+.danger-button:hover { background: var(--red-soft-hover); }
 /* Filters: a flat toolbar, not a card */
 .task-filters { margin-bottom: 14px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .filters-toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -184,7 +291,7 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .task-filters .filter-search svg { width: 15px; height: 15px; flex: 0 0 auto; }
 .task-filters .filter-search input { width: 100%; min-width: 0; padding: 6px 0; border: 0; border-radius: 0; outline: 0; background: transparent; color: var(--ink); font-size: var(--fs-md); }
 .task-filters .filter-search input::placeholder { color: var(--faint); }
-.task-filters .filter-search:hover { border-color: #cfcdc7; }
+.task-filters .filter-search:hover { border-color: var(--line-hover); }
 .task-filters .filter-search:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
 .task-filters .filter-search input[type="search"]::-webkit-search-cancel-button { display: none; }
 .filter-search-clear { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 auto; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--muted); }
@@ -196,7 +303,7 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .filter-toggle.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-dark); }
 .filter-toggle.has-active:not(.active) { color: var(--ink-2); }
 .filter-toggle svg { width: 14px; height: 14px; }
-.filter-count { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; }
+.filter-count { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 10px; font-weight: 700; }
 .filter-sort { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: var(--control-h); padding: 0 2px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink-2); font-size: var(--fs-sm); font-weight: 550; box-shadow: var(--shadow-control); }
 .filter-sort-label { flex: 0 0 auto; color: var(--faint); font-weight: 500; }
 .filter-sort .filter-sort-custom-select { min-width: 130px; max-width: 175px; }
@@ -208,7 +315,7 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .filter-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .filter-field > span { color: var(--muted); font-size: var(--fs-xs); font-weight: 500; }
 .filter-field select { width: 100%; min-width: 0; min-height: var(--control-h); padding: 0 28px 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink); font-size: var(--fs-sm); cursor: pointer; }
-.filter-field select:hover { border-color: #cfcdc7; }
+.filter-field select:hover { border-color: var(--line-hover); }
 .filter-field select:focus-visible { outline: 0; border-color: var(--accent); box-shadow: var(--ring); }
 .active-pills { display: flex; align-items: center; flex: 0 1 auto; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 0; }
 .active-pill { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; max-width: 220px; padding: 0 3px 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink-2); font-size: var(--fs-xs); font-weight: 500; }
@@ -228,9 +335,9 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .task-row.completed { opacity: .6; }
 .task-row.completed:hover { opacity: .85; }
 .complete-control { position: relative; display: grid; place-items: center; flex: 0 0 auto; margin-top: 1px; }
-.complete-button { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1.5px solid #c9c6bf; border-radius: 999px; background: var(--panel); color: #fff; transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
+.complete-button { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 1.5px solid var(--check-line); border-radius: 999px; background: var(--panel); color: var(--accent-ink); transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
 .complete-button:hover { border-color: var(--accent); background: var(--accent-soft); }
-.complete-button.checked { border-color: var(--accent); background: var(--accent); color: #fff; }
+.complete-button.checked { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
 .complete-button svg { width: 10px; height: 10px; opacity: 0; scale: 0.3; stroke-width: 2.6; filter: blur(2px); transition: opacity var(--t-fast) var(--ease), scale var(--t-fast) var(--ease), filter var(--t-fast) var(--ease); }
 .complete-button.checked svg { opacity: 1; scale: 1; filter: blur(0px); }
 .task-content { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
@@ -272,8 +379,9 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .task-action.flag-toggle:focus-visible, .option-button.flag-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .task-action.flag-toggle:disabled { opacity: .68; }
 .task-action.danger:hover { color: #b91c1c; background: #fee2e2; border-color: #fecaca; }
-.completion-celebration { position: fixed; z-index: 90; right: 20px; bottom: 20px; display: flex; align-items: center; gap: 10px; min-width: min(300px, calc(100vw - 32px)); padding: 10px 14px 10px 10px; border: 0; border-radius: var(--r-lg); background: var(--panel); color: var(--ink); box-shadow: var(--shadow-toast); animation: completion-toast-in 300ms var(--ease) both; }
-.completion-celebration-icon { position: relative; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; }
+:root[data-theme="dark"] .task-action.danger:hover { color: var(--red); background: var(--red-soft); border-color: var(--red-line); }
+.completion-celebration { position: fixed; z-index: 90; right: 20px; bottom: 20px; display: flex; align-items: center; gap: 10px; min-width: min(300px, calc(100vw - 32px)); padding: 10px 14px 10px 10px; border: 0; border-radius: var(--r-lg); background: var(--raised); color: var(--ink); box-shadow: var(--shadow-toast); animation: completion-toast-in 300ms var(--ease) both; }
+.completion-celebration-icon { position: relative; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
 .completion-celebration-icon svg { width: 14px; height: 14px; stroke-width: 2.4; }
 .completion-celebration > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .completion-celebration strong { font-size: var(--fs-sm); font-weight: 600; }
@@ -285,7 +393,7 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .habit-frequency-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; margin: 14px 24px 0; padding: 2px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); }
 .habit-frequency-btn { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 28px; padding: 2px 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; cursor: pointer; transition: all var(--t-fast) var(--ease); }
 .habit-frequency-btn:hover { color: var(--ink); }
-.habit-frequency-btn.active { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.06); }
+.habit-frequency-btn.active { background: var(--seg-active); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.06); }
 .habit-frequency-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
 .habit-quick-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .habit-preset-chip { min-height: 24px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--panel); color: var(--ink-2); font-size: var(--fs-xs); font-weight: 500; cursor: pointer; transition: all var(--t-fast) var(--ease); }
@@ -303,7 +411,7 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .habit-weekday-options { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
 .habit-weekday-options button { min-width: 0; min-height: 30px; padding: 0 2px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--panel); color: var(--ink-2); font-size: var(--fs-xs); font-weight: 550; cursor: pointer; }
 .habit-weekday-options button:hover { background: var(--hover); }
-.habit-weekday-options button.selected { border-color: var(--accent); background: var(--accent); color: #fff; box-shadow: none; }
+.habit-weekday-options button.selected { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); box-shadow: none; }
 .habit-date-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .habit-date-fields .field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-height: 50px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); }
 .habit-date-fields .field > span { color: var(--muted); font-size: var(--fs-2xs); font-weight: 550; }
@@ -312,15 +420,17 @@ button, input, select, textarea, a, .clickable { -webkit-app-region: no-drag; }
 .habit-form-error { margin: 10px 24px 0; color: var(--red); font-size: var(--fs-xs); line-height: 1.4; }
 .habit-schedule-preview { margin: 10px 24px 0; color: var(--muted); font-size: var(--fs-xs); }
 .empty-add { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 160px; margin: 0; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: transparent; color: var(--muted); font-size: var(--fs-md); }
-.empty-add:hover { color: var(--ink); border-color: #cfcdc7; background: var(--panel); }
+.empty-add:hover { color: var(--ink); border-color: var(--line-hover); background: var(--panel); }
 .empty-add svg { width: 15px; height: 15px; }
 /* Eisenhower matrix, grouped task list and board: see components/TaskList.css */
-.modal-backdrop { position: fixed; z-index: 50; inset: 0; padding: 0; border: 0; background: oklch(0.18 0.005 60 / 0.32); backdrop-filter: blur(3px); animation: fade-in var(--t-fast) var(--ease); cursor: pointer; }
+.modal-backdrop { position: fixed; z-index: 50; inset: 0; padding: 0; border: 0; background: var(--overlay); backdrop-filter: blur(3px); animation: fade-in var(--t-fast) var(--ease); cursor: pointer; }
 /* Native modal dialogs render in the top layer (author styles win over UA styles
    except where UA uses higher-specificity :modal rules, which is what centers them). */
 :where(dialog.modal) { padding: 0; }
+/* ::backdrop does not inherit custom properties in older WebKit, so its colors stay literal. */
 dialog.modal::backdrop { background: oklch(0.18 0.005 60 / 0.32); backdrop-filter: blur(3px); }
-.modal { width: min(100%, 460px); max-height: 100%; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border: 0; border-radius: var(--r-xl); background: var(--panel); box-shadow: var(--shadow-pop); animation: modal-in 200ms var(--ease-out); }
+:root[data-theme="dark"] dialog.modal::backdrop { background: oklch(0.08 0.004 60 / 0.62); }
+.modal { width: min(100%, 460px); max-height: 100%; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border: 0; border-radius: var(--r-xl); background: var(--raised); color: var(--ink); box-shadow: var(--shadow-pop); animation: modal-in 200ms var(--ease-out); }
 .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 16px 24px; }
 .modal-header h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.02em; }
 .icon-button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--faint); }
@@ -344,7 +454,7 @@ dialog.modal::backdrop { background: oklch(0.18 0.005 60 / 0.32); backdrop-filte
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin: 24px 0 0; padding: 14px 20px 0; border-top: 1px solid var(--line); }
 .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 0 24px 20px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
 .auth-tabs button { min-height: 28px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
-.auth-tabs button.active { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.06); }
+.auth-tabs button.active { background: var(--seg-active); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.06); }
 .auth-form { display: flex; flex-direction: column; gap: 14px; margin: 0 24px; }
 .auth-form label { display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); font-size: var(--fs-sm); font-weight: 500; }
 .field { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-control); transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
@@ -407,7 +517,7 @@ dialog.modal::backdrop { background: oklch(0.18 0.005 60 / 0.32); backdrop-filte
 .download-panel h3 { margin: 0 0 20px; font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
 .download-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
 .download-card { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 64px; padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-control); color: var(--ink); text-decoration: none; }
-.download-card:hover { border-color: #cfcdc7; background: var(--hover); }
+.download-card:hover { border-color: var(--line-hover); background: var(--hover); }
 .download-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 26px; color: var(--ink-2); }
 .download-card-icon svg { width: 20px; height: 20px; }
 .download-card-copy { display: flex; flex-direction: column; min-width: 0; gap: 5px; }

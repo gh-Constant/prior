@@ -10,16 +10,19 @@ import { Icon, type IconName } from "./Icon";
 import { LANGUAGES, useI18n, type Language } from "../lib/i18n";
 import { EditableAvatar, IconUpload } from "./IconPicker";
 import { CustomSelect } from "./CustomSelect";
+import { ThemePicker } from "./ThemePicker";
 import { logger } from "../lib/logger";
 import { useHostedAiAvailable } from "../hooks/useHostedAi";
 import { localStore } from "../lib/localStore";
 import "./SettingsPage.css";
+import { GameSettingsPanel } from "./game/GameSettingsPanel";
 
-type SettingsTab = "general" | "profile" | "assistant" | "integrations" | "diagnostics" | "developer";
+export type SettingsTab = "general" | "profile" | "game" | "assistant" | "integrations" | "diagnostics" | "developer";
 
 type SettingsPageProps = {
   readonly user: SessionUser | null;
   readonly onUserUpdated: (user: SessionUser) => void;
+  readonly initialTab?: SettingsTab;
 };
 
 const LATEST_RELEASE_URL = "https://api.github.com/repos/gh-Constant/prior/releases/latest";
@@ -104,6 +107,11 @@ function GeneralSettings() {
 
   return (
     <>
+      <SettingsSection title={t("settings.appearance.title")}>
+        <SettingsRow label={t("settings.appearance.theme")} description={t("settings.appearance.themeHint")}>
+          <ThemePicker />
+        </SettingsRow>
+      </SettingsSection>
       <SettingsSection title={t("settings.layout.languageRegion")}>
         <SettingsRow label={t("settings.language.label")} description={t("settings.layout.languageHint")}>
           <div className="settings-select">
@@ -824,15 +832,16 @@ function IntegrationsSettings() {
 const TABS: ReadonlyArray<{ readonly id: SettingsTab; readonly icon: IconName; readonly devOnly?: boolean }> = [
   { id: "general", icon: "sliders" },
   { id: "profile", icon: "user" },
+  { id: "game", icon: "award" },
   { id: "assistant", icon: "sparkles" },
   { id: "integrations", icon: "code" },
   { id: "diagnostics", icon: "terminal" },
   { id: "developer", icon: "database", devOnly: true },
 ];
 
-export function SettingsPage({ user, onUserUpdated }: SettingsPageProps) {
+export function SettingsPage({ user, onUserUpdated, initialTab }: SettingsPageProps) {
   const { t } = useI18n();
-  const [tab, setTab] = useState<SettingsTab>("general");
+  const [tab, setTab] = useState<SettingsTab>(initialTab ?? "general");
   const tabRefs = useRef(new Map<SettingsTab, HTMLButtonElement>());
   const tabs = TABS.filter((entry) => !entry.devOnly || import.meta.env.DEV);
 
@@ -879,6 +888,7 @@ export function SettingsPage({ user, onUserUpdated }: SettingsPageProps) {
         <div className="settings-panel" role="tabpanel" id={`settings-panel-${tab}`} aria-labelledby={`settings-tab-${tab}`}>
           {tab === "general" && <GeneralSettings />}
           {tab === "profile" && <ProfileSettings user={user} onUserUpdated={onUserUpdated} />}
+          {tab === "game" && <GameSettingsPanel />}
           {tab === "assistant" && <AssistantSettings />}
           {tab === "integrations" && <IntegrationsSettings />}
           {tab === "diagnostics" && <DiagnosticsSettings />}

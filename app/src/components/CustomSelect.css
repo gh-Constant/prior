@@ -145,7 +145,7 @@
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--panel);
+  background: var(--raised);
   box-shadow: var(--shadow-pop);
   animation: custom-select-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
 }

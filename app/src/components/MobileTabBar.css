@@ -15,7 +15,7 @@
     height: var(--mobile-tabbar-h);
     padding: 6px max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
     border-top: 1px solid var(--line);
-    background: oklch(1 0 0 / 0.94);
+    background: color-mix(in oklab, var(--panel) 94%, transparent);
     -webkit-backdrop-filter: blur(12px) saturate(1.4);
     backdrop-filter: blur(12px) saturate(1.4);
   }

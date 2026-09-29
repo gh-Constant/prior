@@ -73,12 +73,12 @@
 .project-board .project-board-column-heading h3 { min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-size: var(--fs-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .project-board-count { color: var(--faint); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .project-board-add { display: grid; place-items: center; width: 26px; height: 26px; margin-left: auto; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--faint); }
-.project-board-add:hover { background: oklch(0 0 0 / .05); color: var(--ink); }
+.project-board-add:hover { background: color-mix(in oklab, var(--ink) 5%, transparent); color: var(--ink); }
 .project-board-add svg { width: 14px; height: 14px; }
 .project-board-cards { display: flex; flex-direction: column; gap: 8px; min-height: 44px; }
 .project-board-empty { display: grid; place-items: center; min-height: 64px; padding: 10px; border: 1px dashed var(--line-strong); border-radius: var(--r-md); color: var(--faint); font-size: var(--fs-xs); text-align: center; }
 .project-board-more { align-self: flex-start; min-height: 28px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: var(--fs-xs); font-weight: 550; }
-.project-board-more:hover { background: oklch(0 0 0 / .05); color: var(--ink); }
+.project-board-more:hover { background: color-mix(in oklab, var(--ink) 5%, transparent); color: var(--ink); }
 
 .board-card { position: relative; min-width: 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-card); transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
 .board-card[draggable="true"] { cursor: grab; }
@@ -146,3 +146,8 @@ button.board-card-open:focus-visible { outline: 2px solid var(--accent); outline
 @media (prefers-reduced-motion: reduce) {
   .board-card, .project-board-column, .project-tabs button::after { transition: none; }
 }
+
+/* Dark theme: board columns become wells a step below the canvas; cards sit on them. */
+:root[data-theme="dark"] .project-page,
+:root[data-theme="dark"] .project-board { --board-column-bg: var(--surface-2); }
+.project-leaderboard-section { margin-top: 24px; }

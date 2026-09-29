@@ -1,0 +1,13 @@
+/* Lab-only layout for the pet demos. */
+.lab-demo:has(.pet-lab-wide) { grid-column: 1 / -1; }
+.pet-lab-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 12px 8px; padding: 12px; }
+.pet-lab-cell { display: grid; justify-items: center; gap: 2px; font-size: 11.5px; color: inherit; opacity: .85; }
+.pet-lab-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px 2px; width: 100%; padding: 8px; justify-items: center; }
+.pet-lab-grid > span { font-size: 11px; opacity: .7; align-self: center; }
+.pet-lab-sidebar { width: 232px; max-width: 100%; padding: 10px 8px; border-radius: 12px; background: var(--sidebar); display: grid; gap: 6px; }
+.pet-lab-sidebar-nav { display: grid; gap: 2px; padding: 4px 6px 10px; border-bottom: 1px solid var(--sidebar-line); }
+.pet-lab-sidebar-nav span { height: 26px; border-radius: 6px; background: var(--sidebar-2); opacity: .7; }
+.pet-lab-sidebar-nav span:nth-child(2) { width: 70%; }
+.pet-lab-note { margin: 0; padding: 0 16px 8px; font-size: 11.5px; opacity: .7; }
+.pet-lab-den { width: 100%; padding: 12px; align-self: stretch; }
+.pet-lab-icons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 8px 12px 12px; }

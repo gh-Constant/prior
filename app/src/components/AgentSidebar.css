@@ -29,7 +29,7 @@
   flex-direction: column;
   overflow: visible;
   color: var(--ink);
-  background: var(--panel);
+  background: var(--raised);
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
   box-shadow: var(--shadow-pop);
@@ -47,6 +47,7 @@
   border: 0;
   border-left: 1px solid var(--line);
   border-radius: 0;
+  background: var(--panel);
   box-shadow: none;
   animation: none;
 }
@@ -58,7 +59,7 @@
   position: fixed;
   z-index: 80;
   inset: 0;
-  background: oklch(0.18 0.005 60 / 0.22);
+  background: var(--overlay-soft);
   animation: fade-in 150ms var(--ease) both;
 }
 
@@ -113,7 +114,7 @@
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--panel);
+  background: var(--raised);
   box-shadow: var(--shadow-pop);
   animation: agent-pop-in 160ms var(--ease-out) both;
 }
@@ -430,7 +431,7 @@
 .proposed-priority-4 { --dot: var(--faint); }
 .proposed-status-inbox { --dot: var(--faint); }
 .proposed-status-next { --dot: var(--blue); }
-.proposed-status-in_progress { --dot: #e0a01a; }
+.proposed-status-in_progress { --dot: var(--gold); }
 .proposed-status-waiting { --dot: var(--violet); }
 .proposed-status-done { --dot: var(--green); }
 .proposed-task-meta .quadrant-chip-focus { --dot: var(--accent); }
@@ -452,7 +453,7 @@
   box-shadow: var(--shadow-control);
 }
 .add-single-btn svg { width: 13px; height: 13px; }
-.add-single-btn:hover:not(:disabled) { border-color: var(--accent); background: var(--accent); color: #fff; }
+.add-single-btn:hover:not(:disabled) { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
 .add-single-btn:disabled { opacity: .5; }
 .task-added-badge { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; color: var(--green); font-size: var(--fs-xs); font-weight: 600; }
 .task-added-badge svg { width: 13px; height: 13px; stroke-width: 2.2; }
@@ -492,7 +493,7 @@
 }
 .agent-error-banner { justify-content: space-between; border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
 .agent-error-banner button { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 auto; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: inherit; }
-.agent-error-banner button:hover { background: #fbe0db; }
+.agent-error-banner button:hover { background: var(--red-soft-hover); }
 .agent-error-banner svg { width: 12px; height: 12px; }
 
 .agent-key-notice { background: var(--surface-2); color: var(--ink-2); }
@@ -603,7 +604,7 @@
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--panel);
+  background: var(--raised);
   box-shadow: var(--shadow-pop);
   animation: agent-pop-up 160ms var(--ease-out) both;
 }
@@ -673,11 +674,11 @@
 .dictation-status-bar.dictation-listening > span:nth-child(2) { flex: 1; }
 .dictation-pulse { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); animation: dictation-pulse 1.2s ease-in-out infinite; }
 .dictation-cancel-text { padding: 2px 6px; border: 0; border-radius: var(--r-xs); background: transparent; color: inherit; font-size: var(--fs-xs); font-weight: 550; }
-.dictation-cancel-text:hover { background: #ffffff99; }
+.dictation-cancel-text:hover { background: color-mix(in oklab, var(--panel) 60%, transparent); }
 .dictation-status-bar.dictation-error { background: var(--red-soft); color: var(--red); }
 .dictation-status-bar.dictation-error > span:nth-child(2) { flex: 1; }
 .dictation-status-bar.dictation-error button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: inherit; }
-.dictation-status-bar.dictation-error button:hover { background: #fbe0db; }
+.dictation-status-bar.dictation-error button:hover { background: var(--red-soft-hover); }
 .dictation-status-bar.dictation-error button svg { width: 11px; height: 11px; }
 @keyframes dictation-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -726,3 +727,6 @@
   .dictation-pulse { animation: none; }
   .starter-chip-arrow { transform: none; }
 }
+
+/* Dark theme: the user's bubble stays a quiet lighter step above the panel. */
+:root[data-theme="dark"] .agent-sidebar { --agent-bubble: #312f2c; }

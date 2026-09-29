@@ -9,6 +9,7 @@ import { CalendarGlyph, InitialsAvatar, PriorityGlyph, StatusGlyph } from "./Tas
 import { priorityLabel } from "./TaskRow";
 import { DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import "./TaskDetailPanel.css";
+import { KudosButton } from "./game/KudosButton";
 
 type Props = {
   readonly task: Task;
@@ -164,6 +165,7 @@ export function TaskDetailPanel({ task, project, onChange, onEdit, onClose }: Pr
           {task.createdAt && <li><span className="task-detail-activity-icon" aria-hidden="true"><Icon name="plus" /></span><span><strong>{t("tasks.detail.created")}</strong> <time dateTime={task.createdAt} title={absoluteTime(task.createdAt, lang)}>{relativeTime(task.createdAt, lang)}</time></span></li>}
         </ol>
       </section>
+      <KudosButton task={task} />
     </aside>
   );
 }

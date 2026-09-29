@@ -74,12 +74,12 @@
 .admin-chart-bar.is-active { opacity: 1; }
 .admin-chart-hits { position: absolute; inset: 0; display: flex; }
 .admin-chart-hits > span { flex: 1; min-width: 0; outline: none; }
-.admin-chart-hits > span.is-active { background: oklch(0 0 0 / 0.03); }
+.admin-chart-hits > span.is-active { background: color-mix(in oklab, var(--ink) 4%, transparent); }
 .admin-chart-tooltip {
   position: absolute; bottom: calc(100% + 6px); z-index: 2; display: flex; flex-direction: column; gap: 1px; padding: 6px 9px;
-  border-radius: var(--r-md); background: var(--ink); color: #fff; font-size: var(--fs-xs); white-space: nowrap; translate: -50% 0; pointer-events: none; box-shadow: var(--shadow-pop);
+  border-radius: var(--r-md); background: var(--ink); color: var(--on-ink); font-size: var(--fs-xs); white-space: nowrap; translate: -50% 0; pointer-events: none; box-shadow: var(--shadow-pop);
 }
-.admin-chart-tooltip span { color: oklch(1 0 0 / 0.65); }
+.admin-chart-tooltip span { color: color-mix(in oklab, var(--on-ink) 65%, transparent); }
 .admin-chart-tooltip strong { font-size: var(--fs-md); font-weight: 600; }
 .admin-chart-labels { display: flex; justify-content: space-between; margin: 6px 0 0 44px; color: var(--faint); font-size: var(--fs-2xs); }
 

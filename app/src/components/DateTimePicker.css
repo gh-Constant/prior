@@ -8,7 +8,7 @@
 .date-time-picker-trigger > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .date-time-picker-trigger:not(.has-value) > span { color: var(--faint); }
 .date-time-picker-trigger .date-time-picker-chevron { width: 14px; height: 14px; }
-.date-time-picker-menu { position: fixed; z-index: 99999; box-sizing: border-box; overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-pop); animation: date-time-picker-in .14s var(--ease-out); }
+.date-time-picker-menu { position: fixed; z-index: 99999; box-sizing: border-box; overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); box-shadow: var(--shadow-pop); animation: date-time-picker-in .14s var(--ease-out); }
 .date-time-picker-menu.open-top { animation-name: date-time-picker-in-top; }
 @keyframes date-time-picker-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes date-time-picker-in-top { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -34,7 +34,7 @@
 .date-time-picker-time-row svg { width: 14px; height: 14px; }
 .date-time-picker-add-time, .date-time-picker-remove-time { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--accent-dark); font: inherit; font-size: var(--fs-sm); font-weight: 550; cursor: pointer; }
 .date-time-picker-time-controls { display: flex; align-items: center; gap: 6px; }
-.date-time-picker-time-controls input { width: 94px; min-height: 30px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-sm); color-scheme: light; box-shadow: var(--shadow-control); }
+.date-time-picker-time-controls input { width: 94px; min-height: 30px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-sm); box-shadow: var(--shadow-control); }
 .date-time-picker-time-controls input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
 .date-time-picker-remove-time { color: var(--muted); font-size: var(--fs-xs); font-weight: 500; }
 .date-time-picker-remove-time:hover { color: var(--ink); }

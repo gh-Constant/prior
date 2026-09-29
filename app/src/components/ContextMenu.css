@@ -14,7 +14,7 @@
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--panel);
+  background: var(--raised);
   box-shadow: var(--shadow-pop);
   transform-origin: top left;
   transition: opacity var(--t-fast) var(--ease), scale var(--t-fast) var(--ease);

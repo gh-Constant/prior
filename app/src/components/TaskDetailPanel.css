@@ -19,7 +19,7 @@
 
 .task-detail-body { display: flex; flex-direction: column; gap: 10px; padding: 18px 18px 8px; }
 .task-detail-title-row { display: flex; align-items: flex-start; gap: 10px; }
-.task-detail-check { display: grid; flex: 0 0 auto; place-items: center; width: 22px; height: 22px; margin-top: 1px; padding: 0; border: 1.5px solid #c9c6bf; border-radius: 50%; background: var(--panel); color: #fff; }
+.task-detail-check { display: grid; flex: 0 0 auto; place-items: center; width: 22px; height: 22px; margin-top: 1px; padding: 0; border: 1.5px solid var(--check-line); border-radius: 50%; background: var(--panel); color: var(--accent-ink); }
 .task-detail-check svg { width: 12px; height: 12px; opacity: 0; stroke-width: 2.6; }
 .task-detail-check:hover { border-color: var(--accent); background: var(--accent-soft); }
 .task-detail-check:hover svg { opacity: 1; color: var(--accent); }
@@ -55,7 +55,7 @@
 .task-detail-quadrant { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .task-detail-quadrant-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 .quadrant-tone-focus .task-detail-quadrant-dot { background: var(--accent); }
-.quadrant-tone-plan .task-detail-quadrant-dot { background: #e0a01a; }
+.quadrant-tone-plan .task-detail-quadrant-dot { background: var(--gold); }
 .quadrant-tone-quick .task-detail-quadrant-dot { background: var(--blue); }
 .task-detail-flags { display: inline-flex; flex: 0 0 auto; gap: 2px; }
 .task-detail-flag { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--faint); }

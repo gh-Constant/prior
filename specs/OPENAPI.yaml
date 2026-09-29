@@ -218,6 +218,132 @@ paths:
       responses:
         '200':
           description: hosted AI status
+  /v1/collaboration/invites/preview:
+    get:
+      summary: Public preview of a pending invite for the invite landing (query token)
+      description: Returns projectName, projectIcon, inviterName, inviterAvatarUrl, memberCount, role and status (pending, accepted, expired). A wrong token returns 404 and reveals nothing.
+      responses:
+        '200':
+          description: invite preview
+        '404':
+          description: unknown token
+  /v1/game:
+    get:
+      summary: Gamified mode state (see specs/GAMIFICATION.md)
+      description: Returns profile (settings, XP progress, rank, streak, pet, equipped, unlocked name effects, today's task XP and the daily cap), inventory, achievements with progress, unopened chests and unseen celebration events. XP is only earned through sync.
+      responses:
+        '200':
+          description: game state
+        '401':
+          description: unauthenticated
+  /v1/game/settings:
+    patch:
+      summary: Update onboarding version and game settings
+      description: Partial update of onboardingVersion, enabled, visibility (public, anonymous, hidden), effects (full, subtle, off), sounds and timeZone. The first switch to enabled gives the egg and starter items and credits the last 90 days of completed tasks once. Unknown fields are refused.
+      responses:
+        '200':
+          description: profile
+        '400':
+          description: invalid settings
+  /v1/game/handle:
+    get:
+      summary: Check whether a handle is available (query handle)
+      responses:
+        '200':
+          description: available and reason (format, reserved, blocked, taken)
+    put:
+      summary: Claim a public handle
+      responses:
+        '200':
+          description: normalized handle
+        '400':
+          description: INVALID_HANDLE with reason
+        '409':
+          description: handle taken
+  /v1/game/equip:
+    put:
+      summary: Equip an owned item or unlocked name effect in a slot (empty itemId clears it)
+      responses:
+        '200':
+          description: equipped slots
+        '403':
+          description: item not owned or not unlocked
+  /v1/game/pinned:
+    put:
+      summary: Pin up to three unlocked achievements to the profile card
+      responses:
+        '200':
+          description: pinned achievements
+  /v1/game/pet:
+    put:
+      summary: Name the pet (24 characters at most)
+      responses:
+        '200':
+          description: pet name
+  /v1/game/chests/{chestID}/open:
+    post:
+      summary: Open a chest; contents were rolled when it was granted, and opening twice returns the same drops
+      responses:
+        '200':
+          description: drops, with owned items converted to stardust
+        '404':
+          description: unknown chest
+  /v1/game/craft:
+    post:
+      summary: Spend stardust on a catalog item
+      responses:
+        '200':
+          description: remaining stardust
+        '409':
+          description: not enough stardust
+  /v1/game/events/ack:
+    post:
+      summary: Mark celebration events up to upTo as shown
+      responses:
+        '204':
+          description: acknowledged
+  /v1/game/leaderboards/{board}:
+    get:
+      summary: All-time board of visible gamified players, board level or streak (query limit, 100 max)
+      description: Players appear by handle or as an anonymous animal, never by email or real name. me is the viewer's own entry, also outside the top.
+      responses:
+        '200':
+          description: board
+  /v1/game/league:
+    get:
+      summary: The viewer's weekly league cohort, promotion and demotion zones and last result
+      responses:
+        '200':
+          description: league
+  /v1/game/projects/{projectID}/leaderboard:
+    get:
+      summary: Project leaderboard (mode off, competitive or team) for project members
+      responses:
+        '200':
+          description: board with members who opted in
+        '404':
+          description: not a member
+    put:
+      summary: Owner sets mode and teamGoalXp
+      responses:
+        '204':
+          description: saved
+        '403':
+          description: not the owner
+  /v1/game/projects/{projectID}/leaderboard/choice:
+    put:
+      summary: A member joins or leaves a project leaderboard ({"joined"})
+      responses:
+        '204':
+          description: saved
+  /v1/game/kudos:
+    post:
+      summary: Give kudos for a teammate's completed shared-project task ({"taskId"})
+      responses:
+        '204':
+          description: given (repeats are ignored)
+        '403':
+          description: not allowed
 components:
   schemas:
     Unauthenticated:

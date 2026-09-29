@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { api, PlanLimitError, type IncomingProjectInvite } from "./lib/api";
+import { api, ApiRequestError, PlanLimitError, type IncomingProjectInvite } from "./lib/api";
+import { clearPendingLink, pendingLink } from "./lib/pendingLink";
+import { EffectsProvider } from "./lib/gamification/effects";
+import { gameStore, useGame } from "./lib/gamification/gameStore";
+import { revokeCompletion, rewardHabitCheckIn, rewardTaskCompletion } from "./lib/gamification/celebrations";
+import { GameCelebrations } from "./components/game/GameCelebrations";
+import { GameSidebarWidget } from "./components/game/GameSidebarWidget";
+import { REPLAY_ONBOARDING_EVENT } from "./components/game/GameSettingsPanel";
+import { OnboardingFlow } from "./components/game/onboarding/OnboardingFlow";
+import { ChestDialog, ProgressView } from "./components/game/progress";
 import { AUTH_REQUIRED_EVENT, clearSession, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
 import { useI18n } from "./lib/i18n";
 import { localStore } from "./lib/localStore";
@@ -84,6 +93,7 @@ function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
   if (view === "settings") return t("common.views.settings");
   if (view === "plans") return t("common.views.plans");
   if (view === "admin") return t("common.views.admin");
+  if (view === "progress") return t("game.nav.progress");
   return t("common.views.allTasks");
 }
 
@@ -102,7 +112,7 @@ type WorkspaceHeaderProps = {
 
 function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask, subtitle, extraActions }: WorkspaceHeaderProps) {
   const { t } = useI18n();
-  if (["today", "inbox", "projects", "project", "waiting", "notes", "settings", "plans", "admin"].includes(activeView)) return null;
+  if (["today", "inbox", "projects", "project", "waiting", "notes", "settings", "plans", "admin", "progress"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
@@ -154,13 +164,17 @@ type WorkspaceContentProps = {
   readonly onOpenAgent: () => void;
   readonly onViewChange: (view: WorkspaceView) => void;
   readonly billing: ReturnType<typeof useBilling>;
+  /** Settings opens on this tab (e.g. from the Progress page). */
+  readonly settingsTab?: "game";
+  readonly onOpenGameSettings: () => void;
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, onOpenGameSettings }: WorkspaceContentProps) {
   if (activeView === "plans") return <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={billing.checkoutReturn} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "admin") return billing.billing?.isAdmin ? <AdminView /> : <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={null} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
-  if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
+  if (activeView === "progress") return <ProgressView onOpenGameSettings={onOpenGameSettings} />;
+  if (activeView === "settings") return <SettingsPage key={settingsTab ?? "general"} user={user} onUserUpdated={onUserUpdated} initialTab={settingsTab} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
   if (activeView === "calendar") return <CalendarView habits={habits} />;
@@ -218,6 +232,14 @@ export function App() {
   const [layout, setLayout] = useState<Layout>("list");
   const [completionCelebration, setCompletionCelebration] = useState<{ title: string; key: number } | null>(null);
   const celebrationKey = useRef(0);
+  // The gamified mode (specs/GAMIFICATION.md): onboarding stays open once
+  // shown until finished or put off for the session.
+  const game = useGame();
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingPutOff, setOnboardingPutOff] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"game" | undefined>(undefined);
+  const [chestToOpen, setChestToOpen] = useState<string | null>(null);
+  const chestDialog = chestToOpen ? game.state?.chests.find((chest) => chest.id === chestToOpen) : undefined;
   const syncInFlight = useRef<Promise<void> | null>(null);
   const syncQueued = useRef(false);
   const [syncing, setSyncing] = useState(false);
@@ -418,6 +440,7 @@ export function App() {
 
         logger.info("sync", "Starting sync cycle");
         const incomplete: string[] = [];
+        const syncStartedAt = Date.now();
 
         // Profile first: the server copy wins so a rename on another device
         // converges locally. Failures are non-fatal for task data.
@@ -588,16 +611,28 @@ export function App() {
           console.warn("Prior collaboration sync failed:", collaborationError);
         }
 
-        const inviteToken = typeof window !== "undefined" ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("invite") : null;
-        if (inviteToken) {
+        // A shared link opened before signing in (see lib/pendingLink).
+        const link = pendingLink();
+        if (link?.invite) {
           try {
-            await api.acceptProjectInvite(inviteToken, token);
-            window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+            const { projectId } = await api.acceptProjectInvite(link.invite, token);
+            clearPendingLink();
             collaborationChanged = (await collaborationStore.sync(token)).changed || collaborationChanged;
+            if (generation === sessionGeneration.current) openProject(projectId);
             setToast(t("common.toasts.inviteAccepted"));
           } catch (inviteError) {
+            // Offline: try again on the next sync. Anything else (expired,
+            // already used, wrong account) will never succeed.
+            if (!(inviteError instanceof ApiRequestError && (inviteError.kind === "network" || inviteError.kind === "timeout"))) clearPendingLink();
             logger.warn("sync", "Project invite could not be accepted", { error: String(inviteError) });
             console.warn("Prior project invite could not be accepted:", inviteError);
+          }
+        } else if (link?.project) {
+          clearPendingLink();
+          const known = [...workspaceStore.listProjects(), ...collaborationStore.listProjects()].some((project) => project.id === link.project);
+          if (generation === sessionGeneration.current) {
+            if (known) openProject(link.project);
+            else setToast(t("common.toasts.projectLinkUnavailable"));
           }
         }
 
@@ -651,6 +686,9 @@ export function App() {
         }
 
         if (generation !== sessionGeneration.current || syncAccountId !== getAccountId()) return;
+        // XP is earned by the push above; fetch the result (and any level-up)
+        // unless the push failed, so optimistic XP isn't dropped while offline.
+        if (!incomplete.includes("tasks/habits")) void gameStore.refresh(syncStartedAt);
         setSyncIssue(incomplete.length > 0);
         if (incomplete.length) logger.warn("sync", "Sync partially completed; pending sections will retry", { sections: incomplete });
         else {
@@ -1135,9 +1173,12 @@ export function App() {
     const savedTask = await localStore.updateTask(task);
     if (previous && !previous.completed && task.completed) {
       retainCompletionExit(task.id);
-      setCompletionCelebration({ title: task.title, key: ++celebrationKey.current });
+      // Gamified: confetti and XP flying to the bar. Calm: the quiet toast.
+      if (game.enabled) rewardTaskCompletion(savedTask);
+      else setCompletionCelebration({ title: task.title, key: ++celebrationKey.current });
     } else if (!task.completed) {
       releaseCompletionExit(task.id);
+      if (previous?.completed) revokeCompletion(task.id);
     }
     setTasks((current) => current.map((item) => item.id === savedTask.id ? savedTask : item));
     void refresh();
@@ -1166,7 +1207,10 @@ export function App() {
       : [...habit.completedDates, date];
     const savedHabit = await localStore.updateHabit({ ...habit, completedDates });
     if (!habit.completedDates.includes(date)) {
-      setCompletionCelebration({ title: habit.title, key: ++celebrationKey.current });
+      if (game.enabled) rewardHabitCheckIn(habit, date);
+      else setCompletionCelebration({ title: habit.title, key: ++celebrationKey.current });
+    } else {
+      revokeCompletion(`${habit.id}:${date}`);
     }
     setHabits((current) => current.map((item) => item.id === savedHabit.id ? savedHabit : item));
     void refresh();
@@ -1343,7 +1387,7 @@ export function App() {
           onCopyLink: () => {
             void (async () => {
               try {
-                await navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}#project=${project.id}`);
+                await navigator.clipboard?.writeText(`${isTauri() ? WEB_APP_URL : `${window.location.origin}${window.location.pathname}`}#project=${project.id}`);
                 setToast(t("common.toasts.linkCopied"));
               } catch {
                 setToast(t("common.errors.linkCopyFailed"));
@@ -1426,6 +1470,28 @@ export function App() {
     void pullAssistantSettings().catch((error) => console.warn("Prior assistant settings pull failed:", error));
   }
 
+  // Onboarding opens once the server says this account has steps it hasn't
+  // seen, or when Settings → Game asks to replay it.
+  useEffect(() => {
+    if (user && game.needsOnboarding && !onboardingPutOff) setOnboardingOpen(true);
+  }, [user, game.needsOnboarding, onboardingPutOff]);
+  useEffect(() => {
+    const replay = () => setOnboardingOpen(true);
+    window.addEventListener(REPLAY_ONBOARDING_EVENT, replay);
+    return () => window.removeEventListener(REPLAY_ONBOARDING_EVENT, replay);
+  }, []);
+
+  /** The onboarding's "first win": things on the user's mind, as Focus tasks. */
+  async function createOnboardingTasks(titles: string[]): Promise<Task[]> {
+    const created: Task[] = [];
+    for (const title of titles) {
+      created.push(await localStore.saveTask({ title, important: true, urgent: true, completed: false, peopleIds: user ? [user.id] : [] }));
+    }
+    await refresh();
+    void syncNow();
+    return created;
+  }
+
   function handleUserUpdated(nextUser: SessionUser): void {
     saveUser(nextUser);
     setUser(nextUser);
@@ -1489,8 +1555,14 @@ export function App() {
   function changeView(view: WorkspaceView): void {
     if (view !== "project") setSelectedProjectId(null);
     if (view === "notes") setNotesProjectId(null);
+    setSettingsTab(undefined);
     setMobileMoreOpen(false);
     setActiveView(view);
+  }
+
+  function openGameSettings(): void {
+    changeView("settings");
+    setSettingsTab("game");
   }
 
   async function googleLogin() {
@@ -1520,6 +1592,8 @@ export function App() {
     }
   }
 
+  const effectsIntensity = game.enabled && game.profile ? game.profile.effects : "off";
+
   if (productionAuthRequired && !authReady) {
     return <main className="auth-required-page auth-required-loading" aria-live="polite">{t("common.actions.loading")}</main>;
   }
@@ -1538,7 +1612,24 @@ export function App() {
     />;
   }
 
+  if (user && onboardingOpen) {
+    return (
+      <EffectsProvider intensity={effectsIntensity}>
+        <OnboardingFlow
+          user={user}
+          returning={tasks.length > 0 || habits.length > 0}
+          onUserUpdated={handleUserUpdated}
+          onCreateTasks={createOnboardingTasks}
+          onCompleteTask={(task) => changeTask({ ...task, completed: true, status: "done" })}
+          onFinish={() => { setOnboardingOpen(false); setOnboardingPutOff(true); changeView("today"); }}
+          onLater={() => { setOnboardingOpen(false); setOnboardingPutOff(true); }}
+        />
+      </EffectsProvider>
+    );
+  }
+
   return (
+    <EffectsProvider intensity={effectsIntensity}>
     <div className={`app-shell ${agentOpen ? "agent-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${isDesktop() ? "tauri-desktop" : ""} ${isMac() ? "platform-mac" : ""}`}>
       <DesktopTitleBar />
       <AppSidebar
@@ -1554,6 +1645,8 @@ export function App() {
         inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
         onViewChange={changeView}
         showAdmin={billing.billing?.isAdmin === true}
+        showProgress={game.enabled}
+        gameWidget={<GameSidebarWidget collapsed={sidebarCollapsed} onOpenProgress={() => changeView("progress")} />}
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onToggleAgent={() => setAgentOpen((value) => !value)}
@@ -1583,6 +1676,8 @@ export function App() {
         <CompletionExitProvider deadlines={completionExitDeadlines}>
           <WorkspaceContent
             key={user?.id ?? "anonymous"}
+            settingsTab={settingsTab}
+            onOpenGameSettings={openGameSettings}
             activeView={activeView}
             user={user}
             onUserUpdated={handleUserUpdated}
@@ -1631,6 +1726,7 @@ export function App() {
         agentOpen={agentOpen}
         onNavigate={changeView}
         showAdmin={billing.billing?.isAdmin === true}
+        showProgress={game.enabled}
         onAgent={() => setAgentOpen(true)}
         onAccount={() => setAuthOpen(true)}
         onClose={() => setMobileMoreOpen(false)}
@@ -1701,6 +1797,9 @@ export function App() {
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>{t("common.celebration.completed")}</strong><small>{completionCelebration.title}</small></span></div>}
       {user && <ProjectInviteNotifications invites={incomingInvites} onRespond={respondToInvite} />}
       {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>{t("common.celebration.notice")}</strong><small>{toast}</small></span><button type="button" aria-label={t("common.actions.dismiss")} onClick={() => setToast(null)}>✕</button></div>}
+      {user && game.enabled && <GameCelebrations onOpenChest={setChestToOpen} />}
+      {chestDialog && <ChestDialog chest={chestDialog} onClose={() => setChestToOpen(null)} />}
     </div>
+    </EffectsProvider>
   );
 }

@@ -1,0 +1,10 @@
+.fx-chest { display: block; overflow: visible; }
+.fx-chest-lid,
+.fx-chest-body,
+.fx-chest-beam { transform-box: fill-box; }
+.fx-chest-lid { transform-origin: 50% 100%; transition: transform 520ms cubic-bezier(0.2, 1.5, 0.35, 1); }
+.fx-chest-beam { transform-origin: 50% 100%; opacity: 0; transform: scaleY(0.2); transition: opacity 380ms ease-out, transform 620ms cubic-bezier(0.23, 1, 0.32, 1); }
+.fx-chest-inside { opacity: 0; transition: opacity 200ms ease-out; }
+.fx-chest[data-open] .fx-chest-lid { transform: translate(0, -30px) rotate(-10deg) scaleY(0.72); }
+.fx-chest[data-open] .fx-chest-beam { opacity: 1; transform: scaleY(1); }
+.fx-chest[data-open] .fx-chest-inside { opacity: 1; }

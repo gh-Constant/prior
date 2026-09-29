@@ -1,0 +1,137 @@
+/* Neutrals derive from currentColor so the bar reads on the light canvas and the dark sidebar alike. */
+.fx-xpbar {
+  --xp-h: 10px;
+  --xp-fill: linear-gradient(90deg, #d9432a 0%, #f35f43 45%, #ff8a63 88%, #ffab85 100%);
+  --xp-glow: rgb(243 95 67 / 0.55);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+}
+.fx-xpbar-compact { --xp-h: 6px; gap: 9px; }
+
+.fx-xpbar-badge { position: relative; display: grid; flex: none; place-items: center; }
+.fx-xpbar-badge-ring { position: absolute; inset: -2px; border: 2px solid #ff9a73; border-radius: 50%; box-shadow: 0 0 10px rgb(255 138 99 / 0.7), inset 0 0 6px rgb(255 138 99 / 0.5); opacity: 0; pointer-events: none; }
+
+.fx-xpbar-body { display: grid; flex: 1; gap: 7px; min-width: 0; }
+.fx-xpbar-compact .fx-xpbar-body { gap: 5px; }
+.fx-xpbar-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; font-size: var(--fs-sm); line-height: 1.1; }
+.fx-xpbar-compact .fx-xpbar-meta { font-size: var(--fs-xs); }
+.fx-xpbar-rank { overflow: hidden; font-weight: 650; letter-spacing: -0.005em; text-overflow: ellipsis; white-space: nowrap; }
+.fx-xpbar-count { flex: none; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fx-xpbar-compact .fx-xpbar-count { font-size: var(--fs-2xs); }
+.fx-xpbar-count b { font-weight: 650; }
+.fx-xpbar-count-muted { opacity: 0.58; }
+
+.fx-xpbar-track {
+  position: relative;
+  height: var(--xp-h);
+  border-radius: 999px;
+  background: color-mix(in oklab, currentColor 10%, transparent);
+  box-shadow: inset 0 1px 1.5px color-mix(in oklab, currentColor 10%, transparent);
+}
+/* Safari needs the mask to clip transformed children to a rounded box. */
+.fx-xpbar-clip { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; -webkit-mask-image: linear-gradient(#000, #000); isolation: isolate; }
+.fx-xpbar-fill {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--xp-fill);
+  transform: translateX(-100%);
+  will-change: transform;
+}
+/* Glassy top highlight and a darker base give the fill some volume. */
+.fx-xpbar-fill::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.38) 0%, rgb(255 255 255 / 0.08) 45%, rgb(0 0 0 / 0) 60%, rgb(120 20 0 / 0.16) 100%);
+  content: "";
+}
+/* Liquid surface: a lighter sine band drifting along the top edge. Seamless: moves exactly one tile. */
+.fx-xpbar-wave {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(100% + 40px);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 10' preserveAspectRatio='none'%3E%3Cpath d='M0 3.6 C6.7 2.2 13.3 2.2 20 3.6 S33.3 5 40 3.6 V0 H0 Z' fill='white' fill-opacity='0.26'/%3E%3C/svg%3E") repeat-x 0 0 / 40px 100%;
+  animation: fx-xp-wave 1.8s linear infinite;
+}
+.fx-xpbar-shimmer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 36%;
+  background: linear-gradient(100deg, transparent 15%, rgb(255 255 255 / 0.6) 50%, transparent 85%);
+  transform: translateX(-120%);
+  animation: fx-xp-shimmer 3.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+.fx-xpbar-rail { position: absolute; inset: 0; pointer-events: none; will-change: transform; }
+.fx-xpbar-edge {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: calc(var(--xp-h) * 2.8);
+  height: calc(var(--xp-h) * 2.8);
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 10%, rgb(255 214 190 / 0.95) 20%, rgb(255 138 99 / 0.55) 42%, transparent 70%);
+  opacity: 0;
+  transform: translate(-62%, -50%) scale(0.7);
+  transition: opacity 320ms var(--ease-out), transform 320ms var(--ease-out);
+}
+.fx-xpbar-track::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 10px 1px var(--xp-glow);
+  opacity: 0;
+  transition: opacity 400ms var(--ease-out);
+  content: "";
+  pointer-events: none;
+}
+.fx-xpbar[data-hot] .fx-xpbar-track::before { opacity: 0.8; animation: fx-xp-breathe 1.4s ease-in-out infinite alternate; }
+.fx-xpbar[data-hot] .fx-xpbar-edge { opacity: 1; animation: fx-xp-edge 0.9s ease-in-out infinite alternate; }
+
+.fx-xpbar-flash {
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgb(255 236 220 / 0.9), #fff 60%, rgb(255 236 220 / 0.9));
+  box-shadow: 0 0 18px 5px rgb(255 160 120 / 0.75);
+  opacity: 0;
+  pointer-events: none;
+}
+.fx-xpbar-pulse {
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1.5px rgb(255 138 99 / 0.7), 0 0 16px 2px var(--xp-glow);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fx-xpbar-subtle .fx-xpbar-wave { animation-duration: 2.2s; opacity: 0.6; }
+.fx-xpbar-subtle .fx-xpbar-shimmer { animation-duration: 6s; }
+.fx-xpbar-off .fx-xpbar-wave,
+.fx-xpbar-off .fx-xpbar-shimmer { display: none; }
+.fx-xpbar-off[data-hot] .fx-xpbar-edge,
+.fx-xpbar-off[data-hot] .fx-xpbar-track::before { animation: none; }
+
+@keyframes fx-xp-wave { to { transform: translateX(-40px); } }
+@keyframes fx-xp-shimmer {
+  0% { transform: translateX(-120%); }
+  48%, 100% { transform: translateX(300%); }
+}
+@keyframes fx-xp-edge {
+  from { transform: translate(-62%, -50%) scale(0.82); opacity: 0.75; }
+  to { transform: translate(-62%, -50%) scale(1.12); opacity: 1; }
+}
+@keyframes fx-xp-breathe {
+  from { opacity: 0.45; }
+  to { opacity: 0.95; }
+}

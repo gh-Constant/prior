@@ -1,0 +1,26 @@
+/* Appearance choice: three small window previews acting as one radio group. */
+.theme-picker { display: grid; grid-template-columns: repeat(3, 84px); gap: 10px; }
+.theme-picker-option { position: relative; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 4px 4px 6px; border-radius: var(--r-lg); color: var(--muted); font-size: var(--fs-xs); font-weight: 550; cursor: pointer; transition: color var(--t-fast) var(--ease); }
+.theme-picker-option input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+.theme-picker-preview { width: 76px; height: 48px; overflow: hidden; border-radius: var(--r-md); box-shadow: 0 0 0 1px var(--line-strong), var(--shadow-control); transition: box-shadow var(--t-fast) var(--ease), translate var(--t-press) var(--ease); }
+.theme-picker-option:hover { color: var(--ink); }
+.theme-picker-option:hover .theme-picker-preview { box-shadow: 0 0 0 1px var(--line-hover), var(--shadow-card-hover); }
+.theme-picker-option.is-selected { color: var(--ink); }
+.theme-picker-option.is-selected .theme-picker-preview { box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in oklab, var(--accent) 22%, transparent); }
+.theme-picker-option:has(input:focus-visible) .theme-picker-preview { outline: 2px solid var(--accent); outline-offset: 3px; }
+.theme-picker-option:active .theme-picker-preview { translate: 0 1px; }
+.theme-picker-label { line-height: 1.2; }
+/* In a settings row the previews wrap under the text when the row gets narrow. */
+.settings-row:has(.theme-picker) { flex-wrap: wrap; row-gap: 12px; }
+.settings-row:has(.theme-picker) .settings-row-text { min-width: 200px; }
+.settings-row:has(.theme-picker) .settings-row-control { max-width: 100%; margin-left: auto; }
+
+@media (max-width: 760px) {
+  .theme-picker { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .theme-picker-option { min-height: 44px; padding: 6px 0 8px; font-size: var(--fs-sm); }
+  .theme-picker-preview { width: 100%; height: auto; aspect-ratio: 72 / 46; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-picker-option:active .theme-picker-preview { translate: none; }
+}

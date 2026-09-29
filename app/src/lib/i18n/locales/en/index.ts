@@ -3,12 +3,15 @@ import { auth } from "./auth";
 import { billing } from "./billing";
 import { collab } from "./collab";
 import { common } from "./common";
+import { game } from "./game";
 import { habits } from "./habits";
 import { mail } from "./mail";
 import { notes } from "./notes";
+import { onboarding } from "./onboarding";
+import { progress } from "./progress";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 
-export const en = { agent, auth, billing, collab, common, habits, mail, notes, settings, tasks };
+export const en = { agent, auth, billing, collab, common, game, habits, mail, notes, onboarding, progress, settings, tasks };
 
 export type AppDictionary = typeof en;

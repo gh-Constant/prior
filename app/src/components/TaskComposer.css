@@ -7,7 +7,7 @@
   max-height: min(88vh, 720px);
   padding: 0;
   border-radius: var(--r-xl);
-  background: var(--panel);
+  background: var(--raised);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-pop);
   overflow-y: auto;
@@ -547,7 +547,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--panel);
+  background: var(--knob);
   box-shadow: 0 1px 2px oklch(0 0 0 / 0.18);
   content: "";
   transition: transform var(--t-fast) var(--ease);
@@ -762,4 +762,10 @@
   to {
     transform: translateY(0);
   }
+}
+
+/* Dark theme: the phone sheet keeps a faint light edge against the dimmed page. */
+@media (max-width: 640px) {
+  :root[data-theme="dark"] dialog.task-composer-modal.modal,
+  :root[data-theme="dark"] .task-composer-modal.modal { box-shadow: 0 0 0 1px oklch(1 0 0 / 0.07), 0 -12px 40px -8px oklch(0 0 0 / 0.6) !important; }
 }

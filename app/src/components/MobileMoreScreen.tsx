@@ -17,6 +17,7 @@ export const MORE_DESTINATIONS: readonly Destination[] = [
   { view: "eisenhower", labelKey: "common.nav.items.priorityLens", icon: "grid" },
   { view: "habits", labelKey: "common.nav.items.habits", icon: "sun" },
   { view: "notes", labelKey: "common.nav.items.notes", icon: "file-text" },
+  { view: "progress", labelKey: "game.nav.progress", icon: "trending-up" },
   { view: "plans", labelKey: "common.nav.items.plans", icon: "award" },
   { view: "admin", labelKey: "common.nav.items.admin", icon: "bar-chart" },
 ];
@@ -31,6 +32,8 @@ type Props = {
   readonly onSync?: () => void;
   readonly onNavigate: (view: WorkspaceView) => void;
   readonly showAdmin?: boolean;
+  /** Shows the Progress entry: only in the gamified experience. */
+  readonly showProgress?: boolean;
   readonly onAgent: () => void;
   readonly onAccount: () => void;
   readonly onClose: () => void;
@@ -46,7 +49,7 @@ function initials(user: SessionUser): string {
  * remaining views, the account and settings. Closes on navigation, Escape
  * (handled by App), or when the window grows past the phone breakpoint.
  */
-export function MobileMoreScreen({ activeView, user, badges, agentOpen, syncing, syncIssue, onSync, onNavigate, showAdmin, onAgent, onAccount, onClose }: Props) {
+export function MobileMoreScreen({ activeView, user, badges, agentOpen, syncing, syncIssue, onSync, onNavigate, showAdmin, showProgress, onAgent, onAccount, onClose }: Props) {
   const { t, lang } = useI18n();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const lastSyncedAt = useLastSyncedAt();
@@ -86,7 +89,7 @@ export function MobileMoreScreen({ activeView, user, badges, agentOpen, syncing,
 
       <nav className="mobile-more-card" aria-label={t("common.shell.more.destinations")}>
         <ul>
-          {MORE_DESTINATIONS.filter((item) => item.view !== "admin" || showAdmin).map((item) => {
+          {MORE_DESTINATIONS.filter((item) => (item.view !== "admin" || showAdmin) && (item.view !== "progress" || showProgress)).map((item) => {
             const current = activeView === item.view || (item.view === "projects" && activeView === "project");
             const badge = badges?.[item.view];
             return (

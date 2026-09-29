@@ -1,0 +1,7 @@
+.kudos { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+.kudos-button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--surface-1); color: var(--ink); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+.kudos-button svg { width: 14px; height: 14px; color: var(--accent); }
+.kudos-button:hover:not(:disabled) { border-color: var(--accent-line); background: var(--accent-soft); }
+.kudos-button.is-sent { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-dark); cursor: default; }
+.kudos-button:focus-visible { outline: none; box-shadow: var(--ring); }
+.kudos-error { font-size: var(--fs-xs); color: var(--red); }

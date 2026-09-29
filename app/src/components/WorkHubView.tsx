@@ -21,6 +21,8 @@ import { ProjectBreadcrumb, ProjectDetailHeader, ProjectStatsStrip, ProjectTabs,
 import { TodayView } from "./TodayView";
 import { WaitingView } from "./WaitingView";
 import "./WorkHubView.css";
+import { ProjectLeaderboardPanel } from "./game/progress";
+import { useGame } from "../lib/gamification/gameStore";
 
 export type WorkHubViewKind = "today" | "projects" | "project" | "waiting";
 
@@ -148,11 +150,12 @@ function ConfirmProjectDeleteModal({ project, onClose, onConfirm }: { project: P
 }
 
 
-type ProjectDetailTab = "board" | "list" | "notes";
+type ProjectDetailTab = "board" | "list" | "notes" | "leaderboard";
 
 function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLocked = false, onBack, onOpenNotes, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, onEditProject, onDeleteProject }: { project: Project; area?: Area; tasks: Task[]; members?: readonly Person[]; sharing?: ProjectSharingProps; sharingLocked?: boolean; onBack: () => void; onOpenNotes: (id: string) => void; onNewTask: (context: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void; onWorkspaceChange: () => void; onEditProject: (project: Project) => void; onDeleteProject: (project: Project) => void }) {
   const { t } = useI18n();
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
+  const { enabled: gameEnabled } = useGame();
   const [tab, setTab] = useState<ProjectDetailTab>("board");
   const [shareOpen, setShareOpen] = useState(false);
   const panelId = useId();
@@ -179,6 +182,8 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
     { id: "board", label: t("common.workhub.boardTab"), icon: "columns" },
     { id: "list", label: t("common.projectHub.listTab"), icon: "list", count: openCount },
     { id: "notes", label: t("common.workhub.notesTab"), icon: "file-text", count: notes.length },
+    // Shared projects can have a leaderboard (specs/GAMIFICATION.md §7).
+    ...(sharing && (gameEnabled || sharing.canManage) ? [{ id: "leaderboard" as const, label: t("progress.project.title"), icon: "trending-up" as const }] : []),
   ];
   const noTasks = <div className="workhub-empty-state compact project-empty-state"><Icon name="check-circle" /><h3>{t("common.workhub.noTasksTitle")}</h3><p>{t("common.workhub.noTasksHint")}</p><button type="button" className="primary-button" onClick={() => newTask()}><Icon name="plus" />{t("common.workhub.addNextTask")}</button></div>;
   return <section className="workhub-project-detail project-page" aria-label={project.name}>
@@ -204,6 +209,7 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
     <ProjectTabs tabs={tabs} active={tab} onChange={setTab} label={t("common.projectHub.viewsLabel")} panelId={panelId} />
     <div id={panelId} className="project-tab-panel" role="tabpanel" aria-label={tabs.find((item) => item.id === tab)?.label}>
       {tab === "board" ? (tasks.length ? <ProjectTaskBoard project={project} tasks={tasks} people={members} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onAddTask={newTask} /> : noTasks)
+        : tab === "leaderboard" ? <ProjectLeaderboardPanel projectId={project.id} />
         : tab === "list" ? (tasks.length ? <div className="project-task-list">{tasks.map((task) => <TaskRow key={task.id} task={task} project={project} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}</div> : noTasks)
         : <div className="project-notes-panel"><div className="project-notes-heading"><h3>{t("common.workhub.notesTitle")}</h3><div className="project-notes-actions"><button type="button" className="secondary-button" onClick={() => onOpenNotes(project.id)}>{t("common.workhub.openNotes")}</button><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.newNote")}</button></div></div>{notes.length ? <div className="project-note-list">{notes.map((note) => <button type="button" className="project-note-card" key={note.id} onClick={() => onOpenNotes(project.id)}><Icon name="file-text" /><span><strong>{note.title}</strong><small>{note.body.replace(/\s+/g, " ").trim().slice(0, 120) || t("common.workhub.emptyNote")}</small></span><Icon name="chevron-right" /></button>)}</div> : <div className="workhub-empty-state compact"><Icon name="file-text" /><h3>{t("common.workhub.noNotesTitle")}</h3><p>{t("common.workhub.noNotesHint")}</p><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.createNote")}</button></div>}</div>}
     </div>
@@ -230,6 +236,7 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   if (view === "project" && selectedProject && collaboration && isSoftwareCollaboration) return <div className="workhub-project-detail project-page">
     <ProjectBreadcrumb areaName={areaForProject(selectedProject)?.name} projectName={selectedProject.name} onBack={() => onOpenProject("")} />
     <ProjectCollaboration key={selectedProject.id} {...collaboration} project={selectedProject} />
+    <ProjectLeaderboardPanel key={`${selectedProject.id}-leaderboard`} projectId={selectedProject.id} className="project-leaderboard-section" />
   </div>;
 
   function saveModal(name: string, areaId: string | null, icon: string, projectType?: import("../types").ProjectType): void {

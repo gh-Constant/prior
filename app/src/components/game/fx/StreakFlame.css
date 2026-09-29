@@ -1,0 +1,123 @@
+.fx-streak { --flame-size: 56px; display: inline-flex; align-items: center; gap: calc(var(--flame-size) * 0.14); vertical-align: middle; }
+.fx-streak-flame { position: relative; display: block; flex: none; width: calc(var(--flame-size) * 0.8); height: var(--flame-size); transform-origin: 50% 92%; }
+.fx-streak-flame > svg { width: 100%; height: 100%; overflow: visible; }
+
+.fx-streak-outer,
+.fx-streak-middle,
+.fx-streak-core,
+.fx-streak-tongue { transform-box: fill-box; transform-origin: 50% 100%; }
+.fx-streak-outer { animation: fx-flame-a var(--flicker, 1.2s) ease-in-out infinite alternate; }
+.fx-streak-middle { animation: fx-flame-b calc(var(--flicker, 1.2s) * 0.78) ease-in-out infinite alternate; }
+.fx-streak-core { animation: fx-flame-c calc(var(--flicker, 1.2s) * 0.6) ease-in-out infinite alternate; }
+.fx-streak-tongue-left { transform-origin: 70% 100%; animation: fx-flame-tongue calc(var(--flicker, 1.2s) * 0.9) ease-in-out infinite alternate; }
+.fx-streak-tongue-right { transform-origin: 30% 100%; animation: fx-flame-tongue calc(var(--flicker, 1.2s) * 1.1) ease-in-out -0.4s infinite alternate-reverse; }
+.fx-streak-glow { transform-box: fill-box; transform-origin: 50% 60%; animation: fx-flame-glow calc(var(--flicker, 1.2s) * 1.4) ease-in-out infinite alternate; }
+
+.fx-streak-embers { position: absolute; inset: 0 12% 14%; pointer-events: none; }
+.fx-streak-embers > span {
+  position: absolute;
+  bottom: 18%;
+  left: calc(var(--x) * 100%);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ember);
+  box-shadow: 0 0 4px var(--ember);
+  opacity: 0;
+  animation: fx-ember calc(1.3s + var(--i) * 0.17s) calc(var(--i) * -0.37s) ease-out infinite;
+}
+
+.fx-streak-side { display: grid; gap: 1px; line-height: 1; }
+.fx-streak-count { justify-self: start; font-size: calc(var(--flame-size) * 0.46); font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.fx-streak-label { opacity: 0.6; font-size: max(11px, calc(var(--flame-size) * 0.2)); font-weight: 600; }
+.fx-streak-count-inside {
+  position: absolute;
+  bottom: 12%;
+  left: 50%;
+  translate: -50% 0;
+  color: #fff;
+  font-size: calc(var(--flame-size) * 0.27);
+  font-weight: 850;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgb(120 30 0 / 0.55), 0 0 6px rgb(160 50 0 / 0.35);
+  font-variant-numeric: tabular-nums;
+}
+.fx-streak-inferno .fx-streak-count-inside,
+.fx-streak-mythic .fx-streak-count-inside { text-shadow: 0 1px 2px rgb(20 20 90 / 0.6), 0 0 6px rgb(40 40 140 / 0.4); }
+.fx-streak-cold .fx-streak-count-inside { color: var(--muted); text-shadow: none; }
+.fx-streak-cold .fx-streak-outer,
+.fx-streak-cold .fx-streak-middle,
+.fx-streak-cold .fx-streak-core { opacity: 0.55; }
+
+/* Frozen: a still, icy flame with crystals and a slow shimmer. */
+.fx-streak.is-frozen .fx-streak-outer,
+.fx-streak.is-frozen .fx-streak-middle,
+.fx-streak.is-frozen .fx-streak-core,
+.fx-streak.is-frozen .fx-streak-tongue { animation: fx-flame-frozen 3.2s ease-in-out infinite alternate; }
+.fx-streak.is-frozen .fx-streak-outer { stroke: #7db9e8; stroke-width: 1.2; stroke-linejoin: round; }
+.fx-streak.is-frozen .fx-streak-count { color: #4a9ad8; }
+.fx-streak.is-frozen .fx-streak-count-inside { color: #1f5d92; text-shadow: 0 1px 0 rgb(255 255 255 / 0.7); }
+.fx-streak-ice { animation: fx-ice-glint 2.6s ease-in-out infinite; }
+
+.fx-streak-freeze-badge {
+  position: absolute;
+  top: 2%;
+  left: -10%;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  height: max(16px, calc(var(--flame-size) * 0.3));
+  min-width: max(16px, calc(var(--flame-size) * 0.3));
+  padding: 0 3px;
+  border: 1.5px solid #fff;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #bfe6ff, #5aa9e6);
+  box-shadow: 0 2px 6px -1px rgb(40 110 180 / 0.55);
+  color: #fff;
+  font-size: max(9px, calc(var(--flame-size) * 0.17));
+  font-weight: 800;
+  justify-content: center;
+}
+.fx-streak-freeze-badge svg { width: 70%; max-width: 12px; height: auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.8; }
+
+.fx-streak.is-static *,
+.fx-streak.is-static *::before { animation: none !important; }
+
+@keyframes fx-flame-a {
+  0% { transform: scale(1, 1) skewX(0deg); }
+  30% { transform: scale(0.97, 1.05) skewX(-2.5deg); }
+  65% { transform: scale(1.02, 0.97) skewX(1.8deg); }
+  100% { transform: scale(0.99, 1.04) skewX(-1deg); }
+}
+@keyframes fx-flame-b {
+  0% { transform: scale(1, 1) skewX(1deg); }
+  40% { transform: scale(0.95, 1.08) skewX(-3deg); }
+  100% { transform: scale(1.03, 0.95) skewX(2deg); }
+}
+@keyframes fx-flame-c {
+  0% { transform: scale(1, 1); }
+  50% { transform: scale(0.92, 1.1); }
+  100% { transform: scale(1.06, 0.92); }
+}
+@keyframes fx-flame-tongue {
+  0% { transform: scale(0.9, 0.85) rotate(-4deg); }
+  100% { transform: scale(1.05, 1.12) rotate(5deg); }
+}
+@keyframes fx-flame-glow {
+  from { opacity: 0.7; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1.06); }
+}
+@keyframes fx-flame-frozen {
+  from { transform: scale(1, 1); }
+  to { transform: scale(1.01, 1.015); }
+}
+@keyframes fx-ice-glint {
+  0%, 100% { opacity: 0.92; }
+  50% { opacity: 1; }
+}
+@keyframes fx-ember {
+  0% { opacity: 0; transform: translate(0, 0) scale(1); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc((var(--x) - 0.5) * 16px), calc(var(--flame-size) * -0.75)) scale(0.4); }
+}

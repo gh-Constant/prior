@@ -106,6 +106,12 @@ func (s *Server) CleanupLoop(ctx context.Context) {
 			s.auth.Cleanup()
 			s.sweepLimiters()
 			s.hostedUsage.sweep()
+			// Weekly leagues close on the first tick after Monday 00:00 UTC.
+			if closed, err := s.store.CloseLeagueWeeks(ctx, time.Now()); err != nil {
+				slog.Warn("closing league weeks failed", "error", err)
+			} else if closed > 0 {
+				slog.Info("league weeks closed", "cohorts", closed)
+			}
 			if time.Since(lastRetention) >= 24*time.Hour {
 				retentionCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				if err := s.store.CleanupRetention(retentionCtx, s.cfg.RetentionMutationsDays, s.cfg.RetentionSessionsDays); err != nil {
@@ -194,6 +200,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/collaboration/invites", s.incomingInvites)
 	mux.HandleFunc("POST /v1/collaboration/invites/{inviteID}/accept", s.respondToInvite(true))
 	mux.HandleFunc("POST /v1/collaboration/invites/{inviteID}/decline", s.respondToInvite(false))
+	mux.HandleFunc("GET /v1/collaboration/invites/preview", s.invitePreview)
+	mux.HandleFunc("GET /v1/game", s.gameState)
+	mux.HandleFunc("PATCH /v1/game/settings", s.gameSettings)
+	mux.HandleFunc("GET /v1/game/handle", s.gameHandleAvailable)
+	mux.HandleFunc("PUT /v1/game/handle", s.gameSetHandle)
+	mux.HandleFunc("PUT /v1/game/equip", s.gameEquip)
+	mux.HandleFunc("PUT /v1/game/pinned", s.gamePin)
+	mux.HandleFunc("PUT /v1/game/pet", s.gamePetName)
+	mux.HandleFunc("POST /v1/game/chests/{chestID}/open", s.gameOpenChest)
+	mux.HandleFunc("POST /v1/game/craft", s.gameCraft)
+	mux.HandleFunc("POST /v1/game/events/ack", s.gameAckEvents)
+	mux.HandleFunc("GET /v1/game/leaderboards/{board}", s.gameLeaderboard)
+	mux.HandleFunc("GET /v1/game/league", s.gameLeague)
+	mux.HandleFunc("GET /v1/game/projects/{projectID}/leaderboard", s.gameProjectLeaderboard)
+	mux.HandleFunc("PUT /v1/game/projects/{projectID}/leaderboard", s.gameSetProjectLeaderboard)
+	mux.HandleFunc("PUT /v1/game/projects/{projectID}/leaderboard/choice", s.gameProjectLeaderboardChoice)
+	mux.HandleFunc("POST /v1/game/kudos", s.gameKudos)
 	mux.HandleFunc("GET /v1/realtime", s.realtime)
 	mux.HandleFunc("POST /v1/mcp/tokens", s.createMCPToken)
 	mux.Handle("/mcp", http.HandlerFunc(s.mcp))
@@ -1329,6 +1352,8 @@ func (s *Server) limiterForPath(path string) *rateLimiter {
 	case path == "/v1/mcp/tokens":
 		return s.settingsLimiter
 	case path == "/v1/mail/accounts" || path == "/v1/mail/token" || path == "/v1/calendar/accounts" || path == "/v1/calendar/token":
+		return s.settingsLimiter
+	case path == "/v1/game" || strings.HasPrefix(path, "/v1/game/") || path == "/v1/collaboration/invites/preview":
 		return s.settingsLimiter
 	default:
 		return nil

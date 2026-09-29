@@ -4,6 +4,7 @@ import type { Note, NoteFolder } from "./notes";
 import { translateStored } from "./i18n";
 import { isTauri } from "./platform";
 import type { DocumentMutation, DocumentValue } from "./accountDocuments";
+import type { ChestDrop, GameBoard, GameEquipped, GameLeague, GameProfile, GameSettingsPatch, GameState, InvitePreview, ProjectLeaderboard, ProjectLeaderboardMode } from "./gamification/state";
 
 export type WorkspaceSnapshot = {
   areas: Area[];
@@ -363,6 +364,59 @@ export const api = {
   /** Whether this API offers Prior AI (hosted assistant and dictation). */
   hostedAiStatus(token: string): Promise<HostedAiStatus> {
     return request<HostedAiStatus>("/v1/agent/hosted", {}, token);
+  },
+  // Gamified mode (specs/GAMIFICATION.md). XP is earned through sync only.
+  getGame(token: string): Promise<GameState> {
+    return request<GameState>("/v1/game", {}, token);
+  },
+  updateGameSettings(settings: GameSettingsPatch, token: string): Promise<GameProfile> {
+    return request<GameProfile>("/v1/game/settings", { method: "PATCH", body: JSON.stringify(settings) }, token);
+  },
+  checkGameHandle(handle: string, token: string): Promise<{ available: boolean; reason: "" | "format" | "reserved" | "blocked" | "taken" }> {
+    return request(`/v1/game/handle?handle=${encodeURIComponent(handle)}`, {}, token);
+  },
+  setGameHandle(handle: string, token: string): Promise<{ handle: string }> {
+    return request("/v1/game/handle", { method: "PUT", body: JSON.stringify({ handle }) }, token);
+  },
+  equipGameItem(slot: keyof GameEquipped, itemId: string, token: string): Promise<{ equipped: GameEquipped }> {
+    return request("/v1/game/equip", { method: "PUT", body: JSON.stringify({ slot, itemId }) }, token);
+  },
+  pinAchievements(achievements: string[], token: string): Promise<{ pinnedAchievements: string[] }> {
+    return request("/v1/game/pinned", { method: "PUT", body: JSON.stringify({ achievements }) }, token);
+  },
+  setPetName(name: string, token: string): Promise<{ name: string }> {
+    return request("/v1/game/pet", { method: "PUT", body: JSON.stringify({ name }) }, token);
+  },
+  openChest(chestId: string, token: string): Promise<{ drops: ChestDrop[] }> {
+    return request(`/v1/game/chests/${encodeURIComponent(chestId)}/open`, { method: "POST" }, token);
+  },
+  craftItem(itemId: string, token: string): Promise<{ stardust: number }> {
+    return request("/v1/game/craft", { method: "POST", body: JSON.stringify({ itemId }) }, token);
+  },
+  ackGameEvents(upTo: number, token: string): Promise<void> {
+    return request<void>("/v1/game/events/ack", { method: "POST", body: JSON.stringify({ upTo }) }, token);
+  },
+  getLeaderboard(board: "level" | "streak", token: string, limit = 50): Promise<GameBoard> {
+    return request<GameBoard>(`/v1/game/leaderboards/${board}?limit=${limit}`, {}, token);
+  },
+  getLeague(token: string): Promise<GameLeague> {
+    return request<GameLeague>("/v1/game/league", {}, token);
+  },
+  getProjectLeaderboard(projectId: string, token: string): Promise<ProjectLeaderboard> {
+    return request<ProjectLeaderboard>(`/v1/game/projects/${encodeURIComponent(projectId)}/leaderboard`, {}, token);
+  },
+  setProjectLeaderboard(projectId: string, mode: ProjectLeaderboardMode, teamGoalXp: number, token: string): Promise<void> {
+    return request<void>(`/v1/game/projects/${encodeURIComponent(projectId)}/leaderboard`, { method: "PUT", body: JSON.stringify({ mode, teamGoalXp }) }, token);
+  },
+  setProjectLeaderboardChoice(projectId: string, joined: boolean, token: string): Promise<void> {
+    return request<void>(`/v1/game/projects/${encodeURIComponent(projectId)}/leaderboard/choice`, { method: "PUT", body: JSON.stringify({ joined }) }, token);
+  },
+  giveKudos(taskId: string, token: string): Promise<void> {
+    return request<void>("/v1/game/kudos", { method: "POST", body: JSON.stringify({ taskId }) }, token);
+  },
+  /** Public: the invite landing shows it before sign-in. */
+  getInvitePreview(inviteToken: string): Promise<InvitePreview> {
+    return request<InvitePreview>(`/v1/collaboration/invites/preview?token=${encodeURIComponent(inviteToken)}`);
   },
   getBilling(token: string): Promise<BillingState> {
     return request<BillingState>("/v1/billing", {}, token);

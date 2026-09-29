@@ -1,0 +1,144 @@
+.fx-ach-stack {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 100010;
+  width: min(372px, calc(100vw - 32px));
+  pointer-events: none;
+  transition: height 320ms var(--ease-out);
+}
+.fx-ach-slot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  transform-origin: 50% 0;
+  transition: transform 480ms cubic-bezier(0.2, 1, 0.3, 1), opacity 260ms var(--ease-out);
+  pointer-events: auto;
+}
+
+.fx-ach {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 34px 13px 13px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.07);
+  border-radius: 16px;
+  background:
+    radial-gradient(140px 90px at 38px 50%, color-mix(in oklab, var(--rarity) 24%, transparent), transparent 72%),
+    linear-gradient(180deg, #282622, #1b1a18);
+  color: #f4f2ee;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 22px 46px -18px rgb(0 0 0 / 0.6), 0 4px 12px -4px rgb(0 0 0 / 0.3);
+  animation: fx-ach-in 600ms cubic-bezier(0.2, 1.2, 0.35, 1) both;
+}
+.fx-ach::before { position: absolute; top: 0; right: 14px; left: 14px; height: 1px; background: linear-gradient(90deg, transparent, var(--rarity-light), transparent); opacity: 0.7; content: ""; }
+.fx-ach::after { position: absolute; inset: 0; border-radius: inherit; background: rgb(10 9 8 / 0.3); opacity: 0; transition: opacity 300ms var(--ease-out); content: ""; pointer-events: none; }
+.fx-ach.is-behind::after { opacity: 1; }
+.fx-ach.is-leaving { animation: fx-ach-out 280ms cubic-bezier(0.5, 0, 0.75, 0) forwards; }
+
+.fx-ach-medal { position: relative; flex: none; width: 50px; height: 50px; perspective: 360px; }
+.fx-ach-medal::before { position: absolute; inset: -12px; border-radius: 50%; background: radial-gradient(circle, var(--rarity-glow), transparent 68%); content: ""; animation: fx-ach-glow 1.8s ease-in-out infinite alternate; }
+.fx-ach-medal-coin { position: absolute; inset: 0; transform-style: preserve-3d; animation: fx-ach-flip 1100ms 120ms cubic-bezier(0.12, 0.75, 0.25, 1) both; }
+.fx-ach-medal-face { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+.fx-ach-medal-front {
+  background: radial-gradient(circle at 34% 28%, color-mix(in oklab, var(--rarity-light) 85%, white), var(--rarity) 52%, var(--rarity-dark));
+  color: #fff;
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--rarity-light) 75%, white), inset 0 0 0 5px color-mix(in oklab, var(--rarity-dark) 55%, transparent), 0 5px 12px -3px rgb(0 0 0 / 0.55);
+}
+.fx-ach-medal-front svg { width: 24px; height: 24px; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.3)); }
+.fx-ach-medal-back {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 0.5C8.6 5 11 7.4 15.5 8C11 8.6 8.6 11 8 15.5C7.4 11 5 8.6 0.5 8C5 7.4 7.4 5 8 0.5Z' fill='white' fill-opacity='0.8'/%3E%3C/svg%3E") center / 20px no-repeat,
+    radial-gradient(circle at 34% 28%, var(--rarity), var(--rarity-dark));
+  box-shadow: inset 0 0 0 2px var(--rarity-light);
+  transform: rotateY(180deg);
+}
+.fx-ach-medal-glint { position: absolute; inset: 0; overflow: hidden; border-radius: 50%; pointer-events: none; }
+.fx-ach-medal-glint::after {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 42%;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.8), transparent);
+  transform: translateX(-160%) skewX(-16deg);
+  content: "";
+  animation: fx-ach-glint 800ms 1150ms ease-in-out both;
+}
+
+.fx-ach-text { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.fx-ach-eyebrow { overflow: hidden; color: var(--rarity-light); font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.fx-ach-title { overflow: hidden; font-size: 14.5px; font-weight: 700; letter-spacing: -0.005em; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.fx-ach-description { display: -webkit-box; overflow: hidden; color: rgb(244 242 238 / 0.62); font-size: 12.5px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.fx-ach-reward { flex: none; padding: 3px 8px; border-radius: 999px; background: rgb(243 95 67 / 0.18); color: #ffa289; font-size: 11.5px; font-weight: 750; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fx-ach-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgb(255 255 255 / 0.4);
+}
+.fx-ach-close:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
+.fx-ach-close svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.6; }
+.fx-ach-timer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--rarity), var(--rarity-light));
+  opacity: 0.75;
+  transform-origin: 0 50%;
+  animation: fx-ach-timer var(--fx-ach-duration, 5200ms) linear both;
+}
+.fx-ach.is-paused .fx-ach-timer { animation-play-state: paused; }
+
+.fx-ach-subtle .fx-ach-medal-coin { animation-name: fx-ach-flip-soft; animation-duration: 700ms; }
+.fx-ach-subtle .fx-ach-medal::before { animation: none; opacity: 0.6; }
+.fx-ach-off .fx-ach,
+.fx-ach-off .fx-ach *,
+.fx-ach-off .fx-ach *::before,
+.fx-ach-off .fx-ach *::after { animation: none !important; }
+.fx-ach-off .fx-ach-slot { transition: opacity 200ms; }
+
+@keyframes fx-ach-in {
+  from { opacity: 0; transform: translateX(calc(100% + 28px)); }
+  40% { opacity: 1; }
+}
+@keyframes fx-ach-in-top {
+  from { opacity: 0; transform: translateY(calc(-100% - 20px)); }
+  40% { opacity: 1; }
+}
+@keyframes fx-ach-out { to { opacity: 0; transform: translateX(36%) scale(0.96); } }
+@keyframes fx-ach-out-top { to { opacity: 0; transform: translateY(-60%) scale(0.96); } }
+@keyframes fx-ach-flip {
+  0% { opacity: 0; transform: rotateY(-900deg) scale(0.25); }
+  18% { opacity: 1; }
+  72% { transform: rotateY(-14deg) scale(1.14); }
+  100% { opacity: 1; transform: rotateY(0deg) scale(1); }
+}
+@keyframes fx-ach-flip-soft {
+  0% { opacity: 0; transform: rotateY(-180deg) scale(0.7); }
+  100% { opacity: 1; transform: rotateY(0deg) scale(1); }
+}
+@keyframes fx-ach-glow {
+  from { opacity: 0.55; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1.08); }
+}
+@keyframes fx-ach-glint { to { transform: translateX(300%) skewX(-16deg); } }
+@keyframes fx-ach-timer { to { transform: scaleX(0); } }
+
+@media (max-width: 560px) {
+  .fx-ach-stack { top: calc(env(safe-area-inset-top, 0px) + 10px); right: 12px; left: 12px; width: auto; }
+  .fx-ach { animation-name: fx-ach-in-top; }
+  .fx-ach.is-leaving { animation-name: fx-ach-out-top; }
+}

@@ -1,0 +1,88 @@
+/* Project leaderboard: a quiet card that fits project settings or the
+   project page. The board inside keeps the identity components' own style. */
+
+.gp-plb {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--panel);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+}
+.gp-plb--loading { min-height: 132px; background: linear-gradient(90deg, var(--surface-2), var(--surface-3) 45%, var(--surface-2) 90%) 0 0 / 250% 100%; animation: gp-plb-shimmer 1.4s linear infinite; }
+@keyframes gp-plb-shimmer { to { background-position: -250% 0; } }
+
+.gp-plb-head { display: flex; align-items: flex-start; gap: 10px; }
+.gp-plb-head h3 { margin: 0; font-size: var(--fs-md); font-weight: 650; letter-spacing: -0.01em; }
+.gp-plb-head p { margin: 2px 0 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; }
+.gp-plb-icon { display: grid; flex: none; width: 30px; height: 30px; place-items: center; border-radius: var(--r-md); background: var(--accent-soft); color: var(--accent-dark); }
+
+.gp-plb-owner { display: grid; gap: 10px; padding: 12px; border-radius: var(--r-lg); background: var(--surface-2); }
+.gp-plb-modes { display: inline-flex; justify-self: start; flex-wrap: wrap; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
+.gp-plb-modes button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 550;
+}
+.gp-plb-modes button:hover:not(:disabled) { color: var(--ink); }
+.gp-plb-modes button[aria-checked="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px oklch(0 0 0 / 0.06); }
+.gp-plb-suggested { padding: 1px 6px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: var(--fs-2xs); font-weight: 650; }
+
+.gp-plb-goal { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.gp-plb-goal label { color: var(--ink-2); font-size: var(--fs-sm); font-weight: 550; }
+.gp-plb-goal-field { display: inline-flex; align-items: center; height: var(--control-h); overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface-1); }
+.gp-plb-goal-field:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
+.gp-plb-goal-field input { width: 90px; height: 100%; padding: 0 8px 0 10px; border: 0; outline: none; background: transparent; color: var(--ink); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.gp-plb-goal-field span { padding: 0 10px 0 2px; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; }
+.gp-plb-note { margin: 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.45; }
+
+.gp-plb-optin { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--accent-line); border-radius: var(--r-lg); background: var(--accent-soft); }
+.gp-plb-optin b { font-size: var(--fs-md); font-weight: 650; }
+.gp-plb-optin p { margin: 0; color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.5; }
+.gp-plb-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+
+.gp-plb-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-h);
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  color: var(--ink);
+  box-shadow: var(--shadow-control);
+  font-size: var(--fs-sm);
+  font-weight: 550;
+}
+.gp-plb-button:hover:not(:disabled) { background: var(--hover); }
+.gp-plb-button--primary { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.gp-plb-button--primary:hover:not(:disabled) { border-color: var(--accent-hover); background: var(--accent-hover); }
+
+.gp-plb-board.gi-lb { box-shadow: none; }
+.gp-plb-board .gi-lb-head--compact > h3 { color: var(--muted); font-size: var(--fs-xs); font-weight: 600; }
+.gp-plb-empty { margin: 0; padding: 18px 8px; color: var(--muted); font-size: var(--fs-sm); text-align: center; }
+
+.gp-plb-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: var(--muted); font-size: var(--fs-xs); }
+.gp-plb-choice svg { flex: none; }
+.gp-plb-link { padding: 0; border: 0; background: none; color: var(--accent-dark); font-size: inherit; font-weight: 600; }
+.gp-plb-link:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 2px; }
+.gp-plb-error { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; color: var(--red); font-size: var(--fs-sm); }
+
+@media (pointer: coarse) {
+  .gp-plb-modes button { height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gp-plb--loading { animation: none; }
+}

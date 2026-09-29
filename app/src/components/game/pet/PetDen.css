@@ -1,0 +1,165 @@
+/* Self-contained card so it reads the same on any surface. */
+.pet-den {
+  container-type: inline-size;
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 10px 14px;
+  border: 1px solid var(--line, #ebeae6);
+  border-radius: var(--r-xl, 14px);
+  background: var(--panel, #fff);
+  color: var(--ink, #1d1c1a);
+}
+
+/* ── Room ──────────────────────────────────────────────────────────────── */
+
+.pet-den-room {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--r-lg, 10px);
+  background: #f8ebdb;
+  isolation: isolate;
+}
+.pet-den-room-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pet-den-star { transform-box: fill-box; transform-origin: 50% 50%; animation: pet-den-twinkle 2.8s ease-in-out infinite; }
+.pet-den-star:nth-child(3n) { animation-delay: 0.9s; }
+.pet-den-star:nth-child(3n + 1) { animation-delay: 1.7s; }
+
+.pet-den-plaque {
+  position: absolute;
+  top: 15.5%;
+  left: 3.5%;
+  max-width: 40%;
+  overflow: hidden;
+  padding: 3px 10px;
+  border: 1.5px solid #a37e5b;
+  border-radius: 6px;
+  background: #fff4e4;
+  color: #6b4a33;
+  box-shadow: 0 2px 0 #d7b894;
+  font-size: var(--fs-sm, 12.5px);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.pet-den--night .pet-den-plaque { background: #d9cfc4; border-color: #7e6450; box-shadow: 0 2px 0 #8f7a66; }
+
+.pet-den-walker {
+  position: absolute;
+  bottom: 4%;
+  width: clamp(96px, 32%, 190px);
+  transform: translateX(-50%);
+  z-index: 1;
+}
+.pet-den-walker:not(.is-walking) { transition: left 900ms var(--ease-out, ease-out), bottom 600ms var(--ease-out, ease-out); }
+.pet-den-walker.is-resting { bottom: 9%; }
+.pet-den-flip { transition: transform 180ms ease; }
+.pet-den-flip.is-left { transform: scaleX(-1); }
+.pet-den-pet {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 40%;
+  background: transparent;
+  cursor: pointer;
+}
+.pet-den-pet:active { scale: 1; }
+.pet-den-bob { display: block; transform-origin: 50% 100%; }
+.pet-den-pet .pet { width: 100%; height: auto; }
+.pet-den-walker.is-walking .pet-den-bob { animation: pet-den-waddle 0.42s ease-in-out infinite; }
+
+/* ── Panel ─────────────────────────────────────────────────────────────── */
+
+.pet-den-panel { display: grid; gap: 14px; min-width: 0; }
+.pet-den-block { display: grid; gap: 8px; min-width: 0; }
+.pet-den-block h4 { margin: 0; color: var(--muted, #6f6d67); font-size: var(--fs-xs, 11.5px); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+
+.pet-den-name { display: grid; gap: 4px; color: var(--muted, #6f6d67); font-size: var(--fs-xs, 11.5px); font-weight: 600; }
+.pet-den-name input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong, #dcdad5);
+  border-radius: var(--r-md, 8px);
+  background: var(--surface-1, #fff);
+  color: var(--ink, #1d1c1a);
+  font: inherit;
+  font-size: var(--fs-md, 13.5px);
+  font-weight: 600;
+}
+.pet-den-name input:focus-visible { outline: 2px solid var(--accent, #f35f43); outline-offset: 1px; }
+
+.pet-den-tabs { display: inline-flex; justify-self: start; gap: 2px; padding: 2px; border-radius: var(--r-md, 8px); background: var(--surface-2, #f6f6f4); }
+.pet-den-tabs button {
+  min-width: 56px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-sm, 6px);
+  background: transparent;
+  color: var(--muted, #6f6d67);
+  font: inherit;
+  font-size: var(--fs-sm, 12.5px);
+  font-weight: 550;
+}
+.pet-den-tabs button.is-active { background: var(--surface-1, #fff); color: var(--ink, #1d1c1a); box-shadow: var(--shadow-control); }
+
+.pet-den-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
+.pet-den-item {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 72px;
+  padding: 8px 4px 6px;
+  border: 1px solid var(--line, #ebeae6);
+  border-radius: var(--r-lg, 10px);
+  background: var(--surface-1, #fff);
+  color: var(--ink-2, #3f3d39);
+  font: inherit;
+}
+.pet-den-item:hover { background: var(--hover, #f4f4f2); }
+.pet-den-item[aria-pressed="true"] { border-color: var(--accent, #f35f43); background: var(--accent-soft, #fef1ed); box-shadow: 0 0 0 1px var(--accent, #f35f43) inset; }
+.pet-den-item-icon { display: grid; place-items: center; width: 34px; height: 34px; }
+.pet-den-item-none { border: 1.5px dashed var(--line-strong, #dcdad5); border-radius: 50%; width: 26px; height: 26px; margin: 4px; }
+.pet-den-item-label { max-width: 100%; overflow: hidden; font-size: var(--fs-2xs, 10.5px); line-height: 1.2; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+
+.pet-den-timeline { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 0; padding: 0; list-style: none; }
+.pet-den-timeline::before { content: ""; position: absolute; top: 32px; left: 12.5%; right: 12.5%; height: 2px; border-radius: 2px; background: var(--line-strong, #dcdad5); }
+.pet-den-step { position: relative; display: grid; justify-items: center; gap: 2px; min-width: 0; text-align: center; }
+.pet-den-step-art { position: relative; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--surface-2, #f6f6f4); }
+.pet-den-step.is-current .pet-den-step-art { background: var(--accent-soft, #fef1ed); box-shadow: 0 0 0 2px var(--accent, #f35f43); }
+.pet-den-step-art .pet { margin-top: -6px; }
+.pet-den-lock { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; padding: 3px; border-radius: 50%; background: var(--surface-1, #fff); color: var(--faint, #9d9a93); box-shadow: var(--shadow-control); }
+.pet-den-step-name { max-width: 100%; overflow: hidden; font-size: var(--fs-sm, 12.5px); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.pet-den-step.is-locked .pet-den-step-name { color: var(--faint, #9d9a93); }
+.pet-den-step-level { color: var(--muted, #6f6d67); font-size: var(--fs-2xs, 10.5px); }
+
+@container (max-width: 420px) {
+  .pet-den-plaque { top: 14%; padding: 2px 7px; font-size: var(--fs-2xs, 10.5px); }
+}
+
+@container (min-width: 620px) {
+  .pet-den-room { aspect-ratio: 16 / 10; }
+  .pet-den-walker { width: clamp(110px, 24%, 200px); }
+  .pet-den-panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 20px; }
+  .pet-den-name { grid-column: 1 / -1; max-width: 280px; }
+}
+
+@keyframes pet-den-waddle {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  25% { transform: translateY(-3px) rotate(0deg); }
+  50% { transform: translateY(0) rotate(3deg); }
+  75% { transform: translateY(-3px) rotate(0deg); }
+}
+@keyframes pet-den-twinkle {
+  0%, 100% { opacity: 0.45; transform: scale(0.75); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.pet-den--still .pet-den-star, .pet-den--still .pet-den-bob { animation: none !important; }
+.pet-den--still .pet-den-walker, .pet-den--still .pet-den-flip { transition: none !important; }
