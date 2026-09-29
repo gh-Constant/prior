@@ -18,6 +18,10 @@ Task data includes a title, optional description, optional ISO due date, Todoist
 
 The in-app AI assistant defaults to Prior AI, a hosted OpenAI-compatible provider (OpenRouter by default) that the API calls with the operator's `AI_API_KEY`; users can instead use their own OpenRouter key or, on desktop, Codex. See `specs/AI.md` for providers, per-use-case models, and the daily cap. Its system prompt describes Prior's real capabilities, including `list_tasks`, `list_habits`, `create_task`, `update_task`, `create_habit`, and `prioritize_tasks`. Create and update actions are returned as review cards and only persist after the user confirms them. Chat history is stored in PostgreSQL; user API keys and the hosted key must never be logged or committed.
 
+## Plans and billing
+
+Paid plans (Free, Pro, Team, Enterprise) are defined in `server/internal/billing/plans.go` and sold through Stripe. The API creates its own Stripe products, prices, portal configuration and webhook from `STRIPE_SECRET_KEY`; keys live only in Coolify env vars. Plans feed `hostedAIEntitlement` (Prior AI access and monthly assistant tokens) and the share limits. The admin dashboard is restricted server-side to verified emails in `ADMIN_EMAILS`. See `specs/BILLING.md`.
+
 ## Working rules
 
 - Treat the repository as the source of truth.

@@ -6,7 +6,7 @@ import { BrandMark } from "./BrandMark";
 import { Icon, type IconName } from "./Icon";
 import "./AppSidebar.css";
 
-export type WorkspaceView = "today" | "inbox" | "calendar" | "projects" | "project" | "all" | "waiting" | "eisenhower" | "habits" | "notes" | "settings";
+export type WorkspaceView = "today" | "inbox" | "calendar" | "projects" | "project" | "all" | "waiting" | "eisenhower" | "habits" | "notes" | "settings" | "plans" | "admin";
 
 type AppSidebarProps = {
   readonly activeView: WorkspaceView;
@@ -24,6 +24,8 @@ type AppSidebarProps = {
   readonly syncIssue?: boolean;
   readonly onSync: () => void;
   readonly onViewChange: (view: WorkspaceView) => void;
+  /** Shows the admin dashboard entry (the server still enforces access). */
+  readonly showAdmin?: boolean;
   readonly onAccount: () => void;
   readonly onToggle: () => void;
   readonly onToggleAgent: () => void;
@@ -33,6 +35,7 @@ const NAV_GROUPS: Array<{ labelKey: string; items: Array<{ view: WorkspaceView; 
   { labelKey: "common.nav.groups.focus", items: [{ view: "today", labelKey: "common.nav.items.today", icon: "focus" }, { view: "inbox", labelKey: "common.nav.items.inbox", icon: "inbox" }, { view: "calendar", labelKey: "common.nav.items.calendar", icon: "calendar-check" }] },
   { labelKey: "common.nav.groups.organize", items: [{ view: "projects", labelKey: "common.nav.items.projects", icon: "folder" }, { view: "all", labelKey: "common.nav.items.allTasks", icon: "list" }] },
   { labelKey: "common.nav.groups.review", items: [{ view: "waiting", labelKey: "common.nav.items.waiting", icon: "clock" }, { view: "eisenhower", labelKey: "common.nav.items.priorityLens", icon: "grid" }, { view: "habits", labelKey: "common.nav.items.habits", icon: "sun" }, { view: "notes", labelKey: "common.nav.items.notes", icon: "file-text" }] },
+  { labelKey: "common.nav.groups.account", items: [{ view: "plans", labelKey: "common.nav.items.plans", icon: "award" }, { view: "admin", labelKey: "common.nav.items.admin", icon: "bar-chart" }] },
 ];
 
 /** Desktop and tablet navigation rail. Phones use MobileTabBar instead. */
@@ -51,6 +54,7 @@ export function AppSidebar({
   syncIssue,
   onSync,
   onViewChange,
+  showAdmin,
   onAccount,
   onToggle,
   onToggleAgent,
@@ -81,7 +85,7 @@ export function AppSidebar({
       </div>
 
       <nav className="sidebar-nav" aria-label={t("common.sidebar.workspaceViews")}>
-        {NAV_GROUPS.map((group) => <div className="sidebar-nav-group" key={group.labelKey}><span className="sidebar-nav-label">{t(group.labelKey)}</span>{group.items.map((item) => {
+        {NAV_GROUPS.map((group) => <div className="sidebar-nav-group" key={group.labelKey}><span className="sidebar-nav-label">{t(group.labelKey)}</span>{group.items.filter((item) => item.view !== "admin" || showAdmin).map((item) => {
           const count = counts?.[item.view] ?? 0;
           const active = activeView === item.view || (item.view === "projects" && activeView === "project");
           return (

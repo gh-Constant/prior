@@ -50,7 +50,7 @@ var catalog = []Plan{
 	{ID: PlanFree, Name: "Free", MaxMembersPerProject: 2, MaxSharedProjects: 3},
 	{ID: PlanPro, Name: "Pro", MonthlyCents: 2000, YearlyCents: 19200, MaxMembersPerProject: 10, HostedAI: true, AgentTokensPerMonth: 2_000_000},
 	{ID: PlanTeam, Name: "Team", MonthlyCents: 5000, YearlyCents: 48000, MaxMembersPerProject: 50, HostedAI: true, AgentTokensPerMonth: 8_000_000},
-	{ID: PlanEnterprise, Name: "Enterprise", MonthlyCents: 19900, YearlyCents: 199000, HostedAI: true, AgentTokensPerMonth: 30_000_000},
+	{ID: PlanEnterprise, Name: "Enterprise", MonthlyCents: 19900, YearlyCents: 191000, HostedAI: true, AgentTokensPerMonth: 30_000_000},
 }
 
 // Plans returns the catalog in display order.

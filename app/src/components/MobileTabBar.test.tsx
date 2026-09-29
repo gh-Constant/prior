@@ -89,11 +89,17 @@ describe("MobileMoreScreen", () => {
     const props = renderMore({ badges: { waiting: "2", habits: "1/3" } });
     const list = screen.getByRole("navigation", { name: "Other views" });
     const rows = within(list).getAllByRole("button");
-    expect(rows.map((row) => row.dataset.view)).toEqual(["inbox", "projects", "waiting", "eisenhower", "habits", "notes"]);
+    expect(rows.map((row) => row.dataset.view)).toEqual(["inbox", "projects", "waiting", "eisenhower", "habits", "notes", "plans"]);
     expect(within(list).getByRole("button", { name: /Waiting/ })).toHaveTextContent("2");
     expect(within(list).getByRole("button", { name: /Habits/ })).toHaveTextContent("1/3");
     fireEvent.click(within(list).getByRole("button", { name: /Notes/ }));
     expect(props.onNavigate).toHaveBeenCalledWith("notes");
+  });
+
+  it("shows the admin dashboard only to admins", () => {
+    renderMore({ showAdmin: true });
+    const list = screen.getByRole("navigation", { name: "Other views" });
+    expect(within(list).getAllByRole("button").map((row) => row.dataset.view)).toContain("admin");
   });
 
   it("opens the agent, the account and settings", () => {
