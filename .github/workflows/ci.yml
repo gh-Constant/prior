@@ -33,6 +33,7 @@ jobs:
               - 'app/src-tauri/gen/android/**'
             server:
               - 'server/**'
+              - '.github/workflows/ci.yml'
 
   app:
     needs: changes
@@ -85,7 +86,8 @@ jobs:
           cache-dependency-path: server/go.sum
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
-      - run: go test ./...
+      # Packages share one PostgreSQL and its migration lock: run them in turn.
+      - run: go test -p 1 ./...
       - run: go build ./cmd/prior
 
   native:
