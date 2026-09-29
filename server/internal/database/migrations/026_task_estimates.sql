@@ -1,0 +1,2 @@
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS estimated_minutes INTEGER;
+ALTER TABLE task_changes ADD COLUMN IF NOT EXISTS estimated_minutes INTEGER;

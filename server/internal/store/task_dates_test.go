@@ -52,6 +52,8 @@ func TestPullTaskWithScheduledDatesPostgres(t *testing.T) {
 		ID: uuid.NewString(), Title: "dated task", Priority: 4, Status: "next",
 		ScheduledDate: strptr("2026-09-20"), FollowUpDate: strptr("2026-09-27"),
 	}
+	estimate := 45
+	task.EstimatedMinutes = &estimate
 	results, err := s.Push(ctx, user.ID, []tasks.Mutation{{ID: uuid.NewString(), Kind: "upsert", Task: task}})
 	if err != nil {
 		t.Fatal(err)
@@ -72,5 +74,8 @@ func TestPullTaskWithScheduledDatesPostgres(t *testing.T) {
 	}
 	if got.FollowUpDate == nil || *got.FollowUpDate != "2026-09-27" {
 		t.Fatalf("followUpDate = %v, want 2026-09-27", got.FollowUpDate)
+	}
+	if got.EstimatedMinutes == nil || *got.EstimatedMinutes != 45 {
+		t.Fatalf("estimatedMinutes = %v, want 45", got.EstimatedMinutes)
 	}
 }
