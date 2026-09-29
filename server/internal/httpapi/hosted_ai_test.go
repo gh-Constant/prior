@@ -88,6 +88,9 @@ func TestCompletionPayloadForHostedRoute(t *testing.T) {
 		t.Fatalf("unexpected route: %#v", route)
 	}
 	payload := completionPayload(route, []map[string]string{{"role": "user", "content": "hi"}}, true, "", true)
+	if usage, _ := payload["usage"].(map[string]bool); !usage["include"] {
+		t.Fatal("hosted requests ask OpenRouter for their cost")
+	}
 	models, _ := payload["models"].([]string)
 	if strings.Join(models, ",") != "primary/model,backup/model" {
 		t.Fatalf("fallback models = %v", models)
@@ -120,7 +123,7 @@ func TestRequestChatCompletion(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
-		_, _ = w.Write([]byte(`{"model":"primary/model-2026","usage":{"total_tokens":1234},"choices":[{"message":{"content":[{"type":"text","text":"{\"reply\":"},{"type":"text","text":"\"ok\"}"}]}}]}`))
+		_, _ = w.Write([]byte(`{"model":"primary/model-2026","usage":{"total_tokens":1234,"cost":0.0021},"choices":[{"message":{"content":[{"type":"text","text":"{\"reply\":"},{"type":"text","text":"\"ok\"}"}]}}]}`))
 	}))
 	defer upstream.Close()
 	server := &Server{completionClient: upstream.Client()}
@@ -129,7 +132,7 @@ func TestRequestChatCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	if result.content != `{"reply":"ok"}` || result.model != "primary/model-2026" || result.totalTokens != 1234 {
+	if result.content != `{"reply":"ok"}` || result.model != "primary/model-2026" || result.totalTokens != 1234 || result.costMicros != 2100 {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 	if gotAuth != "Bearer secret" || gotBody["model"] != "primary/model" {

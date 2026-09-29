@@ -44,7 +44,27 @@ type Config struct {
 	// set, signed-in users get the assistant, recommendations, mail and
 	// calendar drafts, and dictation without configuring any key themselves.
 	HostedAI HostedAIConfig
+	// Billing is Stripe plus the admin allowlist.
+	Billing BillingConfig
 }
+
+// BillingConfig holds Stripe settings. Keys only ever come from the
+// environment; the server creates its own products, prices, portal
+// configuration and (when no secret is given) webhook endpoint.
+type BillingConfig struct {
+	StripeSecretKey      string
+	StripePublishableKey string
+	// Optional: signing secret of a webhook endpoint created by hand. When
+	// empty, the API manages its own endpoint at PUBLIC_API_URL.
+	StripeWebhookSecret string
+	// Where Stripe Checkout and the customer portal send people back to
+	// when the client did not give an allowed return URL.
+	ReturnURL string
+	// Verified emails that may open the admin dashboard.
+	AdminEmails []string
+}
+
+func (c BillingConfig) StripeEnabled() bool { return strings.TrimSpace(c.StripeSecretKey) != "" }
 
 // HostedAIConfig describes the OpenAI-compatible provider Prior pays for.
 // Model IDs are per use case so they can be swapped without a release.
@@ -139,6 +159,13 @@ func Load() Config {
 		RetentionSessionsDays:  getenvInt("RETENTION_SESSIONS_DAYS", 30),
 		TrustProxy:             getenv("TRUST_PROXY", "true") == "true",
 		HostedAI:               loadHostedAI(),
+		Billing: BillingConfig{
+			StripeSecretKey:      os.Getenv("STRIPE_SECRET_KEY"),
+			StripePublishableKey: os.Getenv("STRIPE_PUBLISHABLE_KEY"),
+			StripeWebhookSecret:  os.Getenv("STRIPE_WEBHOOK_SECRET"),
+			ReturnURL:            getenv("BILLING_RETURN_URL", "https://app.prior.constantsuchet.fr/"),
+			AdminEmails:          split(getenv("ADMIN_EMAILS", "constantsuchet@gmail.com")),
+		},
 	}
 }
 

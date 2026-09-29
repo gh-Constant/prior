@@ -47,6 +47,7 @@ func main() {
 	api := httpapi.New(cfg, pool)
 	go api.CleanupLoop(ctx)
 	go api.StartRealtimeSubscriber(ctx)
+	go api.BootstrapBilling(ctx)
 	server := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 2 * time.Minute, WriteTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second}
 	go func() {
 		slog.Info("Prior API listening", "addr", cfg.HTTPAddr, "env", cfg.Env)

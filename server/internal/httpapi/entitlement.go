@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
+	"github.com/gh-Constant/prior/server/internal/billing"
 	"github.com/gh-Constant/prior/server/internal/store"
 )
 
@@ -23,13 +25,23 @@ type HostedAIEntitlement struct {
 // completion and transcription goes through it, so plans only need to be
 // plugged in here: look up the user's paid plan and return its quotas.
 //
-// Until plans exist, only the emails in AI_HOSTED_ALLOWED_EMAILS (the
-// operator and testers) have access, without a token cap.
-func (s *Server) hostedAIEntitlement(_ context.Context, user store.User) HostedAIEntitlement {
-	if emailListed(s.cfg.HostedAI.AllowedEmails, user.Email) {
+// Paid plans (internal/billing) include Prior AI with a monthly assistant
+// token budget. The admin account and the emails in
+// AI_HOSTED_ALLOWED_EMAILS (testers) have access without a token cap.
+func (s *Server) hostedAIEntitlement(ctx context.Context, user store.User) HostedAIEntitlement {
+	if s.isAdmin(user) || emailListed(s.cfg.HostedAI.AllowedEmails, user.Email) {
 		return HostedAIEntitlement{Allowed: true, Plan: "staff"}
 	}
-	return HostedAIEntitlement{}
+	planID, _, err := s.planFor(ctx, user)
+	if err != nil {
+		slog.Warn("plan lookup failed", "user_id_hash", userIDHash(user.ID), "error", err)
+		return HostedAIEntitlement{}
+	}
+	plan := billing.Lookup(planID)
+	if !plan.HostedAI || plan.AgentTokensPerMonth <= 0 {
+		return HostedAIEntitlement{Plan: string(plan.ID)}
+	}
+	return HostedAIEntitlement{Allowed: true, Plan: string(plan.ID), AgentTokensPerMonth: plan.AgentTokensPerMonth}
 }
 
 func emailListed(list []string, email string) bool {

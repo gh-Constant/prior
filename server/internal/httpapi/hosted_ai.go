@@ -135,6 +135,11 @@ func completionPayload(route completionRoute, messages []map[string]string, webS
 		}
 		payload["models"] = models
 	}
+	if route.hosted {
+		// Ask OpenRouter to report what each hosted call cost, for the
+		// admin dashboard.
+		payload["usage"] = map[string]bool{"include": true}
+	}
 	if webSearch && !route.hosted {
 		payload["tools"] = []map[string]string{{"type": "openrouter:web_search"}}
 	}
@@ -192,11 +197,11 @@ func (s *Server) checkHostedAgentQuota(ctx context.Context, user store.User, pur
 
 // recordHostedUsage persists one hosted request. A failed write is logged,
 // never shown: the user already got their answer.
-func (s *Server) recordHostedUsage(ctx context.Context, userID uuid.UUID, purpose string, tokens int64) {
+func (s *Server) recordHostedUsage(ctx context.Context, userID uuid.UUID, purpose string, tokens, costMicros int64) {
 	if s.store == nil {
 		return
 	}
-	if err := s.store.RecordHostedAIUsage(ctx, userID, time.Now(), purpose, tokens); err != nil {
+	if err := s.store.RecordHostedAIUsage(ctx, userID, time.Now(), purpose, tokens, costMicros); err != nil {
 		slog.Warn("hosted AI usage not recorded", "user_id_hash", userIDHash(userID), "purpose", purpose, "error", err)
 	}
 }

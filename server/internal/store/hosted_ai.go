@@ -7,15 +7,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// RecordHostedAIUsage adds one Prior AI request and its tokens to the user's
-// counters for the given UTC day and purpose.
-func (s *Store) RecordHostedAIUsage(ctx context.Context, userID uuid.UUID, day time.Time, purpose string, tokens int64) error {
+// RecordHostedAIUsage adds one Prior AI request, its tokens and its cost
+// (USD millionths, as reported by OpenRouter) to the user's counters for
+// the given UTC day and purpose.
+func (s *Store) RecordHostedAIUsage(ctx context.Context, userID uuid.UUID, day time.Time, purpose string, tokens, costMicros int64) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO hosted_ai_usage (user_id, day, purpose, requests, tokens)
-		VALUES ($1, $2, $3, 1, $4)
+		INSERT INTO hosted_ai_usage (user_id, day, purpose, requests, tokens, cost_micros)
+		VALUES ($1, $2, $3, 1, $4, $5)
 		ON CONFLICT (user_id, day, purpose) DO UPDATE
-		SET requests = hosted_ai_usage.requests + 1, tokens = hosted_ai_usage.tokens + EXCLUDED.tokens`,
-		userID, day.UTC().Format("2006-01-02"), purpose, tokens)
+		SET requests = hosted_ai_usage.requests + 1, tokens = hosted_ai_usage.tokens + EXCLUDED.tokens,
+			cost_micros = hosted_ai_usage.cost_micros + EXCLUDED.cost_micros`,
+		userID, day.UTC().Format("2006-01-02"), purpose, tokens, costMicros)
 	return err
 }
 

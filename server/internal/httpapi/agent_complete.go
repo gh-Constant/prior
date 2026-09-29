@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"regexp"
 	"strings"
@@ -165,7 +166,7 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 	provider := "openrouter"
 	if route.hosted {
 		provider = "hosted"
-		s.recordHostedUsage(r.Context(), user.ID, purpose, result.totalTokens)
+		s.recordHostedUsage(r.Context(), user.ID, purpose, result.totalTokens, result.costMicros)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"content":     result.content,
@@ -249,6 +250,9 @@ type chatCompletionResult struct {
 	content     string
 	model       string
 	totalTokens int64
+	// costMicros is OpenRouter's reported cost in USD millionths (0 when
+	// the upstream does not report one).
+	costMicros int64
 }
 
 func (s *Server) requestChatCompletion(ctx context.Context, route completionRoute, payload map[string]any) (chatCompletionResult, error) {
@@ -289,13 +293,14 @@ func (s *Server) requestChatCompletion(ctx context.Context, route completionRout
 		} `json:"choices"`
 		Model string `json:"model"`
 		Usage struct {
-			TotalTokens int64 `json:"total_tokens"`
+			TotalTokens int64   `json:"total_tokens"`
+			Cost        float64 `json:"cost"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(responseBody, &decoded); err != nil || len(decoded.Choices) == 0 {
 		return chatCompletionResult{}, errors.New("assistant service returned an invalid response")
 	}
-	return chatCompletionResult{content: messageContentToString(decoded.Choices[0].Message.Content), model: decoded.Model, totalTokens: decoded.Usage.TotalTokens}, nil
+	return chatCompletionResult{content: messageContentToString(decoded.Choices[0].Message.Content), model: decoded.Model, totalTokens: decoded.Usage.TotalTokens, costMicros: int64(math.Round(decoded.Usage.Cost * 1e6))}, nil
 }
 
 func messageContentToString(content any) string {

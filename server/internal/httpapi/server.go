@@ -24,6 +24,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/gh-Constant/prior/server/internal/auth"
+	"github.com/gh-Constant/prior/server/internal/billing"
 	"github.com/gh-Constant/prior/server/internal/config"
 	"github.com/gh-Constant/prior/server/internal/store"
 	"github.com/gh-Constant/prior/server/internal/tasks"
@@ -47,6 +48,8 @@ type Server struct {
 	settingsLimiter        *rateLimiter
 	openAIClient           *http.Client
 	openAITranscriptionURL string
+	stripe                 *billing.Stripe
+	billing                billingRuntime
 	// Overridable in tests; empty means the production OpenRouter URL.
 	openRouterCompletionsURL string
 	completionClient         *http.Client
@@ -78,6 +81,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 		openAITranscriptionURL: "https://api.openai.com/v1/audio/transcriptions",
 		completionClient:       &http.Client{Timeout: 60 * time.Second},
 		hostedUsage:            newHostedUsage(cfg.HostedAI.DailyRequestsPerUser),
+		stripe:                 billing.NewStripe(cfg.Billing.StripeSecretKey, nil),
 	}
 }
 
@@ -147,6 +151,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/agent/chats/{chatID}/messages", s.saveAgentChatMessage)
 	mux.HandleFunc("POST /v1/agent/complete", s.agentComplete)
 	mux.HandleFunc("GET /v1/agent/hosted", s.hostedAIStatus)
+	mux.HandleFunc("GET /v1/billing", s.getBilling)
+	mux.HandleFunc("POST /v1/billing/checkout", s.billingCheckout)
+	mux.HandleFunc("POST /v1/billing/portal", s.billingPortal)
+	mux.HandleFunc("POST /v1/billing/sync", s.billingSync)
+	mux.HandleFunc("POST /v1/billing/webhook", s.billingWebhook)
+	mux.HandleFunc("GET /v1/admin/overview", s.adminOverview)
+	mux.HandleFunc("GET /v1/admin/users", s.adminUsers)
+	mux.HandleFunc("PUT /v1/admin/users/{userID}/plan", s.adminSetPlan)
 	mux.HandleFunc("GET /v1/sessions", s.listSessions)
 	mux.HandleFunc("DELETE /v1/sessions", s.revokeAllSessions)
 	mux.HandleFunc("DELETE /v1/sessions/{id}", s.revokeSession)
@@ -846,7 +858,7 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if target.hosted {
-		s.recordHostedUsage(r.Context(), user.ID, "transcription", 0)
+		s.recordHostedUsage(r.Context(), user.ID, "transcription", 0, 0)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"text": strings.TrimSpace(result.Text)})
 }
@@ -1295,6 +1307,8 @@ func (s *Server) requireUser(r *http.Request) (store.User, error) {
 // allowEndpoint; this covers settings + agentComplete without double-charging.
 func (s *Server) limiterForPath(path string) *rateLimiter {
 	switch {
+	case path == "/v1/billing/checkout" || path == "/v1/billing/portal" || path == "/v1/billing/sync" || strings.HasPrefix(path, "/v1/admin/"):
+		return s.settingsLimiter
 	case path == "/v1/settings":
 		return s.settingsLimiter
 	case path == "/v1/agent/complete":
