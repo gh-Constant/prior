@@ -3,7 +3,6 @@ import { DEFAULT_MODEL, getAgentSettings, notifyAgentSettingsChanged, saveAgentS
 import { clearCachedCodexAccount, codexBinaryAvailable, getCachedCodexAccount, logoutCodex, setCachedCodexAccount, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
 import type { AgentProvider } from "../types";
 import { getToken, type SessionUser } from "../lib/auth";
-import { useHostedAiAvailable } from "../hooks/useHostedAi";
 import { api } from "../lib/api";
 import { pullAssistantSettings, pushAssistantSettings } from "../lib/settingsSync";
 import { UpdateControl, useAppUpdate } from "./UpdateControl";
@@ -12,6 +11,7 @@ import { LANGUAGES, useI18n, type Language } from "../lib/i18n";
 import { EditableAvatar, IconUpload } from "./IconPicker";
 import { CustomSelect } from "./CustomSelect";
 import { logger } from "../lib/logger";
+import { useHostedAiAvailable } from "../hooks/useHostedAi";
 import { localStore } from "../lib/localStore";
 import "./SettingsPage.css";
 
