@@ -8,7 +8,7 @@ import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
 import { isDesktop, isMac, isTauri } from "./lib/platform";
 import { checkForUpdate, installAvailableUpdate, type UpdateInfo } from "./lib/updater";
-import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
+import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, ProposedTaskUpdate, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
 import { EisenhowerMatrix } from "./components/EisenhowerMatrix";
 import { TaskComposer, type TaskComposerContext } from "./components/TaskComposer";
@@ -1041,6 +1041,23 @@ export function App() {
     void syncNow();
   }
 
+  /* Applies update_task proposals the user confirmed in the assistant. Only
+     tasks that still exist and are editable are changed. */
+  async function applyAgentTaskUpdates(batch: ProposedTaskUpdate[]) {
+    const current = new Map((await localStore.listTasks()).map((task) => [task.id, task]));
+    for (const item of batch) {
+      const task = current.get(item.taskId);
+      if (!task || task.deletedAt) continue;
+      if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+      const { changes } = item;
+      const completed = changes.completed ?? (changes.status ? changes.status === "done" : task.completed);
+      const status = changes.status ?? (changes.completed === true ? "done" : changes.completed === false && task.status === "done" ? "next" : task.status);
+      await localStore.updateTask({ ...task, ...changes, completed, status });
+    }
+    await refresh();
+    void syncNow();
+  }
+
   async function addAgentHabits(batch: HabitDraft[]) {
     for (const item of batch) {
       await localStore.saveHabit(item);
@@ -1577,6 +1594,7 @@ export function App() {
         onAddFolders={addAgentFolders}
         onAddAreas={addAgentAreas}
         onAddProjects={addAgentProjects}
+        onApplyTaskUpdates={applyAgentTaskUpdates}
         onOpenSettings={() => { setAgentOpen(false); changeView("settings"); }}
       />
 

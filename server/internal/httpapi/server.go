@@ -47,6 +47,10 @@ type Server struct {
 	settingsLimiter        *rateLimiter
 	openAIClient           *http.Client
 	openAITranscriptionURL string
+	// Overridable in tests; empty means the production OpenRouter URL.
+	openRouterCompletionsURL string
+	completionClient         *http.Client
+	hostedUsage              *hostedUsage
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool) *Server {
@@ -72,6 +76,8 @@ func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 		settingsLimiter:        perMinute(cfg.RateLimitSettings, 60),
 		openAIClient:           &http.Client{Timeout: 2 * time.Minute},
 		openAITranscriptionURL: "https://api.openai.com/v1/audio/transcriptions",
+		completionClient:       &http.Client{Timeout: 60 * time.Second},
+		hostedUsage:            newHostedUsage(cfg.HostedAI.DailyRequestsPerUser),
 	}
 }
 
@@ -93,6 +99,7 @@ func (s *Server) CleanupLoop(ctx context.Context) {
 		case <-ticker.C:
 			s.auth.Cleanup()
 			s.sweepLimiters()
+			s.hostedUsage.sweep()
 			if time.Since(lastRetention) >= 24*time.Hour {
 				retentionCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				if err := s.store.CleanupRetention(retentionCtx, s.cfg.RetentionMutationsDays, s.cfg.RetentionSessionsDays); err != nil {
@@ -139,6 +146,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/agent/chats/{chatID}", s.getAgentChat)
 	mux.HandleFunc("POST /v1/agent/chats/{chatID}/messages", s.saveAgentChatMessage)
 	mux.HandleFunc("POST /v1/agent/complete", s.agentComplete)
+	mux.HandleFunc("GET /v1/agent/hosted", s.hostedAIStatus)
 	mux.HandleFunc("GET /v1/sessions", s.listSessions)
 	mux.HandleFunc("DELETE /v1/sessions", s.revokeAllSessions)
 	mux.HandleFunc("DELETE /v1/sessions/{id}", s.revokeSession)
@@ -762,23 +770,17 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 	if !s.allowEndpoint(w, r, s.transcribeLimiter, "transcribe") {
 		return
 	}
-	stored, err := s.store.GetUserSettings(r.Context(), user.ID)
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusServiceUnavailable, errors.New("voice transcription is not configured"))
-		return
-	}
+	target, err := s.transcriptionTarget(r, user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to load transcription settings"))
 		return
 	}
-	openAIAPIKey, err := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenAIAPIKey)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, errors.New("unable to load transcription settings"))
+	if target.apiKey == "" {
+		writeError(w, http.StatusServiceUnavailable, errors.New("voice transcription is not configured"))
 		return
 	}
-	openAIAPIKey = strings.TrimSpace(openAIAPIKey)
-	if openAIAPIKey == "" {
-		writeError(w, http.StatusServiceUnavailable, errors.New("voice transcription is not configured"))
+	if target.hosted && !s.hostedUsage.take(user.ID) {
+		writeError(w, http.StatusTooManyRequests, errors.New("daily Prior AI limit reached; try again tomorrow or add your own OpenAI key"))
 		return
 	}
 
@@ -801,21 +803,17 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, err := transcriptionMultipart(file, header)
+	payload, err := transcriptionMultipart(file, header, target.model)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid audio upload"))
 		return
 	}
-	transcriptionURL := s.openAITranscriptionURL
-	if transcriptionURL == "" {
-		transcriptionURL = "https://api.openai.com/v1/audio/transcriptions"
-	}
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, transcriptionURL, payload.body)
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, target.url, payload.body)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to prepare transcription"))
 		return
 	}
-	request.Header.Set("Authorization", "Bearer "+openAIAPIKey)
+	request.Header.Set("Authorization", "Bearer "+target.apiKey)
 	request.Header.Set("Content-Type", payload.contentType)
 	client := s.openAIClient
 	if client == nil {
@@ -826,13 +824,13 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		slog.Warn("OpenAI transcription request failed", "user_id_hash", userIDHash(user.ID), "error", err)
+		slog.Warn("transcription request failed", "user_id_hash", userIDHash(user.ID), "hosted", target.hosted, "error", err)
 		writeError(w, http.StatusBadGateway, errors.New("transcription service is unavailable"))
 		return
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		slog.Warn("OpenAI transcription request rejected", "user_id_hash", userIDHash(user.ID), "status", response.StatusCode)
+		slog.Warn("transcription request rejected", "user_id_hash", userIDHash(user.ID), "hosted", target.hosted, "status", response.StatusCode)
 		writeError(w, http.StatusBadGateway, errors.New("transcription service rejected the audio"))
 		return
 	}
@@ -846,12 +844,47 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"text": strings.TrimSpace(result.Text)})
 }
 
+type transcriptionRoute struct {
+	hosted bool
+	url    string
+	apiKey string
+	model  string
+}
+
+// transcriptionTarget prefers the user's own OpenAI key and falls back to
+// Prior AI's hosted speech-to-text endpoint. An empty apiKey means dictation
+// is not configured for this user.
+func (s *Server) transcriptionTarget(r *http.Request, userID uuid.UUID) (transcriptionRoute, error) {
+	stored, err := s.store.GetUserSettings(r.Context(), userID)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return transcriptionRoute{}, err
+	}
+	if err == nil {
+		openAIAPIKey, openErr := openSettingsValue(s.cfg.SettingsEncryptionKey, stored.OpenAIAPIKey)
+		if openErr != nil {
+			return transcriptionRoute{}, openErr
+		}
+		if key := strings.TrimSpace(openAIAPIKey); key != "" {
+			url := s.openAITranscriptionURL
+			if url == "" {
+				url = "https://api.openai.com/v1/audio/transcriptions"
+			}
+			return transcriptionRoute{url: url, apiKey: key, model: "gpt-4o-mini-transcribe"}, nil
+		}
+	}
+	hosted := s.cfg.HostedAI
+	if !hosted.TranscriptionEnabled() {
+		return transcriptionRoute{}, nil
+	}
+	return transcriptionRoute{hosted: true, url: hosted.TranscriptionURL, apiKey: strings.TrimSpace(hosted.TranscriptionAPIKey), model: firstNonEmpty(hosted.TranscriptionModel, "microsoft/mai-transcribe-2")}, nil
+}
+
 type transcriptionUpload struct {
 	body        io.Reader
 	contentType string
 }
 
-func transcriptionMultipart(file multipart.File, header *multipart.FileHeader) (transcriptionUpload, error) {
+func transcriptionMultipart(file multipart.File, header *multipart.FileHeader, model string) (transcriptionUpload, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	filename := filepath.Base(strings.ReplaceAll(header.Filename, `\`, "/"))
@@ -865,7 +898,7 @@ func transcriptionMultipart(file multipart.File, header *multipart.FileHeader) (
 	if _, err := io.Copy(part, file); err != nil {
 		return transcriptionUpload{}, err
 	}
-	if err := writer.WriteField("model", "gpt-4o-mini-transcribe"); err != nil {
+	if err := writer.WriteField("model", model); err != nil {
 		return transcriptionUpload{}, err
 	}
 	if err := writer.WriteField("response_format", "json"); err != nil {
@@ -981,8 +1014,10 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		ProposedFolders  json.RawMessage `json:"proposedFolders"`
 		ProposedAreas    json.RawMessage `json:"proposedAreas"`
 		ProposedProjects json.RawMessage `json:"proposedProjects"`
-		ActualModel      string          `json:"actualModel"`
-		CreatedAt        string          `json:"createdAt"`
+		// Proposed edits to existing tasks (update_task review cards).
+		ProposedTaskUpdates json.RawMessage `json:"proposedTaskUpdates"`
+		ActualModel         string          `json:"actualModel"`
+		CreatedAt           string          `json:"createdAt"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid chat message request"))
@@ -1009,7 +1044,9 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		ProposedFolders:  body.ProposedFolders,
 		ProposedAreas:    body.ProposedAreas,
 		ProposedProjects: body.ProposedProjects,
-		ActualModel:      body.ActualModel,
+		// Validated and defaulted to [] by the store.
+		ProposedTaskUpdates: body.ProposedTaskUpdates,
+		ActualModel:         body.ActualModel,
 	})
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, err)

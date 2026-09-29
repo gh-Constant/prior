@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { askAgent, buildSystemPrompt, describeHabitScheduleForPrompt, fetchAvailableModels, getAgentSettings, habitDaysOfWeek, modelSupportsReasoning, normalizeReasoningEffort, parseAiResponse, reasoningEffortParam, saveAgentSettings } from "./ai";
+import { askAgent, buildSystemPrompt, describeHabitScheduleForPrompt, draftWithAgent, fetchAvailableModels, getAgentSettings, habitDaysOfWeek, modelSupportsReasoning, normalizeProvider, normalizeReasoningEffort, parseAiResponse, reasoningEffortParam, saveAgentSettings } from "./ai";
 import type { Habit, Task } from "../types";
 
 describe("ai engine", () => {
@@ -488,5 +488,86 @@ Hope this helps!`;
     expect(describeHabitScheduleForPrompt({ interval: 1, unit: "week", daysOfWeek: [1, 3, 5] })).toBe("weekly on Mon,Wed,Fri");
     expect(describeHabitScheduleForPrompt({ interval: 2, unit: "week", daysOfWeek: [1] })).toBe("every 2 weeks on Mon");
     expect(describeHabitScheduleForPrompt({ interval: 3, unit: "month", daysOfWeek: [] })).toBe("every 3 months");
+  });
+
+  describe("Prior AI and task updates", () => {
+    const base: Task = {
+      id: "task-1", title: "Send invoice", description: "", dueDate: "2026-10-01", priority: 3, status: "next",
+      completed: false, important: false, urgent: false, createdAt: "", updatedAt: "", deletedAt: null,
+    };
+
+    it("defaults to Prior AI unless the user entered their own OpenRouter key", () => {
+      expect(normalizeProvider(undefined)).toBe("hosted");
+      expect(normalizeProvider("openrouter", "")).toBe("hosted");
+      expect(normalizeProvider("openrouter", "sk-or-1")).toBe("openrouter");
+      expect(normalizeProvider("codex")).toBe("codex");
+      expect(normalizeProvider("hosted", "sk-or-1")).toBe("hosted");
+    });
+
+    it("shows task IDs and the update_task capability to the model", () => {
+      const prompt = buildSystemPrompt([base]);
+      expect(prompt).toContain('[id: task-1] "Send invoice"');
+      expect(prompt).toContain("update_task");
+      expect(prompt).toContain('"taskUpdates"');
+    });
+
+    it("parses task updates against existing tasks only", () => {
+      const raw = JSON.stringify({
+        reply: "Je décale la facture.",
+        taskUpdates: [
+          { taskId: "task-1", changes: { dueDate: "2026-10-03", priority: "P1", important: true, title: "Send invoice", scheduledDate: "not a date" }, reasoning: "Client asked" },
+          { taskId: "missing", changes: { priority: 1 } },
+          { taskId: "task-1", changes: { priority: 2 } },
+        ],
+      });
+      const parsed = parseAiResponse(raw, [base]);
+      expect(parsed.taskUpdates).toHaveLength(1);
+      expect(parsed.taskUpdates[0]).toMatchObject({ taskId: "task-1", taskTitle: "Send invoice", reasoning: "Client asked", selected: true });
+      expect(parsed.taskUpdates[0].changes).toEqual({ dueDate: "2026-10-03", priority: 1, important: true });
+    });
+
+    it("maps status done to completion and clears dates with null", () => {
+      const parsed = parseAiResponse(JSON.stringify({ actions: [{ tool: "update_task", arguments: { taskId: "task-1", changes: { status: "done", dueDate: null } } }] }), [base]);
+      expect(parsed.taskUpdates[0].changes).toEqual({ status: "done", completed: true, dueDate: null });
+    });
+
+    it("drops updates that change nothing or target deleted tasks", () => {
+      const deleted = { ...base, id: "task-2", deletedAt: "2026-09-01T00:00:00Z" };
+      const parsed = parseAiResponse(JSON.stringify({ taskUpdates: [{ taskId: "task-1", changes: { priority: 3, status: "next" } }, { taskId: "task-2", changes: { priority: 1 } }] }), [base, deleted]);
+      expect(parsed.taskUpdates).toEqual([]);
+      expect(parseAiResponse(JSON.stringify({ taskUpdates: [{ taskId: "task-1", changes: { priority: 1 } }] })).taskUpdates).toEqual([]);
+    });
+
+    it("sends Prior AI chat through the API with JSON output and no user key", async () => {
+      const bodies: Array<{ url: string; body: Record<string, unknown> }> = [];
+      vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
+        bodies.push({ url: String(url), body: JSON.parse(String(init.body)) });
+        return new Response(JSON.stringify({ content: JSON.stringify({ reply: "Ok", taskUpdates: [{ taskId: "task-1", changes: { priority: 1 } }] }), actualModel: "z-ai/glm-5.3-flash", provider: "hosted" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }));
+      const result = await askAgent("Passe la facture en P1", [], [base], [], { apiKey: "", transcriptionApiKey: "", model: "openrouter/free", webSearch: false, provider: "hosted" }, [], [], [], [], null, "session-token");
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0].url).toContain("/v1/agent/complete");
+      expect(bodies[0].body).toMatchObject({ provider: "hosted", purpose: "agent", json: true });
+      expect(result.actualModel).toBe("z-ai/glm-5.3-flash");
+      expect(result.taskUpdates[0].changes).toEqual({ priority: 1 });
+    });
+
+    it("asks for sign-in when Prior AI has no session", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(askAgent("Hello", [], [], [], { apiKey: "", transcriptionApiKey: "", model: "x", webSearch: false, provider: "hosted" })).rejects.toThrow();
+      await expect(draftWithAgent("s", "p", { apiKey: "", transcriptionApiKey: "", model: "x", webSearch: false, provider: "hosted" }, null, new AbortController().signal, "mail")).rejects.toThrow();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("routes feature drafts to their Prior AI purpose", async () => {
+      const bodies: Array<Record<string, unknown>> = [];
+      vi.stubGlobal("fetch", vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+        bodies.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ content: "{}", actualModel: "openai/gpt-6-luna" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }));
+      await draftWithAgent("s", "p", { apiKey: "", transcriptionApiKey: "", model: "x", webSearch: false, provider: "hosted" }, "token", new AbortController().signal, "calendar");
+      expect(bodies[0]).toMatchObject({ provider: "hosted", purpose: "calendar", json: true });
+    });
   });
 });

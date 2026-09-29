@@ -66,10 +66,13 @@ export async function generateTodayRecommendations(tasks: readonly Task[], event
   const sessionToken = await getToken().catch(() => null);
   signal.throwIfAborted();
   const key = (settings.recommendationApiKey || settings.apiKey).trim();
-  if (!key && !sessionToken) throw new Error("OpenRouter key required");
-  const response = await draftWithAgent(SYSTEM, todayRecommendationInput(tasks, events, now, lang), {
-    ...settings, provider: "openrouter", apiKey: key, model: settings.recommendationModel || DEFAULT_MODEL,
-  }, sessionToken, signal, "recommendations");
+  // Prior AI serves recommendations unless the user brought their own key.
+  const hosted = settings.provider === "hosted" || !key;
+  if (hosted && !sessionToken) throw new Error("Sign in to use Prior AI");
+  const response = await draftWithAgent(SYSTEM, todayRecommendationInput(tasks, events, now, lang), hosted
+    ? { ...settings, provider: "hosted" }
+    : { ...settings, provider: "openrouter", apiKey: key, model: settings.recommendationModel || DEFAULT_MODEL },
+  sessionToken, signal, "recommendations");
   signal.throwIfAborted();
   return parseTodayRecommendation(response, tasks, { now, events });
 }

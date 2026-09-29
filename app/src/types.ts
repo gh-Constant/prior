@@ -163,6 +163,21 @@ export type ProposedTask = {
   added?: boolean;
 };
 
+/** Fields the assistant may change on an existing task (update_task). */
+export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed">>;
+
+/** A reviewable edit to an existing task; applied only after the user confirms. */
+export type ProposedTaskUpdate = {
+  id: string;
+  taskId: string;
+  /** Title of the task when the proposal was made, for display. */
+  taskTitle: string;
+  changes: TaskUpdateFields;
+  reasoning: string;
+  selected: boolean;
+  added?: boolean;
+};
+
 export type ProposedHabit = {
   id: string;
   title: string;
@@ -218,6 +233,7 @@ export type AgentMessage = {
   proposedAreas?: ProposedArea[];
   proposedProjects?: ProposedProject[];
   proposedTasks?: ProposedTask[];
+  proposedTaskUpdates?: ProposedTaskUpdate[];
   proposedHabits?: ProposedHabit[];
   proposedNotes?: ProposedNote[];
   proposedFolders?: ProposedFolder[];
@@ -225,7 +241,9 @@ export type AgentMessage = {
   createdAt: string;
 };
 
-export type AgentProvider = "openrouter" | "codex";
+// "hosted" is Prior AI (the API's own key, no setup), "openrouter" the
+// user's own OpenRouter key, "codex" the desktop Codex/ChatGPT session.
+export type AgentProvider = "hosted" | "openrouter" | "codex";
 
 // Reasoning effort for models that expose a reasoning control (OpenRouter
 // `reasoning.effort`, Codex `modelReasoningEffort`). "auto" means the field

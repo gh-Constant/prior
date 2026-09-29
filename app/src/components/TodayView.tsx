@@ -7,6 +7,7 @@ import { eventsInRange, loadCalendarState, type CalendarEvent, type CalendarStat
 import { ACCOUNT_DATA_CHANGED } from "../lib/accountDocuments";
 import { getAccountId } from "../lib/accountScope";
 import { AGENT_SETTINGS_EVENT, getAgentSettings } from "../lib/ai";
+import { useHostedAiAvailable } from "../hooks/useHostedAi";
 import { generateTodayRecommendations, todayRecommendationInput, type TodayRecommendation } from "../lib/todayRecommendations";
 import {
   DAY_END_MINUTES,
@@ -74,7 +75,9 @@ function useTodayRecommendations(tasks: Task[], events: CalendarEvent[], now: Da
     return () => { window.removeEventListener(AGENT_SETTINGS_EVENT, refresh); window.removeEventListener("prior-auth-change", refresh); };
   }, []);
   const settings = useMemo(getAgentSettings, [settingsVersion]);
-  const enabled = Boolean(settings.recommendationApiKey || settings.apiKey);
+  const hostedAvailable = useHostedAiAvailable();
+  // Prior AI serves recommendations for signed-in users; an own key also works.
+  const enabled = Boolean(settings.recommendationApiKey || settings.apiKey) || (settings.provider !== "codex" && hostedAvailable === true);
   const bucket = Math.floor(now.getTime() / 900_000);
   const requestTime = useMemo(() => new Date(bucket * 900_000), [bucket]);
   const input = todayRecommendationInput(tasks, events, requestTime, lang);

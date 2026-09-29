@@ -16,6 +16,7 @@ import type {
   ProposedNote,
   ProposedProject,
   ProposedTask,
+  ProposedTaskUpdate,
   Task,
   TaskDraft,
 } from "../types";
@@ -39,6 +40,7 @@ import {
   markNotesAdded,
   markProjectsAdded,
   markTasksAdded,
+  markTaskUpdatesApplied,
   noteDraftOf,
   projectDraftOf,
   taskDraftOf,
@@ -48,6 +50,7 @@ import {
   updateNoteProposal,
   updateProjectProposal,
   updateTaskProposal,
+  updateTaskUpdateProposal,
   type AssistantMessageHandlers,
 } from "./AgentMessageView";
 import { notesStore } from "../lib/notes";
@@ -102,6 +105,7 @@ function withPersistedAddedFlags(messages: AgentMessage[]): AgentMessage[] {
     proposedAreas: mark(message.proposedAreas),
     proposedProjects: mark(message.proposedProjects),
     proposedTasks: mark(message.proposedTasks),
+    proposedTaskUpdates: mark(message.proposedTaskUpdates),
     proposedHabits: mark(message.proposedHabits),
     proposedNotes: mark(message.proposedNotes),
     proposedFolders: mark(message.proposedFolders),
@@ -123,6 +127,8 @@ type Props = {
   readonly onAddFolders: (folders: NoteFolderDraft[]) => Promise<void>;
   readonly onAddAreas?: (areas: Array<{ name: string; color?: string; icon?: string | null }>) => Promise<void>;
   readonly onAddProjects?: (projects: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null }>) => Promise<void>;
+  /** Applies confirmed update_task proposals to existing tasks. */
+  readonly onApplyTaskUpdates?: (updates: ProposedTaskUpdate[]) => Promise<void>;
   readonly onOpenSettings: () => void;
 };
 
@@ -158,7 +164,7 @@ function shortModelName(id: string, freeLabel: string): string {
   return id.split("/").pop()?.replace(":free", "") || id;
 }
 
-export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, projects, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders, onAddAreas, onAddProjects, onOpenSettings }: Props) {
+export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, projects, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders, onAddAreas, onAddProjects, onApplyTaskUpdates, onOpenSettings }: Props) {
   const { t } = useI18n();
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const starterPrompts = useStarterPrompts();
@@ -605,7 +611,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       const existingToken = sessionToken ?? (user ? await getToken().catch(() => null) : null);
       if (existingToken && !sessionToken) setSessionToken(existingToken);
       if (!existingToken) {
-        setError(t("agent.error.apiKey"));
+        setError(settings.provider === "hosted" ? t("agent.errors.hostedSignIn") : t("agent.error.apiKey"));
         return;
       }
     }
@@ -641,6 +647,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           proposedAreas: response.areas,
           proposedProjects: response.projects,
           proposedTasks: response.tasks,
+          proposedTaskUpdates: response.taskUpdates,
           proposedHabits: response.habits,
           proposedNotes: response.notes,
           proposedFolders: response.folders,
@@ -690,6 +697,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           proposedAreas: response.areas,
           proposedProjects: response.projects,
           proposedTasks: response.tasks,
+          proposedTaskUpdates: response.taskUpdates,
           proposedHabits: response.habits,
           proposedNotes: response.notes,
           proposedFolders: response.folders,
@@ -762,6 +770,26 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       setMessages((prev) => markTasksAdded(prev, messageId, ids));
     } finally {
       toAdd.forEach((task) => setAddingIds((prev) => ({ ...prev, [task.id]: false })));
+    }
+  }
+
+  function updateProposedTaskUpdate(messageId: string, updateId: string, update: Partial<ProposedTaskUpdate>) {
+    setMessages((prev) => updateTaskUpdateProposal(prev, messageId, updateId, update));
+  }
+
+  async function handleApplyTaskUpdates(messageId: string, proposed: ProposedTaskUpdate[]) {
+    const toApply = proposed.filter((item) => !item.added);
+    if (!toApply.length || !onApplyTaskUpdates) return;
+    const ids = new Set(toApply.map((item) => item.id));
+    toApply.forEach((item) => setAddingIds((prev) => ({ ...prev, [item.id]: true })));
+    try {
+      await onApplyTaskUpdates(toApply);
+      rememberAddedProposals(ids);
+      setMessages((prev) => markTaskUpdatesApplied(prev, messageId, ids));
+    } catch (applyError) {
+      setError(applyError instanceof Error ? applyError.message : t("agent.updates.failed"));
+    } finally {
+      toApply.forEach((item) => setAddingIds((prev) => ({ ...prev, [item.id]: false })));
     }
   }
 
@@ -923,6 +951,11 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     onToggleTaskUrgent: handleToggleUrgent,
     onAddSingleTask: (messageId, task) => void handleAddSingle(messageId, task),
     onAddAllTasks: (messageId, tasks) => void handleAddAll(messageId, tasks),
+    ...(onApplyTaskUpdates ? {
+      onUpdateTaskUpdate: updateProposedTaskUpdate,
+      onApplyTaskUpdate: (messageId: string, update: ProposedTaskUpdate) => void handleApplyTaskUpdates(messageId, [update]),
+      onApplyAllTaskUpdates: (messageId: string, updates: ProposedTaskUpdate[]) => void handleApplyTaskUpdates(messageId, updates.filter((item) => item.selected)),
+    } : {}),
     onUpdateHabit: updateProposedHabit,
     onAddSingleHabit: (messageId, habit) => void handleAddSingleHabit(messageId, habit),
     onAddAllHabits: (messageId, habits) => void handleAddAllHabits(messageId, habits),
@@ -1074,7 +1107,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           <span><strong>{t("agent.provider.codexTitle")}</strong><small>{t("agent.provider.codexSub")}</small></span>
         </div>
       )}
-      {settings.provider !== "codex" && !settings.apiKey && (
+      {settings.provider === "openrouter" && !settings.apiKey && (
         <div className="agent-key-notice" role="note">
           <span className="agent-key-notice-icon"><Icon name="key" /></span>
           <span className="agent-key-notice-text">{t("agent.keyNotice.text")}</span>
@@ -1119,6 +1152,14 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           />
           <div className="agent-input-actions">
             <div className="agent-input-tools">
+            {settings.provider === "hosted" ? (
+            <div className="agent-model-row">
+              <span className="agent-model-hosted" title={t("agent.provider.hostedSub")}>
+                <Icon name="sparkles" />
+                <strong>{t("agent.provider.hostedTitle")}</strong>
+              </span>
+            </div>
+            ) : (
             <div className="agent-model-row">
               <label id="prior-agent-model-label">{settings.provider === "codex" ? t("agent.model.labelCodex") : t("agent.model.label")}</label>
               <div className="agent-model-picker" ref={modelPickerRef}>
@@ -1218,6 +1259,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                 </div>
               )}
             </div>
+            )}
             </div>
             <DictationControls
               status={dictation.status}

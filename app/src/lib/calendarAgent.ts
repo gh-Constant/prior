@@ -19,7 +19,7 @@ export function parseCalendarDraft(raw: string, base: CalendarEvent): CalendarEv
 
 export async function draftCalendarEvent(prompt: string, base: CalendarEvent, signal: AbortSignal): Promise<CalendarEvent> {
   const system = `Prepare ONE calendar event draft, never execute actions. Return only JSON with title, date (YYYY-MM-DD), endDate (inclusive, YYYY-MM-DD), startTime and endTime (HH:mm or both null for all day), description, location, optional recurrence: {frequency: daily|weekly|monthly|yearly, interval: integer 1..365, weekdays: Sunday=0 through Saturday=6 array (required for weekly), until?: YYYY-MM-DD, count?: integer 1..10000}. Never invent attendees, confirmations or reminders. Today is ${dateKey()}. Selected date is ${base.date}. Device timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Preserve the user's language. If duration is omitted use one hour. Monthly repeats skip months without the selected day. Do not include markdown.`;
-  const raw = await draftWithAgent(system, prompt, getAgentSettings(), await getToken(), signal);
+  const raw = await draftWithAgent(system, prompt, getAgentSettings(), await getToken(), signal, "calendar");
   signal.throwIfAborted();
   return parseCalendarDraft(raw, base);
 }

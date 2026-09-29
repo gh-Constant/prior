@@ -3,6 +3,7 @@ import { DEFAULT_MODEL, getAgentSettings, notifyAgentSettingsChanged, saveAgentS
 import { clearCachedCodexAccount, codexBinaryAvailable, getCachedCodexAccount, logoutCodex, setCachedCodexAccount, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
 import type { AgentProvider } from "../types";
 import { getToken, type SessionUser } from "../lib/auth";
+import { useHostedAiAvailable } from "../hooks/useHostedAi";
 import { api } from "../lib/api";
 import { pullAssistantSettings, pushAssistantSettings } from "../lib/settingsSync";
 import { UpdateControl, useAppUpdate } from "./UpdateControl";
@@ -236,7 +237,8 @@ function AssistantSettings() {
   const [recommendationApiKey, setRecommendationApiKey] = useState(() => getAgentSettings().recommendationApiKey ?? "");
   const [recommendationModel, setRecommendationModel] = useState(() => getAgentSettings().recommendationModel || DEFAULT_MODEL);
   const [transcriptionApiKey, setTranscriptionApiKey] = useState(() => getAgentSettings().transcriptionApiKey);
-  const [provider, setProvider] = useState<AgentProvider>(() => getAgentSettings().provider ?? "openrouter");
+  const [provider, setProvider] = useState<AgentProvider>(() => getAgentSettings().provider ?? "hosted");
+  const hostedAvailable = useHostedAiAvailable();
   const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
   const [showRecommendationKey, setShowRecommendationKey] = useState(false);
   const [showTranscriptionKey, setShowTranscriptionKey] = useState(false);
@@ -262,7 +264,7 @@ function AssistantSettings() {
           setRecommendationApiKey(current.recommendationApiKey ?? "");
           setRecommendationModel(current.recommendationModel || DEFAULT_MODEL);
           setTranscriptionApiKey(current.transcriptionApiKey);
-          setProvider(current.provider ?? "openrouter");
+          setProvider(current.provider ?? "hosted");
         }
       });
     return () => { live = false; };
@@ -300,6 +302,23 @@ function AssistantSettings() {
 
   return (
     <div className="settings-assistant">
+      <SettingsSection title={t("settings.assistant.providerTitle")}>
+        {([
+          { id: "hosted" as const, label: t("settings.assistant.providerHosted"), hint: hostedAvailable === false ? t("settings.assistant.providerHostedUnavailable") : t("settings.assistant.providerHostedHint") },
+          { id: "openrouter" as const, label: t("settings.assistant.providerOpenRouter"), hint: t("settings.assistant.providerOpenRouterHint") },
+          ...(supportsCodexDesktop() ? [{ id: "codex" as const, label: t("settings.assistant.providerCodex"), hint: t("settings.assistant.providerCodexHint") }] : []),
+        ]).map((option) => (
+          <SettingsRow key={option.id} label={option.label} description={option.hint} htmlFor={`settings-ai-provider-${option.id}`}>
+            <input
+              id={`settings-ai-provider-${option.id}`}
+              type="radio"
+              name="settings-ai-provider"
+              checked={provider === option.id}
+              onChange={() => handleProviderChange(option.id)}
+            />
+          </SettingsRow>
+        ))}
+      </SettingsSection>
       {supportsCodexDesktop() && <CodexSettings provider={provider} onProviderChange={handleProviderChange} />}
       <SettingsSection
         title={t("settings.layout.apiKeys")}
@@ -526,7 +545,7 @@ function CodexSettings({ provider, onProviderChange }: CodexSettingsProps) {
             className="settings-switch"
             aria-checked={provider === "codex"}
             aria-label={t("settings.codex.useTitle")}
-            onClick={() => onProviderChange(provider === "codex" ? "openrouter" : "codex")}
+            onClick={() => onProviderChange(provider === "codex" ? "hosted" : "codex")}
           />
         </SettingsRow>
       )}

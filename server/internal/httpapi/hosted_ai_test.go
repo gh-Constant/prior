@@ -1,0 +1,168 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gh-Constant/prior/server/internal/config"
+	"github.com/google/uuid"
+)
+
+func TestNormalizeAgentPurpose(t *testing.T) {
+	for input, want := range map[string]string{"": "agent", "agent": "agent", " Mail ": "mail", "recommendations": "recommendations", "calendar": "calendar"} {
+		got, ok := normalizeAgentPurpose(input)
+		if !ok || got != want {
+			t.Fatalf("normalizeAgentPurpose(%q) = %q, %v; want %q", input, got, ok, want)
+		}
+	}
+	if _, ok := normalizeAgentPurpose("billing"); ok {
+		t.Fatal("unknown purposes must be rejected")
+	}
+}
+
+func TestHostedModelForFallsBackToAgentModel(t *testing.T) {
+	cfg := config.HostedAIConfig{AgentModel: "agent/model", MailModel: "mail/model"}
+	if got := cfg.ModelFor("mail"); got != "mail/model" {
+		t.Fatalf("mail model = %q", got)
+	}
+	if got := cfg.ModelFor("recommendations"); got != "agent/model" {
+		t.Fatalf("recommendations model should fall back to the agent model, got %q", got)
+	}
+	if got := cfg.ModelFor("agent"); got != "agent/model" {
+		t.Fatalf("agent model = %q", got)
+	}
+}
+
+func TestHostedUsageEnforcesDailyLimit(t *testing.T) {
+	usage := newHostedUsage(2)
+	now := time.Date(2026, 9, 29, 23, 0, 0, 0, time.UTC)
+	usage.now = func() time.Time { return now }
+	user := uuid.New()
+	other := uuid.New()
+	if !usage.take(user) || !usage.take(user) {
+		t.Fatal("first two requests must be allowed")
+	}
+	if usage.take(user) {
+		t.Fatal("third request must be refused")
+	}
+	if !usage.take(other) {
+		t.Fatal("limits are per user")
+	}
+	if got := usage.used(user); got != 2 {
+		t.Fatalf("used = %d", got)
+	}
+	now = now.Add(2 * time.Hour)
+	if usage.used(user) != 0 || !usage.take(user) {
+		t.Fatal("the counter must reset on the next UTC day")
+	}
+	usage.sweep()
+	if _, ok := usage.counts[other]; ok {
+		t.Fatal("sweep must drop previous days")
+	}
+}
+
+func TestHostedUsageWithoutLimit(t *testing.T) {
+	usage := newHostedUsage(0)
+	user := uuid.New()
+	for range 1000 {
+		if !usage.take(user) {
+			t.Fatal("a non-positive limit disables the cap")
+		}
+	}
+}
+
+func TestCompletionPayloadForHostedRoute(t *testing.T) {
+	route := hostedCompletionRoute(config.HostedAIConfig{
+		APIKey:         " key ",
+		BaseURL:        "https://example.test/api/v1",
+		AgentModel:     "primary/model",
+		FallbackModels: []string{"primary/model", "backup/model"},
+	}, "agent")
+	if route.url != "https://example.test/api/v1/chat/completions" || route.apiKey != "key" || !route.hosted {
+		t.Fatalf("unexpected route: %#v", route)
+	}
+	payload := completionPayload(route, []map[string]string{{"role": "user", "content": "hi"}}, true, "", true)
+	models, _ := payload["models"].([]string)
+	if strings.Join(models, ",") != "primary/model,backup/model" {
+		t.Fatalf("fallback models = %v", models)
+	}
+	if _, ok := payload["tools"]; ok {
+		t.Fatal("hosted requests never enable paid web search")
+	}
+	if format, _ := payload["response_format"].(map[string]string); format["type"] != "json_object" {
+		t.Fatalf("response_format = %#v", payload["response_format"])
+	}
+}
+
+func TestCompletionPayloadForUserRoute(t *testing.T) {
+	route := completionRoute{url: "https://openrouter.test", apiKey: "k", model: "openrouter/free", fallbacks: []string{"ignored/model"}}
+	payload := completionPayload(route, nil, true, "low", false)
+	if _, ok := payload["models"]; ok {
+		t.Fatal("user routes keep the model the user picked")
+	}
+	if _, ok := payload["tools"]; !ok {
+		t.Fatal("user routes keep web search")
+	}
+	if _, ok := payload["response_format"]; ok {
+		t.Fatal("response_format is only sent when requested")
+	}
+}
+
+func TestRequestChatCompletion(t *testing.T) {
+	var gotAuth string
+	var gotBody map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"model":"primary/model-2026","choices":[{"message":{"content":[{"type":"text","text":"{\"reply\":"},{"type":"text","text":"\"ok\"}"}]}}]}`))
+	}))
+	defer upstream.Close()
+	server := &Server{completionClient: upstream.Client()}
+	route := completionRoute{hosted: true, url: upstream.URL, apiKey: "secret", model: "primary/model"}
+	content, model, err := server.requestChatCompletion(context.Background(), route, map[string]any{"model": route.model})
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if content != `{"reply":"ok"}` || model != "primary/model-2026" {
+		t.Fatalf("content=%q model=%q", content, model)
+	}
+	if gotAuth != "Bearer secret" || gotBody["model"] != "primary/model" {
+		t.Fatalf("auth=%q body=%v", gotAuth, gotBody)
+	}
+}
+
+func TestRequestChatCompletionHidesUpstreamErrors(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":"invalid key sk-or-secret"}`, http.StatusUnauthorized)
+	}))
+	defer upstream.Close()
+	server := &Server{completionClient: upstream.Client()}
+	_, _, err := server.requestChatCompletion(context.Background(), completionRoute{url: upstream.URL, apiKey: "sk-or-secret"}, map[string]any{})
+	if err == nil || strings.Contains(err.Error(), "sk-or") {
+		t.Fatalf("expected a sanitized error, got %v", err)
+	}
+}
+
+func TestUserModelAllowed(t *testing.T) {
+	if userModelAllowed("agent", "openai/gpt-5") {
+		t.Fatal("general chat on user keys stays free-only")
+	}
+	if !userModelAllowed("agent", "openrouter/free") || !userModelAllowed("mail", "openai/gpt-5-mini") {
+		t.Fatal("free chat models and explicit draft models must be accepted")
+	}
+	if userModelAllowed("mail", "not a model") {
+		t.Fatal("malformed model IDs must be rejected")
+	}
+}
+
+func TestHostedReasoningEffortPerPurpose(t *testing.T) {
+	cfg := config.HostedAIConfig{DraftReasoningEffort: "low"}
+	if cfg.ReasoningEffortFor("agent") != "" || cfg.ReasoningEffortFor("mail") != "low" || cfg.ReasoningEffortFor("recommendations") != "low" {
+		t.Fatal("drafts use the draft effort and the agent keeps the provider default")
+	}
+}

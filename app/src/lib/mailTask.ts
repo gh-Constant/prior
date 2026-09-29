@@ -76,12 +76,22 @@ async function requestAiDraft(message: MailMessage, sessionToken: string | null)
   const prompt = buildPrompt(message, today);
   const settings = getAgentSettings();
 
-  // Prefer the server proxy (the stored OpenRouter key stays off the device).
+  // Prefer the server proxy: Prior AI, or the stored OpenRouter key, both
+  // stay off the device.
   if (sessionToken) {
     try {
       const { api } = await import("./api");
       const result = await api.agentComplete(
-        { model: settings.model || "openrouter/free", prompt, system: "You convert emails into tasks. Respond with a single JSON object only.", history: [], webSearch: false },
+        {
+          model: settings.provider === "hosted" ? "" : settings.model || "openrouter/free",
+          prompt,
+          system: "You convert emails into tasks. Respond with a single JSON object only.",
+          history: [],
+          webSearch: false,
+          purpose: "mail",
+          json: true,
+          ...(settings.provider === "hosted" ? { provider: "hosted" as const } : {}),
+        },
         sessionToken,
       );
       return parseJsonObject(result.content);

@@ -40,6 +40,72 @@ type Config struct {
 	// is safe to leave enabled behind Coolify/Caddy. Set to false to always
 	// use the direct peer IP.
 	TrustProxy bool
+	// HostedAI is Prior's own server-side AI (Prior AI). When its API key is
+	// set, signed-in users get the assistant, recommendations, mail and
+	// calendar drafts, and dictation without configuring any key themselves.
+	HostedAI HostedAIConfig
+}
+
+// HostedAIConfig describes the OpenAI-compatible provider Prior pays for.
+// Model IDs are per use case so they can be swapped without a release.
+type HostedAIConfig struct {
+	APIKey  string
+	BaseURL string
+	// Model per purpose. Empty purposes fall back to AgentModel.
+	AgentModel           string
+	RecommendationsModel string
+	MailModel            string
+	CalendarModel        string
+	// Extra models OpenRouter tries in order when the primary one fails.
+	FallbackModels []string
+	// OpenRouter reasoning.effort for the assistant and for the short drafts
+	// (recommendations, mail, calendar). Empty keeps the provider default.
+	AgentReasoningEffort string
+	DraftReasoningEffort string
+	// Hosted requests (completions + transcriptions) per user per UTC day.
+	DailyRequestsPerUser int
+	// OpenAI-compatible /audio/transcriptions endpoint for dictation.
+	TranscriptionAPIKey string
+	TranscriptionURL    string
+	TranscriptionModel  string
+}
+
+func (c HostedAIConfig) Enabled() bool { return strings.TrimSpace(c.APIKey) != "" }
+
+func (c HostedAIConfig) TranscriptionEnabled() bool {
+	return strings.TrimSpace(c.TranscriptionAPIKey) != "" && strings.TrimSpace(c.TranscriptionURL) != ""
+}
+
+// ModelFor returns the configured model for a purpose ("agent",
+// "recommendations", "mail", "calendar").
+func (c HostedAIConfig) ModelFor(purpose string) string {
+	switch purpose {
+	case "recommendations":
+		return firstSet(c.RecommendationsModel, c.AgentModel)
+	case "mail":
+		return firstSet(c.MailModel, c.AgentModel)
+	case "calendar":
+		return firstSet(c.CalendarModel, c.AgentModel)
+	default:
+		return c.AgentModel
+	}
+}
+
+// ReasoningEffortFor returns the configured reasoning effort for a purpose.
+func (c HostedAIConfig) ReasoningEffortFor(purpose string) string {
+	if purpose == "agent" || purpose == "" {
+		return strings.TrimSpace(c.AgentReasoningEffort)
+	}
+	return strings.TrimSpace(c.DraftReasoningEffort)
+}
+
+func firstSet(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func Load() Config {
@@ -69,6 +135,31 @@ func Load() Config {
 		RetentionMutationsDays: getenvInt("RETENTION_MUTATIONS_DAYS", 90),
 		RetentionSessionsDays:  getenvInt("RETENTION_SESSIONS_DAYS", 30),
 		TrustProxy:             getenv("TRUST_PROXY", "true") == "true",
+		HostedAI:               loadHostedAI(),
+	}
+}
+
+// loadHostedAI reads Prior AI's settings. Defaults follow the model research
+// of 2026-09-29 (see specs/AI.md) and are meant to be overridden by env as prices
+// and models move.
+func loadHostedAI() HostedAIConfig {
+	apiKey := os.Getenv("AI_API_KEY")
+	baseURL := strings.TrimRight(getenv("AI_BASE_URL", "https://openrouter.ai/api/v1"), "/")
+	return HostedAIConfig{
+		APIKey:               apiKey,
+		BaseURL:              baseURL,
+		AgentModel:           getenv("AI_MODEL_AGENT", "z-ai/glm-5.3-flash"),
+		RecommendationsModel: getenv("AI_MODEL_RECOMMENDATIONS", "openai/gpt-6-luna"),
+		MailModel:            getenv("AI_MODEL_MAIL", "openai/gpt-6-luna"),
+		CalendarModel:        getenv("AI_MODEL_CALENDAR", "openai/gpt-6-luna"),
+		FallbackModels:       split(getenv("AI_MODEL_FALLBACKS", "deepseek/deepseek-v4.1-flash")),
+		AgentReasoningEffort: os.Getenv("AI_REASONING_EFFORT_AGENT"),
+		DraftReasoningEffort: getenv("AI_REASONING_EFFORT_DRAFTS", "low"),
+		DailyRequestsPerUser: getenvInt("AI_DAILY_REQUESTS_PER_USER", 300),
+		// One OpenRouter key covers chat and speech-to-text by default.
+		TranscriptionAPIKey: getenv("AI_TRANSCRIPTION_API_KEY", apiKey),
+		TranscriptionURL:    getenv("AI_TRANSCRIPTION_URL", baseURL+"/audio/transcriptions"),
+		TranscriptionModel:  getenv("AI_TRANSCRIPTION_MODEL", "microsoft/mai-transcribe-2"),
 	}
 }
 

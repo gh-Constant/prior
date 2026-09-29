@@ -280,9 +280,28 @@ export const api = {
     return request<void>("/v1/sessions", { method: "DELETE" }, token);
   },
   agentComplete(
-    input: { model: string; prompt: string; system: string; history: Array<{ role: string; content: string }>; webSearch: boolean; reasoningEffort?: string; purpose?: "recommendations" },
+    input: {
+      model: string; prompt: string; system: string; history: Array<{ role: string; content: string }>; webSearch: boolean; reasoningEffort?: string;
+      purpose?: "agent" | "recommendations" | "mail" | "calendar";
+      /** "hosted" forces Prior AI; omitted uses the stored key, then Prior AI. */
+      provider?: "hosted";
+      /** Ask the model for a JSON object (response_format). */
+      json?: boolean;
+    },
     token: string,
-  ): Promise<{ content: string; actualModel: string }> {
-    return request<{ content: string; actualModel: string }>("/v1/agent/complete", { method: "POST", body: JSON.stringify(input) }, token, 90_000);
+  ): Promise<{ content: string; actualModel: string; provider?: "hosted" | "openrouter" }> {
+    return request<{ content: string; actualModel: string; provider?: "hosted" | "openrouter" }>("/v1/agent/complete", { method: "POST", body: JSON.stringify(input) }, token, 90_000);
   },
+  /** Whether this API offers Prior AI (hosted assistant and dictation). */
+  hostedAiStatus(token: string): Promise<HostedAiStatus> {
+    return request<HostedAiStatus>("/v1/agent/hosted", {}, token);
+  },
+};
+
+export type HostedAiStatus = {
+  available: boolean;
+  transcription: boolean;
+  dailyLimit: number;
+  usedToday: number;
+  models?: Record<"agent" | "recommendations" | "mail" | "calendar", string>;
 };
