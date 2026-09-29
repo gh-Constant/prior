@@ -770,7 +770,7 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 	if !s.allowEndpoint(w, r, s.transcribeLimiter, "transcribe") {
 		return
 	}
-	target, err := s.transcriptionTarget(r, user.ID)
+	target, err := s.transcriptionTarget(r, user)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errors.New("unable to load transcription settings"))
 		return
@@ -779,8 +779,12 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, errors.New("voice transcription is not configured"))
 		return
 	}
+	if target.hosted && !s.hostedAIEntitlement(r.Context(), user).Allowed {
+		writeHostedAIError(w, http.StatusPaymentRequired, errHostedAIRequiresPlan)
+		return
+	}
 	if target.hosted && !s.hostedUsage.take(user.ID) {
-		writeError(w, http.StatusTooManyRequests, errors.New("daily Prior AI limit reached; try again tomorrow or add your own OpenAI key"))
+		writeHostedAIError(w, http.StatusTooManyRequests, errors.New("daily Prior AI limit reached; try again tomorrow or add your own OpenAI key"))
 		return
 	}
 
@@ -841,6 +845,9 @@ func (s *Server) transcribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, errors.New("transcription service returned an invalid response"))
 		return
 	}
+	if target.hosted {
+		s.recordHostedUsage(r.Context(), user.ID, "transcription", 0)
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"text": strings.TrimSpace(result.Text)})
 }
 
@@ -854,8 +861,8 @@ type transcriptionRoute struct {
 // transcriptionTarget prefers the user's own OpenAI key and falls back to
 // Prior AI's hosted speech-to-text endpoint. An empty apiKey means dictation
 // is not configured for this user.
-func (s *Server) transcriptionTarget(r *http.Request, userID uuid.UUID) (transcriptionRoute, error) {
-	stored, err := s.store.GetUserSettings(r.Context(), userID)
+func (s *Server) transcriptionTarget(r *http.Request, user store.User) (transcriptionRoute, error) {
+	stored, err := s.store.GetUserSettings(r.Context(), user.ID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return transcriptionRoute{}, err
 	}

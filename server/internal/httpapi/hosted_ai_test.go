@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gh-Constant/prior/server/internal/config"
+	"github.com/gh-Constant/prior/server/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -119,17 +120,17 @@ func TestRequestChatCompletion(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
-		_, _ = w.Write([]byte(`{"model":"primary/model-2026","choices":[{"message":{"content":[{"type":"text","text":"{\"reply\":"},{"type":"text","text":"\"ok\"}"}]}}]}`))
+		_, _ = w.Write([]byte(`{"model":"primary/model-2026","usage":{"total_tokens":1234},"choices":[{"message":{"content":[{"type":"text","text":"{\"reply\":"},{"type":"text","text":"\"ok\"}"}]}}]}`))
 	}))
 	defer upstream.Close()
 	server := &Server{completionClient: upstream.Client()}
 	route := completionRoute{hosted: true, url: upstream.URL, apiKey: "secret", model: "primary/model"}
-	content, model, err := server.requestChatCompletion(context.Background(), route, map[string]any{"model": route.model})
+	result, err := server.requestChatCompletion(context.Background(), route, map[string]any{"model": route.model})
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	if content != `{"reply":"ok"}` || model != "primary/model-2026" {
-		t.Fatalf("content=%q model=%q", content, model)
+	if result.content != `{"reply":"ok"}` || result.model != "primary/model-2026" || result.totalTokens != 1234 {
+		t.Fatalf("unexpected result: %#v", result)
 	}
 	if gotAuth != "Bearer secret" || gotBody["model"] != "primary/model" {
 		t.Fatalf("auth=%q body=%v", gotAuth, gotBody)
@@ -142,7 +143,7 @@ func TestRequestChatCompletionHidesUpstreamErrors(t *testing.T) {
 	}))
 	defer upstream.Close()
 	server := &Server{completionClient: upstream.Client()}
-	_, _, err := server.requestChatCompletion(context.Background(), completionRoute{url: upstream.URL, apiKey: "sk-or-secret"}, map[string]any{})
+	_, err := server.requestChatCompletion(context.Background(), completionRoute{url: upstream.URL, apiKey: "sk-or-secret"}, map[string]any{})
 	if err == nil || strings.Contains(err.Error(), "sk-or") {
 		t.Fatalf("expected a sanitized error, got %v", err)
 	}
@@ -164,5 +165,37 @@ func TestHostedReasoningEffortPerPurpose(t *testing.T) {
 	cfg := config.HostedAIConfig{DraftReasoningEffort: "low"}
 	if cfg.ReasoningEffortFor("agent") != "" || cfg.ReasoningEffortFor("mail") != "low" || cfg.ReasoningEffortFor("recommendations") != "low" {
 		t.Fatal("drafts use the draft effort and the agent keeps the provider default")
+	}
+}
+
+func TestHostedAIEntitlementDefaultsToAllowlist(t *testing.T) {
+	server := &Server{cfg: config.Config{HostedAI: config.HostedAIConfig{AllowedEmails: []string{" Owner@Example.com "}}}}
+	if got := server.hostedAIEntitlement(context.Background(), store.User{Email: "owner@example.com"}); !got.Allowed || got.AgentTokensPerMonth != 0 {
+		t.Fatalf("allowlisted users get unlimited Prior AI, got %#v", got)
+	}
+	if got := server.hostedAIEntitlement(context.Background(), store.User{Email: "someone@example.com"}); got.Allowed {
+		t.Fatal("users without a plan must not get Prior AI")
+	}
+	if got := server.hostedAIEntitlement(context.Background(), store.User{}); got.Allowed {
+		t.Fatal("an empty email never matches")
+	}
+}
+
+func TestWriteHostedAIErrorCodes(t *testing.T) {
+	for status, code := range map[int]string{http.StatusPaymentRequired: "HOSTED_AI_REQUIRES_PLAN", http.StatusTooManyRequests: "HOSTED_AI_QUOTA"} {
+		recorder := httptest.NewRecorder()
+		writeHostedAIError(recorder, status, errHostedAIRequiresPlan)
+		var body map[string]string
+		_ = json.NewDecoder(recorder.Body).Decode(&body)
+		if recorder.Code != status || body["code"] != code {
+			t.Fatalf("status %d: got %d %#v", status, recorder.Code, body)
+		}
+	}
+}
+
+func TestMonthStart(t *testing.T) {
+	got := monthStart(time.Date(2026, 9, 29, 23, 30, 0, 0, time.FixedZone("x", -5*3600)))
+	if !got.Equal(time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -29)) {
+		t.Fatalf("monthStart = %v", got)
 	}
 }

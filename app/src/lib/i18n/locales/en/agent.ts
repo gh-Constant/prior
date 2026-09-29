@@ -53,6 +53,7 @@ export const agent = {
     loadChat: "Unable to load this conversation.",
   },
   provider: {
+    hostedLocked: "Prior AI is included in paid plans. Choose a plan, or use your own OpenRouter key or Codex in Settings.",
     hostedTitle: "Prior AI",
     hostedSub: "Included with your Prior account. No key needed.",
     codexTitle: "Codex · ChatGPT subscription",

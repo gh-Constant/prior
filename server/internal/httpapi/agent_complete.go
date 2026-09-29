@@ -107,10 +107,16 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid agent request"))
 		return
 	}
-	route, status, err := s.resolveCompletionRoute(r, user.ID, purpose, strings.TrimSpace(body.Model), body.Provider == "hosted")
+	route, status, err := s.resolveCompletionRoute(r, user, purpose, strings.TrimSpace(body.Model), body.Provider == "hosted")
 	if err != nil {
-		writeError(w, status, err)
+		writeHostedAIError(w, status, err)
 		return
+	}
+	if route.hosted {
+		if status, err := s.checkHostedAgentQuota(r.Context(), user, purpose); err != nil {
+			writeHostedAIError(w, status, err)
+			return
+		}
 	}
 	messages := make([]map[string]string, 0, len(body.History)+2)
 	if strings.TrimSpace(body.System) != "" {
@@ -137,7 +143,7 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 		reasoningEffort = normalizeReasoningEffort(s.cfg.HostedAI.ReasoningEffortFor(purpose))
 	}
 	if route.hosted && !s.hostedUsage.take(user.ID) {
-		writeError(w, http.StatusTooManyRequests, errors.New("daily Prior AI limit reached; try again tomorrow or add your own OpenRouter key"))
+		writeHostedAIError(w, http.StatusTooManyRequests, errors.New("daily Prior AI limit reached; try again tomorrow or add your own OpenRouter key"))
 		return
 	}
 	payload := completionPayload(route, messages, body.WebSearch, reasoningEffort, body.JSON)
@@ -150,7 +156,7 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 		"prompt_chars", len(prompt),
 		"history_messages", len(body.History))
 
-	content, actualModel, err := s.requestChatCompletion(r.Context(), route, payload)
+	result, err := s.requestChatCompletion(r.Context(), route, payload)
 	if err != nil {
 		slog.Warn("agent proxy upstream failed", "user_id_hash", userIDHash(user.ID), "hosted", route.hosted, "error", err)
 		writeError(w, http.StatusBadGateway, err)
@@ -159,10 +165,11 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 	provider := "openrouter"
 	if route.hosted {
 		provider = "hosted"
+		s.recordHostedUsage(r.Context(), user.ID, purpose, result.totalTokens)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"content":     content,
-		"actualModel": firstNonEmpty(actualModel, route.model),
+		"content":     result.content,
+		"actualModel": firstNonEmpty(result.model, route.model),
 		"provider":    provider,
 	})
 }
@@ -170,10 +177,10 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 // resolveCompletionRoute picks the upstream for a completion: the user's own
 // stored OpenRouter key when present (and not explicitly bypassed), otherwise
 // Prior AI when the server has it configured.
-func (s *Server) resolveCompletionRoute(r *http.Request, userID uuid.UUID, purpose, model string, wantHosted bool) (completionRoute, int, error) {
+func (s *Server) resolveCompletionRoute(r *http.Request, user store.User, purpose, model string, wantHosted bool) (completionRoute, int, error) {
 	hosted := s.cfg.HostedAI
 	if !wantHosted {
-		apiKey, err := s.storedOpenRouterKey(r, userID, purpose)
+		apiKey, err := s.storedOpenRouterKey(r, user.ID, purpose)
 		if err != nil {
 			return completionRoute{}, http.StatusInternalServerError, errors.New("unable to load assistant settings")
 		}
@@ -192,6 +199,9 @@ func (s *Server) resolveCompletionRoute(r *http.Request, userID uuid.UUID, purpo
 	}
 	if !hosted.Enabled() {
 		return completionRoute{}, http.StatusServiceUnavailable, errors.New("Prior AI is not configured on this server")
+	}
+	if !s.hostedAIEntitlement(r.Context(), user).Allowed {
+		return completionRoute{}, http.StatusPaymentRequired, errHostedAIRequiresPlan
 	}
 	return hostedCompletionRoute(hosted, purpose), 0, nil
 }
@@ -235,14 +245,20 @@ func (s *Server) openRouterURL() string {
 // requestChatCompletion posts an OpenAI-compatible chat/completions payload
 // and returns the first choice's text. Errors are safe to show to the user:
 // they never carry the upstream body, the key, or prompt content.
-func (s *Server) requestChatCompletion(ctx context.Context, route completionRoute, payload map[string]any) (string, string, error) {
+type chatCompletionResult struct {
+	content     string
+	model       string
+	totalTokens int64
+}
+
+func (s *Server) requestChatCompletion(ctx context.Context, route completionRoute, payload map[string]any) (chatCompletionResult, error) {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		return "", "", errors.New("unable to prepare completion")
+		return chatCompletionResult{}, errors.New("unable to prepare completion")
 	}
 	forward, err := http.NewRequestWithContext(ctx, http.MethodPost, route.url, bytes.NewReader(encoded))
 	if err != nil {
-		return "", "", errors.New("unable to prepare completion")
+		return chatCompletionResult{}, errors.New("unable to prepare completion")
 	}
 	forward.Header.Set("Content-Type", "application/json")
 	forward.Header.Set("Authorization", "Bearer "+route.apiKey)
@@ -254,16 +270,16 @@ func (s *Server) requestChatCompletion(ctx context.Context, route completionRout
 	}
 	response, err := client.Do(forward)
 	if err != nil {
-		return "", "", errors.New("assistant service is unavailable")
+		return chatCompletionResult{}, errors.New("assistant service is unavailable")
 	}
 	defer response.Body.Close()
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
-		return "", "", errors.New("assistant service returned an invalid response")
+		return chatCompletionResult{}, errors.New("assistant service returned an invalid response")
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		slog.Warn("agent proxy upstream rejected", "hosted", route.hosted, "status", response.StatusCode)
-		return "", "", errors.New("assistant service rejected the request")
+		return chatCompletionResult{}, errors.New("assistant service rejected the request")
 	}
 	var decoded struct {
 		Choices []struct {
@@ -272,11 +288,14 @@ func (s *Server) requestChatCompletion(ctx context.Context, route completionRout
 			} `json:"message"`
 		} `json:"choices"`
 		Model string `json:"model"`
+		Usage struct {
+			TotalTokens int64 `json:"total_tokens"`
+		} `json:"usage"`
 	}
 	if err := json.Unmarshal(responseBody, &decoded); err != nil || len(decoded.Choices) == 0 {
-		return "", "", errors.New("assistant service returned an invalid response")
+		return chatCompletionResult{}, errors.New("assistant service returned an invalid response")
 	}
-	return messageContentToString(decoded.Choices[0].Message.Content), decoded.Model, nil
+	return chatCompletionResult{content: messageContentToString(decoded.Choices[0].Message.Content), model: decoded.Model, totalTokens: decoded.Usage.TotalTokens}, nil
 }
 
 func messageContentToString(content any) string {

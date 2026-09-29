@@ -73,8 +73,8 @@ export const settings = {
   assistant: {
     providerTitle: "Fournisseur IA",
     providerHosted: "Prior AI (recommandé)",
-    providerHostedHint: "Fonctionne directement avec votre compte Prior : assistant, recommandations du jour, mail vers tâche et dictée.",
-    providerHostedUnavailable: "Connectez-vous pour utiliser Prior AI, ou ce serveur ne l’a pas encore activé.",
+    providerHostedHint: "Inclus dans les forfaits payants : assistant, recommandations du jour, mail vers tâche et dictée, sans clé à gérer.",
+    providerHostedUnavailable: "Prior AI est inclus dans les forfaits payants. Choisissez un forfait, ou utilisez votre clé OpenRouter ou Codex dans les Réglages.",
     providerOpenRouter: "Ma clé OpenRouter",
     providerOpenRouterHint: "Utilisez votre propre clé OpenRouter et choisissez n’importe quel modèle ci-dessous.",
     providerCodex: "Codex (bureau)",

@@ -63,7 +63,10 @@ type HostedAIConfig struct {
 	AgentReasoningEffort string
 	DraftReasoningEffort string
 	// Hosted requests (completions + transcriptions) per user per UTC day.
+	// An abuse backstop; plan quotas live in the API's entitlement check.
 	DailyRequestsPerUser int
+	// Emails with Prior AI access before paid plans exist (operator, testers).
+	AllowedEmails []string
 	// OpenAI-compatible /audio/transcriptions endpoint for dictation.
 	TranscriptionAPIKey string
 	TranscriptionURL    string
@@ -156,6 +159,7 @@ func loadHostedAI() HostedAIConfig {
 		AgentReasoningEffort: os.Getenv("AI_REASONING_EFFORT_AGENT"),
 		DraftReasoningEffort: getenv("AI_REASONING_EFFORT_DRAFTS", "low"),
 		DailyRequestsPerUser: getenvInt("AI_DAILY_REQUESTS_PER_USER", 300),
+		AllowedEmails:        split(os.Getenv("AI_HOSTED_ALLOWED_EMAILS")),
 		// One OpenRouter key covers chat and speech-to-text by default.
 		TranscriptionAPIKey: getenv("AI_TRANSCRIPTION_API_KEY", apiKey),
 		TranscriptionURL:    getenv("AI_TRANSCRIPTION_URL", baseURL+"/audio/transcriptions"),

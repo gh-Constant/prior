@@ -1,12 +1,16 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gh-Constant/prior/server/internal/config"
+	"github.com/gh-Constant/prior/server/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -143,6 +147,60 @@ func completionPayload(route completionRoute, messages []map[string]string, webS
 	return payload
 }
 
+var (
+	errHostedAIRequiresPlan = errors.New("Prior AI is included in paid plans; use your own OpenRouter key or Codex otherwise")
+	errHostedAIAgentQuota   = errors.New("monthly Prior AI assistant quota reached for your plan")
+)
+
+// writeHostedAIError adds a machine-readable code to Prior AI refusals so the
+// client can show the plan or quota message instead of a generic failure.
+func writeHostedAIError(w http.ResponseWriter, status int, err error) {
+	switch status {
+	case http.StatusPaymentRequired:
+		writeJSON(w, status, map[string]string{"code": "HOSTED_AI_REQUIRES_PLAN", "error": err.Error()})
+	case http.StatusTooManyRequests:
+		writeJSON(w, status, map[string]string{"code": "HOSTED_AI_QUOTA", "error": err.Error()})
+	default:
+		writeError(w, status, err)
+	}
+}
+
+func monthStart(now time.Time) time.Time {
+	now = now.UTC()
+	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+}
+
+// checkHostedAgentQuota enforces the plan's monthly token cap on assistant
+// chat. Other purposes are not token-capped.
+func (s *Server) checkHostedAgentQuota(ctx context.Context, user store.User, purpose string) (int, error) {
+	if purpose != "agent" {
+		return 0, nil
+	}
+	limit := s.hostedAIEntitlement(ctx, user).AgentTokensPerMonth
+	if limit <= 0 {
+		return 0, nil
+	}
+	used, err := s.store.HostedAITokensSince(ctx, user.ID, monthStart(time.Now()), "agent")
+	if err != nil {
+		return http.StatusInternalServerError, errors.New("unable to check Prior AI usage")
+	}
+	if used >= limit {
+		return http.StatusTooManyRequests, errHostedAIAgentQuota
+	}
+	return 0, nil
+}
+
+// recordHostedUsage persists one hosted request. A failed write is logged,
+// never shown: the user already got their answer.
+func (s *Server) recordHostedUsage(ctx context.Context, userID uuid.UUID, purpose string, tokens int64) {
+	if s.store == nil {
+		return
+	}
+	if err := s.store.RecordHostedAIUsage(ctx, userID, time.Now(), purpose, tokens); err != nil {
+		slog.Warn("hosted AI usage not recorded", "user_id_hash", userIDHash(userID), "purpose", purpose, "error", err)
+	}
+}
+
 func (s *Server) hostedAIStatus(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {
@@ -150,9 +208,12 @@ func (s *Server) hostedAIStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hosted := s.cfg.HostedAI
+	entitlement := s.hostedAIEntitlement(r.Context(), user)
 	response := map[string]any{
-		"available":     hosted.Enabled(),
-		"transcription": hosted.TranscriptionEnabled(),
+		"available":     hosted.Enabled() && entitlement.Allowed,
+		"configured":    hosted.Enabled(),
+		"entitlement":   entitlement,
+		"transcription": hosted.TranscriptionEnabled() && entitlement.Allowed,
 		"dailyLimit":    hosted.DailyRequestsPerUser,
 		"usedToday":     s.hostedUsage.used(user.ID),
 	}

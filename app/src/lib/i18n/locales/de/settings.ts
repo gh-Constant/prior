@@ -73,8 +73,8 @@ export const settings = {
   assistant: {
     providerTitle: "KI-Anbieter",
     providerHosted: "Prior AI (empfohlen)",
-    providerHostedHint: "Funktioniert sofort mit deinem Prior-Konto: Assistent, Tagesempfehlungen, Mail zu Aufgabe und Diktat.",
-    providerHostedUnavailable: "Melde dich an, um Prior AI zu nutzen, oder dieser Server hat es noch nicht aktiviert.",
+    providerHostedHint: "In den Bezahlplänen enthalten: Assistent, Tagesempfehlungen, Mail zu Aufgabe und Diktat, ohne eigenen Schlüssel.",
+    providerHostedUnavailable: "Prior AI ist in den Bezahlplänen enthalten. Wähle einen Plan oder nutze in den Einstellungen deinen OpenRouter-Schlüssel oder Codex.",
     providerOpenRouter: "Mein OpenRouter-Schlüssel",
     providerOpenRouterHint: "Nutze deinen eigenen OpenRouter-Schlüssel und wähle unten ein beliebiges Modell.",
     providerCodex: "Codex (Desktop)",

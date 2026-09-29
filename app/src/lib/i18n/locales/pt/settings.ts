@@ -73,8 +73,8 @@ export const settings = {
   assistant: {
     providerTitle: "Fornecedor de IA",
     providerHosted: "Prior AI (recomendado)",
-    providerHostedHint: "Funciona logo com a tua conta Prior: assistente, recomendações de hoje, email para tarefa e ditado.",
-    providerHostedUnavailable: "Inicia sessão para usar o Prior AI, ou este servidor ainda não o ativou.",
+    providerHostedHint: "Incluído nos planos pagos: assistente, recomendações de hoje, email para tarefa e ditado, sem chaves para gerir.",
+    providerHostedUnavailable: "O Prior AI está incluído nos planos pagos. Escolhe um plano, ou usa a tua chave OpenRouter ou o Codex nas Definições.",
     providerOpenRouter: "A minha chave OpenRouter",
     providerOpenRouterHint: "Usa a tua própria chave OpenRouter e escolhe qualquer modelo abaixo.",
     providerCodex: "Codex (computador)",

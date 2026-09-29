@@ -27,6 +27,7 @@ import { api, isAuthError } from "../lib/api";
 import { pendingChats, queueAgentMessage, syncAgentOutbox } from "../lib/agentOutbox";
 import { getAccountId } from "../lib/accountScope";
 import { generateUuid } from "../lib/uuid";
+import { useHostedAiAvailable } from "../hooks/useHostedAi";
 import "./AgentSidebar.css";
 import { AgentIdentity } from "./AgentIdentity";
 import {
@@ -168,6 +169,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
   const { t } = useI18n();
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const starterPrompts = useStarterPrompts();
+  const hostedAvailable = useHostedAiAvailable();
 
   const [modelList, setModelList] = useState<AgentModelOption[]>(POPULAR_FREE_MODELS);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -1105,6 +1107,15 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
         <div className="agent-codex-provider" role="status">
           <Icon name="sparkles" />
           <span><strong>{t("agent.provider.codexTitle")}</strong><small>{t("agent.provider.codexSub")}</small></span>
+        </div>
+      )}
+      {settings.provider === "hosted" && user && hostedAvailable === false && (
+        <div className="agent-key-notice" role="note">
+          <span className="agent-key-notice-icon"><Icon name="sparkles" /></span>
+          <span className="agent-key-notice-text">{t("agent.provider.hostedLocked")}</span>
+          <button type="button" className="secondary-button" onClick={() => { dictation.stop(); onOpenSettings(); }}>
+            {t("agent.keyNotice.open")}
+          </button>
         </div>
       )}
       {settings.provider === "openrouter" && !settings.apiKey && (

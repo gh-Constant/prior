@@ -53,6 +53,7 @@ export const agent = {
     loadChat: "Não foi possível carregar esta conversa.",
   },
   provider: {
+    hostedLocked: "O Prior AI está incluído nos planos pagos. Escolhe um plano, ou usa a tua chave OpenRouter ou o Codex nas Definições.",
     hostedTitle: "Prior AI",
     hostedSub: "Incluído na tua conta Prior. Sem chave.",
     codexTitle: "Codex · Subscrição ChatGPT",

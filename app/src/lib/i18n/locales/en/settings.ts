@@ -73,8 +73,8 @@ export const settings = {
   assistant: {
     providerTitle: "AI provider",
     providerHosted: "Prior AI (recommended)",
-    providerHostedHint: "Works right away with your Prior account: assistant, Today recommendations, mail to task, and dictation.",
-    providerHostedUnavailable: "Sign in to use Prior AI, or this server has not enabled it yet.",
+    providerHostedHint: "Included in paid plans: assistant, Today recommendations, mail to task, and dictation, with no key to manage.",
+    providerHostedUnavailable: "Prior AI is included in paid plans. Choose a plan, or use your own OpenRouter key or Codex in Settings.",
     providerOpenRouter: "My OpenRouter key",
     providerOpenRouterHint: "Use your own OpenRouter key and pick any model below.",
     providerCodex: "Codex (desktop)",
