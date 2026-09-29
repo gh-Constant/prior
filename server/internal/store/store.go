@@ -1750,7 +1750,7 @@ func insertTaskRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, create
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date, due_time = EXCLUDED.due_time,
 			 priority = EXCLUDED.priority, area_id = EXCLUDED.area_id, project_id = EXCLUDED.project_id, status = EXCLUDED.status,
-			 scheduled_date = EXCLUDED.scheduled_date, scheduled_time = EXCLUDED.scheduled_time, assignee_name = EXCLUDED.assignee_name, follow_up_date = EXCLUDED.follow_up_date, follow_up_time = EXCLUDED.follow_up_time, estimated_minutes = EXCLUDED.estimated_minutes, estimated_minutes, people_ids = EXCLUDED.people_ids,
+			 scheduled_date = EXCLUDED.scheduled_date, scheduled_time = EXCLUDED.scheduled_time, assignee_name = EXCLUDED.assignee_name, follow_up_date = EXCLUDED.follow_up_date, follow_up_time = EXCLUDED.follow_up_time, estimated_minutes = EXCLUDED.estimated_minutes, people_ids = EXCLUDED.people_ids,
 			 completed = EXCLUDED.completed, important = EXCLUDED.important, urgent = EXCLUDED.urgent,
 			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision`, taskID, mc.ownerID, task.Title, task.Description, task.DueDate, task.DueTime, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.ScheduledTime, task.AssigneeName, task.FollowUpDate, task.FollowUpTime, task.EstimatedMinutes, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision)
 	if err != nil {
