@@ -9,7 +9,6 @@ import app.tauri.plugin.Plugin
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import androidx.glance.appwidget.updateAll
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.CoroutineScope
@@ -24,8 +23,8 @@ class SessionTokenArgs {
 }
 
 @InvokeArg
-class WidgetItemsArgs {
-    var items: List<String> = emptyList()
+class WidgetSnapshotArgs {
+    lateinit var snapshotJson: String
 }
 
 data class SessionResult(val token: String?)
@@ -57,11 +56,11 @@ class PriorPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
-    fun setWidgetItems(invoke: Invoke) {
+    fun setWidgetSnapshot(invoke: Invoke) {
         runCatching {
-            val items = invoke.parseArgs(WidgetItemsArgs::class.java).items
-            PriorWidgetStore.setItems(activity, items)
-            scope.launch { PriorWidget().updateAll(activity.applicationContext) }
+            val json = invoke.parseArgs(WidgetSnapshotArgs::class.java).snapshotJson
+            PriorWidgetStore.setSnapshot(activity, json)
+            scope.launch { PriorWidgetStore.updateAll(activity.applicationContext) }
             invoke.resolve()
         }.onFailure { error -> invoke.reject(error.message) }
     }

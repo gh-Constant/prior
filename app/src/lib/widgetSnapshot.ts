@@ -1,20 +1,19 @@
 import type { Habit, Task } from "../types";
 import { addDays, eventsInRange, loadCalendarState, mondayOf, type CalendarEvent } from "./calendar";
 import { quadrantFor } from "./priority";
-import { isMac } from "./platform";
+import { isAndroid, isMac } from "./platform";
 
 /**
- * macOS widget snapshot.
+ * Home-screen widget snapshot (macOS and Android).
  *
- * WidgetKit extensions run in a separate sandbox and cannot touch the app's
- * SQLite database, so the app exports a small JSON snapshot into the shared
- * App Group container. The Swift widgets read that file on their timeline
- * refresh (every ~15 min). Keep this model in sync with
- * app/src-tauri/macos-widgets/PriorWidgets/Snapshot.swift.
+ * Widgets run outside the webview and cannot touch the app's database, so the
+ * app exports a small JSON snapshot. On macOS it lands in the shared App Group
+ * container and the Swift widgets read it on their timeline refresh (every
+ * ~15 min); on Android the Glance widgets read it from SharedPreferences.
+ * Keep this model in sync with
+ * app/src-tauri/macos-widgets/PriorWidgets/Snapshot.swift and
+ * app/src-tauri/gen/android/.../PriorWidget.kt.
  */
-
-export const WIDGET_APP_GROUP = "group.fr.constantsuchet.prior";
-export const WIDGET_SNAPSHOT_FILE = "prior-widget-snapshot.json";
 
 export type WidgetTaskItem = {
   id: string;
@@ -109,13 +108,14 @@ export function buildWidgetSnapshot(tasks: Task[], now = new Date(), habits: Hab
   };
 }
 
-/** Write the snapshot for the macOS widgets. No-op off macOS; best-effort. */
+/** Write the snapshot for the macOS and Android widgets. No-op elsewhere; best-effort. */
 let lastSnapshotAt = 0;
 let lastSnapshotJson = "";
 const SNAPSHOT_MIN_INTERVAL_MS = 10_000;
 
 export async function refreshWidgetSnapshot(tasks: Task[], habits: Habit[] = []): Promise<void> {
-  if (!isMac()) return;
+  const android = isAndroid();
+  if (!android && !isMac()) return;
   const now = Date.now();
   const snapshotJson = JSON.stringify(buildWidgetSnapshot(tasks, new Date(), habits));
   // A startup refresh can first observe an empty SQLite store and then receive
@@ -124,22 +124,9 @@ export async function refreshWidgetSnapshot(tasks: Task[], habits: Habit[] = [])
   if (snapshotJson === lastSnapshotJson && now - lastSnapshotAt < SNAPSHOT_MIN_INTERVAL_MS) return;
   lastSnapshotAt = now;
   lastSnapshotJson = snapshotJson;
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("widget_refresh_snapshot", { snapshotJson });
-    return;
-  } catch {
-    // Fallback to plugin-fs
-  }
-  try {
-    const { homeDir, join } = await import("@tauri-apps/api/path");
-    const { mkdir, writeTextFile } = await import("@tauri-apps/plugin-fs");
-    const dir = await join(await homeDir(), "Library", "Group Containers", WIDGET_APP_GROUP);
-    await mkdir(dir, { recursive: true });
-    await writeTextFile(await join(dir, WIDGET_SNAPSHOT_FILE), snapshotJson);
-  } catch {
-    // Widgets are best-effort: never break the app for them.
-  }
+  // Widgets are best-effort: never break the app for them.
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke(android ? "widget_set_snapshot" : "widget_refresh_snapshot", { snapshotJson });
 }
 
 /** Deep-link target opened from a widget tap, e.g. "prior://widget/today". */

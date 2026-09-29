@@ -50,6 +50,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="prior" android:host="auth" android:pathPrefix="/callback" />
             </intent-filter>
+            <!-- PRIOR CUSTOM SCHEME (not generated): home-screen widget taps
+                 (prior://widget/<view>). Keep when regenerating. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="prior" android:host="widget" />
+            </intent-filter>
         </activity>
 
         <provider
@@ -68,6 +75,30 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/prior_widget_info" />
+        </receiver>
+        <receiver android:name=".MatrixWidgetReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/prior_widget_matrix_info" />
+        </receiver>
+        <receiver android:name=".InboxWidgetReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/prior_widget_inbox_info" />
+        </receiver>
+        <receiver android:name=".CalendarWidgetReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/prior_widget_calendar_info" />
         </receiver>
     </application>
 </manifest>

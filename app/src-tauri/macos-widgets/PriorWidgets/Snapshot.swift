@@ -51,7 +51,10 @@ struct WidgetSnapshot: Codable, Hashable, Sendable {
 }
 
 enum SnapshotStore {
-    static let appGroup = "group.fr.constantsuchet.prior"
+    /// "<TEAMID>.fr.constantsuchet.prior" in signed builds (set by
+    /// scripts/macos/embed-widgets.sh); must match the app's PRIOR_APP_GROUP.
+    static let appGroup = (Bundle.main.object(forInfoDictionaryKey: "PriorAppGroup") as? String)
+        .flatMap { $0.isEmpty ? nil : $0 } ?? "group.fr.constantsuchet.prior"
     static let fileName = "prior-widget-snapshot.json"
 
     static func load() -> WidgetSnapshot? {

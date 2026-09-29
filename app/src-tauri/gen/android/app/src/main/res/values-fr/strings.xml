@@ -1,0 +1,19 @@
+<resources>
+    <string name="widget_today">Aujourd\'hui</string>
+    <string name="widget_today_count">%1$d à faire · %2$d faites</string>
+    <string name="widget_today_empty">Tout est fait</string>
+    <string name="widget_today_description">Vos tâches du jour.</string>
+    <string name="widget_inbox">Boîte de réception</string>
+    <string name="widget_inbox_empty">Boîte vide</string>
+    <string name="widget_inbox_description">Les tâches à trier.</string>
+    <string name="widget_calendar">Calendrier</string>
+    <string name="widget_calendar_empty">Rien de prévu</string>
+    <string name="widget_calendar_anytime">Journée</string>
+    <string name="widget_calendar_description">Vos agendas et habitudes de la semaine.</string>
+    <string name="widget_matrix">Priorités</string>
+    <string name="widget_matrix_do">Faire</string>
+    <string name="widget_matrix_schedule">Planifier</string>
+    <string name="widget_matrix_delegate">Déléguer</string>
+    <string name="widget_matrix_eliminate">Éliminer</string>
+    <string name="widget_matrix_description">Vos quadrants d\'Eisenhower en un coup d\'œil.</string>
+</resources>

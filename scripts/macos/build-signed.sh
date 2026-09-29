@@ -49,6 +49,8 @@ case "$identity" in
   *) die "APPLE_SIGNING_IDENTITY must be a 'Developer ID Application' certificate, got '$identity'" ;;
 esac
 export APPLE_SIGNING_IDENTITY="$identity"
+# build.rs derives the widgets' App Group from the team id; embed-widgets.sh must agree.
+export APPLE_TEAM_ID="${APPLE_TEAM_ID:-$(team_id_from_identity "$identity")}"
 info "signing identity: $identity"
 
 if [ "$notarize" = "1" ]; then

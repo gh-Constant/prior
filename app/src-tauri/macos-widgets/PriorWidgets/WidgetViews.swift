@@ -205,7 +205,7 @@ struct CalendarWidgetView: View {
     var body: some View {
         let items = entry.snapshot?.calendar.items ?? []
         VStack(alignment: .leading, spacing: 6) {
-            WidgetHeader(title: "Calendar", count: "(items.count)")
+            WidgetHeader(title: "Calendar", count: "\(items.count)")
             if items.isEmpty {
                 Text("Nothing scheduled")
                     .font(.callout)
