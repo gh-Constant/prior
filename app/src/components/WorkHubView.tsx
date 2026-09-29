@@ -10,12 +10,13 @@ import { TaskRow } from "./TaskRow";
 import { ProjectTaskBoard } from "./ProjectTaskBoard";
 import { Modal } from "./Modal";
 import { ProjectCollaboration } from "./collaboration/ProjectCollaboration";
-import type { Person, ProjectCollaborationProps } from "./collaboration/types";
+import type { Person, ProjectCollaborationProps, ProjectSharingProps } from "./collaboration/types";
+import { ProjectShareDialog } from "./collaboration/ProjectShareDialog";
 import { AREA_ICON_OPTIONS, DEFAULT_AREA_ICON, DEFAULT_PROJECT_ICON, PROJECT_ICON_OPTIONS } from "./WorkspaceIcon";
 import { IconPicker, IconUpload } from "./IconPicker";
 import { CustomSelect } from "./CustomSelect";
 import { ProjectsOverview } from "./ProjectsOverview";
-import { AvatarStack, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, ProjectTile, currentCycle, projectProgress } from "./ProjectVisuals";
+import { AvatarStack, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, ProjectTile, UsersGlyph, currentCycle, projectProgress } from "./ProjectVisuals";
 import { ProjectBreadcrumb, ProjectDetailHeader, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "./ProjectDetailParts";
 import { TodayView } from "./TodayView";
 import { WaitingView } from "./WaitingView";
@@ -149,10 +150,11 @@ function ConfirmProjectDeleteModal({ project, onClose, onConfirm }: { project: P
 
 type ProjectDetailTab = "board" | "list" | "notes";
 
-function ProjectDetail({ project, area, tasks, members = [], onBack, onOpenNotes, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, onEditProject, onDeleteProject }: { project: Project; area?: Area; tasks: Task[]; members?: readonly Person[]; onBack: () => void; onOpenNotes: (id: string) => void; onNewTask: (context: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void; onWorkspaceChange: () => void; onEditProject: (project: Project) => void; onDeleteProject: (project: Project) => void }) {
+function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLocked = false, onBack, onOpenNotes, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, onEditProject, onDeleteProject }: { project: Project; area?: Area; tasks: Task[]; members?: readonly Person[]; sharing?: ProjectSharingProps; sharingLocked?: boolean; onBack: () => void; onOpenNotes: (id: string) => void; onNewTask: (context: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void; onWorkspaceChange: () => void; onEditProject: (project: Project) => void; onDeleteProject: (project: Project) => void }) {
   const { t } = useI18n();
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
   const [tab, setTab] = useState<ProjectDetailTab>("board");
+  const [shareOpen, setShareOpen] = useState(false);
   const panelId = useId();
   const [notes, setNotes] = useState(() => notesStore.list().filter((note) => note.projectId === project.id));
   const progress = projectProgress(tasks);
@@ -191,11 +193,13 @@ function ProjectDetail({ project, area, tasks, members = [], onBack, onOpenNotes
       description={project.description}
       aside={<AvatarStack people={members} size="md" label={t("common.projectHub.members")} />}
       actions={<>
+        {sharing && <button type="button" className="secondary-button" onClick={() => setShareOpen(true)}><UsersGlyph />{t("collab.header.share")}</button>}
         <button type="button" className="secondary-button project-edit-button" aria-label={t("common.workhub.editProject")} title={t("common.workhub.editProject")} onClick={() => onEditProject(project)}><Icon name="pencil" /><span>{t("common.workhub.editProject")}</span></button>
         <button type="button" className="primary-button" onClick={() => newTask()}><Icon name="plus" /><span>{t("common.header.newTask")}</span></button>
       </>}
       headerProps={{ onContextMenu: (event) => openMenu(event, headerMenu()), ...longPress(headerMenu) }}
     />
+    {shareOpen && sharing && <ProjectShareDialog {...sharing} canManage={!sharingLocked && sharing.canManage} projectName={project.name} onClose={() => setShareOpen(false)} />}
     <ProjectStatsStrip progress={progress} targetDate={project.targetDate} cycle={cycle} health={project.health} completed={project.status === "completed"} />
     <ProjectTabs tabs={tabs} active={tab} onChange={setTab} label={t("common.projectHub.viewsLabel")} panelId={panelId} />
     <div id={panelId} className="project-tab-panel" role="tabpanel" aria-label={tabs.find((item) => item.id === tab)?.label}>
@@ -254,7 +258,7 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   }
 
   if (view === "projects") return <><ProjectsOverview areas={areas} projects={projects} tasks={mergedTasks} membersByProject={membersByProject} query={projectQuery} onQueryChange={setProjectQuery} onOpenProject={onOpenProject} onNewProject={(areaId) => setModal({ kind: "project", areaId: areaId ?? null })} onNewArea={() => setModal({ kind: "area" })} onEditArea={(area) => setModal({ kind: "area", area })} onDeleteArea={(area) => setModal({ kind: "confirm-area-delete", area })} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</>;
-  if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} members={collaboration?.sharing.members} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>{t("common.workhub.notFound")}</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>{t("common.workhub.backToProjects")}</button></div>;
+  if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} members={collaboration?.sharing.members} sharing={collaboration?.sharing} sharingLocked={collaboration?.readOnly} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>{t("common.workhub.notFound")}</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>{t("common.workhub.backToProjects")}</button></div>;
   if (view === "waiting") return <WaitingView tasks={waitingTasks} projects={projects} onAdd={() => onNewTask({ status: "waiting" })} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
   return <TodayView tasks={mergedTasks} waitingTasks={waitingTasks} projects={projects} areas={areas} habits={habits} onHabitComplete={onHabitComplete} onNewTask={onNewTask} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={onOpenCalendar} onOpenHabits={onOpenHabits} onOpenWaiting={onOpenWaiting} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
 }

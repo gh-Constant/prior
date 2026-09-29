@@ -239,4 +239,15 @@ describe("WorkHubView opt-in integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Projects" }));
     expect(props.onOpenProject).toHaveBeenCalledWith("");
   });
+
+  it("offers Share on non-software projects too", () => {
+    const onInvite = vi.fn();
+    const personal = { ...project, projectType: "standard" as const };
+    render(<WorkHubView {...props} projects={[personal]} collaborationByProject={{ [project.id]: { ...base, readOnly: false, sharing: { ...base.sharing, canManage: true, onInvite } } }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Email address"), { target: { value: "lea@example.com" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Invite" }));
+    expect(onInvite).toHaveBeenCalledWith("lea@example.com", "editor");
+  });
 });
