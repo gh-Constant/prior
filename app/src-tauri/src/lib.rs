@@ -152,7 +152,8 @@ async fn widget_refresh_snapshot(snapshot_json: String) -> Result<(), String> {
     {
         let home = std::env::var("HOME").map_err(|e| e.to_string())?;
         let dir = std::path::PathBuf::from(home)
-            .join("Library/Group Containers/group.fr.constantsuchet.prior");
+            .join("Library/Group Containers")
+            .join(env!("PRIOR_APP_GROUP"));
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         std::fs::write(dir.join("prior-widget-snapshot.json"), snapshot_json)
             .map_err(|e| e.to_string())?;
@@ -164,8 +165,8 @@ async fn widget_refresh_snapshot(snapshot_json: String) -> Result<(), String> {
 
 #[cfg(target_os = "android")]
 #[tauri::command]
-async fn widget_set_items<R: Runtime>(app: AppHandle<R>, items: Vec<String>) -> Result<(), String> {
-    run_android_plugin(app, "setWidgetItems", serde_json::json!({ "items": items })).await
+async fn widget_set_snapshot<R: Runtime>(app: AppHandle<R>, snapshot_json: String) -> Result<(), String> {
+    run_android_plugin(app, "setWidgetSnapshot", serde_json::json!({ "snapshotJson": snapshot_json })).await
 }
 
 #[cfg(target_os = "android")]
@@ -308,7 +309,7 @@ pub fn run() {
             #[cfg(desktop)]
             widget_refresh_snapshot,
             #[cfg(target_os = "android")]
-            widget_set_items,
+            widget_set_snapshot,
             #[cfg(target_os = "android")]
             google_sign_in
         ])

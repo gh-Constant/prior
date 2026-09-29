@@ -17,7 +17,6 @@ import { TaskColumns } from "./components/TaskColumns";
 import { AllTasksView } from "./components/AllTasksView";
 import { AccountDialog } from "./components/AccountDialog";
 import { AuthGate } from "./components/AuthGate";
-import { updateAndroidWidget } from "./lib/widget";
 import { defaultTaskFilters, type TaskFilterState } from "./lib/taskFilters";
 import { TaskFilters } from "./components/TaskFilters";
 import { AgentSidebar } from "./components/AgentSidebar";
@@ -353,7 +352,7 @@ export function App() {
             handleMailConnected(email);
             continue;
           }
-          // Taps on the macOS widgets land here (prior://widget/<view>).
+          // Taps on the macOS/Android widgets land here (prior://widget/<view>).
           const widgetView = parseWidgetUrl(url);
           if (widgetView) changeView(widgetView);
         }
@@ -391,7 +390,6 @@ export function App() {
           : nextTasks.filter((task) => !task.projectId || accessibleProjectIds.has(task.projectId))
       );
       setHabits(nextHabits);
-      void updateAndroidWidget(nextTasks, nextHabits).catch(() => undefined);
       void refreshWidgetSnapshot(nextTasks, nextHabits).catch(() => undefined);
     })();
     refreshInFlight.current = run;

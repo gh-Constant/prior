@@ -1,4 +1,21 @@
 <resources>
     <string name="app_name">"Prior"</string>
     <string name="main_activity_title">"Prior"</string>
+    <string name="widget_today">Today</string>
+    <string name="widget_today_count">%1$d open · %2$d done</string>
+    <string name="widget_today_empty">All caught up</string>
+    <string name="widget_today_description">Your tasks due today.</string>
+    <string name="widget_inbox">Inbox</string>
+    <string name="widget_inbox_empty">Inbox zero</string>
+    <string name="widget_inbox_description">Tasks waiting to be triaged.</string>
+    <string name="widget_calendar">Calendar</string>
+    <string name="widget_calendar_empty">Nothing scheduled</string>
+    <string name="widget_calendar_anytime">Anytime</string>
+    <string name="widget_calendar_description">Your calendars and habits this week.</string>
+    <string name="widget_matrix">Priorities</string>
+    <string name="widget_matrix_do">Do</string>
+    <string name="widget_matrix_schedule">Schedule</string>
+    <string name="widget_matrix_delegate">Delegate</string>
+    <string name="widget_matrix_eliminate">Eliminate</string>
+    <string name="widget_matrix_description">Your Eisenhower quadrants at a glance.</string>
 </resources>

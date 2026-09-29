@@ -51,6 +51,17 @@ if [ -z "$version" ]; then
 fi
 info "building PriorWidgets $version into $app"
 
+# Developer ID apps may only share a team-prefixed App Group without a
+# provisioning profile; "group.*" is denied to the sandboxed widget on recent
+# macOS, which then renders empty. Must match build.rs (PRIOR_APP_GROUP).
+app_group="group.fr.constantsuchet.prior"
+if [ -n "$team" ]; then
+  app_group="$team.fr.constantsuchet.prior"
+else
+  warn "no Apple team id: widgets use $app_group and may not see the app's data"
+fi
+info "app group: $app_group"
+
 project="$repo_root/app/src-tauri/macos-widgets/PriorWidgets.xcodeproj"
 [ -d "$project" ] || die "widget project not found: $project"
 
@@ -62,6 +73,12 @@ cleanup() {
   exit $exit_status
 }
 trap cleanup EXIT INT TERM
+
+# Sign both bundles with the resolved App Group.
+with_app_group() {
+  sed "s/group\.fr\.constantsuchet\.prior/$app_group/" "$1" > "$derived/$(basename "$1")"
+  printf '%s' "$derived/$(basename "$1")"
+}
 
 xcode_cmd=(
   xcodebuild -project "$project"
@@ -75,6 +92,7 @@ xcode_cmd=(
   CODE_SIGNING_REQUIRED=NO
   MARKETING_VERSION="$version"
   CURRENT_PROJECT_VERSION=1
+  PRIOR_APP_GROUP="$app_group"
 )
 
 "${xcode_cmd[@]}" build
@@ -90,7 +108,7 @@ cp -R "$appex" "$plugins_dir/PriorWidgets.appex"
 entitlements="$project/../PriorWidgets/PriorWidgets.entitlements"
 info "signing embedded appex"
 if [ -f "$entitlements" ]; then
-  codesign --force --sign "$identity" --entitlements "$entitlements" --options runtime --timestamp "$plugins_dir/PriorWidgets.appex"
+  codesign --force --sign "$identity" --entitlements "$(with_app_group "$entitlements")" --options runtime --timestamp "$plugins_dir/PriorWidgets.appex"
 else
   codesign --force --sign "$identity" --preserve-metadata=entitlements --options runtime --timestamp "$plugins_dir/PriorWidgets.appex"
 fi
@@ -98,7 +116,7 @@ fi
 info "re-sealing app bundle"
 app_entitlements="$repo_root/app/src-tauri/entitlements.plist"
 if [ -f "$app_entitlements" ]; then
-  codesign --force --sign "$identity" --entitlements "$app_entitlements" --options runtime --timestamp "$app"
+  codesign --force --sign "$identity" --entitlements "$(with_app_group "$app_entitlements")" --options runtime --timestamp "$app"
 else
   codesign --force --sign "$identity" --options runtime --timestamp "$app"
 fi
