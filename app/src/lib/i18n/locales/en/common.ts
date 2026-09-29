@@ -319,6 +319,7 @@ export const common = {
   },
   access: {
     viewOnly: "You have view-only access to this project.",
+    sharedOffline: "Shared projects need an internet connection. Reconnect to edit this one.",
     signInToUpdate: "Sign in to update this shared project.",
   },
   errors: {
@@ -336,7 +337,9 @@ export const common = {
   toasts: {
     sessionExpired: "Session expired — please sign in again.",
     inviteAccepted: "Project invitation accepted.",
-    inviteCopied: "Invite link copied for {email}.",
+    inviteCopied: "Invitation sent to {email}. They will see it in Prior; the invite link is copied too.",
+    inviteDeclined: "Invitation declined.",
+    inviteJoined: "You joined “{project}”.",
     memberAdded: "{email} was added to the project.",
     inviteRevoked: "Invitation revoked.",
     roleUpdated: "Project role updated.",

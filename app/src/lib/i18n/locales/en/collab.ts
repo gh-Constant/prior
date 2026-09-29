@@ -92,6 +92,15 @@ export const collab = {
     title: "Loading project…",
     hint: "Getting the latest project details.",
   },
+  offline: {
+    notice: "You're offline. Shared projects need a connection, so this one is read-only until you reconnect.",
+  },
+  invites: {
+    label: "Project invitations",
+    title: "{name} invited you to “{project}”",
+    join: "Join",
+    decline: "Decline",
+  },
   readonly: {
     notice: "You have view-only access. Ask a project owner to make changes.",
   },

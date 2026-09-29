@@ -280,6 +280,7 @@ export const common = {
   },
   access: {
     viewOnly: "Tens acesso só de leitura a este projeto.",
+    sharedOffline: "Os projetos partilhados precisam de ligação à internet. Volta a ligar-te para o editar.",
     signInToUpdate: "Inicia sessão para atualizar este projeto partilhado.",
   },
   errors: {
@@ -297,7 +298,9 @@ export const common = {
   toasts: {
     sessionExpired: "Sessão expirada — inicia sessão de novo.",
     inviteAccepted: "Convite para o projeto aceite.",
-    inviteCopied: "Ligação de convite copiada para {email}.",
+    inviteCopied: "Convite enviado para {email}. A pessoa vai vê-lo no Prior; a ligação do convite também foi copiada.",
+    inviteDeclined: "Convite recusado.",
+    inviteJoined: "Entraste em «{project}».",
     memberAdded: "{email} foi adicionado ao projeto.",
     inviteRevoked: "Convite revogado.",
     roleUpdated: "Papel do projeto atualizado.",

@@ -92,6 +92,15 @@ export const collab = {
     title: "Projekt wird geladen…",
     hint: "Die neuesten Projektdetails werden abgerufen.",
   },
+  offline: {
+    notice: "Du bist offline. Geteilte Projekte brauchen eine Verbindung, daher ist dieses bis zur erneuten Verbindung schreibgeschützt.",
+  },
+  invites: {
+    label: "Projekteinladungen",
+    title: "{name} hat dich zu „{project}“ eingeladen",
+    join: "Beitreten",
+    decline: "Ablehnen",
+  },
   readonly: {
     notice: "Du hast nur Lesezugriff. Bitte einen Projekteigentümer um Änderungen.",
   },

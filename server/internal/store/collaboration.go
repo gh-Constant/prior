@@ -31,6 +31,21 @@ type ProjectInvite struct {
 	ExpiresAt   time.Time `json:"expiresAt"`
 	InviteToken string    `json:"inviteToken,omitempty"`
 	ProjectID   string    `json:"projectId"`
+	// InviteeUserID is set when the email already has an account, so the
+	// API can notify that person in real time.
+	InviteeUserID string `json:"-"`
+}
+
+// IncomingInvite is a pending invite addressed to the signed-in account.
+type IncomingInvite struct {
+	ID          string    `json:"id"`
+	ProjectID   string    `json:"projectId"`
+	ProjectName string    `json:"projectName"`
+	InviterName string    `json:"inviterName"`
+	InviterID   string    `json:"inviterId"`
+	Role        string    `json:"role"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type CollaborationProject struct {
@@ -327,13 +342,22 @@ func (s *Store) ShareProject(ctx context.Context, ownerID, projectID uuid.UUID, 
 	if _, err := tx.Exec(ctx, `INSERT INTO project_members (project_id, user_id, role, status) VALUES ($1, $2, 'owner', 'active') ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'owner', status = 'active', updated_at = now()`, projectID, ownerID); err != nil {
 		return ProjectMember{}, nil, err
 	}
+	// Existing members only change role. Everyone else, including people who
+	// already have an account, gets a pending invite they accept in the app.
 	var member ProjectMember
-	findErr := tx.QueryRow(ctx, `SELECT id::text, email, display_name, avatar_url FROM users WHERE lower(email) = $1`, email).Scan(&member.UserID, &member.Email, &member.DisplayName, &member.AvatarURL)
-	if findErr == nil {
-		if member.UserID == ownerID.String() {
-			return ProjectMember{}, nil, errors.New("the project owner is already a member")
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO project_members (project_id, user_id, role, status) VALUES ($1, $2, $3, 'active') ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'active', updated_at = now()`, projectID, member.UserID, role); err != nil {
+	var memberStatus *string
+	findErr := tx.QueryRow(ctx, `
+		SELECT u.id::text, u.email, u.display_name, u.avatar_url, pm.status
+		FROM users u LEFT JOIN project_members pm ON pm.project_id = $2 AND pm.user_id = u.id
+		WHERE lower(u.email) = $1`, email, projectID).Scan(&member.UserID, &member.Email, &member.DisplayName, &member.AvatarURL, &memberStatus)
+	if findErr != nil && !errors.Is(findErr, pgx.ErrNoRows) {
+		return ProjectMember{}, nil, findErr
+	}
+	if findErr == nil && member.UserID == ownerID.String() {
+		return ProjectMember{}, nil, errors.New("the project owner is already a member")
+	}
+	if findErr == nil && memberStatus != nil && *memberStatus == "active" {
+		if _, err := tx.Exec(ctx, `UPDATE project_members SET role = $3, updated_at = now() WHERE project_id = $1 AND user_id = $2`, projectID, member.UserID, role); err != nil {
 			return ProjectMember{}, nil, err
 		}
 		member.Role, member.Status = role, "active"
@@ -341,9 +365,6 @@ func (s *Store) ShareProject(ctx context.Context, ownerID, projectID uuid.UUID, 
 			return ProjectMember{}, nil, err
 		}
 		return member, nil, nil
-	}
-	if !errors.Is(findErr, pgx.ErrNoRows) {
-		return ProjectMember{}, nil, findErr
 	}
 	rawToken := make([]byte, 32)
 	if _, err := rand.Read(rawToken); err != nil {
@@ -355,13 +376,14 @@ func (s *Store) ShareProject(ctx context.Context, ownerID, projectID uuid.UUID, 
 	if _, err := tx.Exec(ctx, `UPDATE project_invites SET accepted_at = now() WHERE project_id = $1 AND invitee_email = $2 AND accepted_at IS NULL`, projectID, email); err != nil {
 		return ProjectMember{}, nil, err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO project_invites (project_id, inviter_user_id, invitee_email, role, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5, $6)`, projectID, ownerID, email, role, hash[:], expires); err != nil {
+	var inviteID string
+	if err := tx.QueryRow(ctx, `INSERT INTO project_invites (project_id, inviter_user_id, invitee_email, role, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id::text`, projectID, ownerID, email, role, hash[:], expires).Scan(&inviteID); err != nil {
 		return ProjectMember{}, nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return ProjectMember{}, nil, err
 	}
-	return ProjectMember{}, &ProjectInvite{Email: email, Role: role, ExpiresAt: expires, InviteToken: token, ProjectID: projectID.String()}, nil
+	return ProjectMember{}, &ProjectInvite{ID: inviteID, Email: email, Role: role, ExpiresAt: expires, InviteToken: token, ProjectID: projectID.String(), InviteeUserID: member.UserID}, nil
 }
 
 func (s *Store) UpdateProjectMember(ctx context.Context, ownerID, projectID, memberID uuid.UUID, role string) error {
@@ -432,23 +454,117 @@ func (s *Store) AcceptProjectInvite(ctx context.Context, userID uuid.UUID, token
 		}
 		return uuid.Nil, err
 	}
-	var accountEmail string
-	if err := tx.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userID).Scan(&accountEmail); err != nil {
-		return uuid.Nil, err
-	}
-	if normalizeEmailValue(accountEmail) != normalizeEmailValue(email) {
-		return uuid.Nil, errors.New("invite email does not match the signed-in account")
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO project_members (project_id, user_id, role, status) VALUES ($1, $2, $3, 'active') ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'active', updated_at = now()`, projectID, userID, role); err != nil {
-		return uuid.Nil, err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE project_invites SET accepted_at = now() WHERE id = $1`, inviteID); err != nil {
+	if err := joinProjectTx(ctx, tx, userID, inviteID, projectID, email, role); err != nil {
 		return uuid.Nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return uuid.Nil, err
 	}
 	return projectID, nil
+}
+
+func joinProjectTx(ctx context.Context, tx pgx.Tx, userID, inviteID, projectID uuid.UUID, email, role string) error {
+	var accountEmail string
+	if err := tx.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userID).Scan(&accountEmail); err != nil {
+		return err
+	}
+	if normalizeEmailValue(accountEmail) != normalizeEmailValue(email) {
+		return errors.New("invite email does not match the signed-in account")
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO project_members (project_id, user_id, role, status) VALUES ($1, $2, $3, 'active') ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'active', updated_at = now()`, projectID, userID, role); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `UPDATE project_invites SET accepted_at = now() WHERE id = $1`, inviteID)
+	return err
+}
+
+// ListIncomingInvites returns the pending invites addressed to the user's
+// email, newest first.
+func (s *Store) ListIncomingInvites(ctx context.Context, userID uuid.UUID) ([]IncomingInvite, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT i.id::text, p.id::text, p.name, COALESCE(NULLIF(inviter.display_name, ''), inviter.email), inviter.id::text, i.role, i.expires_at, i.created_at
+		FROM users me
+		JOIN project_invites i ON i.invitee_email = lower(me.email) AND i.accepted_at IS NULL AND i.expires_at > now()
+		JOIN projects p ON p.id = i.project_id AND p.deleted_at IS NULL
+		JOIN users inviter ON inviter.id = i.inviter_user_id
+		WHERE me.id = $1 AND NOT EXISTS (
+			SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = me.id AND pm.status = 'active'
+		)
+		ORDER BY i.created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	invites := make([]IncomingInvite, 0)
+	for rows.Next() {
+		var invite IncomingInvite
+		if err := rows.Scan(&invite.ID, &invite.ProjectID, &invite.ProjectName, &invite.InviterName, &invite.InviterID, &invite.Role, &invite.ExpiresAt, &invite.CreatedAt); err != nil {
+			return nil, err
+		}
+		invites = append(invites, invite)
+	}
+	return invites, rows.Err()
+}
+
+// RespondToInvite accepts or declines a pending invite addressed to the
+// user. It returns the project and the person who sent the invite.
+func (s *Store) RespondToInvite(ctx context.Context, userID, inviteID uuid.UUID, accept bool) (uuid.UUID, uuid.UUID, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	defer tx.Rollback(ctx)
+	var projectID, inviterID uuid.UUID
+	var email, role string
+	err = tx.QueryRow(ctx, `
+		SELECT i.project_id, i.inviter_user_id, i.invitee_email, i.role
+		FROM project_invites i JOIN users me ON me.id = $2 AND i.invitee_email = lower(me.email)
+		WHERE i.id = $1 AND i.accepted_at IS NULL AND i.expires_at > now() FOR UPDATE OF i`, inviteID, userID).Scan(&projectID, &inviterID, &email, &role)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, uuid.Nil, ErrNotFound
+	}
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	if accept {
+		err = joinProjectTx(ctx, tx, userID, inviteID, projectID, email, role)
+	} else {
+		_, err = tx.Exec(ctx, `UPDATE project_invites SET accepted_at = now() WHERE id = $1`, inviteID)
+	}
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	return projectID, inviterID, nil
+}
+
+// ProjectPeerIDs lists everyone who shares an active project with the user,
+// so shared edits can be pushed to them in real time.
+func (s *Store) ProjectPeerIDs(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx, `
+		WITH mine AS (
+			SELECT id FROM projects WHERE user_id = $1 AND deleted_at IS NULL
+			UNION SELECT project_id FROM project_members WHERE user_id = $1 AND status = 'active'
+		)
+		SELECT DISTINCT person FROM (
+			SELECT p.user_id AS person FROM projects p JOIN mine ON mine.id = p.id
+			UNION SELECT pm.user_id FROM project_members pm JOIN mine ON mine.id = pm.project_id WHERE pm.status = 'active'
+		) people WHERE person <> $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	peers := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		peers = append(peers, id)
+	}
+	return peers, rows.Err()
 }
 
 func replaceTaskPeopleTx(ctx context.Context, tx pgx.Tx, taskID, actorID uuid.UUID, projectID *string, peopleIDs []string) error {

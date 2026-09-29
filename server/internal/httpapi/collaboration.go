@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -58,6 +59,7 @@ func (s *Server) updateCollaborativeProject(w http.ResponseWriter, r *http.Reque
 		writeError(w, collaborationStatus(err), err)
 		return
 	}
+	s.notifyProjectPeers(r.Context(), user.ID)
 	writeJSON(w, http.StatusOK, project)
 }
 
@@ -114,9 +116,13 @@ func (s *Server) shareProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if invite != nil {
+		if inviteeID, parseErr := uuid.Parse(invite.InviteeUserID); parseErr == nil {
+			s.notifySync(r.Context(), inviteeID, "invites_required", 0)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"invite": invite})
 		return
 	}
+	s.notifyProjectPeers(r.Context(), user.ID)
 	writeJSON(w, http.StatusOK, map[string]any{"member": member})
 }
 
@@ -147,6 +153,7 @@ func (s *Server) updateProjectMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, collaborationStatus(err), err)
 		return
 	}
+	s.notifySync(r.Context(), memberID, "collaboration_required", 0)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -170,6 +177,8 @@ func (s *Server) removeProjectMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, collaborationStatus(err), err)
 		return
 	}
+	s.notifySync(r.Context(), memberID, "collaboration_required", 0)
+	s.notifyProjectPeers(r.Context(), user.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -215,4 +224,59 @@ func (s *Server) acceptProjectInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"projectId": projectID.String()})
+}
+
+func (s *Server) incomingInvites(w http.ResponseWriter, r *http.Request) {
+	user, err := s.requireUser(r)
+	if err != nil {
+		writeUnauthorized(w, err)
+		return
+	}
+	invites, err := s.store.ListIncomingInvites(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, collaborationStatus(err), err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"invites": invites})
+}
+
+func (s *Server) respondToInvite(accept bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, err := s.requireUser(r)
+		if err != nil {
+			writeUnauthorized(w, err)
+			return
+		}
+		inviteID, err := uuid.Parse(r.PathValue("inviteID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, errors.New("invalid invite id"))
+			return
+		}
+		projectID, inviterID, err := s.store.RespondToInvite(r.Context(), user.ID, inviteID, accept)
+		if err != nil {
+			writeError(w, collaborationStatus(err), err)
+			return
+		}
+		s.notifySync(r.Context(), user.ID, "invites_required", 0)
+		s.notifySync(r.Context(), inviterID, "collaboration_required", 0)
+		if accept {
+			s.notifyProjectPeers(r.Context(), user.ID)
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"projectId": projectID.String()})
+	}
+}
+
+// notifyProjectPeers tells everyone sharing a project with userID to sync,
+// so shared projects stay live across accounts. Best-effort.
+func (s *Server) notifyProjectPeers(ctx context.Context, userID uuid.UUID) {
+	if s.pool == nil {
+		return
+	}
+	peers, err := s.store.ProjectPeerIDs(ctx, userID)
+	if err != nil {
+		return
+	}
+	for _, peer := range peers {
+		s.notifySync(ctx, peer, "collaboration_required", 0)
+	}
 }

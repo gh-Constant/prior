@@ -138,3 +138,13 @@ details[open] > .collab-disclosure-summary .collab-disclosure-chevron { transfor
   .collab-members select, .collab-field select, .collab-field input { min-height: 44px; font-size: 16px; }
   .collab-chip-btn { min-height: 36px; }
 }
+
+/* In-app project invitations, stacked above the workspace. */
+.collab-invite-toasts { position: fixed; top: 16px; right: 16px; z-index: 60; display: grid; gap: 10px; width: min(360px, calc(100vw - 32px)); }
+.collab-invite-toast { display: grid; grid-template-columns: auto 1fr; gap: 10px 12px; align-items: start; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-toast); }
+.collab-invite-toast > svg { margin-top: 2px; color: var(--muted); }
+.collab-invite-toast p { margin: 0; font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
+.collab-invite-toast-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 640px) {
+  .collab-invite-toasts { top: auto; bottom: calc(76px + env(safe-area-inset-bottom)); right: 16px; left: 16px; width: auto; }
+}

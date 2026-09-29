@@ -92,6 +92,15 @@ export const collab = {
     title: "Chargement du projet…",
     hint: "Récupération des dernières informations du projet.",
   },
+  offline: {
+    notice: "Vous êtes hors ligne. Les projets partagés nécessitent une connexion : celui-ci est en lecture seule jusqu’à votre reconnexion.",
+  },
+  invites: {
+    label: "Invitations aux projets",
+    title: "{name} vous invite à rejoindre « {project} »",
+    join: "Rejoindre",
+    decline: "Refuser",
+  },
   readonly: {
     notice: "Vous avez un accès en lecture seule. Demandez à un propriétaire du projet d’apporter les modifications.",
   },

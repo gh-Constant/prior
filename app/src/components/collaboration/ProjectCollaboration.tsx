@@ -97,7 +97,7 @@ function Overview({ project, issues, states, sharing, overview = {}, onOpenNotes
 }
 
 export function ProjectCollaboration(props: ProjectCollaborationProps) {
-  const { project, issues, states, cycles, sharing, overview, loading = false, readOnly = true, onCreateIssue, onOpenIssue, onDeleteIssue, onEditProject, onMoveIssue, onCreateCycle, onEditCycle } = props;
+  const { project, issues, states, cycles, sharing, overview, loading = false, readOnly = true, offline = false, onCreateIssue, onOpenIssue, onDeleteIssue, onEditProject, onMoveIssue, onCreateCycle, onEditCycle } = props;
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
   const [tab, setTab] = useState<Tab>("Board");
   const { t, tp } = useI18n();
@@ -162,7 +162,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
       </>}
       headerProps={{ onContextMenu: (event) => openMenu(event, headerMenuItems), ...longPress(() => headerMenuItems) }}
     />
-    {readOnly && <ReadOnlyNotice />}
+    {offline ? <p className="collab-notice" role="status"><Icon name="lock" aria-hidden="true" />{t("collab.offline.notice")}</p> : readOnly && <ReadOnlyNotice />}
     {moveError && <p className="collab-error" role="alert">{moveError}</p>}
     <ProjectStatsStrip progress={progress} targetDate={project.targetDate ?? overview?.targetDate} cycle={activeCycle?.endsOn ? { name: activeCycle.name, endsOn: activeCycle.endsOn } : null} health={project.health ?? overview?.health} completed={project.status === "completed"} />
     <ProjectTabs tabs={tabItems} active={tab} onChange={setTab} label={t("collab.views.label")} panelId={panelId} />
