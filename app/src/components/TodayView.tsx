@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEven
 import type { Area, Habit, Project, Task, TaskDraft, TaskPriority, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { rankFocusTasks } from "../lib/taskFocus";
+import { pomodoroTaskOptions } from "../lib/pomodoro";
+import { PomodoroCard } from "./PomodoroCard";
 import { parseTaskTitle, type TaskTitleToken } from "../lib/taskTitleParser";
 import { eventsInRange, loadCalendarState, type CalendarEvent, type CalendarState } from "../lib/calendar";
 import { ACCOUNT_DATA_CHANGED } from "../lib/accountDocuments";
@@ -211,6 +213,7 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
   const recommendationEvents = useMemo(() => [...todayEvents, ...tomorrowEvents], [todayEvents, tomorrowEvents]);
   const aiPlan = useTodayRecommendations(recommendationTasks, recommendationEvents, now, lang);
   const recommendationTaskById = useMemo(() => new Map(recommendationTasks.map((task) => [task.id, task])), [recommendationTasks]);
+  const pomodoroTasks = useMemo(() => pomodoroTaskOptions(tasks, [...(aiPlan.recommendations?.focus.map((item) => item.taskId) ?? []), ...priorities.map((task) => task.id)], ranked), [tasks, aiPlan.recommendations, priorities, ranked]);
 
   const todaysHabits = useMemo(() => habits
     .filter((habit) => !habit.deletedAt && habitScheduledOn(habit, now))
@@ -451,6 +454,7 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
         </div>
 
         <aside className="today-dash-side" aria-label={t("tasks.today.agendaTitle")}>
+          <PomodoroCard recommended={pomodoroTasks.recommended} others={pomodoroTasks.others} />
           <section className="today-card today-agenda" aria-labelledby="today-agenda-title">
             <div className="today-card-head is-compact">
               <div className="today-card-heading">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Area, Project, Task, TaskDraft, TaskPriority, TaskStatus } from "../types";
 import { useModalDialog } from "../hooks/useModalDialog";
 import { useI18n } from "../lib/i18n";
+import { normalizeEstimate } from "../lib/taskEstimate";
 import { Icon } from "./Icon";
 import { CustomSelect } from "./CustomSelect";
 import { taskStatusTone } from "../lib/taskStatusAppearance";
@@ -91,6 +92,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [assigneeName, setAssigneeName] = useState(task?.assigneeName ?? "");
   const [followUpDate, setFollowUpDate] = useState(task?.followUpDate ?? "");
   const [followUpTime, setFollowUpTime] = useState(task?.followUpTime ?? null);
+  const [estimate, setEstimate] = useState(task?.estimatedMinutes ? String(task.estimatedMinutes) : "");
   const [planningPeople, setPlanningPeople] = useState(planning?.people ?? []);
   const peopleSource = useRef(planning?.people);
   const awaitingProjectPeople = useRef(!planning);
@@ -227,7 +229,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     setNotice("");
     const keepOpen = allowCreateMore && !task && createMore;
     try {
-      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null };
+      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate) };
       await (allowCreateMore ? onSave(draft, { keepOpen }) : onSave(draft));
       setNotice(task ? t("tasks.composer.saved") : t("tasks.composer.created"));
       if (!task) {
@@ -254,6 +256,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
         setAssigneeName("");
         setFollowUpDate("");
         setFollowUpTime(null);
+        setEstimate("");
         setIgnoredTitleTokens([]);
         autoTitleValues.current = {};
       }
@@ -420,6 +423,22 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                   aria-label={t("tasks.composer.assignee")}
                   size={Math.max(t("tasks.composerPills.assign").length, assigneeName.length + 1)}
                   autoComplete="off"
+                />
+              </label>
+              <label className={`task-composer-assignee-pill ${estimate ? "has-value" : ""}`}>
+                <Icon name="clock" aria-hidden="true" />
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={10000}
+                  value={estimate}
+                  disabled={flagDisabled}
+                  onChange={(event) => setEstimate(event.target.value)}
+                  placeholder={t("tasks.composer.estimatePlaceholder")}
+                  aria-label={t("tasks.composer.estimate")}
+                  title={t("tasks.composer.estimate")}
+                  style={{ width: "7ch" }}
                 />
               </label>
             </div>

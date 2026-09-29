@@ -2,6 +2,7 @@ import { createContext, type ReactNode, useContext, useEffect, useRef, useState 
 import type { Project, Task } from "../types";
 import type { CompletionExitDeadlines } from "../lib/completionExit";
 import { useI18n } from "../lib/i18n";
+import { formatEstimate } from "../lib/taskEstimate";
 import { dueTone, initialsFor, taskGroupStatus } from "../lib/taskGroups";
 import { CompletionBurst } from "./CompletionBurst";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -184,6 +185,8 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
       ? <span className="task-chip task-project-meta" title={project.name}><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /><span className="task-project-name">{project.name}</span></span>
       : null;
     const dueChip = due && <span className={`task-chip task-due-chip due-${due.tone}`} title={due.tone === "overdue" ? t("tasks.list.dueOverdue") : undefined}><CalendarGlyph />{due.label}</span>;
+    const estimate = formatEstimate(task.estimatedMinutes);
+    const estimateChip = estimate && <span className="task-chip task-estimate-chip" title={t("tasks.composer.estimate")}><Icon name="clock" />{estimate}</span>;
     const avatar = initials && task.assigneeName ? <InitialsAvatar initials={initials} name={task.assigneeName} /> : null;
     const className = `task-row task-row-${variant} ${task.completed ? "completed" : ""} ${isExiting ? "completion-exiting" : ""} ${selected ? "selected" : ""}`;
 
@@ -200,6 +203,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
             {task.important && <span className="task-flag-mark important" role="img" aria-label={t("tasks.composer.important")} title={t("tasks.composer.important")}><Icon name="star" /></span>}
             {task.urgent && <span className="task-flag-mark urgent" role="img" aria-label={t("tasks.composer.urgent")} title={t("tasks.composer.urgent")}><Icon name="bolt" /></span>}
             {dueChip}
+            {estimateChip}
             {projectChip}
             {avatar && <span className="task-meta-end">{avatar}</span>}
           </div>
@@ -221,6 +225,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
           {showStatusChip && <TaskStatusBadge status={status} label={statusLabel(status, t)} />}
           {projectChip}
           {dueChip}
+          {estimateChip}
           {avatar}
         </div>
         {menuElement}
@@ -246,6 +251,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
           <span className={`task-priority priority-${task.priority ?? 4}`}><Icon name="flag" /> P{task.priority ?? 4}</span>
           {task.projectId && project?.name ? <span className="task-project-meta" title={project.name}><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /><span className="task-project-name">{project.name}</span></span> : null}
           {task.dueDate && <span className="task-due-date"><Icon name="calendar-check" /> {formatDueDate(task.dueDate, lang)}{task.dueTime ? ` · ${task.dueTime}` : ""}</span>}
+          {task.estimatedMinutes ? <span className="task-due-date"><Icon name="clock" /> {formatEstimate(task.estimatedMinutes)}</span> : null}
           {!(hideNextStatus && !task.completed && task.status === "next") && <TaskStatusBadge status={task.completed ? "done" : task.status ?? "inbox"} label={statusLabel(task.completed ? "done" : task.status, t)} />}
           {task.assigneeName && <span className="task-assignee-meta"><Icon name="user" /> {task.assigneeName}</span>}
         </div>

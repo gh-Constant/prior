@@ -243,6 +243,12 @@ pub fn run() {
             sql: include_str!("../migrations/009_schedule_times.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 10,
+            description: "task time estimates",
+            sql: include_str!("../migrations/010_task_estimates.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();

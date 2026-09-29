@@ -27,7 +27,7 @@ type MCPProject struct {
 // with them, read from the materialized tasks table (not the changelog).
 func (s *Store) CurrentTasks(ctx context.Context, userID uuid.UUID) ([]tasks.Task, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date::text, scheduled_time, assignee_name, follow_up_date::text, follow_up_time, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		SELECT id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date::text, scheduled_time, assignee_name, follow_up_date::text, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision
 		FROM tasks t WHERE t.deleted_at IS NULL AND (t.user_id = $1 OR EXISTS (
 			SELECT 1 FROM project_members pm
 			WHERE pm.project_id = t.project_id AND pm.user_id = $1 AND pm.status = 'active'
@@ -40,7 +40,7 @@ func (s *Store) CurrentTasks(ctx context.Context, userID uuid.UUID) ([]tasks.Tas
 	for rows.Next() {
 		var task tasks.Task
 		var peopleJSON []byte
-		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.DueTime, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.ScheduledTime, &task.AssigneeName, &task.FollowUpDate, &task.FollowUpTime, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
+		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.DueTime, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.ScheduledTime, &task.AssigneeName, &task.FollowUpDate, &task.FollowUpTime, &task.EstimatedMinutes, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
 			return nil, err
 		}
 		if len(peopleJSON) > 0 && string(peopleJSON) != "null" {
