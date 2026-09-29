@@ -5,7 +5,7 @@
         <item name="colorPrimaryVariant">#DF4D33</item>
         <item name="colorSecondary">#FA654A</item>
         <item name="android:colorAccent">#FA654A</item>
-        <!-- Night: match the dark canvas (--canvas) so launch does not flash light. -->
+        <!-- Night: match the dark canvas token of index.css so launch does not flash light. -->
         <item name="android:windowBackground">#191715</item>
         <item name="android:statusBarColor">#191715</item>
         <item name="android:navigationBarColor">#20201F</item>
