@@ -181,6 +181,25 @@ paths:
       responses:
         '204':
           description: revoked
+  /v1/mcp/tokens:
+    post:
+      summary: Mint a Claude Code / MCP access key (session auth; key only works on /mcp)
+      description: Optional body {"name"}. Returns token (shown once), name and expiresAt. The key is a session with platform "mcp".
+      responses:
+        '201':
+          description: token
+        '401':
+          description: unauthenticated
+  /mcp:
+    post:
+      summary: Remote MCP server (Streamable HTTP, stateless JSON-RPC). See specs/MCP.md.
+      responses:
+        '200':
+          description: JSON-RPC response
+        '202':
+          description: notification accepted
+        '401':
+          description: unauthenticated
   /v1/agent/complete:
     post:
       summary: Server-side completion proxy (Prior AI or the user's stored OpenRouter key)

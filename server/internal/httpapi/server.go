@@ -46,6 +46,7 @@ type Server struct {
 	transcribeLimiter      *rateLimiter
 	agentLimiter           *rateLimiter
 	settingsLimiter        *rateLimiter
+	mcpLimiter             *rateLimiter
 	openAIClient           *http.Client
 	openAITranscriptionURL string
 	stripe                 *billing.Stripe
@@ -77,6 +78,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 		transcribeLimiter:      perMinute(cfg.RateLimitTranscribe, 10),
 		agentLimiter:           perMinute(cfg.RateLimitAgent, 60),
 		settingsLimiter:        perMinute(cfg.RateLimitSettings, 60),
+		mcpLimiter:             perMinute(0, 120),
 		openAIClient:           &http.Client{Timeout: 2 * time.Minute},
 		openAITranscriptionURL: "https://api.openai.com/v1/audio/transcriptions",
 		completionClient:       &http.Client{Timeout: 60 * time.Second},
@@ -120,7 +122,7 @@ func (s *Server) CleanupLoop(ctx context.Context) {
 }
 
 func (s *Server) sweepLimiters() {
-	for _, limiter := range []*rateLimiter{s.limiter, s.pushLimiter, s.pullLimiter, s.workspaceLimiter, s.transcribeLimiter, s.agentLimiter, s.settingsLimiter} {
+	for _, limiter := range []*rateLimiter{s.limiter, s.pushLimiter, s.pullLimiter, s.workspaceLimiter, s.transcribeLimiter, s.agentLimiter, s.settingsLimiter, s.mcpLimiter} {
 		if limiter != nil {
 			limiter.sweep()
 		}
@@ -190,6 +192,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/collaboration/projects/{projectID}/invites/{inviteID}", s.revokeProjectInvite)
 	mux.HandleFunc("POST /v1/collaboration/invites/accept", s.acceptProjectInvite)
 	mux.HandleFunc("GET /v1/realtime", s.realtime)
+	mux.HandleFunc("POST /v1/mcp/tokens", s.createMCPToken)
+	mux.Handle("/mcp", http.HandlerFunc(s.mcp))
 	return s.middleware(mux)
 }
 
@@ -1313,6 +1317,10 @@ func (s *Server) limiterForPath(path string) *rateLimiter {
 		return s.settingsLimiter
 	case path == "/v1/agent/complete":
 		return s.agentLimiter
+	case path == "/mcp":
+		return s.mcpLimiter
+	case path == "/v1/mcp/tokens":
+		return s.settingsLimiter
 	case path == "/v1/mail/accounts" || path == "/v1/mail/token" || path == "/v1/calendar/accounts" || path == "/v1/calendar/token":
 		return s.settingsLimiter
 	default:

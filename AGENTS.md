@@ -22,6 +22,8 @@ The in-app AI assistant defaults to Prior AI, a hosted OpenAI-compatible provide
 
 Paid plans (Free, Pro, Team, Enterprise) are defined in `server/internal/billing/plans.go` and sold through Stripe. The API creates its own Stripe products, prices, portal configuration and webhook from `STRIPE_SECRET_KEY`; keys live only in Coolify env vars. Plans feed `hostedAIEntitlement` (Prior AI access and monthly assistant tokens) and the share limits. The admin dashboard is restricted server-side to verified emails in `ADMIN_EMAILS`. See `specs/BILLING.md`.
 
+The API also serves a remote MCP server at `/mcp` so Claude Code can read and edit tasks and habits (`claude mcp add --transport http prior https://api.prior.constantsuchet.fr/mcp --header "Authorization: Bearer <key>"`). Keys come from Settings → Integrations and only work on `/mcp`. Keep MCP writes going through `Store.Push`; see `specs/MCP.md`.
+
 ## Working rules
 
 - Treat the repository as the source of truth.

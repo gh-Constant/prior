@@ -65,6 +65,7 @@
 .settings-switch[aria-checked="true"]::after { translate: 16px 0; }
 .settings-switch:active { scale: 1; }
 
+.settings-command { margin: 0 0 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); white-space: pre-wrap; word-break: break-all; user-select: all; }
 .settings-mono { color: var(--ink-2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-2xs); }
 .settings-saved { color: var(--green); font-size: var(--fs-sm); font-weight: 550; }
 .settings-error { margin: 0; color: var(--red); font-size: var(--fs-sm); line-height: 1.5; }
