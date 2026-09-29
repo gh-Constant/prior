@@ -165,8 +165,16 @@ async fn widget_refresh_snapshot(snapshot_json: String) -> Result<(), String> {
 
 #[cfg(target_os = "android")]
 #[tauri::command]
-async fn widget_set_snapshot<R: Runtime>(app: AppHandle<R>, snapshot_json: String) -> Result<(), String> {
-    run_android_plugin(app, "setWidgetSnapshot", serde_json::json!({ "snapshotJson": snapshot_json })).await
+async fn widget_set_snapshot<R: Runtime>(
+    app: AppHandle<R>,
+    snapshot_json: String,
+) -> Result<(), String> {
+    run_android_plugin(
+        app,
+        "setWidgetSnapshot",
+        serde_json::json!({ "snapshotJson": snapshot_json }),
+    )
+    .await
 }
 
 #[cfg(target_os = "android")]
