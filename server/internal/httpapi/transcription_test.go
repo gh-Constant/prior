@@ -18,7 +18,7 @@ func TestTranscriptionMultipart(t *testing.T) {
 	payload, err := transcriptionMultipart(testMultipartFile{bytes.NewReader([]byte("audio bytes"))}, &multipart.FileHeader{
 		Filename: `nested\recording.webm`,
 		Size:     int64(len("audio bytes")),
-	})
+	}, "gpt-4o-mini-transcribe")
 	if err != nil {
 		t.Fatalf("build multipart request: %v", err)
 	}

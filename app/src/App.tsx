@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { api } from "./lib/api";
+import { api, PlanLimitError } from "./lib/api";
 import { AUTH_REQUIRED_EVENT, clearSession, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
 import { useI18n } from "./lib/i18n";
 import { localStore } from "./lib/localStore";
@@ -8,7 +8,7 @@ import { QUADRANTS, quadrantFor } from "./lib/priority";
 import { connectRealtime } from "./lib/realtime";
 import { isDesktop, isMac, isTauri } from "./lib/platform";
 import { checkForUpdate, installAvailableUpdate, type UpdateInfo } from "./lib/updater";
-import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, Task, TaskDraft } from "./types";
+import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, ProposedTaskUpdate, Task, TaskDraft } from "./types";
 import { Icon } from "./components/Icon";
 import { EisenhowerMatrix } from "./components/EisenhowerMatrix";
 import { TaskComposer, type TaskComposerContext } from "./components/TaskComposer";
@@ -26,6 +26,9 @@ import { HabitView } from "./components/HabitView";
 import { CompletionBurst } from "./components/CompletionBurst";
 import { filterTasksWithExitingCompletions, useCompletionExits } from "./lib/completionExit";
 import { AppSidebar, type WorkspaceView } from "./components/AppSidebar";
+import { AdminView } from "./components/billing/AdminView";
+import { PricingView } from "./components/billing/PricingView";
+import { useBilling } from "./hooks/useBilling";
 import { MobileTopBar } from "./components/MobileTopBar";
 import { MobileTabBar } from "./components/MobileTabBar";
 import { MobileMoreScreen } from "./components/MobileMoreScreen";
@@ -75,6 +78,8 @@ function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
   if (view === "habits") return t("common.views.habits");
   if (view === "notes") return t("common.views.notes");
   if (view === "settings") return t("common.views.settings");
+  if (view === "plans") return t("common.views.plans");
+  if (view === "admin") return t("common.views.admin");
   return t("common.views.allTasks");
 }
 
@@ -93,7 +98,7 @@ type WorkspaceHeaderProps = {
 
 function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask, subtitle, extraActions }: WorkspaceHeaderProps) {
   const { t } = useI18n();
-  if (["today", "inbox", "projects", "project", "waiting", "notes", "settings"].includes(activeView)) return null;
+  if (["today", "inbox", "projects", "project", "waiting", "notes", "settings", "plans", "admin"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
@@ -144,10 +149,13 @@ type WorkspaceContentProps = {
   readonly onQuickAddTask: (draft: TaskDraft) => Promise<void>;
   readonly onOpenAgent: () => void;
   readonly onViewChange: (view: WorkspaceView) => void;
+  readonly billing: ReturnType<typeof useBilling>;
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing }: WorkspaceContentProps) {
+  if (activeView === "plans") return <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={billing.checkoutReturn} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
+  if (activeView === "admin") return billing.billing?.isAdmin ? <AdminView /> : <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={null} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "settings") return <SettingsPage user={user} onUserUpdated={onUserUpdated} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
@@ -188,7 +196,9 @@ export function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
-  const [activeView, setActiveView] = useState<WorkspaceView>("today");
+  const billing = useBilling(user !== null);
+  // Coming back from Stripe Checkout lands on the plans page.
+  const [activeView, setActiveView] = useState<WorkspaceView>(() => (billing.checkoutReturn ? "plans" : "today"));
   const [calendarConnection, setCalendarConnection] = useState<{ email: string | null; error: string | null } | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [notesProjectId, setNotesProjectId] = useState<string | null>(null);
@@ -1041,6 +1051,23 @@ export function App() {
     void syncNow();
   }
 
+  /* Applies update_task proposals the user confirmed in the assistant. Only
+     tasks that still exist and are editable are changed. */
+  async function applyAgentTaskUpdates(batch: ProposedTaskUpdate[]) {
+    const current = new Map((await localStore.listTasks()).map((task) => [task.id, task]));
+    for (const item of batch) {
+      const task = current.get(item.taskId);
+      if (!task || task.deletedAt) continue;
+      if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+      const { changes } = item;
+      const completed = changes.completed ?? (changes.status ? changes.status === "done" : task.completed);
+      const status = changes.status ?? (changes.completed === true ? "done" : changes.completed === false && task.status === "done" ? "next" : task.status);
+      await localStore.updateTask({ ...task, ...changes, completed, status });
+    }
+    await refresh();
+    void syncNow();
+  }
+
   async function addAgentHabits(batch: HabitDraft[]) {
     for (const item of batch) {
       await localStore.saveHabit(item);
@@ -1235,6 +1262,13 @@ export function App() {
                   setToast(t("common.toasts.memberAdded", { email }));
                 }
               } catch (error) {
+                if (error instanceof PlanLimitError) {
+                  const limits = billing.billing?.entitlements;
+                  setToast(error.limit === "projects"
+                    ? t("billing.limits.projects", { count: limits?.maxSharedProjects ?? 3 })
+                    : t("billing.limits.members", { count: limits?.maxMembersPerProject ?? 2 }));
+                  return;
+                }
                 setToast(error instanceof Error ? error.message : t("common.errors.shareFailed"));
               }
             })();
@@ -1473,6 +1507,7 @@ export function App() {
         onInstallUpdate={() => void installDesktopUpdate()}
         inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
         onViewChange={changeView}
+        showAdmin={billing.billing?.isAdmin === true}
         onAccount={() => setAuthOpen(true)}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onToggleAgent={() => setAgentOpen((value) => !value)}
@@ -1534,6 +1569,7 @@ export function App() {
             onQuickAddTask={saveTask}
             onOpenAgent={() => setAgentOpen(true)}
             onViewChange={changeView}
+            billing={billing}
           />
         </CompletionExitProvider>
         {visibleTasks.length === 0 && activeView === "all" && <button className="empty-add" type="button" onClick={() => openNewTask()}><Icon name="plus" /> {t("common.header.newTask")}</button>}
@@ -1548,6 +1584,7 @@ export function App() {
         badges={{ waiting: waitingCount > 0 ? String(waitingCount) : undefined, habits: habitProgress.total > 0 ? `${habitProgress.done}/${habitProgress.total}` : undefined }}
         agentOpen={agentOpen}
         onNavigate={changeView}
+        showAdmin={billing.billing?.isAdmin === true}
         onAgent={() => setAgentOpen(true)}
         onAccount={() => setAuthOpen(true)}
         onClose={() => setMobileMoreOpen(false)}
@@ -1577,6 +1614,7 @@ export function App() {
         onAddFolders={addAgentFolders}
         onAddAreas={addAgentAreas}
         onAddProjects={addAgentProjects}
+        onApplyTaskUpdates={applyAgentTaskUpdates}
         onOpenSettings={() => { setAgentOpen(false); changeView("settings"); }}
       />
 

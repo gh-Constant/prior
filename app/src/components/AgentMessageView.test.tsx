@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import type { AgentMessage, ProposedArea, ProposedFolder, ProposedHabit, ProposedNote, ProposedProject, ProposedTask } from "../types";
+import type { AgentMessage, ProposedArea, ProposedFolder, ProposedHabit, ProposedNote, ProposedProject, ProposedTask, ProposedTaskUpdate } from "../types";
 import {
   AssistantMessage,
   areaDraftOf,
@@ -12,6 +12,7 @@ import {
   markNotesAdded,
   markProjectsAdded,
   markTasksAdded,
+  markTaskUpdatesApplied,
   noteDraftOf,
   projectDraftOf,
   taskDraftOf,
@@ -238,6 +239,9 @@ describe("AssistantMessage", () => {
     onUpdateFolder: vi.fn(),
     onAddSingleFolder: vi.fn(),
     onAddAllFolders: vi.fn(),
+    onUpdateTaskUpdate: vi.fn(),
+    onApplyTaskUpdate: vi.fn(),
+    onApplyAllTaskUpdates: vi.fn(),
   };
 
   it("renders user messages without proposals", () => {
@@ -308,5 +312,23 @@ describe("AssistantMessage", () => {
   it("shows the resolved model when present", () => {
     render(<AssistantMessage message={makeMessage({ actualModel: "x-ai/grok-4" })} handlers={handlers} />);
     expect(screen.getByText("x-ai/grok-4")).toBeDefined();
+  });
+
+  it("renders proposed edits to existing tasks and applies them on confirm", () => {
+    const update: ProposedTaskUpdate = { id: "upd-1", taskId: "task-9", taskTitle: "Send invoice", changes: { priority: 1, status: "done", completed: true }, reasoning: "Paid already", selected: true, added: false };
+    render(<AssistantMessage message={makeMessage({ proposedTaskUpdates: [update] })} handlers={handlers} />);
+    expect(screen.getByText("Send invoice")).toBeDefined();
+    expect(screen.getByText("P1")).toBeDefined();
+    expect(screen.getByText("Paid already")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Apply this change" }));
+    expect(handlers.onApplyTaskUpdate).toHaveBeenCalledWith("msg-1", expect.objectContaining({ taskId: "task-9" }));
+    fireEvent.click(screen.getByText("Apply changes"));
+    expect(handlers.onApplyAllTaskUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks applied task edits", () => {
+    const update: ProposedTaskUpdate = { id: "upd-1", taskId: "task-9", taskTitle: "Send invoice", changes: { priority: 1 }, reasoning: "", selected: true, added: false };
+    const [message] = markTaskUpdatesApplied([makeMessage({ proposedTaskUpdates: [update] })], "msg-1", new Set(["upd-1"]));
+    expect(message.proposedTaskUpdates?.[0].added).toBe(true);
   });
 });

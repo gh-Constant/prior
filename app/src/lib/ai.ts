@@ -1,5 +1,6 @@
 import type {
   AgentMessage,
+  AgentProvider,
   AgentSettings,
   Area,
   Habit,
@@ -12,10 +13,12 @@ import type {
   ProposedNote,
   ProposedProject,
   ProposedTask,
+  ProposedTaskUpdate,
   ReasoningEffort,
   Task,
   TaskPriority,
   TaskStatus,
+  TaskUpdateFields,
 } from "../types";
 import { runCodex, runCodexStream } from "./codex";
 import { api, isAuthError } from "./api";
@@ -82,7 +85,7 @@ export function getAgentSettings(): AgentSettings {
           model: parsed.model || DEFAULT_MODEL,
           codexModel: parsed.codexModel || "",
           webSearch: parsed.webSearch === true,
-          provider: parsed.provider === "codex" ? "codex" : "openrouter",
+          provider: normalizeProvider(parsed.provider, parsed.apiKey),
           reasoningEffort: normalizeReasoningEffort(parsed.reasoningEffort),
         };
       }
@@ -90,7 +93,18 @@ export function getAgentSettings(): AgentSettings {
   } catch {
     // fallback below
   }
-  return { apiKey: "", recommendationApiKey: "", recommendationModel: DEFAULT_MODEL, transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: false, provider: "openrouter", reasoningEffort: "auto" };
+  return { apiKey: "", recommendationApiKey: "", recommendationModel: DEFAULT_MODEL, transcriptionApiKey: "", model: DEFAULT_MODEL, codexModel: "", webSearch: false, provider: "hosted", reasoningEffort: "auto" };
+}
+
+/**
+ * Prior AI ("hosted") is the default. Settings saved before it existed have
+ * no provider, or "openrouter" as the old implicit default: keep OpenRouter
+ * only for people who actually entered their own key.
+ */
+export function normalizeProvider(value: unknown, apiKey?: unknown): AgentProvider {
+  if (value === "codex" || value === "hosted") return value;
+  if (value === "openrouter" && typeof apiKey === "string" && apiKey.trim()) return "openrouter";
+  return "hosted";
 }
 
 export function saveAgentSettings(settings: AgentSettings, localChange = true): void {
@@ -101,7 +115,7 @@ export function saveAgentSettings(settings: AgentSettings, localChange = true): 
       const changedKeys = settings.apiKey !== previous.apiKey || settings.recommendationApiKey !== previous.recommendationApiKey || settings.transcriptionApiKey !== previous.transcriptionApiKey || settings.webSearch !== previous.webSearch;
       const pendingId = localChange && changedKeys ? generateUuid() : stored.pendingId;
       writeScopedStorage(SETTINGS_KEY, JSON.stringify({ ...settings, pendingId }));
-      if (localChange) setAccountPreference("agent", { model: settings.model, recommendationModel: settings.recommendationModel || DEFAULT_MODEL, codexModel: settings.codexModel ?? "", provider: settings.provider ?? "openrouter", reasoningEffort: settings.reasoningEffort ?? "auto" });
+      if (localChange) setAccountPreference("agent", { model: settings.model, recommendationModel: settings.recommendationModel || DEFAULT_MODEL, codexModel: settings.codexModel ?? "", provider: settings.provider ?? "hosted", reasoningEffort: settings.reasoningEffort ?? "auto" });
     }
   } catch {
     console.warn("Prior assistant settings could not be saved.");
@@ -169,7 +183,7 @@ function describeTaskForPrompt(task: Task, areas: Area[] = [], projects: Project
   const assignee = task.assigneeName ? `, assigned to: ${task.assigneeName}` : "";
   const followUp = task.followUpDate ? `, follow-up: ${task.followUpDate}` : "";
   const details = task.description ? `, details: ${task.description.slice(0, 120)}` : "";
-  return `- "${task.title}" (P${task.priority ?? 4}, ${importance}, ${urgency}${status}${projectLabel}${areaLabel}${due}${scheduled}${assignee}${followUp}${details})`;
+  return `- [id: ${task.id}] "${task.title}" (P${task.priority ?? 4}, ${importance}, ${urgency}${status}${projectLabel}${areaLabel}${due}${scheduled}${assignee}${followUp}${details})`;
 }
 
 const PROMPT_WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -310,6 +324,7 @@ PRIOR CAPABILITIES (use these exact names when the user asks what tools you have
 - create_area: prepare one or more high-level Areas (e.g. Work, Personal, Health, Finance) with optional icon (e.g. "briefcase", "heart", "home", "dollar-sign", "user") and color. The app shows them as an approval card; they are saved when the user clicks Add.
 - create_project: prepare one or more outcome-oriented Projects optionally tied to an Area, with optional status ("planned", "active", "paused", "completed"), optional targetDate (YYYY-MM-DD), and optional icon (e.g. "folder", "rocket", "target", "star", "check-circle"). The app shows them as an approval card; they are saved when the user clicks Add.
 - create_task: prepare one or more one-off tasks with optional area, project, status, scheduled date, assignee, and follow-up date. The app shows them as an approval card; they are saved when the user clicks Add.
+- update_task: prepare changes to one or more EXISTING tasks from the active task list (rename, reword the description, reschedule, change priority, importance or urgency, change status, delegate, or mark done). Reference each task by its exact [id: ...] from the list below and include only the fields that change. The app shows the changes as a review card; they are applied when the user clicks Apply.
 - create_habit: prepare one or more recurring habits following Prior's 3 frequency modes:
   1) Daily: repeats every day (interval: 1, unit: "day", daysOfWeek: []).
   2) Specific days / Weekdays: repeats weekly on chosen days of the week (interval: 1, unit: "week", daysOfWeek: [0..6 where 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday]). Use presets [1, 2, 3, 4, 5] for workdays/weekdays, [6, 0] for weekend, or specific days like [1, 3, 5] for Mon/Wed/Fri.
@@ -356,6 +371,7 @@ CAPABILITY BOUNDARIES:
 - A task is one-off. A habit is recurring: words such as habit, every day, daily, chaque jour, chaque semaine, tous les lundis, routine, or régulièrement indicate create_habit.
 - A note is a Markdown document for ideas, meeting minutes, research, or reference. Words such as note, dossier, folder, carnet, "prends des notes", "write it down", or "mettre au propre" indicate create_note. A folder groups notes.
 - Do not call a one-off task a habit, and do not turn a requested habit into a task. Do not turn a requested note into a task: if the user asks for a note, return a notes card.
+- You CAN change existing tasks through update_task. When the user asks to modify, move, reschedule, rename, reprioritize, delegate, complete, or "mets à jour / décale / renomme / termine" an existing task, return taskUpdates for that task instead of creating a new one. Use only IDs that appear in the active task list; if the task is ambiguous, ask which one. You cannot delete tasks.
 - You cannot edit or delete existing notes directly. You only propose new notes and folders; the user reviews and saves them. Never claim an item was saved before the user confirms the card.
 - Tasks support an optional description, due date, priority 1–4, importance, urgency, areaName, projectName, status, scheduledDate, assigneeName, and followUpDate. When a user gives a date such as "tomorrow", resolve it to YYYY-MM-DD using the current date and put it in dueDate.
 - Priority is a separate Todoist-style scale: P1 is highest and P4 is lowest. Do not confuse priority with importance; use important and urgent for the Eisenhower matrix.
@@ -376,7 +392,7 @@ TASK AND HABIT EXTRACTION:
 - Extract atomic, concrete, actionable items from brain dumps and project descriptions.
 - Titles start with an imperative verb when natural, stay concise, and contain no fake metadata. Keep the user's language.
 - For habits, use a clear repeat interval. Infer interval 1 day only when the user says daily/every day or simply asks for a habit without specifying a schedule; otherwise ask a short question if the schedule is essential.
-- When the user asks to review or prioritize existing tasks, explain the order in "reply" and do not duplicate those tasks in the output arrays. Only output cards for genuinely new items.
+- When the user asks to review or prioritize existing tasks, explain the order in "reply" and do not duplicate those tasks as new tasks. If they want the new priorities, dates, or statuses saved, return them as taskUpdates. Only output creation cards for genuinely new items.
 - Never create duplicate items from the same sentence. Do not create tasks for the assistant's own explanation.
 
 NOTES EXTRACTION AND MARKDOWN AUTHORING:
@@ -467,6 +483,13 @@ OUTPUT CONTRACT:
       "reasoning": "Short reason for this classification"
     }
   ],
+  "taskUpdates": [
+    {
+      "taskId": "exact id of an existing task from the list",
+      "changes": { "dueDate": "2026-10-02", "priority": 2, "status": "next" },
+      "reasoning": "Why this change helps"
+    }
+  ],
   "habits": [
     {
       "title": "Recurring habit (e.g. Morning stretch, Gym on weekdays, Monthly review)",
@@ -503,7 +526,7 @@ OUTPUT CONTRACT:
 
 type RawAction = Record<string, unknown>;
 
-export type AgentToolName = "create_area" | "create_project" | "create_task" | "create_habit" | "create_note" | "create_folder";
+export type AgentToolName = "create_area" | "create_project" | "create_task" | "update_task" | "create_habit" | "create_note" | "create_folder";
 
 function actionNameOf(candidate: RawAction, functionCall: RawAction | undefined): unknown {
   return candidate.tool ?? candidate.type ?? candidate.name ?? functionCall?.name;
@@ -735,6 +758,9 @@ type ParsedAgentPayload = {
   areas?: Array<Record<string, unknown>>;
   projects?: Array<Record<string, unknown>>;
   tasks?: Array<Record<string, unknown>>;
+  taskUpdates?: Array<Record<string, unknown>>;
+  task_updates?: Array<Record<string, unknown>>;
+  update_task?: RawAction | RawAction[];
   habits?: Array<Record<string, unknown>>;
   notes?: Array<Record<string, unknown>>;
   folders?: Array<Record<string, unknown>>;
@@ -753,6 +779,8 @@ function collectItems(parsed: ParsedAgentPayload, tool: AgentToolName): RawActio
   if (tool === "create_area" && parsed.areas?.length) return parsed.areas;
   if (tool === "create_project" && parsed.projects?.length) return parsed.projects;
   if (tool === "create_task" && parsed.tasks?.length) return parsed.tasks;
+  if (tool === "update_task" && (parsed.taskUpdates?.length || parsed.task_updates?.length)) return parsed.taskUpdates ?? parsed.task_updates ?? [];
+  if (tool === "update_task") return [parsed.actions, parsed.tool_calls, parsed.toolCalls, parsed.update_task].flatMap((source) => (source === undefined ? [] : actionItems(source, tool)));
   if (tool === "create_habit" && parsed.habits?.length) return parsed.habits;
   if (tool === "create_note" && parsed.notes?.length) return parsed.notes;
   if (tool === "create_folder" && parsed.folders?.length) return parsed.folders;
@@ -905,6 +933,55 @@ function buildProposedHabit(item: Record<string, unknown>): ProposedHabit {
   };
 }
 
+const TASK_UPDATE_TEXT_LIMITS = { title: 300, description: 4000, assigneeName: 120 } as const;
+
+/**
+ * Validates one update_task item against the user's real tasks. Unknown IDs,
+ * deleted tasks, and fields that would not change anything are dropped, so a
+ * model can never touch a task that is not in the list it was shown.
+ */
+export function buildProposedTaskUpdate(item: Record<string, unknown>, tasksById: ReadonlyMap<string, Task>): ProposedTaskUpdate | null {
+  const taskId = typeof item.taskId === "string" ? item.taskId.trim() : typeof item.id === "string" ? item.id.trim() : "";
+  const task = tasksById.get(taskId);
+  if (!task || task.deletedAt) return null;
+  const raw = item.changes && typeof item.changes === "object" ? item.changes as Record<string, unknown> : item;
+  const changes: TaskUpdateFields = {};
+  for (const field of ["title", "description", "assigneeName"] as const) {
+    if (typeof raw[field] !== "string") continue;
+    const value = (raw[field] as string).trim().slice(0, TASK_UPDATE_TEXT_LIMITS[field]);
+    if (field === "title" && !value) continue;
+    if (value !== (task[field] ?? "")) changes[field] = value;
+  }
+  for (const field of ["dueDate", "scheduledDate", "followUpDate"] as const) {
+    if (!(field in raw)) continue;
+    const value = raw[field] === null || raw[field] === "" ? null : taskDueDate(raw[field]);
+    if (value === null && raw[field] !== null && raw[field] !== "") continue;
+    if (value !== (task[field] ?? null)) changes[field] = value;
+  }
+  if ("priority" in raw) {
+    const priority = taskPriority(raw.priority);
+    if (priority !== (task.priority ?? 4)) changes.priority = priority;
+  }
+  for (const field of ["important", "urgent"] as const) {
+    if (typeof raw[field] !== "boolean") continue;
+    if (raw[field] !== task[field]) changes[field] = raw[field] as boolean;
+  }
+  const status = sanitizeTaskStatus(raw.status);
+  if (status && status !== task.status) changes.status = status;
+  const completed = typeof raw.completed === "boolean" ? raw.completed : status ? status === "done" : undefined;
+  if (completed !== undefined && completed !== task.completed) changes.completed = completed;
+  if (Object.keys(changes).length === 0) return null;
+  return {
+    id: crypto.randomUUID(),
+    taskId,
+    taskTitle: task.title,
+    changes,
+    reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
+    selected: true,
+    added: false,
+  };
+}
+
 function buildProposedNote(item: Record<string, unknown>): ProposedNote {
   const title = sanitizeNoteTitle(item.title);
   const folderName = sanitizeFolderName(item.folderName ?? item.folder ?? item.folder_name);
@@ -940,6 +1017,7 @@ export type AgentResult = {
   areas: ProposedArea[];
   projects: ProposedProject[];
   tasks: ProposedTask[];
+  taskUpdates: ProposedTaskUpdate[];
   habits: ProposedHabit[];
   notes: ProposedNote[];
   folders: ProposedFolder[];
@@ -947,11 +1025,12 @@ export type AgentResult = {
   codexThreadId?: string;
 };
 
-export function parseAiResponse(raw: string): {
+export function parseAiResponse(raw: string, existingTasks: readonly Task[] = []): {
   reply: string;
   areas: ProposedArea[];
   projects: ProposedProject[];
   tasks: ProposedTask[];
+  taskUpdates: ProposedTaskUpdate[];
   habits: ProposedHabit[];
   notes: ProposedNote[];
   folders: ProposedFolder[];
@@ -965,10 +1044,18 @@ export function parseAiResponse(raw: string): {
     const areas = collectItems(parsed, "create_area").filter(hasNameOrTitle).map(buildProposedArea);
     const projects = collectItems(parsed, "create_project").filter(hasNameOrTitle).map(buildProposedProject);
     const tasks = collectItems(parsed, "create_task").filter(hasTitle).map(buildProposedTask);
+    const tasksById = new Map(existingTasks.map((task) => [task.id, task]));
+    const seenUpdates = new Set<string>();
+    const taskUpdates = collectItems(parsed, "update_task").flatMap((item) => {
+      const update = buildProposedTaskUpdate(item, tasksById);
+      if (!update || seenUpdates.has(update.taskId)) return [];
+      seenUpdates.add(update.taskId);
+      return [update];
+    });
     const habits = collectItems(parsed, "create_habit").filter(hasTitle).map(buildProposedHabit);
     const notes = collectItems(parsed, "create_note").map(buildProposedNote).filter((note) => note.title.length > 0);
     const folders = collectItems(parsed, "create_folder").filter(hasFolderName).map(buildProposedFolder);
-    return { reply, areas, projects, tasks, habits, notes, folders };
+    return { reply, areas, projects, tasks, taskUpdates, habits, notes, folders };
   } catch {
     // Fallback: could not parse JSON, return raw message with empty items
     return {
@@ -976,6 +1063,7 @@ export function parseAiResponse(raw: string): {
       areas: [],
       projects: [],
       tasks: [],
+      taskUpdates: [],
       habits: [],
       notes: [],
       folders: [],
@@ -1037,8 +1125,25 @@ export type AskAgentStreamOptions = {
   signal?: AbortSignal;
 };
 
+/** Use cases the API maps to their own Prior AI model. */
+export type AgentPurpose = "agent" | "recommendations" | "mail" | "calendar";
+
+/**
+ * One Prior AI (hosted) completion through the API. Needs a session: the
+ * provider key lives only on the server.
+ */
+async function hostedComplete(system: string, prompt: string, history: Array<{ role: string; content: string }>, purpose: AgentPurpose, sessionToken: string | null): Promise<{ content: string; actualModel: string }> {
+  if (!sessionToken) throw new Error(translateStored("agent.errors.hostedSignIn"));
+  return api.agentComplete({ provider: "hosted", purpose, json: true, model: "", prompt, system, history, webSearch: false }, sessionToken);
+}
+
 /** Shared provider/settings path for reviewable feature-specific drafts. */
-export async function draftWithAgent(system: string, prompt: string, settings: AgentSettings, sessionToken: string | null, signal: AbortSignal, purpose?: "recommendations"): Promise<string> {
+export async function draftWithAgent(system: string, prompt: string, settings: AgentSettings, sessionToken: string | null, signal: AbortSignal, purpose: AgentPurpose = "agent"): Promise<string> {
+  if (settings.provider === "hosted") {
+    const response = await hostedComplete(system, prompt, [], purpose, sessionToken);
+    signal.throwIfAborted();
+    return response.content;
+  }
   if (settings.provider === "codex") {
     return (await runCodexStream({ prompt, systemPrompt: system, history: [], model: settings.codexModel || null, reasoningEffort: reasoningEffortParam(settings) }, { signal })).text;
   }
@@ -1089,7 +1194,7 @@ export async function askAgentStream(
       options,
     );
     return {
-      ...parseAiResponse(result.text),
+      ...parseAiResponse(result.text, existingTasks),
       actualModel: result.actualModel ?? translateStored("agent.provider.codexTitle"),
       codexThreadId: result.threadId,
     };
@@ -1121,6 +1226,12 @@ export async function askAgent(
   codexThreadId: string | null = null,
   sessionToken: string | null = null,
 ): Promise<AgentResult> {
+  const history8 = history.slice(-8).map((message) => ({ role: message.role, content: message.content }));
+  if (settings.provider === "hosted") {
+    const system = buildSystemPrompt(existingTasks, existingHabits, false, existingNotes, existingFolders, existingAreas, existingProjects);
+    const response = await hostedComplete(system, prompt, history8, "agent", sessionToken);
+    return { ...parseAiResponse(response.content, existingTasks), actualModel: response.actualModel };
+  }
   // Prefer the server-side proxy (POST /v1/agent/complete) when signed in: the
   // stored OpenRouter key stays off the device. Auth failures propagate so the
   // caller runs central session handling; any other proxy failure falls back
@@ -1132,14 +1243,14 @@ export async function askAgent(
           model: settings.model || DEFAULT_MODEL,
           prompt,
           system: buildSystemPrompt(existingTasks, existingHabits, false, existingNotes, existingFolders, existingAreas, existingProjects),
-          history: history.slice(-8).map((message) => ({ role: message.role, content: message.content })),
+          history: history8,
           webSearch: false,
           reasoningEffort: reasoningEffortParam(settings) ?? undefined,
         },
         sessionToken,
       );
       return {
-        ...parseAiResponse(proxied.content),
+        ...parseAiResponse(proxied.content, existingTasks),
         actualModel: proxied.actualModel || settings.model || DEFAULT_MODEL,
       };
     } catch (error) {
@@ -1159,7 +1270,7 @@ export async function askAgent(
       reasoningEffort: reasoningEffortParam(settings),
     });
     return {
-      ...parseAiResponse(result.text),
+      ...parseAiResponse(result.text, existingTasks),
       actualModel: result.actualModel ?? translateStored("agent.provider.codexTitle"),
       codexThreadId: result.threadId,
     };
@@ -1213,14 +1324,14 @@ export async function askAgent(
       const errorText = await response.text().catch(() => "");
       // If response_format caused an issue with this specific model, retry without it
       if (response.status === 400 && errorText.toLowerCase().includes("response_format")) {
-        return await sendPlainRequest(payload, headers);
+        return await sendPlainRequest(payload, headers, existingTasks);
       }
       throw new Error(translateStored("agent.errors.openrouterStatus", { status: response.status, detail: errorText || response.statusText }));
     }
 
     const data = await response.json();
     const content = contentFromMessage(data.choices?.[0]?.message?.content);
-    const parsed = parseAiResponse(content);
+    const parsed = parseAiResponse(content, existingTasks);
     return {
       ...parsed,
       actualModel: (data.model as string | undefined) || String(payload.model),
@@ -1232,13 +1343,14 @@ export async function askAgent(
       throw err;
     }
     // Try plain request without response_format
-    return sendPlainRequest(payload, headers);
+    return sendPlainRequest(payload, headers, existingTasks);
   }
 }
 
 async function sendPlainRequest(
   payload: Record<string, unknown>,
   headers: Record<string, string>,
+  existingTasks: readonly Task[] = [],
 ): Promise<AgentResult> {
   const response = await requestOpenRouter({
     method: "POST",
@@ -1249,14 +1361,14 @@ async function sendPlainRequest(
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
     if (response.status === 400 && "tools" in payload) {
-      return sendPlainRequest(withoutTools(payload), headers);
+      return sendPlainRequest(withoutTools(payload), headers, existingTasks);
     }
     throw new Error(`OpenRouter error (${response.status}): ${errorText || response.statusText}`);
   }
 
   const data = await response.json();
   const content = contentFromMessage(data.choices?.[0]?.message?.content);
-  const parsed = parseAiResponse(content);
+  const parsed = parseAiResponse(content, existingTasks);
   return {
     ...parsed,
     actualModel: (data.model as string | undefined) || String(payload.model),

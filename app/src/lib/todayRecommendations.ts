@@ -2,6 +2,7 @@ import type { Task, AgentSettings } from "../types";
 import type { CalendarEvent } from "./calendar";
 import { draftWithAgent, DEFAULT_MODEL } from "./ai";
 import { getToken } from "./auth";
+import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import { firstFreeSlot, formatClock, localDateKey, minutesOfDay, parseClock, remainingFreeMinutes, type BusySpan } from "./todayPlan";
 
 export type TodayRecommendation = {
@@ -66,10 +67,81 @@ export async function generateTodayRecommendations(tasks: readonly Task[], event
   const sessionToken = await getToken().catch(() => null);
   signal.throwIfAborted();
   const key = (settings.recommendationApiKey || settings.apiKey).trim();
-  if (!key && !sessionToken) throw new Error("OpenRouter key required");
-  const response = await draftWithAgent(SYSTEM, todayRecommendationInput(tasks, events, now, lang), {
-    ...settings, provider: "openrouter", apiKey: key, model: settings.recommendationModel || DEFAULT_MODEL,
-  }, sessionToken, signal, "recommendations");
+  // Prior AI serves recommendations unless the user brought their own key.
+  const hosted = settings.provider === "hosted" || !key;
+  if (hosted && !sessionToken) throw new Error("Sign in to use Prior AI");
+  const response = await draftWithAgent(SYSTEM, todayRecommendationInput(tasks, events, now, lang), hosted
+    ? { ...settings, provider: "hosted" }
+    : { ...settings, provider: "openrouter", apiKey: key, model: settings.recommendationModel || DEFAULT_MODEL },
+  sessionToken, signal, "recommendations");
   signal.throwIfAborted();
   return parseTodayRecommendation(response, tasks, { now, events });
+}
+
+/* ── Caching ──
+   Recommendations cost a model call, so they are only regenerated when the
+   plan actually changes: the day, the language, the model, the active tasks'
+   planning fields, or today's calendar. The passing of time alone never
+   triggers a call; stale start times are dropped when read instead. */
+
+const CACHE_KEY = "prior.today.recommendations.v1";
+/** Minimum spacing between automatic regenerations after a change. */
+export const RECOMMENDATION_MIN_INTERVAL_MS = 10 * 60_000;
+
+export type CachedRecommendation = { fingerprint: string; day: string; at: number; value: TodayRecommendation };
+
+export function recommendationFingerprint(tasks: readonly Task[], events: readonly CalendarEvent[], now: Date, lang: string, modelKey: string): string {
+  const today = localDateKey(now);
+  const active = tasks.filter((task) => !task.completed && !task.deletedAt)
+    .map((task) => [task.id, task.title, task.status ?? "", task.priority, task.important, task.urgent, task.dueDate ?? "", task.scheduledDate ?? "", task.scheduledTime ?? "", task.followUpDate ?? ""])
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    .slice(0, 40);
+  const calendar = events.filter((event) => event.date === today)
+    .map((event) => [event.title, event.startTime ?? "", event.endTime ?? ""])
+    .sort((a, b) => `${a[1]}${a[0]}`.localeCompare(`${b[1]}${b[0]}`));
+  return JSON.stringify([today, lang, modelKey, active, calendar]);
+}
+
+export function readCachedRecommendation(): CachedRecommendation | null {
+  try {
+    const raw = readScopedStorage(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedRecommendation;
+    return parsed && typeof parsed.fingerprint === "string" && parsed.value ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedRecommendation(entry: CachedRecommendation): void {
+  try {
+    writeScopedStorage(CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    // Storage unavailable: the in-memory state still shows the result.
+  }
+}
+
+/**
+ * Decides whether a model call is needed. A matching fingerprint never
+ * regenerates; a changed plan regenerates at most every few minutes unless
+ * the user asked for a refresh or the day changed.
+ */
+export function shouldRegenerate(cached: CachedRecommendation | null, fingerprint: string, now: Date, forced: boolean): boolean {
+  if (forced || !cached) return true;
+  if (cached.fingerprint === fingerprint) return false;
+  if (cached.day !== localDateKey(now)) return true;
+  return now.getTime() - cached.at >= RECOMMENDATION_MIN_INTERVAL_MS;
+}
+
+/** Drops finished or ineligible focus tasks and start times already past. */
+export function freshRecommendation(value: TodayRecommendation, tasks: readonly Task[], now: Date): TodayRecommendation {
+  const eligible = new Set(tasks.filter((task) => !task.completed && !task.deletedAt && task.status !== "waiting" && task.status !== "done").map((task) => task.id));
+  const current = minutesOfDay(now);
+  return {
+    ...value,
+    focus: value.focus.filter((item) => eligible.has(item.taskId)).map((item) => {
+      const start = parseClock(item.suggestedStart);
+      return start !== null && start < current ? { ...item, suggestedStart: null } : item;
+    }),
+  };
 }

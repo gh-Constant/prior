@@ -1,6 +1,7 @@
 import type { AppDictionary } from "../en/index";
 import { agent } from "./agent";
 import { auth } from "./auth";
+import { billing } from "./billing";
 import { collab } from "./collab";
 import { common } from "./common";
 import { habits } from "./habits";
@@ -9,4 +10,4 @@ import { notes } from "./notes";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 
-export const es: AppDictionary = { agent, auth, collab, common, habits, mail, notes, settings, tasks };
+export const es: AppDictionary = { agent, auth, billing, collab, common, habits, mail, notes, settings, tasks };

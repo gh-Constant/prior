@@ -586,6 +586,10 @@
 .agent-model-trigger-copy, .agent-reasoning-trigger-copy { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; overflow: hidden; }
 .agent-model-trigger-copy strong, .agent-reasoning-trigger-copy strong { overflow: hidden; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
 .agent-reasoning-trigger-copy small { color: var(--faint); font-size: var(--fs-2xs); font-weight: 500; }
+/* Prior AI picks its models server-side: a static label, not a picker. */
+.agent-model-hosted { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px; color: var(--muted); font-size: var(--fs-xs); }
+.agent-model-hosted > svg { width: 12px; height: 12px; flex: 0 0 auto; }
+.agent-model-hosted strong { font-weight: 550; }
 
 .agent-model-popover, .agent-reasoning-popover {
   position: absolute;

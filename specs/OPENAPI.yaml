@@ -183,11 +183,22 @@ paths:
           description: revoked
   /v1/agent/complete:
     post:
-      summary: Optional server-side OpenRouter proxy (allowlisted models only)
-      description: Accepts model, prompt, system, history, webSearch and an optional reasoningEffort (none/minimal/low/medium/high/xhigh; omitted or auto means the provider default).
+      summary: Server-side completion proxy (Prior AI or the user's stored OpenRouter key)
+      description: Accepts model, prompt, system, history, webSearch, an optional reasoningEffort (none/minimal/low/medium/high/xhigh; omitted or auto means the provider default), purpose (agent/recommendations/mail/calendar), provider ("hosted" forces Prior AI) and json (request a JSON object). Without provider, the stored OpenRouter key is used and Prior AI is the fallback. Hosted requests pick the model per purpose and count toward a daily per-user cap (429 when reached). See specs/AI.md.
       responses:
         '200':
-          description: completion
+          description: completion with content, actualModel and provider (hosted or openrouter)
+        '429':
+          description: daily Prior AI limit reached
+        '503':
+          description: Prior AI is not configured on this server
+  /v1/agent/hosted:
+    get:
+      summary: Prior AI availability for the signed-in user
+      description: Returns available, transcription, dailyLimit, usedToday and, when available, the model per purpose.
+      responses:
+        '200':
+          description: hosted AI status
 components:
   schemas:
     Unauthenticated:

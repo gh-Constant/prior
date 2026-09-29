@@ -10,6 +10,7 @@ import type {
   ProposedNote,
   ProposedProject,
   ProposedTask,
+  ProposedTaskUpdate,
   QuadrantKey,
   Task,
   TaskDraft,
@@ -127,6 +128,20 @@ export function markTasksAdded(messages: AgentMessage[], messageId: string, ids:
   return messages.map((msg) => {
     if (msg.id !== messageId || !msg.proposedTasks) return msg;
     return { ...msg, proposedTasks: msg.proposedTasks.map((task) => ids.has(task.id) ? { ...task, added: true } : task) };
+  });
+}
+
+export function updateTaskUpdateProposal(messages: AgentMessage[], messageId: string, updateId: string, update: Partial<ProposedTaskUpdate>): AgentMessage[] {
+  return messages.map((message) => {
+    if (message.id !== messageId || !message.proposedTaskUpdates) return message;
+    return { ...message, proposedTaskUpdates: message.proposedTaskUpdates.map((item) => item.id === updateId ? { ...item, ...update } : item) };
+  });
+}
+
+export function markTaskUpdatesApplied(messages: AgentMessage[], messageId: string, ids: ReadonlySet<string>): AgentMessage[] {
+  return messages.map((message) => {
+    if (message.id !== messageId || !message.proposedTaskUpdates) return message;
+    return { ...message, proposedTaskUpdates: message.proposedTaskUpdates.map((item) => ids.has(item.id) ? { ...item, added: true } : item) };
   });
 }
 
@@ -580,6 +595,112 @@ export function TaskProposalBox({ messageId, tasks, addingIds, onToggleSelect, o
   );
 }
 
+type ProposedTaskUpdateCardProps = {
+  readonly messageId: string;
+  readonly update: ProposedTaskUpdate;
+  readonly applying: boolean;
+  readonly onToggleSelect: (messageId: string, updateId: string, update: Partial<ProposedTaskUpdate>) => void;
+  readonly onApply: (messageId: string, update: ProposedTaskUpdate) => void;
+};
+
+/** Human-readable chips describing each proposed field change. */
+function taskChangeChips(t: (key: string, params?: Record<string, string | number>) => string, update: ProposedTaskUpdate) {
+  const { changes } = update;
+  const chips: Array<{ key: string; className: string; label: string }> = [];
+  if (changes.title !== undefined) chips.push({ key: "title", className: "proposed-project-badge", label: t("agent.updates.renameTo", { title: changes.title }) });
+  if (changes.status !== undefined) chips.push({ key: "status", className: `proposed-status-badge proposed-status-${changes.status}`, label: statusLabel(t, changes.status) ?? changes.status });
+  if (changes.completed !== undefined && changes.status === undefined) chips.push({ key: "completed", className: "proposed-status-badge proposed-status-done", label: changes.completed ? t("agent.updates.markDone") : t("agent.updates.reopen") });
+  if (changes.priority !== undefined) chips.push({ key: "priority", className: `proposed-priority proposed-priority-${changes.priority}`, label: `P${changes.priority}` });
+  if (changes.important !== undefined) chips.push({ key: "important", className: "proposed-area-badge", label: changes.important ? t("agent.cards.markImportant") : t("agent.cards.unmarkImportant") });
+  if (changes.urgent !== undefined) chips.push({ key: "urgent", className: "proposed-area-badge", label: changes.urgent ? t("agent.cards.markUrgent") : t("agent.cards.unmarkUrgent") });
+  if (changes.dueDate !== undefined) chips.push({ key: "due", className: "proposed-due-date", label: changes.dueDate ? t("agent.cards.due", { date: formatDueDate(changes.dueDate) }) : t("agent.updates.clearDue") });
+  if (changes.scheduledDate !== undefined) chips.push({ key: "scheduled", className: "proposed-scheduled-date", label: changes.scheduledDate ? t("agent.cards.scheduled", { date: formatDueDate(changes.scheduledDate) }) : t("agent.updates.clearScheduled") });
+  if (changes.assigneeName !== undefined) chips.push({ key: "assignee", className: "proposed-assignee-badge", label: changes.assigneeName ? t("agent.cards.waitingOn", { name: changes.assigneeName }) : t("agent.updates.clearAssignee") });
+  if (changes.followUpDate !== undefined) chips.push({ key: "followUp", className: "proposed-followup-date", label: changes.followUpDate ? t("agent.cards.followUp", { date: formatDueDate(changes.followUpDate) }) : t("agent.updates.clearFollowUp") });
+  if (changes.description !== undefined) chips.push({ key: "description", className: "proposed-area-badge", label: t("agent.updates.newDescription") });
+  return chips;
+}
+
+export function ProposedTaskUpdateCard({ messageId, update, applying, onToggleSelect, onApply }: ProposedTaskUpdateCardProps) {
+  const { t } = useI18n();
+  return (
+    <div className={`proposed-task-item proposed-task-update-item ${update.added ? "is-added" : ""}`}>
+      <div className="proposed-task-top">
+        <label className="proposed-checkbox-label">
+          <input
+            type="checkbox"
+            checked={update.selected}
+            disabled={update.added}
+            onChange={() => onToggleSelect(messageId, update.id, { selected: !update.selected })}
+          />
+          <span className="proposed-task-title">{update.taskTitle}</span>
+        </label>
+        {update.added ? (
+          <span className="task-added-badge">
+            <Icon name="check" /> {t("agent.updates.applied")}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="add-single-btn"
+            disabled={applying}
+            onClick={() => onApply(messageId, update)}
+            title={t("agent.updates.applyOne")}
+            aria-label={t("agent.updates.applyOne")}
+          >
+            <Icon name="check" />
+          </button>
+        )}
+      </div>
+      {update.changes.description && <p className="proposed-description">{update.changes.description}</p>}
+      <div className="proposed-task-meta">
+        {taskChangeChips(t, update).map((chip) => <span key={chip.key} className={chip.className}>{chip.label}</span>)}
+      </div>
+      {update.reasoning && <p className="proposed-reasoning">{update.reasoning}</p>}
+    </div>
+  );
+}
+
+type TaskUpdateProposalBoxProps = {
+  readonly messageId: string;
+  readonly updates: readonly ProposedTaskUpdate[];
+  readonly addingIds: Readonly<Record<string, boolean>>;
+  readonly onUpdate: (messageId: string, updateId: string, update: Partial<ProposedTaskUpdate>) => void;
+  readonly onApplySingle: (messageId: string, update: ProposedTaskUpdate) => void;
+  readonly onApplyAll: (messageId: string, updates: ProposedTaskUpdate[]) => void;
+};
+
+export function TaskUpdateProposalBox({ messageId, updates, addingIds, onUpdate, onApplySingle, onApplyAll }: TaskUpdateProposalBoxProps) {
+  const { t, tp } = useI18n();
+  if (updates.length === 0) return null;
+  const appliedCount = updates.filter((item) => item.added).length;
+  return (
+    <div className="proposed-tasks-box proposed-task-updates-box">
+      <div className="proposed-tasks-header">
+        <span className="proposed-count">{tp("agent.updates.count", updates.length, { applied: appliedCount, total: updates.length })}</span>
+        {updates.some((item) => !item.added) && (
+          <button type="button" className="primary-button add-all-btn" onClick={() => onApplyAll(messageId, [...updates])}>
+            <Icon name="check" />
+            <span>{t("agent.updates.applyAll")}</span>
+          </button>
+        )}
+      </div>
+      <div className="proposed-task-list">
+        {updates.map((item) => (
+          <ProposedTaskUpdateCard
+            key={item.id}
+            messageId={messageId}
+            update={item}
+            applying={addingIds[item.id] ?? false}
+            onToggleSelect={onUpdate}
+            onApply={onApplySingle}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type ProposedHabitCardProps = {
   readonly messageId: string;
   readonly habit: ProposedHabit;
@@ -691,6 +812,9 @@ export type AssistantMessageHandlers = {
   readonly onToggleTaskUrgent: (messageId: string, taskId: string) => void;
   readonly onAddSingleTask: (messageId: string, task: ProposedTask) => void;
   readonly onAddAllTasks: (messageId: string, tasks: ProposedTask[]) => void;
+  readonly onUpdateTaskUpdate?: (messageId: string, updateId: string, update: Partial<ProposedTaskUpdate>) => void;
+  readonly onApplyTaskUpdate?: (messageId: string, update: ProposedTaskUpdate) => void;
+  readonly onApplyAllTaskUpdates?: (messageId: string, updates: ProposedTaskUpdate[]) => void;
   readonly onUpdateHabit: (messageId: string, habitId: string, update: Partial<ProposedHabit>) => void;
   readonly onAddSingleHabit: (messageId: string, habit: ProposedHabit) => void;
   readonly onAddAllHabits: (messageId: string, habits: ProposedHabit[]) => void;
@@ -960,6 +1084,16 @@ export function AssistantMessage({ message: msg, handlers }: AssistantMessagePro
             onToggleUrgent={handlers.onToggleTaskUrgent}
             onAddSingle={handlers.onAddSingleTask}
             onAddAll={handlers.onAddAllTasks}
+          />
+        )}
+        {msg.proposedTaskUpdates && handlers.onUpdateTaskUpdate && handlers.onApplyTaskUpdate && handlers.onApplyAllTaskUpdates && (
+          <TaskUpdateProposalBox
+            messageId={msg.id}
+            updates={msg.proposedTaskUpdates}
+            addingIds={handlers.addingIds}
+            onUpdate={handlers.onUpdateTaskUpdate}
+            onApplySingle={handlers.onApplyTaskUpdate}
+            onApplyAll={handlers.onApplyAllTaskUpdates}
           />
         )}
         {msg.proposedHabits && (

@@ -99,6 +99,15 @@ func (s *Server) shareProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invite email is required"))
 		return
 	}
+	limit, message, err := s.checkShareLimit(r.Context(), user, projectID, body.Email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errors.New("unable to check your plan"))
+		return
+	}
+	if limit != "" {
+		writeJSON(w, http.StatusPaymentRequired, map[string]string{"code": "PLAN_LIMIT", "limit": limit, "error": message})
+		return
+	}
 	member, invite, err := s.store.ShareProject(r.Context(), user.ID, projectID, body.Email, body.Role)
 	if err != nil {
 		writeError(w, collaborationStatus(err), err)

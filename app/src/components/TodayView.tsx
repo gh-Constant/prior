@@ -7,7 +7,8 @@ import { eventsInRange, loadCalendarState, type CalendarEvent, type CalendarStat
 import { ACCOUNT_DATA_CHANGED } from "../lib/accountDocuments";
 import { getAccountId } from "../lib/accountScope";
 import { AGENT_SETTINGS_EVENT, getAgentSettings } from "../lib/ai";
-import { generateTodayRecommendations, todayRecommendationInput, type TodayRecommendation } from "../lib/todayRecommendations";
+import { useHostedAiAvailable } from "../hooks/useHostedAi";
+import { freshRecommendation, generateTodayRecommendations, readCachedRecommendation, recommendationFingerprint, shouldRegenerate, writeCachedRecommendation, type TodayRecommendation } from "../lib/todayRecommendations";
 import {
   DAY_END_MINUTES,
   DAY_START_MINUTES,
@@ -58,8 +59,6 @@ const DAY_SPAN = DAY_END_MINUTES - DAY_START_MINUTES;
 const HOURS = Array.from({ length: (DAY_END_MINUTES - DAY_START_MINUTES) / 60 + 1 }, (_, index) => DAY_START_MINUTES / 60 + index);
 const RING_RADIUS = 18;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
-const recommendationCache = new Map<string, { at: number; value: TodayRecommendation }>();
-
 function useTodayRecommendations(tasks: Task[], events: CalendarEvent[], now: Date, lang: string) {
   const [settingsVersion, setSettingsVersion] = useState(0);
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -68,32 +67,35 @@ function useTodayRecommendations(tasks: Task[], events: CalendarEvent[], now: Da
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   useEffect(() => {
-    const refresh = () => { recommendationCache.clear(); setSettingsVersion((value) => value + 1); };
+    const refresh = () => setSettingsVersion((value) => value + 1);
     window.addEventListener(AGENT_SETTINGS_EVENT, refresh);
     window.addEventListener("prior-auth-change", refresh);
     return () => { window.removeEventListener(AGENT_SETTINGS_EVENT, refresh); window.removeEventListener("prior-auth-change", refresh); };
   }, []);
   const settings = useMemo(getAgentSettings, [settingsVersion]);
-  const enabled = Boolean(settings.recommendationApiKey || settings.apiKey);
+  const hostedAvailable = useHostedAiAvailable();
+  // Prior AI serves recommendations for entitled users; an own key also works.
+  const enabled = Boolean(settings.recommendationApiKey || settings.apiKey) || (settings.provider !== "codex" && hostedAvailable === true);
+  // Re-check every 15 minutes; a check only calls the model when the plan changed.
   const bucket = Math.floor(now.getTime() / 900_000);
   const requestTime = useMemo(() => new Date(bucket * 900_000), [bucket]);
-  const input = todayRecommendationInput(tasks, events, requestTime, lang);
-  const cacheKey = `${getAccountId()}:${settings.recommendationModel}:${input}`;
+  const modelKey = `${getAccountId()}:${settings.provider}:${settings.recommendationModel}`;
+  const fingerprint = recommendationFingerprint(tasks, events, requestTime, lang, modelKey);
   useEffect(() => {
     if (!enabled || tasks.length === 0) { setRecommendations(null); setError(false); setLoading(false); return; }
-    const cached = recommendationCache.get(cacheKey);
+    const cached = readCachedRecommendation();
     const forced = refreshVersion > lastRefreshVersion.current;
     lastRefreshVersion.current = refreshVersion;
-    if (!forced && cached && Date.now() - cached.at < 5 * 60_000) { setRecommendations(cached.value); setError(false); setLoading(false); return; }
+    const current = new Date();
+    if (cached && cached.day === localDateKey(current)) setRecommendations(freshRecommendation(cached.value, tasks, current));
+    if (!shouldRegenerate(cached, fingerprint, current, forced)) { setError(false); setLoading(false); return; }
     const controller = new AbortController();
-    setRecommendations(null);
     setLoading(true);
     setError(false);
     const timer = window.setTimeout(() => {
       void generateTodayRecommendations(tasks, events, requestTime, lang, settings, controller.signal).then((value) => {
         if (controller.signal.aborted) return;
-        if (recommendationCache.size >= 50) recommendationCache.clear();
-        recommendationCache.set(cacheKey, { at: Date.now(), value });
+        writeCachedRecommendation({ fingerprint, day: localDateKey(requestTime), at: Date.now(), value });
         setRecommendations(value);
       }).catch((failure) => {
         if (controller.signal.aborted) return;
@@ -102,7 +104,8 @@ function useTodayRecommendations(tasks: Task[], events: CalendarEvent[], now: Da
       }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 900);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [cacheKey, enabled, refreshVersion, settings, tasks, events, requestTime, lang]);
+    // tasks and events are summarized by fingerprint; bucket re-checks staleness.
+  }, [fingerprint, enabled, refreshVersion, bucket]);
   return { recommendations, loading, error, enabled, refresh: () => setRefreshVersion((value) => value + 1) };
 }
 

@@ -25,6 +25,7 @@ export const common = {
       focus: "Foco",
       organize: "Organização",
       review: "Revisão",
+      account: "Conta",
     },
     items: {
       today: "Hoje",
@@ -36,6 +37,8 @@ export const common = {
       priorityLens: "Prioridades",
       habits: "Hábitos",
       notes: "Notas",
+      plans: "Planos",
+      admin: "Admin",
     },
   },
   views: {
@@ -50,6 +53,8 @@ export const common = {
     notes: "Notas",
     settings: "Definições",
     allTasks: "Todas as tarefas",
+    plans: "Planos",
+    admin: "Painel",
   },
   sidebar: {
     primary: "Principal",

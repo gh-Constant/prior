@@ -48,6 +48,14 @@ export class ApiAuthError extends Error {
   }
 }
 
+/** The owner's plan does not allow this (402 PLAN_LIMIT). */
+export class PlanLimitError extends Error {
+  constructor(message: string, public readonly limit: "members" | "projects") {
+    super(message);
+    this.name = "PlanLimitError";
+  }
+}
+
 export function isAuthError(error: unknown): boolean {
   return error instanceof ApiAuthError;
 }
@@ -109,9 +117,10 @@ async function requestOnce<T>(url: string, path: string, init: RequestInit, toke
       headers,
     });
     if (!response.ok) {
-      const body = await response.json().catch(() => ({})) as { error?: string };
+      const body = await response.json().catch(() => ({})) as { error?: string; code?: string; limit?: string };
       const message = body.error ?? `Prior API returned ${response.status}`;
       if (response.status === 401) throw new ApiAuthError(message);
+      if (response.status === 402 && body.code === "PLAN_LIMIT") throw new PlanLimitError(message, body.limit === "projects" ? "projects" : "members");
       if (response.status === 429) throw new ApiRequestError("rate_limited", message, response.status);
       if (response.status >= 500) throw new ApiRequestError("server", message, response.status);
       throw new Error(message);
@@ -173,6 +182,44 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string, 
   }
   throw lastError instanceof Error ? lastError : new Error("Prior could not reach the server. Check your connection and try again.");
 }
+
+export type PlanId = "free" | "pro" | "team" | "enterprise";
+export type BillingInterval = "month" | "year";
+export type BillingPlan = { id: PlanId; name: string; monthlyCents: number; yearlyCents: number; maxMembersPerProject: number; maxSharedProjects: number; hostedAI: boolean; agentTokensPerMonth: number };
+export type BillingState = {
+  plan: PlanId;
+  source: "free" | "stripe" | "admin";
+  subscription: { stripePlan: PlanId; status: string; interval?: BillingInterval; amountCents: number; currency: string; currentPeriodEnd?: string; cancelAtPeriodEnd: boolean; adminPlan?: PlanId };
+  entitlements: { plan: PlanId; hostedAI: boolean; agentTokensPerMonth: number; agentTokensUsed: number; usagePeriodStart: string; maxMembersPerProject: number; maxSharedProjects: number };
+  plans: BillingPlan[];
+  currency: string;
+  stripeEnabled: boolean;
+  hostedAIReady: boolean;
+  isAdmin: boolean;
+  hasBillingPortal: boolean;
+};
+export type AdminTotals = {
+  users: number; newUsers7d: number; newUsers30d: number; activeUsers7d: number; payingUsers: number; grantedUsers: number; cancelingUsers: number;
+  mrrCents: number; revenue30dCents: number; revenueAllCents: number; aiCost30dMicros: number; aiCostAllMicros: number; aiRequests30d: number; aiTokens30d: number; aiUsers30d: number;
+  sharedProjects: number; tasksCreated30d: number;
+};
+export type AdminOverview = {
+  generatedAt: string;
+  totals: AdminTotals;
+  planCounts: Record<PlanId, number>;
+  signups: Array<{ day: string; count: number }>;
+  activeDaily: Array<{ day: string; count: number }>;
+  revenue: Array<{ month: string; cents: number }>;
+  aiCost: Array<{ day: string; micros: number; tokens: number }>;
+  aiByPurpose: Array<{ purpose: string; requests: number; tokens: number; micros: number }> | null;
+  topSpenders: Array<{ userId: string; email: string; displayName: string; plan: PlanId; micros: number; tokens: number; requests: number }> | null;
+  recentPayments: Array<{ invoiceId: string; email: string; amountCents: number; currency: string; paidAt: string }> | null;
+};
+export type AdminUser = {
+  id: string; email: string; displayName: string; avatarUrl?: string; createdAt: string; lastLoginAt: string;
+  plan: PlanId; source: "free" | "stripe" | "admin"; stripeStatus: string; interval?: string; amountCents: number; currentPeriodEnd?: string; cancelAtPeriodEnd: boolean;
+  adminPlan?: PlanId; revenueCents: number; aiCost30dMicros: number; agentTokensMonth: number; aiRequests30d: number; tasks: number; sharedProjects: number;
+};
 
 export const api = {
   register(email: string, password: string, displayName: string): Promise<ExchangeResponse> {
@@ -280,9 +327,51 @@ export const api = {
     return request<void>("/v1/sessions", { method: "DELETE" }, token);
   },
   agentComplete(
-    input: { model: string; prompt: string; system: string; history: Array<{ role: string; content: string }>; webSearch: boolean; reasoningEffort?: string; purpose?: "recommendations" },
+    input: {
+      model: string; prompt: string; system: string; history: Array<{ role: string; content: string }>; webSearch: boolean; reasoningEffort?: string;
+      purpose?: "agent" | "recommendations" | "mail" | "calendar";
+      /** "hosted" forces Prior AI; omitted uses the stored key, then Prior AI. */
+      provider?: "hosted";
+      /** Ask the model for a JSON object (response_format). */
+      json?: boolean;
+    },
     token: string,
-  ): Promise<{ content: string; actualModel: string }> {
-    return request<{ content: string; actualModel: string }>("/v1/agent/complete", { method: "POST", body: JSON.stringify(input) }, token, 90_000);
+  ): Promise<{ content: string; actualModel: string; provider?: "hosted" | "openrouter" }> {
+    return request<{ content: string; actualModel: string; provider?: "hosted" | "openrouter" }>("/v1/agent/complete", { method: "POST", body: JSON.stringify(input) }, token, 90_000);
   },
+  /** Whether this API offers Prior AI (hosted assistant and dictation). */
+  hostedAiStatus(token: string): Promise<HostedAiStatus> {
+    return request<HostedAiStatus>("/v1/agent/hosted", {}, token);
+  },
+  getBilling(token: string): Promise<BillingState> {
+    return request<BillingState>("/v1/billing", {}, token);
+  },
+  startCheckout(input: { plan: PlanId; interval: BillingInterval; returnUrl?: string; locale?: string }, token: string): Promise<{ url: string; kind: "checkout" | "portal" }> {
+    return request<{ url: string; kind: "checkout" | "portal" }>("/v1/billing/checkout", { method: "POST", body: JSON.stringify(input) }, token, 30_000);
+  },
+  openBillingPortal(returnUrl: string | undefined, token: string): Promise<{ url: string }> {
+    return request<{ url: string }>("/v1/billing/portal", { method: "POST", body: JSON.stringify({ returnUrl }) }, token, 30_000);
+  },
+  syncBilling(sessionId: string | undefined, token: string): Promise<BillingState> {
+    return request<BillingState>("/v1/billing/sync", { method: "POST", body: JSON.stringify({ sessionId }) }, token, 30_000);
+  },
+  adminOverview(token: string): Promise<{ overview: AdminOverview; plans: BillingPlan[]; stripeMode: string; hostedAIReady: boolean }> {
+    return request("/v1/admin/overview", {}, token, 30_000);
+  },
+  adminUsers(query: { q?: string; plan?: string; sort?: string; limit?: number; offset?: number }, token: string): Promise<{ users: AdminUser[]; total: number }> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
+    return request(`/v1/admin/users?${params.toString()}`, {}, token, 30_000);
+  },
+  adminSetPlan(userId: string, plan: PlanId | "", token: string): Promise<{ plan: string }> {
+    return request(`/v1/admin/users/${encodeURIComponent(userId)}/plan`, { method: "PUT", body: JSON.stringify({ plan }) }, token);
+  },
+};
+
+export type HostedAiStatus = {
+  available: boolean;
+  transcription: boolean;
+  dailyLimit: number;
+  usedToday: number;
+  models?: Record<"agent" | "recommendations" | "mail" | "calendar", string>;
 };

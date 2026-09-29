@@ -111,8 +111,10 @@ type AgentChatMessage struct {
 	ProposedFolders  json.RawMessage `json:"proposedFolders,omitempty"`
 	ProposedAreas    json.RawMessage `json:"proposedAreas,omitempty"`
 	ProposedProjects json.RawMessage `json:"proposedProjects,omitempty"`
-	ActualModel      string          `json:"actualModel,omitempty"`
-	CreatedAt        time.Time       `json:"createdAt"`
+	// Proposed edits to existing tasks (update_task review cards).
+	ProposedTaskUpdates json.RawMessage `json:"proposedTaskUpdates,omitempty"`
+	ActualModel         string          `json:"actualModel,omitempty"`
+	CreatedAt           time.Time       `json:"createdAt"`
 }
 
 // Session describes one login session for the sessions management endpoints.
@@ -656,7 +658,9 @@ type SaveAgentChatMessageParams struct {
 	ProposedFolders  json.RawMessage
 	ProposedAreas    json.RawMessage
 	ProposedProjects json.RawMessage
-	ActualModel      string
+	// ProposedTaskUpdates holds update_task review cards.
+	ProposedTaskUpdates json.RawMessage
+	ActualModel         string
 }
 
 func (s *Store) UpsertUser(ctx context.Context, googleSub, email string, verified bool, displayName, avatarURL string) (User, error) {
@@ -1065,7 +1069,7 @@ func (s *Store) GetAgentChat(ctx context.Context, userID, chatID uuid.UUID) (Age
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders,
 			COALESCE(proposed_areas, '[]'::jsonb), COALESCE(proposed_projects, '[]'::jsonb),
-			actual_model, created_at
+			COALESCE(proposed_task_updates, '[]'::jsonb), actual_model, created_at
 		FROM agent_chat_messages
 		WHERE chat_id = $1
 		ORDER BY created_at ASC, id ASC`, chatID)
@@ -1077,7 +1081,7 @@ func (s *Store) GetAgentChat(ctx context.Context, userID, chatID uuid.UUID) (Age
 	for rows.Next() {
 		var message AgentChatMessage
 		var actualModel *string
-		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &message.ProposedNotes, &message.ProposedFolders, &message.ProposedAreas, &message.ProposedProjects, &actualModel, &message.CreatedAt); err != nil {
+		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &message.ProposedNotes, &message.ProposedFolders, &message.ProposedAreas, &message.ProposedProjects, &message.ProposedTaskUpdates, &actualModel, &message.CreatedAt); err != nil {
 			return AgentChat{}, err
 		}
 		if actualModel != nil {
@@ -1098,6 +1102,9 @@ func (s *Store) SaveAgentChatMessage(ctx context.Context, params SaveAgentChatMe
 	}
 	proposedTasks, proposedHabits, proposedNotes, proposedFolders, proposedAreas, proposedProjects, err := normalizeProposedPayloads(params.ProposedTasks, params.ProposedHabits, params.ProposedNotes, params.ProposedFolders, params.ProposedAreas, params.ProposedProjects)
 	if err != nil {
+		return AgentChatMessage{}, err
+	}
+	if params.ProposedTaskUpdates, err = normalizeProposedArray(params.ProposedTaskUpdates, "proposed task updates"); err != nil {
 		return AgentChatMessage{}, err
 	}
 
@@ -1186,6 +1193,22 @@ func normalizeProposedPayloads(proposedTasks, proposedHabits, proposedNotes, pro
 	return proposedTasks, proposedHabits, proposedNotes, proposedFolders, proposedAreas, proposedProjects, nil
 }
 
+// normalizeProposedArray defaults an empty payload to [] and requires a
+// bounded JSON array.
+func normalizeProposedArray(raw json.RawMessage, label string) (json.RawMessage, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return json.RawMessage("[]"), nil
+	}
+	if len(raw) > 1<<20 {
+		return nil, errors.New(label + " payload is too large")
+	}
+	var list []json.RawMessage
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, errors.New(label + " must be a JSON array")
+	}
+	return raw, nil
+}
+
 func verifyChatOwner(ctx context.Context, tx pgx.Tx, chatID, userID uuid.UUID) error {
 	var owner uuid.UUID
 	err := tx.QueryRow(ctx, `SELECT user_id FROM agent_chats WHERE id = $1`, chatID).Scan(&owner)
@@ -1239,14 +1262,14 @@ func upsertChatMessage(ctx context.Context, tx pgx.Tx, params SaveAgentChatMessa
 	var message AgentChatMessage
 	var returnedModel *string
 	err := tx.QueryRow(ctx, `
-		INSERT INTO agent_chat_messages (id, chat_id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders, proposed_areas, proposed_projects, actual_model)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO agent_chat_messages (id, chat_id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders, proposed_areas, proposed_projects, proposed_task_updates, actual_model)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, content = EXCLUDED.content,
 		proposed_tasks = EXCLUDED.proposed_tasks, proposed_habits = EXCLUDED.proposed_habits, proposed_notes = EXCLUDED.proposed_notes, proposed_folders = EXCLUDED.proposed_folders,
-		proposed_areas = EXCLUDED.proposed_areas, proposed_projects = EXCLUDED.proposed_projects, actual_model = EXCLUDED.actual_model
-		RETURNING id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders, proposed_areas, proposed_projects, actual_model, created_at`,
-		params.MessageID, params.ChatID, params.Role, content, proposedTasks, proposedHabits, proposedNotes, proposedFolders, proposedAreas, proposedProjects, chatModelValue(params.ActualModel)).
-		Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &message.ProposedNotes, &message.ProposedFolders, &message.ProposedAreas, &message.ProposedProjects, &returnedModel, &message.CreatedAt)
+		proposed_areas = EXCLUDED.proposed_areas, proposed_projects = EXCLUDED.proposed_projects, proposed_task_updates = EXCLUDED.proposed_task_updates, actual_model = EXCLUDED.actual_model
+		RETURNING id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders, proposed_areas, proposed_projects, proposed_task_updates, actual_model, created_at`,
+		params.MessageID, params.ChatID, params.Role, content, proposedTasks, proposedHabits, proposedNotes, proposedFolders, proposedAreas, proposedProjects, params.ProposedTaskUpdates, chatModelValue(params.ActualModel)).
+		Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &message.ProposedNotes, &message.ProposedFolders, &message.ProposedAreas, &message.ProposedProjects, &message.ProposedTaskUpdates, &returnedModel, &message.CreatedAt)
 	if err != nil {
 		return AgentChatMessage{}, err
 	}
