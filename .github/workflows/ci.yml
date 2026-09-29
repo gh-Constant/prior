@@ -33,6 +33,7 @@ jobs:
               - 'app/src-tauri/gen/android/**'
             server:
               - 'server/**'
+              - '.github/workflows/ci.yml'
 
   app:
     needs: changes
