@@ -1,3 +1,4 @@
+import { setOnline } from "./connectivity";
 import type { AgentChat, AgentMessage, AgentChatSummary, Area, Habit, Mutation, Project, ProjectCycle, ProjectHealth, Task } from "../types";
 import type { Note, NoteFolder } from "./notes";
 import { translateStored } from "./i18n";
@@ -80,6 +81,8 @@ export type ServerSettings = { openrouterApiKey: string; recommendationOpenroute
 export type ProfileUser = { id: string; email: string; displayName: string; avatarUrl?: string };
 export type CollaborationMember = { userId: string; email: string; displayName: string; avatarUrl?: string; role: "owner" | "editor" | "viewer"; status: "active" | "revoked"; createdAt: string };
 export type CollaborationInvite = { id: string; email: string; role: "editor" | "viewer"; expiresAt: string; inviteToken?: string; projectId: string };
+/** A pending invite addressed to the signed-in account. */
+export type IncomingProjectInvite = { id: string; projectId: string; projectName: string; inviterName: string; inviterId: string; role: "editor" | "viewer"; expiresAt: string; createdAt: string };
 export type CollaborationProject = { project: Project; role: "owner" | "editor" | "viewer"; members: CollaborationMember[]; pendingInvites?: CollaborationInvite[] };
 export type CollaborativeProjectUpdate = Pick<Project, "health" | "startDate" | "targetDate" | "cycles"> & {
   health?: ProjectHealth | null;
@@ -167,14 +170,23 @@ async function requestWithRetry<T>(url: string, path: string, init: RequestInit,
   throw lastError instanceof Error ? lastError : new Error("Prior could not reach the server. Check your connection and try again.");
 }
 
+function externalAbort(init: RequestInit): boolean {
+  return Boolean(init.signal?.aborted);
+}
+
 async function request<T>(path: string, init: RequestInit = {}, token?: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const urls = FALLBACK_API_URL ? [API_URL, FALLBACK_API_URL] : [API_URL];
   let lastError: unknown;
   for (const url of urls) {
     try {
-      return await requestWithRetry<T>(url, path, init, token, timeoutMs);
+      const result = await requestWithRetry<T>(url, path, init, token, timeoutMs);
+      setOnline(true);
+      return result;
     } catch (error) {
       lastError = error;
+      if (error instanceof ApiRequestError && (error.kind === "network" || error.kind === "timeout")) {
+        if (url === urls.at(-1)) setOnline(false);
+      } else if (!(externalAbort(init))) setOnline(true);
       // The fallback URL only helps when the primary is unreachable. Auth and
       // client errors must not spill over to the production endpoint.
       if (error instanceof ApiAuthError || !(error instanceof ApiRequestError) || error.kind !== "network" || url === urls.at(-1)) throw error;
@@ -298,6 +310,12 @@ export const api = {
   },
   acceptProjectInvite(tokenValue: string, token: string): Promise<{ projectId: string }> {
     return request<{ projectId: string }>("/v1/collaboration/invites/accept", { method: "POST", body: JSON.stringify({ token: tokenValue }) }, token);
+  },
+  listIncomingInvites(token: string): Promise<{ invites: IncomingProjectInvite[] }> {
+    return request<{ invites: IncomingProjectInvite[] }>("/v1/collaboration/invites", {}, token);
+  },
+  respondToInvite(inviteId: string, accept: boolean, token: string): Promise<{ projectId: string }> {
+    return request<{ projectId: string }>(`/v1/collaboration/invites/${encodeURIComponent(inviteId)}/${accept ? "accept" : "decline"}`, { method: "POST" }, token);
   },
   listAgentChats(token: string): Promise<AgentChatSummary[]> {
     return request<AgentChatSummary[]>("/v1/agent/chats", {}, token);

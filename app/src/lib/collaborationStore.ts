@@ -51,6 +51,12 @@ export const collaborationStore = {
   role(projectId: string): CachedCollaborationProject["role"] | undefined {
     return this.get(projectId)?.role;
   },
+  /** Whether other people can access the project, so it lives on the server. */
+  isShared(projectId: string): boolean {
+    const entry = this.get(projectId);
+    if (!entry) return false;
+    return entry.role !== "owner" || entry.members.some((member) => member.role !== "owner") || (entry.pendingInvites?.length ?? 0) > 0;
+  },
   merge(incoming: CachedCollaborationProject[]): void {
     write(normalizeProjects(incoming));
   },

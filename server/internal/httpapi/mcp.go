@@ -81,6 +81,7 @@ func (b storeMCPBackend) applyMutation(ctx context.Context, userID uuid.UUID, mu
 	latest := highestRevision(applied)
 	b.server.notifySync(ctx, userID, "sync", latest)
 	b.server.notifySync(ctx, userID, "tasks_required", latest)
+	b.server.notifyProjectPeers(ctx, userID)
 	return results[0].Task, results[0].Habit, nil
 }
 

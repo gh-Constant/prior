@@ -87,6 +87,8 @@ export type ProjectCollaborationProps = {
   overview?: ProjectOverview;
   loading?: boolean;
   readOnly?: boolean;
+  /** A shared project while Prior cannot reach the server: shown read-only. */
+  offline?: boolean;
   /** Creates an issue, optionally directly in a workflow state (board column). */
   onCreateIssue?: (stateId?: string) => void;
   onEditProject?: () => void;

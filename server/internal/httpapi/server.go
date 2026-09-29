@@ -191,6 +191,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/collaboration/projects/{projectID}/members/{userID}", s.removeProjectMember)
 	mux.HandleFunc("DELETE /v1/collaboration/projects/{projectID}/invites/{inviteID}", s.revokeProjectInvite)
 	mux.HandleFunc("POST /v1/collaboration/invites/accept", s.acceptProjectInvite)
+	mux.HandleFunc("GET /v1/collaboration/invites", s.incomingInvites)
+	mux.HandleFunc("POST /v1/collaboration/invites/{inviteID}/accept", s.respondToInvite(true))
+	mux.HandleFunc("POST /v1/collaboration/invites/{inviteID}/decline", s.respondToInvite(false))
 	mux.HandleFunc("GET /v1/realtime", s.realtime)
 	mux.HandleFunc("POST /v1/mcp/tokens", s.createMCPToken)
 	mux.Handle("/mcp", http.HandlerFunc(s.mcp))
@@ -1110,6 +1113,9 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	// Legacy "sync" type plus unified "tasks_required".
 	s.notifySync(r.Context(), user.ID, "sync", latest)
 	s.notifySync(r.Context(), user.ID, "tasks_required", latest)
+	if latest > 0 {
+		s.notifyProjectPeers(r.Context(), user.ID)
+	}
 	type appliedItem struct {
 		MutationID string      `json:"mutationId"`
 		Entity     string      `json:"entity"`
@@ -1187,6 +1193,7 @@ func (s *Server) syncWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	if workspaceRevision > previousRevision {
 		s.notifySync(r.Context(), user.ID, "workspace_required", workspaceRevision)
+		s.notifyProjectPeers(r.Context(), user.ID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"areas": merged.Areas, "projects": merged.Projects, "folders": merged.Folders, "notes": merged.Notes,

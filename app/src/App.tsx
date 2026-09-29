@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { api, PlanLimitError } from "./lib/api";
+import { api, PlanLimitError, type IncomingProjectInvite } from "./lib/api";
 import { AUTH_REQUIRED_EVENT, clearSession, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
 import { useI18n } from "./lib/i18n";
 import { localStore } from "./lib/localStore";
@@ -47,11 +47,13 @@ import { syncNoteAttachments } from "./lib/noteAttachments";
 import { syncAgentOutbox } from "./lib/agentOutbox";
 import { workspaceStore } from "./lib/workspaceStore";
 import { collaborationStore } from "./lib/collaborationStore";
+import { isOnline, useOnline } from "./lib/connectivity";
 import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
 import { MailView } from "./components/MailView";
 import { CalendarView } from "./components/CalendarView";
 import { CalendarConnectionSuccess } from "./components/CalendarConnectionSuccess";
 import { ProjectEditor } from "./components/collaboration/ProjectEditor";
+import { ProjectInviteNotifications } from "./components/collaboration/ProjectInviteNotifications";
 import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
 import { generateTaskFromMail } from "./lib/mailTask";
@@ -66,6 +68,9 @@ import type { MailMessage } from "./types";
 logger.init();
 
 type Layout = "list" | "board";
+
+/** Where invite links point from native builds, which have no web origin. */
+const WEB_APP_URL = "https://app.prior.constantsuchet.fr/";
 
 function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
   if (view === "today") return t("common.views.today");
@@ -218,6 +223,8 @@ export function App() {
   const syncQueued = useRef(false);
   const [syncing, setSyncing] = useState(false);
   const [syncIssue, setSyncIssue] = useState(false);
+  const online = useOnline();
+  const [incomingInvites, setIncomingInvites] = useState<IncomingProjectInvite[]>([]);
   const lastActiveSyncAt = useRef(0);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const workspaceSyncTimer = useRef<number | undefined>(undefined);
@@ -596,6 +603,13 @@ export function App() {
           }
         }
 
+        try {
+          const { invites } = await api.listIncomingInvites(token);
+          if (generation === sessionGeneration.current) setIncomingInvites(invites);
+        } catch (invitesError) {
+          logger.warn("sync", "Project invites could not be loaded", { error: String(invitesError) });
+        }
+
         // A newly accepted/shared project may contain task revisions older than
         // this account's normal sync cursor. Pull the authorized history once
         // when the project ACL changes so the member sees the existing work.
@@ -904,7 +918,7 @@ export function App() {
   }
 
   async function saveTask(input: TaskDraft, options?: { keepOpen?: boolean }) {
-    if (input.projectId && collaborationStore.role(input.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+    assertProjectWritable(input.projectId);
     await localStore.saveTask({ ...newTaskContext, ...input, completed: input.status === "done", peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
     if (!options?.keepOpen) {
       setComposerOpen(false);
@@ -916,7 +930,7 @@ export function App() {
 
   async function saveEditedTask(input: TaskDraft) {
     if (!editingTask) return;
-    if (editingTask.projectId && collaborationStore.role(editingTask.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+    assertProjectWritable(editingTask.projectId);
     await localStore.updateTask({ ...editingTask, ...input, completed: input.status ? input.status === "done" : editingTask.completed, description: input.description ?? "", dueDate: input.dueDate ?? null, priority: input.priority ?? 4 });
     setEditingTask(null);
     await refresh();
@@ -953,7 +967,7 @@ export function App() {
   }
 
   async function saveMailTask(input: TaskDraft): Promise<void> {
-    if (input.projectId && collaborationStore.role(input.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+    assertProjectWritable(input.projectId);
     await localStore.saveTask({ ...input, completed: input.status === "done", peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
     setMailComposerOpen(false);
     setMailDraft(null);
@@ -1058,7 +1072,7 @@ export function App() {
     for (const item of batch) {
       const task = current.get(item.taskId);
       if (!task || task.deletedAt) continue;
-      if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+      assertProjectWritable(task.projectId);
       const { changes } = item;
       const completed = changes.completed ?? (changes.status ? changes.status === "done" : task.completed);
       const status = changes.status ?? (changes.completed === true ? "done" : changes.completed === false && task.status === "done" ? "next" : task.status);
@@ -1118,7 +1132,7 @@ export function App() {
   }
 
   async function changeTask(task: Task) {
-    if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+    assertProjectWritable(task.projectId);
     const previous = tasks.find((item) => item.id === task.id);
     const savedTask = await localStore.updateTask(task);
     if (previous && !previous.completed && task.completed) {
@@ -1133,7 +1147,7 @@ export function App() {
   }
 
   async function deleteTask(task: Task) {
-    if (task.projectId && collaborationStore.role(task.projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+    assertProjectWritable(task.projectId);
     await localStore.removeTask(task);
     releaseCompletionExit(task.id);
     await refresh();
@@ -1164,9 +1178,17 @@ export function App() {
   async function changeHabit(habit: Habit) { await localStore.updateHabit(habit); await refresh(); void syncNow(); }
   async function deleteHabit(habit: Habit) { await localStore.removeHabit(habit); await refresh(); void syncNow(); }
 
+  /* Viewers cannot edit, and shared projects live on the server: editing
+     them offline would diverge from what the other members see. */
+  function assertProjectWritable(projectId: string | null | undefined) {
+    if (!projectId) return;
+    if (collaborationStore.role(projectId) === "viewer") throw new Error(t("common.access.viewOnly"));
+    if (collaborationStore.isShared(projectId) && !isOnline()) throw new Error(t("common.access.sharedOffline"));
+  }
+
   async function saveProjectDetails(project: Project): Promise<void> {
     const entry = collaborationStore.get(project.id);
-    if (entry?.role === "viewer") throw new Error(t("common.access.viewOnly"));
+    assertProjectWritable(project.id);
     if (entry && entry.role !== "owner") {
       const token = await getToken();
       if (!token) throw new Error(t("common.access.signInToUpdate"));
@@ -1193,7 +1215,8 @@ export function App() {
       // server entry enriches it with ACLs and members; local projects still
       // need to render the same workspace before the first authenticated sync.
       const entry = collaborationStore.get(project.id);
-      const readOnly = entry?.role === "viewer";
+      const offline = !online && collaborationStore.isShared(project.id);
+      const readOnly = entry?.role === "viewer" || offline;
       const members = entry?.members.map((member, index) => {
         const isSelf = member.userId === user?.id;
         const presence = isSelf ? "online" as const : (member.status === "revoked" ? "inactive" as const : (index % 3 === 1 ? "online" as const : index % 3 === 2 ? "away" as const : "inactive" as const));
@@ -1224,6 +1247,7 @@ export function App() {
           return { ...cycle, phase: cycle.endsOn < today ? "past" as const : cycle.startsOn > today ? "upcoming" as const : "current" as const, dateLabel: `${cycle.startsOn} – ${cycle.endsOn}`, issueCount: assigned.length, completedCount: assigned.filter((issue) => issue.stateId === "done").length };
         }),
         readOnly,
+        offline,
         onCreateIssue: readOnly ? undefined : (stateId) => openNewTask({ projectId: project.id, status: stateOptions.find((state) => state.id === stateId)?.id as Task["status"] ?? "backlog" }),
         onEditProject: readOnly ? undefined : () => setProjectEditor(project),
         onCreateCycle: readOnly ? undefined : () => setCycleEditor({ projectId: project.id }),
@@ -1245,17 +1269,20 @@ export function App() {
         sharing: {
           members,
           invites: (entry?.pendingInvites ?? []).map((invite) => ({ id: invite.id, email: invite.email, role: invite.role })),
-          canManage: entry?.role === "owner",
+          // A project created on this device is ours even before its first
+          // sync reaches the server; the invite below syncs it first.
+          canManage: entry ? entry.role === "owner" : Boolean(user),
           onInvite: (email, role) => {
             void (async () => {
               const token = await getToken();
               if (!token) { setAuthOpen(true); return; }
               try {
+                if (!collaborationStore.get(project.id)) await syncNow();
                 const response = await api.shareProject(project.id, email, role, token);
                 await collaborationStore.sync(token);
                 refreshWorkspace();
                 if (response.invite?.inviteToken) {
-                  const inviteLink = `${window.location.origin}${window.location.pathname}#invite=${encodeURIComponent(response.invite.inviteToken)}`;
+                  const inviteLink = `${isTauri() ? WEB_APP_URL : `${window.location.origin}${window.location.pathname}`}#invite=${encodeURIComponent(response.invite.inviteToken)}`;
                   await navigator.clipboard?.writeText(inviteLink);
                   setToast(t("common.toasts.inviteCopied", { email }));
                 } else {
@@ -1330,7 +1357,7 @@ export function App() {
       };
     }
     return result;
-  }, [openNewTask, projects, tasks, user, refreshWorkspace, t]);
+  }, [openNewTask, projects, tasks, user, refreshWorkspace, t, online, syncNow]);
 
   const taskPlanning = useMemo<TaskPlanningProps | undefined>(() => {
     const projectId = composerProjectId !== undefined ? composerProjectId : editingTask?.projectId ?? newTaskContext?.projectId;
@@ -1355,6 +1382,7 @@ export function App() {
   async function logout() {
     const token = await getToken().catch(() => null);
     sessionGeneration.current += 1;
+    setIncomingInvites([]);
     realtimeGeneration.current += 1;
     const close = realtimeClose.current;
     realtimeClose.current = undefined;
@@ -1389,6 +1417,7 @@ export function App() {
 
   function handleAuthenticated(nextUser: SessionUser) {
     sessionGeneration.current += 1;
+    setIncomingInvites([]);
     setUser(nextUser);
     setAuthError("");
     setAuthOpen(false);
@@ -1402,6 +1431,25 @@ export function App() {
   function handleUserUpdated(nextUser: SessionUser): void {
     saveUser(nextUser);
     setUser(nextUser);
+  }
+
+  async function respondToInvite(invite: IncomingProjectInvite, accept: boolean): Promise<void> {
+    const token = await getToken();
+    if (!token) { setAuthOpen(true); return; }
+    try {
+      await api.respondToInvite(invite.id, accept, token);
+      setIncomingInvites((current) => current.filter((item) => item.id !== invite.id));
+      await syncNow();
+      if (accept) {
+        openProject(invite.projectId);
+        setToast(t("common.toasts.inviteJoined", { project: invite.projectName }));
+      } else {
+        setToast(t("common.toasts.inviteDeclined"));
+      }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : t("common.errors.shareFailed"));
+      void syncNow();
+    }
   }
 
   function openProject(projectId: string): void {
@@ -1653,6 +1701,7 @@ export function App() {
       {habitComposerOpen && <HabitComposer habit={editingHabit ?? undefined} onSave={saveHabit} onCancel={() => { setHabitComposerOpen(false); setEditingHabit(null); }} />}
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>{t("common.celebration.completed")}</strong><small>{completionCelebration.title}</small></span></div>}
+      {user && <ProjectInviteNotifications invites={incomingInvites} onRespond={respondToInvite} />}
       {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>{t("common.celebration.notice")}</strong><small>{toast}</small></span><button type="button" aria-label={t("common.actions.dismiss")} onClick={() => setToast(null)}>✕</button></div>}
     </div>
   );
