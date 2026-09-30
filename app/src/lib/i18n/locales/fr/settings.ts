@@ -63,6 +63,8 @@ export const settings = {
     installHint: "Télécharge, installe et rouvre Prior",
     installedHint: "Installé — redémarrez l’application pour terminer.",
     upToDate: "À jour",
+    updateNow: "Mettre à jour",
+    required: { title: "Prior doit être mis à jour", body: "Cette version n’est plus prise en charge. Mettez à jour pour continuer la synchronisation." },
     download: "Télécharger v{version}",
     downloadWithSize: "Télécharger v{version} ({size} Mo)",
     apkHint: "L’APK se télécharge dans votre navigateur — ouvrez-le pour l’installer. Autorisez les applications inconnues une fois si demandé.",

@@ -32,3 +32,22 @@ scripts/macos/build-signed.sh --universal --open
 ```
 
 The script disables `createUpdaterArtifacts` when `TAURI_SIGNING_PRIVATE_KEY` is absent; never upload such a local build to a GitHub release.
+
+## Google Play (Android)
+
+Play is the primary Android channel; the GitHub APK stays for sideloading. The release workflow builds the APK **and** a signed AAB (`--apk --aab`), then the `play` job uploads the AAB to Google Play with `r0adkll/upload-google-play`. It is independent of the GitHub release job and is skipped with a warning when `PLAY_SERVICE_ACCOUNT_JSON` is missing.
+
+One-time setup (manual, Play Console):
+
+1. Create a Play developer account ($25). A new *personal* account must run a closed test with 12+ testers for 14 days before it can publish to production; an organization account (D-U-N-S) skips that.
+2. Create the app `fr.constantsuchet.prior` and enrol in **Play App Signing**, using the existing release keystore as the upload key. Upload the first AAB by hand once; the API cannot create a new app.
+3. Create a service account (Google Cloud → API access), grant it release permissions on the app in Play Console, and store its JSON key as the GitHub secret `PLAY_SERVICE_ACCOUNT_JSON`.
+4. Optional repository variables: `PLAY_TRACK` (default `internal`; promote to production in Play Console) and `PLAY_RELEASE_STATUS` (default `completed`; use `draft` until the app's first review is done).
+
+`versionCode` is derived by Tauri from the semantic version, so it increases with every tag.
+
+### In-app updates
+
+Play installs update through Play In-App Updates (`playUpdateCheck` / `playUpdateStart` in `PriorPlugin.kt`, `play_update_*` commands). Play re-signs the app, so a GitHub APK can never update a Play install; `androidUpdater.ts` therefore asks Play first and only falls back to the GitHub release flow when Play rejects the check (sideloaded or debug builds).
+
+To force an update, set `MIN_ANDROID_VERSION` (e.g. `0.7.0`) on the API. `/health` then returns `minAndroidVersion`, and `ForcedUpdateGate` blocks Android apps older than it with an "Update now" screen that starts Play's immediate update. Unset means never force; offline or failed checks never block.

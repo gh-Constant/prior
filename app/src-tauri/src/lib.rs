@@ -197,6 +197,27 @@ async fn google_sign_in<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>,
     Ok(result.id_token)
 }
 
+#[cfg(target_os = "android")]
+#[derive(serde::Deserialize, serde::Serialize)]
+struct AndroidPlayUpdate {
+    available: bool,
+    #[serde(rename = "versionCode")]
+    version_code: i64,
+}
+
+// Play In-App Updates check. Errors when the app was not installed from Play.
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn play_update_check<R: Runtime>(app: AppHandle<R>) -> Result<AndroidPlayUpdate, String> {
+    run_android_plugin(app, "playUpdateCheck", serde_json::json!({})).await
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn play_update_start<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    run_android_plugin(app, "playUpdateStart", serde_json::json!({})).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -349,7 +370,11 @@ pub fn run() {
             #[cfg(target_os = "android")]
             widget_set_snapshot,
             #[cfg(target_os = "android")]
-            google_sign_in
+            google_sign_in,
+            #[cfg(target_os = "android")]
+            play_update_check,
+            #[cfg(target_os = "android")]
+            play_update_start
         ])
         .setup(|_app| {
             #[cfg(desktop)]

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkForAndroidUpdate, isNewerVersion, normalizeVersion, pickApkAsset, supportsAndroidUpdates } from "./androidUpdater";
+import { checkForAndroidUpdate, fetchMinAndroidVersion, isNewerVersion, isUpdateRequired, normalizeVersion, pickApkAsset, supportsAndroidUpdates } from "./androidUpdater";
 
 vi.mock("@tauri-apps/api/app", () => ({
   getVersion: async () => "0.3.20",
@@ -81,5 +81,23 @@ describe("checkForAndroidUpdate", () => {
   it("throws a clear error when the release has no APK yet", async () => {
     await expect(checkForAndroidUpdate(stubFetch({ tag_name: "v0.3.25", assets: [] })))
       .rejects.toThrow("no APK");
+  });
+});
+
+describe("forced updates", () => {
+  it("requires an update only when installed is below the minimum", () => {
+    expect(isUpdateRequired("0.3.20", "0.4.0")).toBe(true);
+    expect(isUpdateRequired("0.4.0", "0.4.0")).toBe(false);
+    expect(isUpdateRequired("0.3.20", null)).toBe(false);
+    expect(isUpdateRequired(null, "0.4.0")).toBe(false);
+  });
+
+  it("reads the minimum from /health and ignores failures", async () => {
+    const ok = vi.fn(async () => ({ ok: true, json: async () => ({ status: "ok", minAndroidVersion: "0.4.0" }) }) as Response);
+    expect(await fetchMinAndroidVersion("https://api.example", ok)).toBe("0.4.0");
+    const bare = vi.fn(async () => ({ ok: true, json: async () => ({ status: "ok" }) }) as Response);
+    expect(await fetchMinAndroidVersion("https://api.example", bare)).toBeNull();
+    const down = vi.fn(async () => { throw new Error("offline"); });
+    expect(await fetchMinAndroidVersion("https://api.example", down)).toBeNull();
   });
 });

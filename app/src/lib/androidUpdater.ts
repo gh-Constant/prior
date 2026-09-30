@@ -12,12 +12,19 @@
 
 import { supportsAndroidUpdates as supportsAndroidUpdatesPlatform } from "./platform";
 
+// Builds installed from Google Play update through Play In-App Updates (native
+// `play_update_*` commands). Play re-signs the app, so a GitHub APK can never
+// update a Play install; the GitHub flow below only serves sideloaded builds,
+// where the native check rejects because Play does not know the install.
+
 const LATEST_RELEASE_URL = "https://api.github.com/repos/gh-Constant/prior/releases/latest";
 
 export type AndroidUpdateInfo = {
   version: string;
   currentVersion: string;
   notes?: string;
+  /** "play" updates through Play's in-app flow; "github" opens the release APK. */
+  source: "play" | "github";
   downloadUrl: string;
   sizeMb: number | null;
 };
@@ -75,10 +82,28 @@ export function pickApkAsset(payload: ReleasePayload): ReleaseAsset | null {
   return assets.find((asset) => typeof asset.name === "string" && asset.name.endsWith(".apk") && typeof asset.browser_download_url === "string") ?? null;
 }
 
+type PlayUpdate = { available: boolean; versionCode: number };
+
+/** Play's answer, or null when this install is not managed by Google Play. */
+async function checkPlayUpdate(): Promise<PlayUpdate | null> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<PlayUpdate>("play_update_check");
+  } catch {
+    return null;
+  }
+}
+
 export async function checkForAndroidUpdate(fetchImpl: typeof fetch = fetch): Promise<AndroidUpdateInfo | null> {
   if (!supportsAndroidUpdates()) return null;
   const currentVersion = await getAndroidAppVersion();
   if (!currentVersion) return null;
+
+  const play = await checkPlayUpdate();
+  if (play) {
+    // Play only exposes a version code, so the version label is generic.
+    return play.available ? { version: "", currentVersion, source: "play", downloadUrl: "", sizeMb: null } : null;
+  }
 
   const response = await fetchImpl(LATEST_RELEASE_URL, { headers: { Accept: "application/vnd.github+json" } });
   if (!response.ok) throw new Error(`GitHub release check failed (${response.status})`);
@@ -94,12 +119,36 @@ export async function checkForAndroidUpdate(fetchImpl: typeof fetch = fetch): Pr
     version: tag.replace(/^[vV]/, ""),
     currentVersion,
     notes: typeof payload.body === "string" && payload.body.trim() ? payload.body.trim().slice(0, 500) : undefined,
+    source: "github",
     downloadUrl: apk.browser_download_url,
     sizeMb: typeof apk.size === "number" && apk.size > 0 ? Math.round((apk.size / 1_048_576) * 10) / 10 : null,
   };
 }
 
-export async function openAndroidUpdate(downloadUrl: string): Promise<void> {
+export async function openAndroidUpdate(update: Pick<AndroidUpdateInfo, "source" | "downloadUrl">): Promise<void> {
+  if (update.source === "play") {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("play_update_start");
+    return;
+  }
   const { openExternalUrl } = await import("./browser");
-  await openExternalUrl(downloadUrl);
+  await openExternalUrl(update.downloadUrl);
+}
+
+/** True when `installed` is older than the server's minimum supported version. */
+export function isUpdateRequired(installed: string | null, minVersion: string | null | undefined): boolean {
+  if (!installed || !minVersion) return false;
+  return isNewerVersion(minVersion, installed);
+}
+
+/** The minimum Android version the API still supports, or null (no floor / offline). */
+export async function fetchMinAndroidVersion(apiUrl: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  try {
+    const response = await fetchImpl(`${apiUrl}/health`);
+    if (!response.ok) return null;
+    const body = (await response.json()) as { minAndroidVersion?: unknown };
+    return typeof body.minAndroidVersion === "string" && body.minAndroidVersion ? body.minAndroidVersion : null;
+  } catch {
+    return null;
+  }
 }

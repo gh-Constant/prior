@@ -61,8 +61,8 @@ export function useAppUpdate(): AppUpdate {
       if (channel === "desktop") {
         await installAvailableUpdate();
       } else if (channel === "android" && android) {
-        // The APK downloads in the browser; Android installs it from there.
-        await openAndroidUpdate(android.downloadUrl);
+        // Play installs use Play's in-app flow; sideloaded builds download the APK in the browser.
+        await openAndroidUpdate(android);
         setState("available");
       }
     } catch {
@@ -90,8 +90,10 @@ export function UpdateControl({ update }: { readonly update: AppUpdate }) {
   const { channel, state, nextVersion, sizeMb } = update;
   if (!channel) return null;
 
-  if (state === "available" && nextVersion) {
-    const label = channel === "android"
+  if (state === "available" && (nextVersion || channel === "android")) {
+    const label = channel === "android" && !nextVersion
+      ? t("settings.updates.updateNow")
+      : channel === "android"
       ? sizeMb ? t("settings.updates.downloadWithSize", { version: nextVersion, size: sizeMb }) : t("settings.updates.download", { version: nextVersion })
       : t("settings.updates.installNow", { version: nextVersion });
     return (
