@@ -143,4 +143,13 @@ func TestAccountSyncPostgres(t *testing.T) {
 	if _, err = s.CreateAgentChat(ctx, b.ID, "Foreign", chatID); err == nil {
 		t.Fatal("cross-account chat reuse")
 	}
+	// Proposed changes to projects/habits/notes survive a reload.
+	updates := json.RawMessage(`[{"id":"x","kind":"habit","targetId":"h1","targetTitle":"Run","changes":{"checkInToday":true},"reasoning":"","selected":true}]`)
+	if _, err = s.SaveAgentChatMessage(ctx, SaveAgentChatMessageParams{UserID: a.ID, ChatID: chatID, MessageID: uuid.New(), Role: "assistant", Content: "Done?", ProposedUpdates: updates}); err != nil {
+		t.Fatal(err)
+	}
+	chat, err := s.GetAgentChat(ctx, a.ID, chatID)
+	if err != nil || len(chat.Messages) != 1 || !strings.Contains(string(chat.Messages[0].ProposedUpdates), "checkInToday") {
+		t.Fatalf("proposed updates roundtrip: %v %v", chat.Messages, err)
+	}
 }

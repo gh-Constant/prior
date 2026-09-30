@@ -11,6 +11,8 @@ import type {
   ProposedProject,
   ProposedTask,
   ProposedTaskUpdate,
+  ProposedEntityUpdate,
+  ProjectType,
   QuadrantKey,
   Task,
   TaskDraft,
@@ -23,6 +25,7 @@ import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
 import { formatReminder } from "./tasks/ReminderPicker";
 import { generateUuid } from "../lib/uuid";
+import { collaborationStore } from "../lib/collaborationStore";
 import "katex/dist/katex.min.css";
 
 export function getQuadrantBadge(task: Pick<Task, "important" | "urgent">): { key: QuadrantKey; label: string } {
@@ -108,7 +111,7 @@ export function markProjectsAdded(
   });
 }
 
-export function projectDraftOf(project: ProposedProject): { name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null } {
+export function projectDraftOf(project: ProposedProject): { name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null; projectType?: ProjectType } {
   return {
     name: project.name,
     areaName: project.areaName,
@@ -116,6 +119,7 @@ export function projectDraftOf(project: ProposedProject): { name: string; areaNa
     status: project.status,
     targetDate: project.targetDate,
     icon: project.icon,
+    ...(project.projectType ? { projectType: project.projectType } : {}),
   };
 }
 
@@ -203,6 +207,11 @@ export function taskDraftOf(task: ProposedTask): TaskDraft & { areaName?: string
     scheduledDate: task.scheduledDate,
     assigneeName: task.assigneeName,
     followUpDate: task.followUpDate,
+    ...(task.assigneeId ? { assigneeId: task.assigneeId } : {}),
+    ...(task.milestoneId ? { milestoneId: task.milestoneId } : {}),
+    ...(task.parentId ? { parentId: task.parentId } : {}),
+    ...(task.parentTitle ? { parentTitle: task.parentTitle } : {}),
+    ...(task.blockedByTaskIds?.length ? { relations: task.blockedByTaskIds.map((taskId) => ({ type: "blocked_by" as const, taskId })) } : {}),
     ...(task.reminderAt ? { reminderAt: task.reminderAt } : {}),
     ...(task.checklist?.length ? { checklist: task.checklist.map((title, position) => ({ id: generateUuid(), title, done: false, position })) } : {}),
   };
@@ -544,6 +553,10 @@ export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onTo
         {task.dueDate && <span className="proposed-due-date">{t("agent.cards.due", { date: formatDueDate(task.dueDate) })}</span>}
         {task.scheduledDate && <span className="proposed-scheduled-date">{t("agent.cards.scheduled", { date: formatDueDate(task.scheduledDate) })}</span>}
         {task.assigneeName && <span className="proposed-assignee-badge">{t("agent.cards.waitingOn", { name: task.assigneeName })}</span>}
+        {task.assigneeLabel && <span className="proposed-assignee-badge"><Icon name="user" />{task.assigneeLabel}</span>}
+        {task.milestoneLabel && <span className="proposed-project-badge"><Icon name="flag" />{task.milestoneLabel}</span>}
+        {(task.parentId || task.parentTitle) && <span className="proposed-area-badge">{t("agent.cards.subtaskOf", { title: task.parentTitle ?? t("agent.cards.existingTask") })}</span>}
+        {task.blockedByTaskIds?.length ? <span className="proposed-area-badge">{t("agent.cards.blockedBy", { count: task.blockedByTaskIds.length })}</span> : null}
         {task.followUpDate && <span className="proposed-followup-date">{t("agent.cards.followUp", { date: formatDueDate(task.followUpDate) })}</span>}
         {task.reminderAt && <span className="proposed-scheduled-date">{t("reminders.picker.set", { when: formatReminder(task.reminderAt, lang) })}</span>}
         <FlagToggles
@@ -633,7 +646,116 @@ function taskChangeChips(t: (key: string, params?: Record<string, string | numbe
     const done = changes.checklist.filter((item) => item.done).length;
     chips.push({ key: "checklist", className: "proposed-area-badge", label: t("checklist.change", { done, total: changes.checklist.length }) });
   }
+  if (changes.assigneeId !== undefined) chips.push({ key: "assigneeId", className: "proposed-assignee-badge", label: changes.assigneeId ? t("agent.updates.assignTo", { name: personName(changes.assigneeId) }) : t("agent.updates.unassign") });
+  if (changes.milestoneId !== undefined) chips.push({ key: "milestone", className: "proposed-project-badge", label: changes.milestoneId ? t("agent.updates.milestone") : t("agent.updates.clearMilestone") });
+  if (changes.parentId !== undefined) chips.push({ key: "parent", className: "proposed-area-badge", label: changes.parentId ? t("agent.updates.makeSubtask") : t("agent.updates.clearParent") });
+  if (changes.relations !== undefined) chips.push({ key: "relations", className: "proposed-area-badge", label: t("agent.cards.blockedBy", { count: changes.relations.filter((relation) => relation.type === "blocked_by").length }) });
   return chips;
+}
+
+/** A project member's display name from the local collaboration cache. */
+function personName(userId: string): string {
+  for (const entry of collaborationStore.list()) {
+    const member = entry.members.find((candidate) => candidate.userId === userId);
+    if (member) return member.displayName || member.email;
+  }
+  return "?";
+}
+
+const ENTITY_ICONS = { project: "folder", habit: "refresh", note: "file-text", area: "briefcase" } as const;
+
+/** Human-readable chips for a change to a project, habit, note or area. */
+function entityChangeChips(t: (key: string, params?: Record<string, string | number>) => string, update: ProposedEntityUpdate) {
+  const { changes } = update;
+  const chips: Array<{ key: string; className: string; label: string }> = [];
+  const name = changes.name ?? changes.title;
+  if (name !== undefined) chips.push({ key: "name", className: "proposed-project-badge", label: t("agent.updates.renameTo", { title: name }) });
+  if (changes.status !== undefined) chips.push({ key: "status", className: "proposed-status-badge", label: t(`collab.editor.status${changes.status[0].toUpperCase()}${changes.status.slice(1)}`) });
+  if (changes.health !== undefined) chips.push({ key: "health", className: "proposed-area-badge", label: changes.health ? t(changes.health === "On track" ? "collab.editor.healthOnTrack" : changes.health === "At risk" ? "collab.editor.healthAtRisk" : "collab.editor.healthOffTrack") : t("collab.editor.healthNotSet") });
+  if (changes.startDate !== undefined) chips.push({ key: "start", className: "proposed-scheduled-date", label: changes.startDate ? t("agent.updates.startOn", { date: formatDueDate(changes.startDate) }) : t("agent.updates.clearStart") });
+  if (changes.targetDate !== undefined) chips.push({ key: "target", className: "proposed-due-date", label: changes.targetDate ? t("agent.updates.targetOn", { date: formatDueDate(changes.targetDate) }) : t("agent.updates.clearTarget") });
+  if (changes.projectType !== undefined) chips.push({ key: "type", className: "proposed-area-badge", label: t(changes.projectType === "software" ? "common.workhub.typeSoftware" : "common.workhub.typeStandard") });
+  if (changes.icon !== undefined) chips.push({ key: "icon", className: "proposed-area-badge", label: t("agent.updates.newIcon") });
+  for (const milestone of changes.addMilestones ?? []) chips.push({ key: `milestone-${milestone.name}`, className: "proposed-project-badge", label: t("agent.updates.addMilestone", { name: milestone.name }) + (milestone.targetDate ? ` · ${formatDueDate(milestone.targetDate)}` : "") });
+  if (changes.important !== undefined) chips.push({ key: "important", className: "proposed-area-badge", label: changes.important ? t("agent.cards.markImportant") : t("agent.cards.unmarkImportant") });
+  if (changes.urgent !== undefined) chips.push({ key: "urgent", className: "proposed-area-badge", label: changes.urgent ? t("agent.cards.markUrgent") : t("agent.cards.unmarkUrgent") });
+  if (changes.interval !== undefined || changes.unit !== undefined || changes.daysOfWeek !== undefined) chips.push({ key: "schedule", className: "proposed-scheduled-date", label: t("agent.updates.newSchedule") });
+  if (changes.endDate !== undefined) chips.push({ key: "end", className: "proposed-due-date", label: changes.endDate ? t("agent.updates.endsOn", { date: formatDueDate(changes.endDate) }) : t("agent.updates.clearEnd") });
+  if (changes.checkInToday !== undefined) chips.push({ key: "checkin", className: "proposed-status-badge proposed-status-done", label: changes.checkInToday ? t("agent.updates.checkIn") : t("agent.updates.undoCheckIn") });
+  if (changes.bodyMarkdown !== undefined) chips.push({ key: "body", className: "proposed-area-badge", label: t("agent.updates.rewriteNote") });
+  if (changes.appendMarkdown !== undefined) chips.push({ key: "append", className: "proposed-area-badge", label: t("agent.updates.appendNote") });
+  if (changes.favorite !== undefined) chips.push({ key: "favorite", className: "proposed-area-badge", label: changes.favorite ? t("agent.updates.favorite") : t("agent.updates.unfavorite") });
+  if (changes.description !== undefined) chips.push({ key: "description", className: "proposed-area-badge", label: t("agent.updates.newDescription") });
+  return chips;
+}
+
+type EntityUpdateProposalBoxProps = {
+  readonly messageId: string;
+  readonly updates: readonly ProposedEntityUpdate[];
+  readonly addingIds: Readonly<Record<string, boolean>>;
+  readonly onUpdate: (messageId: string, updateId: string, update: Partial<ProposedEntityUpdate>) => void;
+  readonly onApplySingle: (messageId: string, update: ProposedEntityUpdate) => void;
+  readonly onApplyAll: (messageId: string, updates: ProposedEntityUpdate[]) => void;
+};
+
+/** Review cards for changes to existing projects, habits, notes and areas. */
+export function EntityUpdateProposalBox({ messageId, updates, addingIds, onUpdate, onApplySingle, onApplyAll }: EntityUpdateProposalBoxProps) {
+  const { t, tp } = useI18n();
+  if (updates.length === 0) return null;
+  const appliedCount = updates.filter((item) => item.added).length;
+  return (
+    <div className="proposed-tasks-box proposed-task-updates-box">
+      <div className="proposed-tasks-header">
+        <span className="proposed-count">{tp("agent.updates.count", updates.length, { applied: appliedCount, total: updates.length })}</span>
+        {updates.some((item) => !item.added) && (
+          <button type="button" className="primary-button add-all-btn" onClick={() => onApplyAll(messageId, updates.filter((item) => item.selected))}>
+            <Icon name="check" />
+            <span>{t("agent.updates.applyAll")}</span>
+          </button>
+        )}
+      </div>
+      <div className="proposed-task-list">
+        {updates.map((update) => (
+          <div key={update.id} className={`proposed-task-item proposed-task-update-item ${update.added ? "is-added" : ""}`}>
+            <div className="proposed-task-top">
+              <label className="proposed-checkbox-label">
+                <input type="checkbox" checked={update.selected} disabled={update.added} onChange={() => onUpdate(messageId, update.id, { selected: !update.selected })} />
+                <Icon name={ENTITY_ICONS[update.kind]} />
+                <span className="proposed-task-title">{update.targetTitle}</span>
+              </label>
+              {update.added ? (
+                <span className="task-added-badge"><Icon name="check" /> {t("agent.updates.applied")}</span>
+              ) : (
+                <button type="button" className="add-single-btn" disabled={addingIds[update.id] ?? false} onClick={() => onApplySingle(messageId, update)} title={t("agent.updates.applyOne")} aria-label={t("agent.updates.applyOne")}>
+                  <Icon name="check" />
+                </button>
+              )}
+            </div>
+            {update.changes.description && <p className="proposed-description">{update.changes.description}</p>}
+            {(update.changes.appendMarkdown || update.changes.bodyMarkdown) && <pre className="proposed-note-preview">{(update.changes.appendMarkdown ?? update.changes.bodyMarkdown ?? "").slice(0, 400)}</pre>}
+            <div className="proposed-task-meta">
+              {entityChangeChips(t, update).map((chip) => <span key={chip.key} className={chip.className}>{chip.label}</span>)}
+            </div>
+            {update.reasoning && <p className="proposed-reasoning">{update.reasoning}</p>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function updateEntityUpdateProposal(messages: AgentMessage[], messageId: string, updateId: string, update: Partial<ProposedEntityUpdate>): AgentMessage[] {
+  return messages.map((message) => {
+    if (message.id !== messageId || !message.proposedUpdates) return message;
+    return { ...message, proposedUpdates: message.proposedUpdates.map((item) => item.id === updateId ? { ...item, ...update } : item) };
+  });
+}
+
+export function markEntityUpdatesApplied(messages: AgentMessage[], messageId: string, ids: ReadonlySet<string>): AgentMessage[] {
+  return messages.map((message) => {
+    if (message.id !== messageId || !message.proposedUpdates) return message;
+    return { ...message, proposedUpdates: message.proposedUpdates.map((item) => ids.has(item.id) ? { ...item, added: true } : item) };
+  });
 }
 
 export function ProposedTaskUpdateCard({ messageId, update, applying, onToggleSelect, onApply }: ProposedTaskUpdateCardProps) {
@@ -830,6 +952,9 @@ export type AssistantMessageHandlers = {
   readonly onUpdateTaskUpdate?: (messageId: string, updateId: string, update: Partial<ProposedTaskUpdate>) => void;
   readonly onApplyTaskUpdate?: (messageId: string, update: ProposedTaskUpdate) => void;
   readonly onApplyAllTaskUpdates?: (messageId: string, updates: ProposedTaskUpdate[]) => void;
+  readonly onUpdateEntityUpdate?: (messageId: string, updateId: string, update: Partial<ProposedEntityUpdate>) => void;
+  readonly onApplyEntityUpdate?: (messageId: string, update: ProposedEntityUpdate) => void;
+  readonly onApplyAllEntityUpdates?: (messageId: string, updates: ProposedEntityUpdate[]) => void;
   readonly onUpdateHabit: (messageId: string, habitId: string, update: Partial<ProposedHabit>) => void;
   readonly onAddSingleHabit: (messageId: string, habit: ProposedHabit) => void;
   readonly onAddAllHabits: (messageId: string, habits: ProposedHabit[]) => void;
@@ -1109,6 +1234,16 @@ export function AssistantMessage({ message: msg, handlers }: AssistantMessagePro
             onUpdate={handlers.onUpdateTaskUpdate}
             onApplySingle={handlers.onApplyTaskUpdate}
             onApplyAll={handlers.onApplyAllTaskUpdates}
+          />
+        )}
+        {msg.proposedUpdates && handlers.onUpdateEntityUpdate && handlers.onApplyEntityUpdate && handlers.onApplyAllEntityUpdates && (
+          <EntityUpdateProposalBox
+            messageId={msg.id}
+            updates={msg.proposedUpdates}
+            addingIds={handlers.addingIds}
+            onUpdate={handlers.onUpdateEntityUpdate}
+            onApplySingle={handlers.onApplyEntityUpdate}
+            onApplyAll={handlers.onApplyAllEntityUpdates}
           />
         )}
         {msg.proposedHabits && (

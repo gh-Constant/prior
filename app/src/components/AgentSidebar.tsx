@@ -10,6 +10,7 @@ import type {
   NoteFolderDraft,
   Project,
   ProjectStatus,
+  ProjectType,
   ProposedArea,
   ProposedFolder,
   ProposedHabit,
@@ -17,6 +18,7 @@ import type {
   ProposedProject,
   ProposedTask,
   ProposedTaskUpdate,
+  ProposedEntityUpdate,
   Task,
   TaskDraft,
 } from "../types";
@@ -52,6 +54,8 @@ import {
   updateProjectProposal,
   updateTaskProposal,
   updateTaskUpdateProposal,
+  updateEntityUpdateProposal,
+  markEntityUpdatesApplied,
   type AssistantMessageHandlers,
 } from "./AgentMessageView";
 import { notesStore } from "../lib/notes";
@@ -107,6 +111,7 @@ function withPersistedAddedFlags(messages: AgentMessage[]): AgentMessage[] {
     proposedProjects: mark(message.proposedProjects),
     proposedTasks: mark(message.proposedTasks),
     proposedTaskUpdates: mark(message.proposedTaskUpdates),
+    proposedUpdates: mark(message.proposedUpdates),
     proposedHabits: mark(message.proposedHabits),
     proposedNotes: mark(message.proposedNotes),
     proposedFolders: mark(message.proposedFolders),
@@ -122,14 +127,16 @@ type Props = {
   readonly areas: Area[];
   readonly projects: Project[];
   readonly user: SessionUser | null;
-  readonly onAddTasks: (tasks: Array<TaskDraft & { areaName?: string | null; projectName?: string | null }>) => Promise<void>;
+  readonly onAddTasks: (tasks: Array<TaskDraft & { areaName?: string | null; projectName?: string | null; parentTitle?: string | null }>) => Promise<void>;
   readonly onAddHabits: (habits: HabitDraft[]) => Promise<void>;
   readonly onAddNotes: (notes: NoteDraft[]) => Promise<void>;
   readonly onAddFolders: (folders: NoteFolderDraft[]) => Promise<void>;
   readonly onAddAreas?: (areas: Array<{ name: string; color?: string; icon?: string | null }>) => Promise<void>;
-  readonly onAddProjects?: (projects: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null }>) => Promise<void>;
+  readonly onAddProjects?: (projects: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null; projectType?: ProjectType }>) => Promise<void>;
   /** Applies confirmed update_task proposals to existing tasks. */
   readonly onApplyTaskUpdates?: (updates: ProposedTaskUpdate[]) => Promise<void>;
+  /** Applies confirmed changes to existing projects, habits, notes and areas. */
+  readonly onApplyEntityUpdates?: (updates: ProposedEntityUpdate[]) => Promise<void>;
   readonly onOpenSettings: () => void;
 };
 
@@ -165,7 +172,7 @@ function shortModelName(id: string, freeLabel: string): string {
   return id.split("/").pop()?.replace(":free", "") || id;
 }
 
-export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, projects, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders, onAddAreas, onAddProjects, onApplyTaskUpdates, onOpenSettings }: Props) {
+export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, projects, user, onAddTasks, onAddHabits, onAddNotes, onAddFolders, onAddAreas, onAddProjects, onApplyTaskUpdates, onApplyEntityUpdates, onOpenSettings }: Props) {
   const { t } = useI18n();
   const [settings, setSettings] = useState<AgentSettings>(() => getAgentSettings());
   const starterPrompts = useStarterPrompts();
@@ -650,6 +657,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           proposedProjects: response.projects,
           proposedTasks: response.tasks,
           proposedTaskUpdates: response.taskUpdates,
+          proposedUpdates: response.updates,
           proposedHabits: response.habits,
           proposedNotes: response.notes,
           proposedFolders: response.folders,
@@ -700,6 +708,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           proposedProjects: response.projects,
           proposedTasks: response.tasks,
           proposedTaskUpdates: response.taskUpdates,
+          proposedUpdates: response.updates,
           proposedHabits: response.habits,
           proposedNotes: response.notes,
           proposedFolders: response.folders,
@@ -788,6 +797,26 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       await onApplyTaskUpdates(toApply);
       rememberAddedProposals(ids);
       setMessages((prev) => markTaskUpdatesApplied(prev, messageId, ids));
+    } catch (applyError) {
+      setError(applyError instanceof Error ? applyError.message : t("agent.updates.failed"));
+    } finally {
+      toApply.forEach((item) => setAddingIds((prev) => ({ ...prev, [item.id]: false })));
+    }
+  }
+
+  function updateProposedEntityUpdate(messageId: string, updateId: string, update: Partial<ProposedEntityUpdate>) {
+    setMessages((prev) => updateEntityUpdateProposal(prev, messageId, updateId, update));
+  }
+
+  async function handleApplyEntityUpdates(messageId: string, proposed: ProposedEntityUpdate[]) {
+    const toApply = proposed.filter((item) => !item.added);
+    if (!toApply.length || !onApplyEntityUpdates) return;
+    const ids = new Set(toApply.map((item) => item.id));
+    toApply.forEach((item) => setAddingIds((prev) => ({ ...prev, [item.id]: true })));
+    try {
+      await onApplyEntityUpdates(toApply);
+      rememberAddedProposals(ids);
+      setMessages((prev) => markEntityUpdatesApplied(prev, messageId, ids));
     } catch (applyError) {
       setError(applyError instanceof Error ? applyError.message : t("agent.updates.failed"));
     } finally {
@@ -957,6 +986,11 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       onUpdateTaskUpdate: updateProposedTaskUpdate,
       onApplyTaskUpdate: (messageId: string, update: ProposedTaskUpdate) => void handleApplyTaskUpdates(messageId, [update]),
       onApplyAllTaskUpdates: (messageId: string, updates: ProposedTaskUpdate[]) => void handleApplyTaskUpdates(messageId, updates.filter((item) => item.selected)),
+    } : {}),
+    ...(onApplyEntityUpdates ? {
+      onUpdateEntityUpdate: updateProposedEntityUpdate,
+      onApplyEntityUpdate: (messageId: string, update: ProposedEntityUpdate) => void handleApplyEntityUpdates(messageId, [update]),
+      onApplyAllEntityUpdates: (messageId: string, updates: ProposedEntityUpdate[]) => void handleApplyEntityUpdates(messageId, updates),
     } : {}),
     onUpdateHabit: updateProposedHabit,
     onAddSingleHabit: (messageId, habit) => void handleAddSingleHabit(messageId, habit),

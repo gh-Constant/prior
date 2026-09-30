@@ -1117,8 +1117,10 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		ProposedProjects json.RawMessage `json:"proposedProjects"`
 		// Proposed edits to existing tasks (update_task review cards).
 		ProposedTaskUpdates json.RawMessage `json:"proposedTaskUpdates"`
-		ActualModel         string          `json:"actualModel"`
-		CreatedAt           string          `json:"createdAt"`
+		// Proposed changes to projects, habits, notes and areas.
+		ProposedUpdates json.RawMessage `json:"proposedUpdates"`
+		ActualModel     string          `json:"actualModel"`
+		CreatedAt       string          `json:"createdAt"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid chat message request"))
@@ -1147,6 +1149,7 @@ func (s *Server) saveAgentChatMessage(w http.ResponseWriter, r *http.Request) {
 		ProposedProjects: body.ProposedProjects,
 		// Validated and defaulted to [] by the store.
 		ProposedTaskUpdates: body.ProposedTaskUpdates,
+		ProposedUpdates:     body.ProposedUpdates,
 		ActualModel:         body.ActualModel,
 	})
 	if errors.Is(err, store.ErrNotFound) {

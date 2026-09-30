@@ -60,6 +60,11 @@ only JSON or treated as complete in this change.
   only the members of the touched projects with `tasks_required`; the client
   runs just the part of the sync an event names (`tasks`, `shared`,
   `presence`). Member lists carry real presence (`online`).
+- **Sub-tasks, blockers and milestones** (0.9): the task sheet edits the
+  parent task, the "blocked by" tasks and the milestone, lists sub-tasks and
+  creates new ones; cards show "Blocked", sub-task progress, the milestone and
+  the parent. Agile projects manage milestones in Overview (target date,
+  progress, which issues belong to them).
 - **URLs**: every page has an address (`/projects/<id>/<tab>`, `/my-tasks`,
   `?task=<id>`…, see `app/src/lib/router.ts`); reloads and shared links
   reopen it, Back/Forward move between pages.

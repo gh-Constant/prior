@@ -14,6 +14,7 @@ import { DateTimePicker } from "./DateTimePicker";
 import { TaskTitleInput } from "./TaskTitleInput";
 import { TaskPeoplePicker } from "./collaboration/TaskPlanning";
 import { AssigneeSelect } from "./collaboration/AssigneeSelect";
+import { IssueLinksEditor } from "./tasks/IssueLinksEditor";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { TaskPlanningProps } from "./collaboration/types";
 import { parseTaskTitle, type TaskTitleField, type TaskTitleToken } from "../lib/taskTitleParser";
@@ -42,11 +43,16 @@ type Props = {
   readonly allowCreateMore?: boolean;
   readonly onSave: (input: TaskDraft, options?: TaskComposerSaveOptions) => Promise<void>;
   readonly onCancel: () => void;
+  /** Every task, for parent/blocked-by pickers and the sub-task list. */
+  readonly allTasks?: readonly Task[];
+  /** Creates a sub-task of the edited task. */
+  readonly onCreateSubtask?: (parent: Task, title: string) => Promise<void>;
+  readonly onOpenTask?: (task: Task) => void;
 };
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform);
 
-export function TaskComposer({ task, areas = [], projects = [], initialContext, planning, onProjectChange, allowCreateMore = false, onSave, onCancel }: Props) {
+export function TaskComposer({ task, areas = [], projects = [], initialContext, planning, onProjectChange, allowCreateMore = false, onSave, onCancel, allTasks, onCreateSubtask, onOpenTask }: Props) {
   const { t, lang } = useI18n();
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
@@ -101,6 +107,9 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [checklist, setChecklist] = useState<ChecklistItem[]>(task?.checklist ?? []);
   const [planningPeople, setPlanningPeople] = useState(planning?.people ?? []);
   const [assigneeId, setAssigneeId] = useState<string | null>(task?.assigneeId ?? planning?.assigneeId ?? null);
+  const [parentId, setParentId] = useState<string | null>(task?.parentId ?? null);
+  const [milestoneId, setMilestoneId] = useState<string | null>(task?.milestoneId ?? null);
+  const [blockedBy, setBlockedBy] = useState<string[]>(() => (task?.relations ?? []).filter((relation) => relation.type === "blocked_by").map((relation) => relation.taskId));
   const assignablePeople = planning?.assignablePeople;
   const peopleSource = useRef(planning?.people);
   const awaitingProjectPeople = useRef(!planning);
@@ -126,7 +135,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const isAreaLocked = Boolean(initialContext?.areaId ?? (isProjectLocked ? lockedProject?.areaId : null));
   const isStatusLocked = Boolean(!task && initialContext?.status);
   const effectiveAreaId = areaId ?? (isAreaLocked ? initialContext?.areaId ?? lockedProject?.areaId ?? null : null);
-  const hasOptionalDetail = Boolean(checklist.length || followUpDate || (!isAreaLocked && areaId) || planningPeople.length || extraFields.some((field) => field.selectedIds.length > 0));
+  const hasOptionalDetail = Boolean(checklist.length || followUpDate || (!isAreaLocked && areaId) || planningPeople.length || parentId || milestoneId || blockedBy.length || extraFields.some((field) => field.selectedIds.length > 0));
   const parsedTitle = useMemo(() => parseTaskTitle(title, {
     lang,
     projects: isProjectLocked ? [] : projects,
@@ -206,6 +215,9 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     if (id !== projectId) {
       setPlanningPeople([]);
       setAssigneeId(null);
+      setParentId(null);
+      setMilestoneId(null);
+      setBlockedBy([]);
       peopleSource.current = planning?.people;
       awaitingProjectPeople.current = true;
     }
@@ -241,9 +253,12 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
       // Issue fields only hold within one project: moving the task clears them
       // (the server would refuse a member or parent from another project).
       const sameProject = (task?.projectId ?? null) === (projectId ?? null);
+      const otherRelations = (task?.relations ?? []).filter((relation) => relation.type !== "blocked_by");
       const issueFields: Partial<TaskDraft> = {
         assigneeId: assignablePeople ? assigneeId : sameProject ? task?.assigneeId ?? null : null,
-        ...(sameProject ? {} : { parentId: null, milestoneId: null }),
+        parentId: allTasks ? parentId : sameProject ? task?.parentId ?? null : null,
+        milestoneId: allTasks ? milestoneId : sameProject ? task?.milestoneId ?? null : null,
+        relations: allTasks ? [...otherRelations, ...blockedBy.map((taskId) => ({ type: "blocked_by" as const, taskId }))] : sameProject ? task?.relations ?? [] : [],
       };
       const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), ...issueFields, followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate), reminderAt, checklist };
       await (allowCreateMore ? onSave(draft, { keepOpen }) : onSave(draft));
@@ -600,6 +615,21 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                     </div>
                   </div>
                 )}
+                {allTasks && (projectId || task?.parentId || blockedBy.length > 0) && <IssueLinksEditor
+                  task={task?.id ? task : undefined}
+                  projectId={projectId}
+                  tasks={allTasks}
+                  milestones={currentProject?.milestones ?? []}
+                  parentId={parentId}
+                  milestoneId={milestoneId}
+                  blockedBy={blockedBy}
+                  disabled={saving || flagDisabled}
+                  onParentChange={setParentId}
+                  onMilestoneChange={setMilestoneId}
+                  onBlockedByChange={setBlockedBy}
+                  onCreateSubtask={task?.id && onCreateSubtask ? (title) => onCreateSubtask(task, title) : undefined}
+                  onOpenTask={onOpenTask}
+                />}
                 <ChecklistEditor items={checklist} onChange={setChecklist} disabled={saving || flagDisabled} />
               </div>
             </details>

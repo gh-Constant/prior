@@ -19,7 +19,9 @@ import { newMentionsToNotify } from "./lib/comments";
 import { MentionNotifications } from "./components/collaboration/MentionNotifications";
 import { isDesktop, isMac, isTauri } from "./lib/platform";
 import { checkForUpdate, installAvailableUpdate, type UpdateInfo } from "./lib/updater";
-import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, ProposedTaskUpdate, Task, TaskDraft } from "./types";
+import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, ProposedEntityUpdate, ProposedTaskUpdate, Task, TaskDraft } from "./types";
+import { generateUuid } from "./lib/uuid";
+import { dateKey as habitDateKey } from "./lib/habits";
 import { Icon } from "./components/Icon";
 import { EisenhowerMatrix } from "./components/EisenhowerMatrix";
 import { TaskComposer, type TaskComposerContext } from "./components/TaskComposer";
@@ -72,6 +74,7 @@ import { CalendarConnectionSuccess } from "./components/CalendarConnectionSucces
 import { ProjectEditor } from "./components/collaboration/ProjectEditor";
 import { ProjectInviteNotifications } from "./components/collaboration/ProjectInviteNotifications";
 import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
+import { ProjectMilestoneEditor } from "./components/collaboration/ProjectMilestoneEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
 import { generateTaskFromMail } from "./lib/mailTask";
 import { emitMailAccountChange, saveMailAccount } from "./lib/mailAuth";
@@ -260,6 +263,7 @@ export function App() {
   const [composerProjectId, setComposerProjectId] = useState<string | null | undefined>(undefined);
   const [projectEditor, setProjectEditor] = useState<Project | null>(null);
   const [cycleEditor, setCycleEditor] = useState<{ projectId: string; cycleId?: string } | null>(null);
+  const [milestoneEditor, setMilestoneEditor] = useState<{ projectId: string; milestoneId?: string } | null>(null);
   const [habitComposerOpen, setHabitComposerOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
@@ -1225,6 +1229,20 @@ export function App() {
     void syncNow("tasks");
   }
 
+  /** A sub-task of a task, in the same project and area. */
+  async function createSubtask(parent: Task, title: string): Promise<void> {
+    assertProjectWritable(parent.projectId);
+    const project = projects.find((item) => item.id === parent.projectId);
+    await localStore.saveTask({
+      title, important: false, urgent: false, completed: false,
+      projectId: parent.projectId ?? null, areaId: parent.areaId ?? null, parentId: parent.id, milestoneId: parent.milestoneId ?? null,
+      status: project?.projectType === "software" ? "backlog" : "next",
+      peopleIds: user ? [user.id] : [],
+    });
+    await refresh();
+    void syncNow("tasks");
+  }
+
   async function saveEditedTask(input: TaskDraft) {
     if (!editingTask) return;
     assertProjectWritable(editingTask.projectId);
@@ -1313,14 +1331,14 @@ export function App() {
     setAreas(workspaceStore.listAreas());
   }
 
-  async function addAgentProjects(batch: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null }>) {
+  async function addAgentProjects(batch: Array<{ name: string; areaName?: string | null; description?: string; status?: ProjectStatus; targetDate?: string | null; icon?: string | null; projectType?: Project["projectType"] }>) {
     for (const item of batch) {
       const name = item.name.trim();
       if (!name) continue;
       const areaId = item.areaName ? resolveAgentAreaId(item.areaName) : null;
       const existing = workspaceStore.listProjects().find((p) => p.name.trim().toLowerCase() === name.toLowerCase());
       if (!existing) {
-        const created = workspaceStore.createProject(name, areaId, item.description ?? "", item.icon);
+        const created = workspaceStore.createProject(name, areaId, item.description ?? "", item.icon, item.projectType);
         const updates: Partial<Project> = {};
         if (item.status && item.status !== "active") updates.status = item.status;
         if (item.targetDate) updates.targetDate = item.targetDate;
@@ -1341,8 +1359,12 @@ export function App() {
     refreshWorkspace();
   }
 
-  async function addAgentTasks(batch: Array<TaskDraft & { areaName?: string | null; projectName?: string | null }>) {
-    for (const item of batch) {
+  async function addAgentTasks(batch: Array<TaskDraft & { areaName?: string | null; projectName?: string | null; parentTitle?: string | null }>) {
+    // Parents first, so sub-tasks of the same batch can point at them.
+    const ordered = [...batch].sort((left, right) => Number(Boolean(left.parentTitle)) - Number(Boolean(right.parentTitle)));
+    const createdByTitle = new Map<string, Task>();
+    const existing = await localStore.listTasks();
+    for (const item of ordered) {
       let areaId = item.areaId ?? null;
       if (!areaId && item.areaName) {
         areaId = resolveAgentAreaId(item.areaName);
@@ -1351,15 +1373,82 @@ export function App() {
       if (!projectId && item.projectName) {
         projectId = resolveAgentProjectId(item.projectName, areaId);
       }
-      await localStore.saveTask({
-        ...item,
+      const { parentTitle, areaName: _areaName, projectName: _projectName, ...draft } = item;
+      let parentId = draft.parentId ?? null;
+      if (!parentId && parentTitle) {
+        const wanted = parentTitle.trim().toLowerCase();
+        const parent = createdByTitle.get(wanted) ?? existing.find((task) => !task.deletedAt && task.title.trim().toLowerCase() === wanted && (task.projectId ?? null) === projectId);
+        if (parent && (parent.projectId ?? null) === projectId) parentId = parent.id;
+      }
+      const people = draft.peopleIds ?? (user ? [user.id] : []);
+      const saved = await localStore.saveTask({
+        ...draft,
         areaId,
         projectId,
-        peopleIds: item.peopleIds ?? (user ? [user.id] : []),
+        parentId,
+        peopleIds: draft.assigneeId && !people.includes(draft.assigneeId) ? [...people, draft.assigneeId] : people,
       });
+      createdByTitle.set(saved.title.trim().toLowerCase(), saved);
     }
     await refresh();
     void syncNow("tasks");
+  }
+
+  /* Applies confirmed changes to existing projects, habits, notes and areas
+     (the assistant's update_project/habit/note/area cards). */
+  async function applyAgentEntityUpdates(batch: ProposedEntityUpdate[]) {
+    for (const item of batch) {
+      const { changes } = item;
+      if (item.kind === "project") {
+        const project = projects.find((candidate) => candidate.id === item.targetId);
+        if (!project) continue;
+        const milestones = [...(project.milestones ?? []), ...(changes.addMilestones ?? []).map((milestone) => ({ id: generateUuid(), name: milestone.name, targetDate: milestone.targetDate }))];
+        await saveProjectDetails({
+          ...project,
+          ...(changes.name !== undefined ? { name: changes.name } : {}),
+          ...(changes.description !== undefined ? { description: changes.description } : {}),
+          ...(changes.status !== undefined ? { status: changes.status } : {}),
+          ...(changes.health !== undefined ? { health: changes.health } : {}),
+          ...(changes.startDate !== undefined ? { startDate: changes.startDate } : {}),
+          ...(changes.targetDate !== undefined ? { targetDate: changes.targetDate } : {}),
+          ...(changes.projectType !== undefined ? { projectType: changes.projectType } : {}),
+          ...(changes.icon ? { icon: changes.icon } : {}),
+          ...(changes.addMilestones?.length ? { milestones } : {}),
+          updatedAt: new Date().toISOString(),
+        });
+      } else if (item.kind === "habit") {
+        const habit = habits.find((candidate) => candidate.id === item.targetId);
+        if (!habit) continue;
+        const today = habitDateKey(new Date());
+        let completedDates = habit.completedDates;
+        if (changes.checkInToday === true && !completedDates.includes(today)) completedDates = [...completedDates, today];
+        if (changes.checkInToday === false) completedDates = completedDates.filter((date) => date !== today);
+        await localStore.updateHabit({
+          ...habit,
+          ...(changes.title !== undefined ? { title: changes.title } : {}),
+          ...(changes.important !== undefined ? { important: changes.important } : {}),
+          ...(changes.urgent !== undefined ? { urgent: changes.urgent } : {}),
+          ...(changes.interval !== undefined ? { interval: changes.interval } : {}),
+          ...(changes.unit !== undefined ? { unit: changes.unit } : {}),
+          ...(changes.daysOfWeek !== undefined ? { daysOfWeek: changes.daysOfWeek } : {}),
+          ...(changes.endDate !== undefined ? { endDate: changes.endDate } : {}),
+          completedDates,
+        });
+        if (changes.checkInToday === true && game.enabled) rewardHabitCheckIn(habit, today);
+      } else if (item.kind === "note") {
+        const note = notesStore.list().find((candidate) => candidate.id === item.targetId);
+        if (!note) continue;
+        const body = changes.bodyMarkdown !== undefined ? changes.bodyMarkdown : changes.appendMarkdown ? `${note.body.trimEnd()}\n\n${changes.appendMarkdown}` : note.body;
+        notesStore.update({ ...note, ...(changes.title ? { title: changes.title } : {}), ...(changes.favorite !== undefined ? { favorite: changes.favorite } : {}), body });
+      } else if (item.kind === "area") {
+        const area = workspaceStore.listAreas().find((candidate) => candidate.id === item.targetId);
+        if (!area) continue;
+        workspaceStore.updateArea({ ...area, ...(changes.name ? { name: changes.name } : {}), ...(changes.icon ? { icon: changes.icon } : {}) });
+      }
+    }
+    refreshWorkspace();
+    await refresh();
+    void syncNow();
   }
 
   /* Applies update_task proposals the user confirmed in the assistant. Only
@@ -1373,7 +1462,8 @@ export function App() {
       const { changes } = item;
       const completed = changes.completed ?? (changes.status ? changes.status === "done" : task.completed);
       const status = changes.status ?? (changes.completed === true ? "done" : changes.completed === false && task.status === "done" ? "next" : task.status);
-      await localStore.updateTask({ ...task, ...changes, completed, status });
+      const people = task.peopleIds ?? [];
+      await localStore.updateTask({ ...task, ...changes, completed, status, ...(changes.assigneeId && !people.includes(changes.assigneeId) ? { peopleIds: [...people, changes.assigneeId] } : {}) });
     }
     await refresh();
     void syncNow("tasks");
@@ -1571,6 +1661,21 @@ export function App() {
       // Assignment makes sense once someone else can see the project.
       const assignablePeople = entry && members.length > 1 ? members.map(({ id, name, email, avatarUrl, presence }) => ({ id, name, email, avatarUrl, presence })) : undefined;
       const projectTasks = tasks.filter((task) => task.projectId === project.id);
+      const taskById = new Map(projectTasks.map((task) => [task.id, task]));
+      // Linear-style links shown on cards: milestone, parent, blockers, sub-tasks.
+      const issueLinks = (task: Task) => {
+        const children = projectTasks.filter((child) => child.parentId === task.id && !child.deletedAt);
+        const milestone = project.milestones?.find((item) => item.id === task.milestoneId);
+        const parent = task.parentId ? taskById.get(task.parentId) : undefined;
+        return {
+          blocked: (task.relations ?? []).some((relation) => relation.type === "blocked_by" && taskById.get(relation.taskId)?.completed === false),
+          ...(children.length ? { subtasks: { done: children.filter((child) => child.completed).length, total: children.length } } : {}),
+          properties: [
+            ...(milestone ? [{ key: "milestone" as const, label: milestone.name }] : []),
+            ...(parent ? [{ key: "parent" as const, label: parent.title }] : []),
+          ],
+        };
+      };
       const projectIssues = projectTasks.map((task) => {
         const rawState = task.completed ? "done" : task.status ?? "backlog";
         return {
@@ -1579,11 +1684,11 @@ export function App() {
         stateId: rawState === "inbox" ? "backlog" : rawState,
         priority: task.priority,
         assigneeId: task.assigneeId ?? null,
+        ...issueLinks(task),
         people: (task.peopleIds ?? []).map((personId): TaskPerson | null => {
           const person = memberById.get(personId);
           return person ? { id: person.id, name: person.name, email: person.email, avatarUrl: person.avatarUrl, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator", presence: person.presence } : null;
         }).filter((person): person is TaskPerson => Boolean(person)),
-        properties: [],
       };
       });
       result[project.id] = {
@@ -1601,6 +1706,8 @@ export function App() {
         onEditProject: readOnly ? undefined : () => setProjectEditor(project),
         onCreateCycle: readOnly ? undefined : () => setCycleEditor({ projectId: project.id }),
         onEditCycle: readOnly ? undefined : (cycleId) => setCycleEditor({ projectId: project.id, cycleId }),
+        onCreateMilestone: readOnly ? undefined : () => setMilestoneEditor({ projectId: project.id }),
+        onEditMilestone: readOnly ? undefined : (milestoneId) => setMilestoneEditor({ projectId: project.id, milestoneId }),
         onOpenNotes: () => openNotes(project.id),
         onOpenIssue: (id) => {
           const task = tasks.find((item) => item.id === id && item.projectId === project.id);
@@ -1702,7 +1809,14 @@ export function App() {
             void syncNow("shared");
           } : undefined,
         },
-        overview: { lead: members.find((member) => member.role === "owner"), health: project.health ?? undefined, startDate: project.startDate ?? undefined, targetDate: project.targetDate ?? undefined },
+        overview: {
+          lead: members.find((member) => member.role === "owner"), health: project.health ?? undefined, startDate: project.startDate ?? undefined, targetDate: project.targetDate ?? undefined,
+          milestones: (project.milestones ?? []).map((milestone) => {
+            const inMilestone = projectTasks.filter((task) => task.milestoneId === milestone.id && !task.deletedAt);
+            const done = inMilestone.filter((task) => task.completed).length;
+            return { id: milestone.id, name: milestone.name, targetDate: milestone.targetDate ?? null, done, total: inMilestone.length, completed: inMilestone.length > 0 && done === inMilestone.length };
+          }),
+        },
       };
     }
     return result;
@@ -2030,7 +2144,7 @@ export function App() {
         updateAvailable={desktopUpdate !== null}
         updateInstalling={updateInstalling}
         onInstallUpdate={() => void installDesktopUpdate()}
-        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
+        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || milestoneEditor !== null}
         onViewChange={changeView}
         showAdmin={billing.billing?.isAdmin === true}
         showProgress={game.enabled}
@@ -2043,7 +2157,7 @@ export function App() {
         onSync={() => void syncNow()}
       />
 
-      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || mobileMoreOpen}>
+      <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || milestoneEditor !== null || mobileMoreOpen}>
         <MobileTopBar view={activeView} title={viewTitle(activeView, t)} agentOpen={agentOpen} onAgent={() => setAgentOpen((value) => !value)} onSearch={() => setPaletteOpen(true)} />
         <VerifyEmailBanner key={user?.id ?? "anonymous"} user={user} />
         <WorkspaceHeader
@@ -2130,7 +2244,7 @@ export function App() {
         activeView={activeView}
         moreOpen={mobileMoreOpen}
         createLabel={activeView === "habits" ? t("common.header.newHabit") : t("common.header.newTask")}
-        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
+        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || milestoneEditor !== null}
         onNavigate={changeView}
         onCreate={() => activeView === "habits" ? setHabitComposerOpen(true) : openNewTask()}
         onToggleMore={() => setMobileMoreOpen((value) => !value)}
@@ -2138,7 +2252,7 @@ export function App() {
 
       <AgentSidebar
         open={agentOpen}
-        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null}
+        inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || milestoneEditor !== null}
         onClose={() => setAgentOpen(false)}
         tasks={tasks}
         habits={habits}
@@ -2152,10 +2266,11 @@ export function App() {
         onAddAreas={addAgentAreas}
         onAddProjects={addAgentProjects}
         onApplyTaskUpdates={applyAgentTaskUpdates}
+        onApplyEntityUpdates={applyAgentEntityUpdates}
         onOpenSettings={() => { setAgentOpen(false); changeView("settings"); }}
       />
 
-      {(composerOpen || editingTask) && <TaskComposer task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onProjectChange={setComposerProjectId} allowCreateMore={!editingTask} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); setComposerProjectId(undefined); }} />}
+      {(composerOpen || editingTask) && <TaskComposer key={editingTask?.id ?? "new"} task={editingTask ?? undefined} areas={areas} projects={projects} initialContext={newTaskContext} planning={taskPlanning} onProjectChange={setComposerProjectId} allowCreateMore={!editingTask} onSave={editingTask ? saveEditedTask : saveTask} onCancel={() => { setComposerOpen(false); setEditingTask(null); setNewTaskContext(undefined); setComposerProjectId(undefined); }} allTasks={tasks} onCreateSubtask={createSubtask} onOpenTask={(task) => { setComposerOpen(false); setComposerProjectId(task.projectId ?? null); setEditingTask(task); }} />}
       {mailComposerOpen && mailDraft && (
         <TaskComposer
           key="mail-task"
@@ -2187,6 +2302,38 @@ export function App() {
           setCycleEditor(null);
         }}
       />}
+      {milestoneEditor && (() => {
+        const project = projects.find((item) => item.id === milestoneEditor.projectId);
+        if (!project) return null;
+        const milestone = project.milestones?.find((item) => item.id === milestoneEditor.milestoneId);
+        const inMilestone = milestone ? tasks.filter((task) => task.projectId === project.id && task.milestoneId === milestone.id).map((task) => task.id) : [];
+        // The issue list of the milestone is the tasks' milestoneId: update
+        // the tasks that joined or left it along with the project.
+        const retag = async (milestoneId: string | null, issueIds: readonly string[]) => {
+          for (const task of tasks.filter((item) => item.projectId === project.id)) {
+            const selected = issueIds.includes(task.id);
+            if (selected && task.milestoneId !== milestoneId) await changeTask({ ...task, milestoneId });
+            else if (!selected && milestoneId && task.milestoneId === milestoneId) await changeTask({ ...task, milestoneId: null });
+          }
+        };
+        return <ProjectMilestoneEditor
+          milestone={milestone}
+          issues={collaborationByProject[project.id]?.issues ?? []}
+          issueIds={inMilestone}
+          onClose={() => setMilestoneEditor(null)}
+          onSave={async (draft) => {
+            const id = milestone?.id ?? generateUuid();
+            const next = { id, name: draft.name, targetDate: draft.targetDate, ...(draft.description ? { description: draft.description } : {}) };
+            const milestones = milestone ? (project.milestones ?? []).map((item) => item.id === id ? next : item) : [...(project.milestones ?? []), next];
+            await saveProjectDetails({ ...project, milestones, updatedAt: new Date().toISOString() });
+            await retag(id, draft.issueIds);
+          }}
+          onDelete={milestone ? async () => {
+            await saveProjectDetails({ ...project, milestones: (project.milestones ?? []).filter((item) => item.id !== milestone.id), updatedAt: new Date().toISOString() });
+            await retag(milestone.id, []);
+          } : undefined}
+        />;
+      })()}
       {habitComposerOpen && <HabitComposer habit={editingHabit ?? undefined} onSave={saveHabit} onCancel={() => { setHabitComposerOpen(false); setEditingHabit(null); }} />}
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>{t("common.celebration.completed")}</strong><small>{completionCelebration.title}</small></span></div>}

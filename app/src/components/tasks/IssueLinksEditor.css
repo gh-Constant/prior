@@ -1,0 +1,19 @@
+/* Sub-tasks, blockers and milestone of a task (TaskComposer → More options). */
+.issue-links { display: grid; gap: 10px; }
+.issue-links-blockers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.issue-links-blocker { gap: 4px; padding-right: 2px; }
+.issue-links-blocker.is-done { color: var(--muted); text-decoration: line-through; }
+.issue-links-blocker > svg { width: 12px; height: 12px; }
+.issue-links-open { max-width: 220px; overflow: hidden; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.issue-links-open:hover { text-decoration: underline; }
+.issue-links-remove { display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
+.issue-links-remove:hover { background: var(--hover); color: var(--ink); }
+.issue-links-remove svg { width: 11px; height: 11px; }
+.issue-links-add { min-width: 160px; }
+.issue-links-children { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.issue-links-children li { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: var(--fs-sm); }
+.issue-links-children svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
+.issue-links-new { display: flex; gap: 6px; }
+.issue-links-new input { flex: 1; min-width: 0; min-height: var(--control-h); padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-sm); }
+.issue-links-new input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.issue-links-new .secondary-button { display: inline-flex; align-items: center; gap: 6px; }

@@ -30,6 +30,10 @@ export type ProjectIssue = {
   people: readonly TaskPerson[];
   /** The one person responsible (Linear's assignee). */
   assigneeId?: string | null;
+  /** Waits on a task that is not done yet. */
+  blocked?: boolean;
+  /** Progress of its sub-tasks, when it has some. */
+  subtasks?: { done: number; total: number };
   properties?: readonly { key: PlanningKey; label: string }[];
 };
 export type ProjectCycle = {
@@ -67,7 +71,7 @@ export type ProjectOverview = {
   health?: "On track" | "At risk" | "Off track";
   startDate?: string;
   targetDate?: string;
-  milestones?: readonly { id: string; name: string; completed: boolean }[];
+  milestones?: readonly { id: string; name: string; completed: boolean; targetDate?: string | null; done?: number; total?: number }[];
   latestUpdate?: string;
   resources?: readonly { id: string; label: string; href: string }[];
 };
@@ -112,6 +116,8 @@ export type ProjectCollaborationProps = {
   onMoveIssue?: (issueId: string, stateId: string) => Promise<void>;
   onCreateCycle?: () => void;
   onEditCycle?: (cycleId: string) => void;
+  onCreateMilestone?: () => void;
+  onEditMilestone?: (milestoneId: string) => void;
   /** Opens a detail surface; the caller must honor readOnly there too. */
   onOpenIssue?: (issueId: string) => void;
   /** Deletes the backing task; omitted for read-only projects. */

@@ -194,13 +194,66 @@ export type ProposedTask = {
   /** Checklist item titles, in order (all unchecked). */
   checklist?: string[];
   reminderAt?: string | null;
+  /** A member of a shared project, resolved from the name the model used. */
+  assigneeId?: string | null;
+  /** Display name of that member, for the review card. */
+  assigneeLabel?: string;
+  /** A milestone of the project (resolved from its name). */
+  milestoneId?: string | null;
+  milestoneLabel?: string;
+  /** Sub-issue of an existing task, or of another task of the same proposal. */
+  parentId?: string | null;
+  parentTitle?: string | null;
+  /** Existing tasks this one waits on. */
+  blockedByTaskIds?: string[];
   reasoning: string;
   selected: boolean;
   added?: boolean;
 };
 
 /** Fields the assistant may change on an existing task (update_task). */
-export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt">>;
+export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt" | "assigneeId" | "milestoneId" | "parentId" | "relations">>;
+
+/** Kinds of existing items the assistant can change besides tasks. */
+export type EntityUpdateKind = "project" | "habit" | "note" | "area";
+
+/** Changes to an existing project, habit, note or area (only relevant fields per kind). */
+export type EntityUpdateFields = {
+  name?: string;
+  title?: string;
+  description?: string;
+  icon?: string | null;
+  status?: ProjectStatus;
+  health?: ProjectHealth | null;
+  startDate?: string | null;
+  targetDate?: string | null;
+  projectType?: ProjectType;
+  addMilestones?: Array<{ name: string; targetDate: string | null }>;
+  important?: boolean;
+  urgent?: boolean;
+  interval?: number;
+  unit?: HabitUnit;
+  daysOfWeek?: number[];
+  endDate?: string | null;
+  /** Habits: record (true) or undo (false) today's check-in. */
+  checkInToday?: boolean;
+  bodyMarkdown?: string;
+  appendMarkdown?: string;
+  favorite?: boolean;
+};
+
+/** A reviewable edit to an existing project, habit, note or area. */
+export type ProposedEntityUpdate = {
+  id: string;
+  kind: EntityUpdateKind;
+  targetId: string;
+  /** Name of the item when the proposal was made, for display. */
+  targetTitle: string;
+  changes: EntityUpdateFields;
+  reasoning: string;
+  selected: boolean;
+  added?: boolean;
+};
 
 /** A reviewable edit to an existing task; applied only after the user confirms. */
 export type ProposedTaskUpdate = {
@@ -270,6 +323,8 @@ export type AgentMessage = {
   proposedProjects?: ProposedProject[];
   proposedTasks?: ProposedTask[];
   proposedTaskUpdates?: ProposedTaskUpdate[];
+  /** Changes to existing projects, habits, notes and areas. */
+  proposedUpdates?: ProposedEntityUpdate[];
   proposedHabits?: ProposedHabit[];
   proposedNotes?: ProposedNote[];
   proposedFolders?: ProposedFolder[];

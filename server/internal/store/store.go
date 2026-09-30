@@ -113,8 +113,10 @@ type AgentChatMessage struct {
 	ProposedProjects json.RawMessage `json:"proposedProjects,omitempty"`
 	// Proposed edits to existing tasks (update_task review cards).
 	ProposedTaskUpdates json.RawMessage `json:"proposedTaskUpdates,omitempty"`
-	ActualModel         string          `json:"actualModel,omitempty"`
-	CreatedAt           time.Time       `json:"createdAt"`
+	// Proposed changes to existing projects, habits, notes and areas.
+	ProposedUpdates json.RawMessage `json:"proposedUpdates,omitempty"`
+	ActualModel     string          `json:"actualModel,omitempty"`
+	CreatedAt       time.Time       `json:"createdAt"`
 }
 
 // Session describes one login session for the sessions management endpoints.
@@ -664,7 +666,9 @@ type SaveAgentChatMessageParams struct {
 	ProposedProjects json.RawMessage
 	// ProposedTaskUpdates holds update_task review cards.
 	ProposedTaskUpdates json.RawMessage
-	ActualModel         string
+	// ProposedUpdates holds update_project/habit/note/area review cards.
+	ProposedUpdates json.RawMessage
+	ActualModel     string
 }
 
 func (s *Store) UpsertUser(ctx context.Context, googleSub, email string, verified bool, displayName, avatarURL string) (User, error) {
@@ -1091,7 +1095,7 @@ func (s *Store) GetAgentChat(ctx context.Context, userID, chatID uuid.UUID) (Age
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders,
 			COALESCE(proposed_areas, '[]'::jsonb), COALESCE(proposed_projects, '[]'::jsonb),
-			COALESCE(proposed_task_updates, '[]'::jsonb), actual_model, created_at
+			COALESCE(proposed_task_updates, '[]'::jsonb), COALESCE(proposed_updates, '[]'::jsonb), actual_model, created_at
 		FROM agent_chat_messages
 		WHERE chat_id = $1
 		ORDER BY created_at ASC, id ASC`, chatID)
@@ -1103,7 +1107,7 @@ func (s *Store) GetAgentChat(ctx context.Context, userID, chatID uuid.UUID) (Age
 	for rows.Next() {
 		var message AgentChatMessage
 		var actualModel *string
-		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &message.ProposedNotes, &message.ProposedFolders, &message.ProposedAreas, &message.ProposedProjects, &message.ProposedTaskUpdates, &actualModel, &message.CreatedAt); err != nil {
+		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &message.ProposedNotes, &message.ProposedFolders, &message.ProposedAreas, &message.ProposedProjects, &message.ProposedTaskUpdates, &message.ProposedUpdates, &actualModel, &message.CreatedAt); err != nil {
 			return AgentChat{}, err
 		}
 		if actualModel != nil {
@@ -1127,6 +1131,9 @@ func (s *Store) SaveAgentChatMessage(ctx context.Context, params SaveAgentChatMe
 		return AgentChatMessage{}, err
 	}
 	if params.ProposedTaskUpdates, err = normalizeProposedArray(params.ProposedTaskUpdates, "proposed task updates"); err != nil {
+		return AgentChatMessage{}, err
+	}
+	if params.ProposedUpdates, err = normalizeProposedArray(params.ProposedUpdates, "proposed updates"); err != nil {
 		return AgentChatMessage{}, err
 	}
 
@@ -1284,14 +1291,14 @@ func upsertChatMessage(ctx context.Context, tx pgx.Tx, params SaveAgentChatMessa
 	var message AgentChatMessage
 	var returnedModel *string
 	err := tx.QueryRow(ctx, `
-		INSERT INTO agent_chat_messages (id, chat_id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders, proposed_areas, proposed_projects, proposed_task_updates, actual_model)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO agent_chat_messages (id, chat_id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders, proposed_areas, proposed_projects, proposed_task_updates, actual_model, proposed_updates)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, content = EXCLUDED.content,
 		proposed_tasks = EXCLUDED.proposed_tasks, proposed_habits = EXCLUDED.proposed_habits, proposed_notes = EXCLUDED.proposed_notes, proposed_folders = EXCLUDED.proposed_folders,
-		proposed_areas = EXCLUDED.proposed_areas, proposed_projects = EXCLUDED.proposed_projects, proposed_task_updates = EXCLUDED.proposed_task_updates, actual_model = EXCLUDED.actual_model
-		RETURNING id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders, proposed_areas, proposed_projects, proposed_task_updates, actual_model, created_at`,
-		params.MessageID, params.ChatID, params.Role, content, proposedTasks, proposedHabits, proposedNotes, proposedFolders, proposedAreas, proposedProjects, params.ProposedTaskUpdates, chatModelValue(params.ActualModel)).
-		Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &message.ProposedNotes, &message.ProposedFolders, &message.ProposedAreas, &message.ProposedProjects, &message.ProposedTaskUpdates, &returnedModel, &message.CreatedAt)
+		proposed_areas = EXCLUDED.proposed_areas, proposed_projects = EXCLUDED.proposed_projects, proposed_task_updates = EXCLUDED.proposed_task_updates, proposed_updates = EXCLUDED.proposed_updates, actual_model = EXCLUDED.actual_model
+		RETURNING id, role, content, proposed_tasks, proposed_habits, proposed_notes, proposed_folders, proposed_areas, proposed_projects, proposed_task_updates, proposed_updates, actual_model, created_at`,
+		params.MessageID, params.ChatID, params.Role, content, proposedTasks, proposedHabits, proposedNotes, proposedFolders, proposedAreas, proposedProjects, params.ProposedTaskUpdates, chatModelValue(params.ActualModel), params.ProposedUpdates).
+		Scan(&message.ID, &message.Role, &message.Content, &message.ProposedTasks, &message.ProposedHabits, &message.ProposedNotes, &message.ProposedFolders, &message.ProposedAreas, &message.ProposedProjects, &message.ProposedTaskUpdates, &message.ProposedUpdates, &returnedModel, &message.CreatedAt)
 	if err != nil {
 		return AgentChatMessage{}, err
 	}

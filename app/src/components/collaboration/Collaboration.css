@@ -192,8 +192,26 @@ details[open] > .collab-disclosure-summary .collab-disclosure-chevron { transfor
 .collab-assignee-filter .collab-chip-btn { min-height: 28px; }
 .collab-assignee-filter .collab-avatar-btn { display: inline-grid; place-items: center; padding: 1px; border: 2px solid transparent; border-radius: 50%; background: transparent; cursor: pointer; }
 .collab-assignee-filter .collab-avatar-btn[aria-pressed="true"] { border-color: var(--accent); }
-.collab-issue-row-meta { display: flex; align-items: center; gap: 8px; }
+.collab-issue-row-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.collab-issue-row-meta > .collab-chip { flex-shrink: 0; white-space: nowrap; }
+.collab-issue-row-meta > .collab-chips { flex: 0 1 auto; }
 .board-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 10px 8px; }
 .collab-issue-card { position: relative; }
 .board-card-assignee { position: absolute; right: 8px; bottom: 8px; }
 .collab-issue-card .board-card-meta { padding-right: 28px; min-height: 22px; }
+.project-chip.is-blocked, .collab-chip.is-blocked { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+.project-chip.is-blocked svg, .collab-chip.is-blocked svg { color: var(--red); }
+.project-chip-label { overflow: hidden; max-width: 140px; text-overflow: ellipsis; white-space: nowrap; }
+.collab-milestone-row { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(60px, 120px) auto; align-items: center; gap: 10px; width: 100%; padding: 6px 4px; border: 0; border-radius: var(--r-md); background: none; color: inherit; font: inherit; text-align: left; }
+button.collab-milestone-row { cursor: pointer; }
+button.collab-milestone-row:hover { background: var(--hover); }
+.collab-milestone-copy { display: grid; min-width: 0; }
+.collab-milestone-copy strong { overflow: hidden; color: var(--ink); font-size: var(--fs-sm); font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.collab-milestone-copy small { color: var(--muted); font-size: var(--fs-xs); }
+.collab-milestone-bar { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.collab-milestone-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--green); }
+.collab-milestone-delete { display: inline-flex; align-items: center; gap: 6px; justify-self: start; color: var(--red); }
+@media (max-width: 560px) { .collab-milestone-row { grid-template-columns: auto minmax(0, 1fr) auto; } .collab-milestone-bar { display: none; } }
+.collab-milestones-panel .collab-milestones li { display: block; margin-bottom: 2px; }
+.collab-milestones-panel .collab-milestones li span { flex: none; }
+.collab-milestones-panel .collab-cycle-heading .secondary-button { display: inline-flex; align-items: center; gap: 6px; }

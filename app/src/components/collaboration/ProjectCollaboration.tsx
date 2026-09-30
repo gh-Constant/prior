@@ -62,6 +62,8 @@ function IssueCard({ issue, stateName, state, onOpen, onDelete, assign }: {
     </div>
     <div className="collab-issue-row-meta">
       <AgilePropertyChips state={state} priority={issue.priority} properties={[{ key: "state", label: stateName }, ...(issue.properties ?? []).filter((property) => property.key !== "state")]} />
+      {issue.blocked && <span className="collab-chip is-blocked"><Icon name="lock" aria-hidden="true" />{t("collab.issue.blocked")}</span>}
+      {issue.subtasks && <span className="collab-chip"><Icon name="list-todo" aria-hidden="true" />{issue.subtasks.done}/{issue.subtasks.total}</span>}
       <IssueAssignee issue={issue} assign={assign} />
     </div>
     {!assign && <PeopleChips people={issue.people} />}
@@ -79,12 +81,14 @@ function BoardIssueCard({ issue, completed, onOpen, onDelete, busy, onDrag, onDr
   const menuItems = issueMenuItems(issue, t, onOpen, onDelete, assign);
   // Without assignment data (local projects), show the lead person as before.
   const lead = assign ? undefined : issue.people.find((person) => person.role === "owner") ?? issue.people[0];
-  const chips = (issue.properties ?? []).filter((property) => property.key === "cycle" || property.key === "labels" || property.key === "milestone");
+  const chips = (issue.properties ?? []).filter((property) => property.key === "cycle" || property.key === "labels" || property.key === "milestone" || property.key === "parent");
   const body = <>
     <span className="board-card-title">{issue.identifier && <small>{issue.identifier}</small>}{issue.title}</span>
     <span className="board-card-meta">
       {issue.priority !== undefined && <PriorityGlyph priority={issue.priority} />}
-      {chips.map((property, index) => <span className="project-chip" key={`${property.key}-${index}`}><Icon name={property.key === "cycle" ? "refresh" : property.key === "milestone" ? "flag" : "tag"} />{property.label}</span>)}
+      {issue.blocked && <span className="project-chip is-blocked" title={t("collab.issue.blocked")}><Icon name="lock" />{t("collab.issue.blocked")}</span>}
+      {issue.subtasks && <span className="project-chip" title={t("collab.issue.subtasks")}><Icon name="list-todo" />{issue.subtasks.done}/{issue.subtasks.total}</span>}
+      {chips.map((property, index) => <span className="project-chip" key={`${property.key}-${index}`} title={property.key === "parent" ? t("collab.issue.parentOf", { title: property.label }) : undefined}><Icon name={property.key === "cycle" ? "refresh" : property.key === "milestone" ? "flag" : property.key === "parent" ? "arrow" : "tag"} /><span className="project-chip-label">{property.label}</span></span>)}
       {lead && <PersonAvatar person={lead} className="project-avatar board-card-avatar" showPresence={false} />}
     </span>
   </>;
@@ -103,7 +107,7 @@ function BoardIssueCard({ issue, completed, onOpen, onDelete, busy, onDrag, onDr
   </article>;
 }
 
-function Overview({ project, issues, states, sharing, overview = {}, onOpenNotes }: ProjectCollaborationProps) {
+function Overview({ project, issues, states, sharing, overview = {}, onOpenNotes, readOnly, onCreateMilestone, onEditMilestone }: ProjectCollaborationProps) {
   const { t, tp } = useI18n();
   const completed = issues.filter((issue) => states.some((state) => state.id === issue.stateId && state.category === "completed")).length;
   const progress = issues.length ? Math.round(completed / issues.length * 100) : 0;
@@ -117,7 +121,19 @@ function Overview({ project, issues, states, sharing, overview = {}, onOpenNotes
       <progress className="collab-progress" value={completed} max={issues.length || 1} aria-label={t("collab.overview.completion")} />
     </section>
     <section className="collab-panel"><h3>{t("collab.people.label")}</h3><p className="collab-muted">{t("collab.overview.lead", { lead: overview.lead?.name ?? t("collab.overview.leadUnassigned") })}</p><PeopleChips people={sharing.members} /></section>
-    {!!overview.milestones?.length && <section className="collab-panel"><h3>{t("collab.overview.milestones")}</h3><ul className="collab-milestones">{overview.milestones.map((milestone) => <li key={milestone.id}><Icon name={milestone.completed ? "check-circle" : "flag"} aria-hidden="true" /><span>{milestone.name}</span><small>{milestone.completed ? t("collab.overview.milestoneComplete") : t("collab.overview.milestoneOpen")}</small></li>)}</ul></section>}
+    {(!!overview.milestones?.length || (!readOnly && onCreateMilestone)) && <section className="collab-panel collab-milestones-panel">
+      <div className="collab-cycle-heading"><h3>{t("collab.overview.milestones")}</h3>{!readOnly && onCreateMilestone && <button type="button" className="secondary-button" onClick={onCreateMilestone}><Icon name="plus" />{t("collab.milestone.new")}</button>}</div>
+      {overview.milestones?.length ? <ul className="collab-milestones">{overview.milestones.map((milestone) => {
+        const percent = milestone.total ? Math.round(((milestone.done ?? 0) / milestone.total) * 100) : 0;
+        const content = <>
+          <Icon name={milestone.completed ? "check-circle" : "flag"} aria-hidden="true" />
+          <span className="collab-milestone-copy"><strong>{milestone.name}</strong><small>{milestone.targetDate ? `${t("collab.milestone.dueOn", { date: milestone.targetDate })} · ` : ""}{milestone.total ? t("collab.milestone.progress", { done: milestone.done ?? 0, total: milestone.total }) : t("collab.milestone.empty")}</small></span>
+          <span className="collab-milestone-bar" aria-hidden="true"><span style={{ width: `${percent}%` }} /></span>
+          <small>{milestone.completed ? t("collab.overview.milestoneComplete") : `${percent}%`}</small>
+        </>;
+        return <li key={milestone.id}>{!readOnly && onEditMilestone ? <button type="button" className="collab-milestone-row" onClick={() => onEditMilestone(milestone.id)} aria-label={t("collab.milestone.editFor", { name: milestone.name })}>{content}</button> : <div className="collab-milestone-row">{content}</div>}</li>;
+      })}</ul> : <p className="collab-muted">{t("collab.milestone.none")}</p>}
+    </section>}
     {overview.latestUpdate && <section className="collab-panel"><h3>{t("collab.overview.latestUpdate")}</h3><p className="collab-brief">{overview.latestUpdate}</p></section>}
     <section className="collab-panel"><h3>{t("collab.overview.resources")}</h3>{overview.resources?.length ? <ul className="collab-resources">{overview.resources.map((resource) => <li key={resource.id}>{/^https?:\/\//i.test(resource.href) ? <a href={resource.href} target="_blank" rel="noreferrer"><Icon name="link" aria-hidden="true" />{resource.label}</a> : <span>{resource.label}</span>}</li>)}</ul> : <p className="collab-muted">{t("collab.overview.noResources")}</p>}{onOpenNotes && <button type="button" className="secondary-button" onClick={onOpenNotes}><Icon name="file-text" />{t("collab.overview.openNotes")}</button>}</section>
   </div>;
