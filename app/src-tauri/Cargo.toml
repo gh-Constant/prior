@@ -23,7 +23,9 @@ tauri-plugin-updater = "2.0"
 tauri-plugin-websocket = "2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri-plugin-notification = "2"
+# Same minor as the npm @tauri-apps/plugin-notification: the Tauri CLI
+# refuses a mismatch. 2.5 needs tauri 2.12.
+tauri-plugin-notification = "~2.4"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2.0", features = ["deep-link"] }
