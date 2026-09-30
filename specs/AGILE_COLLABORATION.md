@@ -129,8 +129,9 @@ Extend the existing records additively:
 - `workflow_states`: team_id, name, category (`triage`, `backlog`, `unstarted`,
   `started`, `completed`, `canceled`), color, position, is_default.
 
-Later, add `cycles`, `project_milestones`, `task_relations`, `comments`,
-`project_updates`, and `views`. Do not encode those concepts into JSON blobs
+`task_comments` and `comment_mentions` are implemented for shared projects
+(see `COMMENTS.md`). Later, add `cycles`, `project_milestones`,
+`task_relations`, `project_updates`, and `views`. Do not encode those concepts into JSON blobs
 inside `tasks`; they need independently authorized and queryable records.
 
 ### Views
@@ -264,7 +265,8 @@ copy rather than a new collection.
 
 1. Add saved views with versioned filters/display configuration and per-user
    favorites.
-2. Add comments, activity, subscribers, notifications, project updates,
+2. Add activity, subscribers, notifications, project updates (comments and
+   @mentions are done: `COMMENTS.md`),
    dependencies/relations, and parent/sub-issue automation.
 
 Initiatives, cross-team roadmaps, external integrations, and complex capacity

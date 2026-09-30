@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "quick-add",
+  "description": "The desktop quick-add window: local store access and window control only",
+  "windows": ["quick-add"],
+  "platforms": ["macOS", "windows", "linux"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-theme",
+    "sql:default",
+    "sql:allow-execute"
+  ]
+}

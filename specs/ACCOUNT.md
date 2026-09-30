@@ -19,7 +19,7 @@ Then, in this order:
 2. **One PostgreSQL transaction** (`store.DeleteAccount`, under the push advisory lock so no sync mutation interleaves):
    - Every project the user owns goes to the oldest remaining active editor, else the oldest member of any role (ties by user id). The new owner's membership becomes `owner`, the project loses its area (the area was the old owner's) and gets a new workspace revision. A project with no other member is deleted.
    - The user's tasks in projects other people keep move to the project owner, with their change-log rows, so the team's board and history survive. Change-log rows the user wrote on a teammate's task are attributed to the task owner.
-   - The user id is removed from `people_ids` (tasks and change log); invites sent to the user's email are dropped; task comments (batch 3) are anonymized to "Deleted user" (`author_id = NULL`).
+   - The user id is removed from `people_ids` (tasks and change log); invites sent to the user's email are dropped; task comments are anonymized to "Deleted user" (`author_id = NULL`).
    - The `users` row is deleted. Existing `ON DELETE CASCADE` foreign keys remove tasks, habits, notes and attachments, areas and folders, agent chats, settings, account documents, sessions and MCP keys, mail and calendar accounts, subscriptions, memberships and invites sent, auth tokens, recovery codes, sign-in challenges, and all game data (profile, XP ledger, achievements, inventory, chests, events, league membership, kudos, project leaderboard opt-ins). `billing_payments` keeps its accounting row with `user_id = NULL`.
 3. **After commit:** live sockets close (`4401`), the new owners get `workspace_required`, every former teammate gets `collaboration_required` and `tasks_required`, and the Gmail and Google Calendar refresh tokens are revoked at Google, best effort.
 
@@ -43,6 +43,7 @@ The public page `site/delete-account.html` (linked from the site footer and the 
 | `notes.json`, `attachments/` | Folders, notes, attachment metadata and files (`<id>-<name>`, path separators removed) |
 | `settings.json` | Assistant settings as booleans (`hasOpenRouterKey`…) and account documents with credential-like fields removed (`ScrubSecrets`) |
 | `assistant-chats.json`, `game.json` | Chats with messages; game profile, achievements, inventory, chests |
+| `comments.json` | Comments the user wrote on shared-project tasks (id, task id and title, project id, body, dates) |
 
 Password hashes, sessions, MCP keys, API keys, OAuth tokens and TOTP secrets are never read.
 

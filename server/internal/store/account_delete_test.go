@@ -101,6 +101,9 @@ func TestDeleteAccountTransfersAndLeavesNoRowsPostgres(t *testing.T) {
 	exec(`INSERT INTO project_leaderboard_optins (project_id, user_id, joined) VALUES ($1, $2, true)`, bobs, alice.id)
 	exec(`INSERT INTO kudos (from_user_id, to_user_id, task_id) VALUES ($1, $2, $3)`, alice.id, bob.id, bobTask.ID)
 
+	exec(`INSERT INTO task_comments (id, task_id, project_id, author_id, body, mentions) VALUES ($1, $2, $3, $4, 'mine', '[]')`, uuid.New(), bobTask.ID, shared, alice.id)
+	exec(`INSERT INTO task_comments (id, task_id, project_id, author_id, body, mentions) VALUES ($1, $2, $3, $4, 'hey', $5)`, uuid.New(), bobTask.ID, shared, bob.id, `["`+alice.id.String()+`"]`)
+
 	deleted, err := s.DeleteAccount(ctx, alice.id)
 	if err != nil {
 		t.Fatal(err)
@@ -166,6 +169,10 @@ func TestDeleteAccountTransfersAndLeavesNoRowsPostgres(t *testing.T) {
 	}
 
 	assertNoUserReferences(t, pool, alice.id)
+	var anonymous int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM task_comments WHERE body = 'mine' AND author_id IS NULL`).Scan(&anonymous); err != nil || anonymous != 1 {
+		t.Fatalf("the deleted user's comment should stay anonymized: %d %v", anonymous, err)
+	}
 	var payments int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM billing_payments WHERE stripe_invoice_id = 'in_1' AND user_id IS NULL`).Scan(&payments); err != nil || payments != 1 {
 		t.Fatalf("payment record should be kept anonymously: %d %v", payments, err)
@@ -211,6 +218,10 @@ func assertNoUserReferences(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) 
 		if count != 0 {
 			t.Errorf("%s.%s still references the deleted user (%d rows)", item.table, item.name, count)
 		}
+	}
+	var mentioned int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM task_comments WHERE mentions ? $1`, userID.String()).Scan(&mentioned); err != nil || mentioned != 0 {
+		t.Errorf("task_comments.mentions still lists the deleted user: %d %v", mentioned, err)
 	}
 	for _, table := range []string{"tasks", "task_changes"} {
 		var count int

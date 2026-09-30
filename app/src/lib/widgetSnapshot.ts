@@ -31,7 +31,13 @@ export type WidgetSnapshot = {
   inbox: { total: number; items: WidgetTaskItem[] };
   matrix: { focus: number; plan: number; quick: number; later: number };
   calendar: { items: WidgetCalendarItem[] };
+  /** Quick-capture widget: the next Focus and Plan tasks for today. */
+  focus: { items: WidgetFocusItem[] };
 };
+
+export type WidgetFocusItem = WidgetTaskItem & { quadrant: "focus" | "plan" };
+
+export const MAX_FOCUS_ITEMS = 3;
 
 export type WidgetCalendarItem = {
   id: string;
@@ -105,7 +111,17 @@ export function buildWidgetSnapshot(tasks: Task[], now = new Date(), habits: Hab
     },
     matrix,
     calendar: { items: calendarEvents },
+    focus: { items: focusItems(todayTasks) },
   };
+}
+
+/** Focus (important + urgent) first, then Plan (important), by due date. */
+export function focusItems(todayTasks: Task[]): WidgetFocusItem[] {
+  return todayTasks
+    .filter((task) => task.important)
+    .map((task) => ({ ...toItem(task), quadrant: task.urgent ? "focus" as const : "plan" as const }))
+    .sort((left, right) => (left.quadrant === right.quadrant ? byDueDate(left, right) : left.quadrant === "focus" ? -1 : 1))
+    .slice(0, MAX_FOCUS_ITEMS);
 }
 
 /** Write the snapshot for the macOS and Android widgets. No-op elsewhere; best-effort. */

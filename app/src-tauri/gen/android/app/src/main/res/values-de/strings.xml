@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_quick">Schnell hinzufügen</string>
+    <string name="widget_quick_empty">Heute nichts Dringendes</string>
+    <string name="widget_quick_description">Füge mit einem Tipp eine Aufgabe hinzu und sieh deine nächsten Fokus- und Plan-Aufgaben.</string>
+    <string name="shortcut_new_task_short">Neue Aufgabe</string>
+    <string name="shortcut_new_task_long">Neue Aufgabe hinzufügen</string>
+</resources>

@@ -5,6 +5,7 @@ import { useI18n } from "../lib/i18n";
 import { normalizeEstimate } from "../lib/taskEstimate";
 import { ChecklistEditor } from "./tasks/ChecklistEditor";
 import { ReminderPicker } from "./tasks/ReminderPicker";
+import { SharedTaskComments } from "./collaboration/TaskComments";
 import { Icon } from "./Icon";
 import { CustomSelect } from "./CustomSelect";
 import { taskStatusTone } from "../lib/taskStatusAppearance";
@@ -580,6 +581,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                 <ChecklistEditor items={checklist} onChange={setChecklist} disabled={saving || flagDisabled} />
               </div>
             </details>
+            {task?.id && <SharedTaskComments task={task} />}
           </div>
           {error && <p className="task-composer-feedback task-composer-error" role="alert">{error}</p>}
           <p className="task-composer-feedback" role="status">{saving ? t("tasks.composer.savingStatus") : notice}</p>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_quick">Adição rápida</string>
+    <string name="widget_quick_empty">Nada urgente para hoje</string>
+    <string name="widget_quick_description">Adicione uma tarefa com um toque e veja suas próximas tarefas de Foco e Planejar.</string>
+    <string name="shortcut_new_task_short">Nova tarefa</string>
+    <string name="shortcut_new_task_long">Adicionar uma nova tarefa</string>
+</resources>

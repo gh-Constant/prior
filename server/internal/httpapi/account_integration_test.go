@@ -356,7 +356,7 @@ func TestDeleteAndExportAccountPostgres(t *testing.T) {
 		reader.Close()
 		files[file.Name] = string(content)
 	}
-	for _, name := range []string{"README.txt", "profile.json", "tasks.json", "tasks.csv", "habits.json", "notes.json", "projects.json", "settings.json", "game.json", "assistant-chats.json"} {
+	for _, name := range []string{"README.txt", "profile.json", "tasks.json", "tasks.csv", "habits.json", "notes.json", "projects.json", "settings.json", "game.json", "assistant-chats.json", "comments.json"} {
 		if _, ok := files[name]; !ok {
 			t.Fatalf("export misses %s (has %v)", name, keys(files))
 		}

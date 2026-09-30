@@ -16,4 +16,9 @@
     <string name="widget_matrix_delegate">Déléguer</string>
     <string name="widget_matrix_eliminate">Éliminer</string>
     <string name="widget_matrix_description">Vos quadrants d\'Eisenhower en un coup d\'œil.</string>
+    <string name="widget_quick">Ajout rapide</string>
+    <string name="widget_quick_empty">Rien d\'urgent aujourd\'hui</string>
+    <string name="widget_quick_description">Ajoutez une tâche d\'un geste et voyez vos prochaines tâches À faire et À planifier.</string>
+    <string name="shortcut_new_task_short">Nouvelle tâche</string>
+    <string name="shortcut_new_task_long">Ajouter une nouvelle tâche</string>
 </resources>

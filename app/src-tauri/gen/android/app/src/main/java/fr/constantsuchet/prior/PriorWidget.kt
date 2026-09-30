@@ -61,6 +61,7 @@ object PriorWidgetStore {
         MatrixWidget().updateAll(context)
         InboxWidget().updateAll(context)
         CalendarWidget().updateAll(context)
+        QuickCaptureWidget().updateAll(context)
     }
 }
 
@@ -79,6 +80,10 @@ private fun parseColor(value: String?): Color? =
     value?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
 
 private fun openIntent(context: Context, view: String) = Intent(Intent.ACTION_VIEW, Uri.parse("prior://widget/$view"))
+    .setClass(context, MainActivity::class.java)
+    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+private fun linkIntent(context: Context, url: String) = Intent(Intent.ACTION_VIEW, Uri.parse(url))
     .setClass(context, MainActivity::class.java)
     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
@@ -185,6 +190,70 @@ class MatrixWidget : GlanceAppWidget() {
     }
 }
 
+/**
+ * Quick capture: a "+" that opens the new-task composer (prior://new-task)
+ * and the next three Focus/Plan tasks of today, each opening its task.
+ */
+class QuickCaptureWidget : GlanceAppWidget() {
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val items = PriorWidgetStore.snapshot(context)?.optJSONObject("focus")?.optJSONArray("items").objects()
+        provideContent {
+            GlanceTheme {
+                Column(
+                    modifier = GlanceModifier
+                        .fillMaxSize()
+                        .appWidgetBackground()
+                        .cornerRadius(16.dp)
+                        .background(GlanceTheme.colors.widgetBackground)
+                        .padding(14.dp),
+                ) {
+                    Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            context.getString(R.string.widget_quick),
+                            style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                            modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(openIntent(context, "today"))),
+                        )
+                        Box(
+                            modifier = GlanceModifier
+                                .width(40.dp)
+                                .height(40.dp)
+                                .cornerRadius(20.dp)
+                                .background(ColorProvider(Color(0xFFF35F43)))
+                                .clickable(actionStartActivity(linkIntent(context, "prior://new-task"))),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("+", style = TextStyle(color = ColorProvider(Color.White), fontSize = 24.sp, fontWeight = FontWeight.Bold))
+                        }
+                    }
+                    Spacer(GlanceModifier.height(8.dp))
+                    if (items.isEmpty()) {
+                        Text(context.getString(R.string.widget_quick_empty), style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 14.sp))
+                    }
+                    items.take(3).forEach { item ->
+                        val focus = item.optString("quadrant") == "focus"
+                        Row(
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .padding(vertical = 5.dp)
+                                .clickable(actionStartActivity(linkIntent(context, "prior://task/" + Uri.encode(item.optString("id"))))),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(GlanceModifier.width(4.dp).height(18.dp).cornerRadius(2.dp).background(ColorProvider(if (focus) Color(0xFFE5484D) else Color(0xFF3E63DD)))) {}
+                            Spacer(GlanceModifier.width(8.dp))
+                            Text(item.optString("title"), maxLines = 1, style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 14.sp), modifier = GlanceModifier.defaultWeight())
+                            Text(
+                                context.getString(if (focus) R.string.widget_matrix_do else R.string.widget_matrix_schedule),
+                                maxLines = 1,
+                                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun RowScope.MatrixCell(title: String, count: Int, color: Color) {
     Column(
@@ -212,4 +281,8 @@ class InboxWidgetReceiver : GlanceAppWidgetReceiver() {
 
 class CalendarWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = CalendarWidget()
+}
+
+class QuickCaptureWidgetReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = QuickCaptureWidget()
 }

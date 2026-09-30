@@ -121,7 +121,7 @@ paths:
       description: >
         profile.json, tasks.json, tasks.csv, habits.json, areas.json, projects.json (personal and shared;
         other members by display name and role only), notes.json, attachments/, settings.json (no keys),
-        assistant-chats.json, game.json, README.txt. Never password hashes, tokens, API keys or OAuth tokens.
+        assistant-chats.json, comments.json, game.json, README.txt. Never password hashes, tokens, API keys or OAuth tokens.
         Rate-limited per token.
       responses:
         '200':
@@ -416,6 +416,76 @@ paths:
           description: invite preview
         '404':
           description: unknown token
+  /v1/collaboration/projects/{projectID}/tasks/{taskID}/comments:
+    get:
+      summary: Comment thread of a shared-project task, oldest first (see specs/COMMENTS.md)
+      description: Any active project member. Reading marks the caller's mentions in the thread as read. Rate-limited per user.
+      responses:
+        '200':
+          description: comments (TaskComment[])
+        '404':
+          description: not a member, or the task is not in this project
+    post:
+      summary: Post a comment ({"id"?, "body", "mentions"?})
+      description: Owner and editors. body is plain text, 1 to 4000 characters. id is an optional client UUID that makes a retried post idempotent. mentions are user ids; the server keeps only active project members other than the author. Broadcasts comments_required to members and mentions_required to people newly mentioned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommentInput' }
+      responses:
+        '201':
+          description: the comment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskComment' }
+        '400':
+          description: invalid body or id
+        '403':
+          description: viewers cannot comment, or the id belongs to someone else's comment
+        '404':
+          description: not a member, or unknown task
+  /v1/collaboration/projects/{projectID}/tasks/{taskID}/comments/{commentID}:
+    patch:
+      summary: Edit a comment ({"body", "mentions"?}); author only, while they have write access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommentInput' }
+      responses:
+        '200':
+          description: the comment, with editedAt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskComment' }
+        '403':
+          description: not the author, or read-only
+        '404':
+          description: unknown comment
+    delete:
+      summary: Delete a comment (soft delete); the author or the project owner
+      responses:
+        '204':
+          description: deleted
+        '403':
+          description: not allowed
+        '404':
+          description: unknown comment
+  /v1/collaboration/mentions:
+    get:
+      summary: The caller's newest 50 @mentions in projects they still belong to, and the unread count
+      responses:
+        '200':
+          description: mentions (MentionNotification[]) and unread
+  /v1/collaboration/mentions/read:
+    post:
+      summary: Mark mentions as read ({"commentIds"}, at most 200; empty marks all)
+      responses:
+        '204':
+          description: marked
+        '400':
+          description: invalid ids
   /v1/game:
     get:
       summary: Gamified mode state (see specs/GAMIFICATION.md)
@@ -540,6 +610,43 @@ components:
       properties:
         code: { type: string }
         error: { type: string }
+    TaskComment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        author:
+          nullable: true
+          description: null once the author deleted their account ("Deleted user")
+          type: object
+          properties:
+            id: { type: string }
+            displayName: { type: string }
+            avatarUrl: { type: string }
+        body: { type: string, maxLength: 4000 }
+        mentions: { type: array, items: { type: string, format: uuid } }
+        createdAt: { type: string, format: date-time }
+        editedAt: { type: string, format: date-time }
+    CommentInput:
+      type: object
+      required: [body]
+      properties:
+        id: { type: string, format: uuid, description: POST only }
+        body: { type: string, minLength: 1, maxLength: 4000 }
+        mentions: { type: array, items: { type: string, format: uuid } }
+    MentionNotification:
+      type: object
+      properties:
+        commentId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        taskTitle: { type: string }
+        projectId: { type: string, format: uuid }
+        projectName: { type: string }
+        authorName: { type: string }
+        excerpt: { type: string, description: at most 160 characters }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: string, format: date-time }
     Reauth:
       type: object
       properties:

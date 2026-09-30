@@ -3,6 +3,8 @@ use std::sync::Mutex;
 #[cfg(desktop)]
 mod codex;
 #[cfg(desktop)]
+mod quick_add;
+#[cfg(desktop)]
 use tauri::Emitter;
 #[cfg(any(desktop, target_os = "android"))]
 use tauri::Manager;
@@ -272,6 +274,8 @@ pub fn run() {
     let builder = builder.manage(SessionState);
     #[cfg(desktop)]
     let builder = builder.manage(CodexState::default());
+    #[cfg(desktop)]
+    let builder = builder.manage(quick_add::QuickAddState::default());
     #[cfg(all(not(desktop), not(target_os = "android")))]
     let builder = builder.manage(SessionState(Mutex::new(None)));
 
@@ -283,6 +287,13 @@ pub fn run() {
 
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(quick_add::handle_shortcut)
+            .build(),
+    );
 
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -329,6 +340,12 @@ pub fn run() {
             codex_cancel,
             #[cfg(desktop)]
             widget_refresh_snapshot,
+            #[cfg(desktop)]
+            quick_add::quick_add_open,
+            #[cfg(desktop)]
+            quick_add::quick_add_hide,
+            #[cfg(desktop)]
+            quick_add::quick_add_set_shortcut,
             #[cfg(target_os = "android")]
             widget_set_snapshot,
             #[cfg(target_os = "android")]

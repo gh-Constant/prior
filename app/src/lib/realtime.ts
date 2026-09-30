@@ -3,6 +3,9 @@ import { supportsRealtime } from "./platform";
 
 type SyncEvent = { type?: string; revision?: number };
 
+/** Every realtime message is re-dispatched on window as this event. */
+export const REALTIME_EVENT = "prior-realtime";
+
 export type RealtimeOptions = {
   /** Resolve the last applied server revision so polls/reconnects can resume. */
   getRevision?: () => number | Promise<number>;
@@ -117,6 +120,9 @@ export async function connectRealtime(
 
   const onEvent = (event: SyncEvent) => {
     if (event.type === "pong") return;
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(REALTIME_EVENT, { detail: { type: event.type ?? "", revision: event.revision } }));
+    // Comments and mentions are re-fetched by their own views, not by a sync.
+    if (event.type === "comments_required" || event.type === "mentions_required") return;
     // Server emits legacy "sync_required"/"sync" plus unified
     // "tasks_required"/"workspace_required"/"profile_required"/"settings_required"/"workspace".
     if (event.type === undefined || event.type === "sync_required" || event.type === "sync" || event.type.endsWith("_required") || event.type === "workspace" || event.type === "chat" || event.type === "settings") {

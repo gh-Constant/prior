@@ -1,0 +1,31 @@
+import type { AppDictionary } from "../en/index";
+
+export const comments: AppDictionary["comments"] = {
+  title: "Comentários",
+  loading: "Carregando comentários…",
+  empty: "Nenhum comentário ainda.",
+  placeholder: "Escreva um comentário… Digite @ para mencionar alguém.",
+  hint: "@ para mencionar · Ctrl/⌘ + Enter para enviar",
+  newLabel: "Novo comentário",
+  editLabel: "Editar comentário",
+  post: "Comentar",
+  save: "Salvar",
+  cancel: "Cancelar",
+  edit: "Editar",
+  delete: "Excluir",
+  deleteLabel: "Excluir o comentário de {name}",
+  edited: "(editado)",
+  deletedUser: "Usuário excluído",
+  someone: "Alguém",
+  mentionList: "Pessoas que você pode mencionar",
+  readOnly: "Você pode ler os comentários deste projeto, mas não pode escrever.",
+  failed: "Não deu certo. Verifique sua conexão e tente novamente.",
+  mentions: {
+    label: "Menções ({count})",
+    title: "{name} mencionou você em “{task}” em {project}",
+    notificationTitle: "{name} mencionou você",
+    open: "Abrir",
+    markRead: "Marcar como lida",
+    markAllRead: "Marcar todas as {count} como lidas",
+  },
+};

@@ -1,0 +1,40 @@
+/* Task comments in shared projects (specs/COMMENTS.md). */
+.task-comments { display: flex; flex-direction: column; gap: 10px; padding: 12px 18px 16px; border-top: 1px solid var(--line-soft); }
+.task-comments h3 { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--ink-2); font-size: var(--fs-sm); font-weight: 600; }
+.task-comments-count { padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 600; }
+.task-comments-empty { margin: 0; color: var(--faint); font-size: var(--fs-sm); }
+.task-comment-list { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.task-comment { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 8px; }
+.task-comment .collab-avatar { width: 26px; height: 26px; font-size: 10px; }
+.task-comment-main { min-width: 0; }
+.task-comment-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: var(--fs-xs); color: var(--muted); }
+.task-comment-meta strong { color: var(--ink); font-size: var(--fs-sm); font-weight: 600; }
+.task-comment-meta strong.deleted { color: var(--muted); font-style: italic; font-weight: 500; }
+.task-comment-edited { color: var(--faint); }
+.task-comment-body { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-comment-body a { color: var(--accent-dark); text-decoration: underline; text-underline-offset: 2px; }
+:root[data-theme="dark"] .task-comment-body a { color: var(--accent-hover); }
+.task-comment-mention { padding: 0 3px; border-radius: var(--r-xs); background: var(--accent-soft); color: var(--accent-dark); font-weight: 550; }
+:root[data-theme="dark"] .task-comment-mention { background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent-hover); }
+.task-comment-actions { display: flex; gap: 10px; margin-top: 2px; }
+.task-comment-actions .link-button { min-height: 28px; font-size: var(--fs-xs); }
+.task-comment-actions .link-button.danger { color: var(--red); }
+.task-comment-editor { position: relative; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.task-comment-editor textarea { width: 100%; min-height: 60px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; line-height: 1.45; resize: vertical; }
+.task-comment-editor textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.task-comment-editor-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.task-comment-hint { flex: 1; min-width: 120px; color: var(--faint); font-size: 11px; }
+.task-comment-mentions { position: absolute; top: calc(100% - 38px); left: 8px; z-index: 5; display: flex; flex-direction: column; min-width: 200px; max-width: calc(100% - 16px); margin: 0; padding: 4px; list-style: none; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--raised); box-shadow: var(--shadow-pop); }
+.task-comment-mentions li { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 8px; border-radius: var(--r-sm); color: var(--ink-2); font-size: var(--fs-sm); cursor: pointer; }
+.task-comment-mentions li.active { background: var(--accent-soft); color: var(--ink); }
+:root[data-theme="dark"] .task-comment-mentions li.active { background: color-mix(in oklab, var(--accent) 16%, transparent); }
+.task-comment-mentions .collab-avatar { width: 22px; height: 22px; font-size: 9px; }
+@media (max-width: 640px) {
+  .task-comments { padding-right: 12px; padding-left: 12px; }
+  .task-comment-mentions li { min-height: 44px; }
+  .task-comment-actions .link-button { min-height: 44px; }
+}
+.mention-toasts { top: auto; bottom: 16px; }
+.mention-excerpt { margin-top: 4px !important; color: var(--muted); font-size: var(--fs-xs) !important; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.mention-read-all { justify-self: end; }
+@media (max-width: 640px) { .mention-toasts { bottom: calc(76px + env(safe-area-inset-bottom)); } }

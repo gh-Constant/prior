@@ -55,6 +55,21 @@ describe("buildWidgetSnapshot", () => {
   });
 });
 
+describe("quick-capture focus items", () => {
+  it("lists the next three Focus then Plan tasks of today", () => {
+    const tasks = [
+      task({ id: "plan-early", title: "Plan early", status: "next", important: true, dueDate: "2026-09-18" }),
+      task({ id: "focus", title: "Focus", status: "next", important: true, urgent: true, dueDate: "2026-09-19" }),
+      task({ id: "quick", title: "Quick", status: "next", urgent: true, dueDate: "2026-09-19" }),
+      task({ id: "plan-today", title: "Plan today", status: "in_progress", important: true }),
+      task({ id: "plan-late", title: "Plan late", status: "next", important: true, dueDate: "2026-09-19" }),
+      task({ id: "future", title: "Future", status: "next", important: true, urgent: true, dueDate: "2026-10-19" }),
+    ];
+    const items = buildWidgetSnapshot(tasks, NOW).focus.items;
+    expect(items.map((item) => [item.id, item.quadrant])).toEqual([["focus", "focus"], ["plan-early", "plan"], ["plan-late", "plan"]]);
+  });
+});
+
 describe("parseWidgetUrl", () => {
   it("accepts prior://widget/<view> links", () => {
     expect(parseWidgetUrl("prior://widget/today")).toBe("today");

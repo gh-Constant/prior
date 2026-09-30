@@ -448,6 +448,7 @@ func writeExportArchive(archive *zip.Writer, data store.AccountExport, now time.
 		{"notes.json", map[string]any{"folders": notes["folders"], "notes": notes["notes"], "attachments": attachments}},
 		{"settings.json", map[string]any{"assistant": data.Settings, "preferences": data.AccountDocuments}},
 		{"assistant-chats.json", data.Chats},
+		{"comments.json", data.Comments},
 		{"game.json", data.Game},
 	}
 	readme := "Prior data export\n\nCreated " + now.UTC().Format(time.RFC3339) + " for " + data.Profile.Email + ".\n\n" +

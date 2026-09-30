@@ -105,6 +105,9 @@ export class ApiCodeError extends Error {
 export function apiErrorCode(error: unknown): string | undefined {
   return error instanceof ApiCodeError ? error.code : undefined;
 }
+export type CommentAuthor = { id: string; displayName: string; avatarUrl?: string };
+export type TaskComment = { id: string; taskId: string; projectId: string; author: CommentAuthor | null; body: string; mentions: string[]; createdAt: string; editedAt?: string };
+export type MentionNotification = { commentId: string; taskId: string; taskTitle: string; projectId: string; projectName: string; authorName: string; excerpt: string; createdAt: string; readAt?: string };
 export type TwoFactorStatus = { enabled: boolean; available: boolean; recoveryCodesLeft: number };
 export type ReauthInput = { email?: string; password?: string; code?: string; recoveryCode?: string };
 type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }>; results?: Array<{ mutationId: string; ok: boolean; revision?: number; entity?: string; task?: Task; habit?: Habit; error?: { code: string; message: string } }> };
@@ -416,6 +419,24 @@ export const api = {
   },
   respondToInvite(inviteId: string, accept: boolean, token: string): Promise<{ projectId: string }> {
     return request<{ projectId: string }>(`/v1/collaboration/invites/${encodeURIComponent(inviteId)}/${accept ? "accept" : "decline"}`, { method: "POST" }, token);
+  },
+  listTaskComments(projectId: string, taskId: string, token: string): Promise<{ comments: TaskComment[] }> {
+    return request(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/comments`, {}, token);
+  },
+  createTaskComment(projectId: string, taskId: string, input: { id: string; body: string; mentions: string[] }, token: string): Promise<TaskComment> {
+    return request(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/comments`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  updateTaskComment(projectId: string, taskId: string, commentId: string, input: { body: string; mentions: string[] }, token: string): Promise<TaskComment> {
+    return request(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/comments/${encodeURIComponent(commentId)}`, { method: "PATCH", body: JSON.stringify(input) }, token);
+  },
+  deleteTaskComment(projectId: string, taskId: string, commentId: string, token: string): Promise<void> {
+    return request<void>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/comments/${encodeURIComponent(commentId)}`, { method: "DELETE" }, token);
+  },
+  listMentions(token: string): Promise<{ mentions: MentionNotification[]; unread: number }> {
+    return request("/v1/collaboration/mentions", {}, token);
+  },
+  readMentions(commentIds: string[], token: string): Promise<void> {
+    return request<void>("/v1/collaboration/mentions/read", { method: "POST", body: JSON.stringify({ commentIds }) }, token);
   },
   listAgentChats(token: string): Promise<AgentChatSummary[]> {
     return request<AgentChatSummary[]>("/v1/agent/chats", {}, token);

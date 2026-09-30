@@ -12,6 +12,7 @@ import "./TaskDetailPanel.css";
 import { KudosButton } from "./game/KudosButton";
 import { ChecklistEditor } from "./tasks/ChecklistEditor";
 import { ReminderPicker } from "./tasks/ReminderPicker";
+import { SharedTaskComments } from "./collaboration/TaskComments";
 
 type Props = {
   readonly task: Task;
@@ -167,6 +168,8 @@ export function TaskDetailPanel({ task, project, onChange, onEdit, onClose }: Pr
       </dl>
 
       <ChecklistEditor items={task.checklist ?? []} onChange={(checklist) => void onChange({ ...task, checklist })} />
+
+      <SharedTaskComments task={task} />
 
       <section className="task-detail-activity" aria-labelledby="task-detail-activity-heading">
         <h3 id="task-detail-activity-heading">{t("tasks.detail.activity")}</h3>

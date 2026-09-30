@@ -40,6 +40,17 @@ type ExportProjectMember struct {
 	You         bool   `json:"you,omitempty"`
 }
 
+// ExportComment is a comment the user wrote on a shared-project task.
+type ExportComment struct {
+	ID        string     `json:"id"`
+	TaskID    string     `json:"taskId"`
+	TaskTitle string     `json:"taskTitle"`
+	ProjectID string     `json:"projectId"`
+	Body      string     `json:"body"`
+	CreatedAt time.Time  `json:"createdAt"`
+	EditedAt  *time.Time `json:"editedAt,omitempty"`
+}
+
 type ExportAttachment struct {
 	NoteAttachmentMeta
 	Content []byte `json:"-"`
@@ -55,6 +66,7 @@ type AccountExport struct {
 	Settings         map[string]any        `json:"settings"`
 	AccountDocuments map[string]any        `json:"accountDocuments"`
 	Chats            []AgentChat           `json:"chats"`
+	Comments         []ExportComment       `json:"comments"`
 	Game             *GameState            `json:"game,omitempty"`
 	Attachments      []ExportAttachment    `json:"attachments"`
 }
@@ -174,6 +186,28 @@ func (s *Store) ExportAccount(ctx context.Context, userID uuid.UUID) (AccountExp
 			return result, err
 		}
 		result.Chats = append(result.Chats, chat)
+	}
+
+	commentRows, err := s.pool.Query(ctx, `
+		SELECT c.id::text, c.task_id::text, t.title, c.project_id::text, c.body, c.created_at, c.edited_at
+		FROM task_comments c JOIN tasks t ON t.id = c.task_id
+		WHERE c.author_id = $1 AND c.deleted_at IS NULL
+		ORDER BY c.created_at`, userID)
+	if err != nil {
+		return result, err
+	}
+	result.Comments = []ExportComment{}
+	for commentRows.Next() {
+		var item ExportComment
+		if err := commentRows.Scan(&item.ID, &item.TaskID, &item.TaskTitle, &item.ProjectID, &item.Body, &item.CreatedAt, &item.EditedAt); err != nil {
+			commentRows.Close()
+			return result, err
+		}
+		result.Comments = append(result.Comments, item)
+	}
+	commentRows.Close()
+	if err := commentRows.Err(); err != nil {
+		return result, err
 	}
 
 	var hasGame bool

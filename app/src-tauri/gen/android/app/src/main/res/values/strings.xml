@@ -18,4 +18,9 @@
     <string name="widget_matrix_delegate">Delegate</string>
     <string name="widget_matrix_eliminate">Eliminate</string>
     <string name="widget_matrix_description">Your Eisenhower quadrants at a glance.</string>
+    <string name="widget_quick">Quick add</string>
+    <string name="widget_quick_empty">Nothing urgent for today</string>
+    <string name="widget_quick_description">Add a task in one tap and see your next Focus and Plan tasks.</string>
+    <string name="shortcut_new_task_short">New task</string>
+    <string name="shortcut_new_task_long">Add a new task</string>
 </resources>

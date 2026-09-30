@@ -19,6 +19,8 @@ import { SettingsRow, SettingsSection } from "./SettingsLayout";
 import { AccountSettings } from "./account/AccountSettings";
 import { SecuritySettings } from "./account/SecuritySettings";
 import { NotificationSettings } from "./tasks/NotificationSettings";
+import { QuickAddSettings } from "./tasks/QuickAddSettings";
+import { isDesktop } from "../lib/platform";
 import { GameSettingsPanel } from "./game/GameSettingsPanel";
 
 export type SettingsTab = "general" | "profile" | "security" | "notifications" | "game" | "assistant" | "integrations" | "diagnostics" | "developer";
@@ -92,6 +94,7 @@ function GeneralSettings() {
           </div>
         </SettingsRow>
       </SettingsSection>
+      {isDesktop() && <QuickAddSettings />}
       <SettingsSection title={t("settings.layout.application")}>
         <SettingsRow label={t("settings.general.version")} description={versionDescription}>
           <UpdateControl update={update} />

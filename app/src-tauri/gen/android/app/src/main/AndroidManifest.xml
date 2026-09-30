@@ -74,6 +74,9 @@
                 <data android:scheme="prior" android:host="habit" />
                 <data android:scheme="prior" android:host="new-task" />
             </intent-filter>
+            <!-- PRIOR (not generated): launcher shortcut "New task". Keep when
+                 regenerating. -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
 
         <provider
@@ -108,6 +111,14 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/prior_widget_inbox_info" />
+        </receiver>
+        <receiver android:name=".QuickCaptureWidgetReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/prior_widget_quick_info" />
         </receiver>
         <receiver android:name=".CalendarWidgetReceiver" android:exported="true">
             <intent-filter>

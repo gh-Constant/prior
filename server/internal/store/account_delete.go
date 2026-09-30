@@ -164,14 +164,13 @@ func (s *Store) DeleteAccount(ctx context.Context, userID uuid.UUID) (DeletedAcc
 	return result, tx.Commit(ctx)
 }
 
-// anonymizeCommentsTx is a hook for task comments (batch 3); until the
-// table exists it does nothing.
+// anonymizeCommentsTx keeps the user's comments in their threads as
+// "Deleted user" and removes the user from other comments' mentions.
 func anonymizeCommentsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT to_regclass('task_comments') IS NOT NULL`).Scan(&exists); err != nil || !exists {
+	if _, err := tx.Exec(ctx, `UPDATE task_comments SET author_id = NULL WHERE author_id = $1`, userID); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, `UPDATE task_comments SET author_id = NULL WHERE author_id = $1`, userID)
+	_, err := tx.Exec(ctx, `UPDATE task_comments SET mentions = mentions - $1::text WHERE mentions ? $1::text`, userID.String())
 	return err
 }
 

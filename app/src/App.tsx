@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { api, ApiRequestError, PlanLimitError, type IncomingProjectInvite } from "./lib/api";
+import { api, ApiRequestError, PlanLimitError, type IncomingProjectInvite, type MentionNotification } from "./lib/api";
 import { clearPendingLink, pendingLink } from "./lib/pendingLink";
 import { EffectsProvider } from "./lib/gamification/effects";
 import { gameStore, useGame } from "./lib/gamification/gameStore";
@@ -14,7 +14,9 @@ import { useI18n } from "./lib/i18n";
 import { localStore } from "./lib/localStore";
 import { getAccountId } from "./lib/accountScope";
 import { QUADRANTS, quadrantFor } from "./lib/priority";
-import { connectRealtime } from "./lib/realtime";
+import { connectRealtime, REALTIME_EVENT } from "./lib/realtime";
+import { newMentionsToNotify } from "./lib/comments";
+import { MentionNotifications } from "./components/collaboration/MentionNotifications";
 import { isDesktop, isMac, isTauri } from "./lib/platform";
 import { checkForUpdate, installAvailableUpdate, type UpdateInfo } from "./lib/updater";
 import type { Area, Habit, HabitDraft, NoteDraft, NoteFolderDraft, Project, ProjectStatus, ProposedTaskUpdate, Task, TaskDraft } from "./types";
@@ -77,6 +79,7 @@ import { emitCalendarAccountChange, parseCalendarConnectedUrl, startGoogleCalend
 import { parseWidgetUrl, refreshWidgetSnapshot } from "./lib/widgetSnapshot";
 import { NOTIFICATION_OPEN_EVENT, notificationScheduler } from "./lib/notificationScheduler";
 import { NOTIFICATION_SETTINGS_EVENT, parseNotificationTarget } from "./lib/reminders";
+import { applyQuickAddShortcut, QUICK_TASK_CREATED_EVENT } from "./lib/quickCapture";
 import { logger } from "./lib/logger";
 import { resetLastSyncedAt } from "./lib/syncStatus";
 import { purgeProductionDemoData } from "./lib/productionData";
@@ -260,6 +263,7 @@ export function App() {
   const [syncIssue, setSyncIssue] = useState(false);
   const online = useOnline();
   const [incomingInvites, setIncomingInvites] = useState<IncomingProjectInvite[]>([]);
+  const [mentions, setMentions] = useState<MentionNotification[]>([]);
   const lastActiveSyncAt = useRef(0);
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const workspaceSyncTimer = useRef<number | undefined>(undefined);
@@ -365,6 +369,12 @@ export function App() {
         if (result) handleCalendarConnected(result);
         return;
       }
+      // The web counterpart of prior://new-task (a browser cannot receive it).
+      if (hash === "#/new-task") {
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+        openTargetUrl("prior://new-task");
+        return;
+      }
       if (!hash.startsWith("#/mail-connected")) return;
       const email = new URLSearchParams(hash.split("?")[1] ?? "").get("email");
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
@@ -450,6 +460,56 @@ export function App() {
     }
     return () => { cancelled = true; window.removeEventListener(NOTIFICATION_OPEN_EVENT, onOpen); };
   }, []);
+
+  // Desktop quick capture: register the global shortcut, and pick up tasks
+  // saved from the quick-add window (same local store) right away.
+  useEffect(() => {
+    if (!isDesktop()) return undefined;
+    void applyQuickAddShortcut().catch((error) => console.warn("Prior could not register the quick-add shortcut:", error));
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    const onCreated = () => { void refresh().then(() => syncNow()).catch(() => undefined); };
+    void import("@tauri-apps/api/event").then(({ listen }) => listen(QUICK_TASK_CREATED_EVENT, onCreated)).then((stop) => {
+      if (disposed) stop(); else unlisten = stop;
+    }).catch(() => undefined);
+    return () => { disposed = true; unlisten?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // @mentions in task comments: in-app list plus one local notification per
+  // new mention (specs/COMMENTS.md).
+  async function loadMentions(token: string, generation = sessionGeneration.current): Promise<void> {
+    try {
+      const result = await api.listMentions(token);
+      if (generation !== sessionGeneration.current) return;
+      setMentions(result.mentions);
+      for (const mention of newMentionsToNotify(result.mentions)) {
+        void notificationScheduler.notifyNow({
+          key: `mention:${mention.commentId}`,
+          title: t("comments.mentions.notificationTitle", { name: mention.authorName || t("comments.deletedUser") }),
+          body: `${mention.taskTitle} · ${mention.excerpt}`,
+          target: `prior://task/${encodeURIComponent(mention.taskId)}`,
+        });
+      }
+    } catch (mentionsError) {
+      logger.warn("sync", "Mentions could not be loaded", { error: String(mentionsError) });
+    }
+  }
+  useEffect(() => {
+    const onRealtime = (event: Event) => {
+      if ((event as CustomEvent<{ type?: string }>).detail?.type !== "mentions_required") return;
+      void getToken().then((token) => (token ? loadMentions(token) : undefined));
+    };
+    window.addEventListener(REALTIME_EVENT, onRealtime);
+    return () => window.removeEventListener(REALTIME_EVENT, onRealtime);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  async function readMentions(commentIds: string[]): Promise<void> {
+    const token = await getToken();
+    if (!token) return;
+    setMentions((current) => current.map((mention) => (!commentIds.length || commentIds.includes(mention.commentId) ? { ...mention, readAt: new Date().toISOString() } : mention)));
+    await api.readMentions(commentIds, token).catch(() => undefined);
+  }
 
   // Reminders follow every local change and sync (both land in tasks/habits).
   useEffect(() => {
@@ -721,6 +781,7 @@ export function App() {
         } catch (invitesError) {
           logger.warn("sync", "Project invites could not be loaded", { error: String(invitesError) });
         }
+        await loadMentions(token, generation);
 
         // A newly accepted/shared project may contain task revisions older than
         // this account's normal sync cursor. Pull the authorized history once
@@ -1548,6 +1609,7 @@ export function App() {
     const token = await getToken().catch(() => null);
     sessionGeneration.current += 1;
     setIncomingInvites([]);
+    setMentions([]);
     realtimeGeneration.current += 1;
     const close = realtimeClose.current;
     realtimeClose.current = undefined;
@@ -1954,6 +2016,7 @@ export function App() {
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>{t("common.celebration.completed")}</strong><small>{completionCelebration.title}</small></span></div>}
       {user && <ProjectInviteNotifications invites={incomingInvites} onRespond={respondToInvite} />}
+      {user && <MentionNotifications mentions={mentions} onRead={readMentions} onOpen={async (mention) => { await readMentions([mention.commentId]); openTargetUrl(`prior://task/${encodeURIComponent(mention.taskId)}`); }} />}
       {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>{t("common.celebration.notice")}</strong><small>{toast}</small></span><button type="button" aria-label={t("common.actions.dismiss")} onClick={() => setToast(null)}>✕</button></div>}
       {user && game.enabled && <GameCelebrations onOpenChest={setChestToOpen} />}
       {paletteOpen && <CommandPalette
