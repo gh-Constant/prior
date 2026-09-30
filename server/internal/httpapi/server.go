@@ -256,7 +256,11 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	body := map[string]string{"status": "ok"}
+	if s.cfg.MinAndroidVersion != "" {
+		body["minAndroidVersion"] = s.cfg.MinAndroidVersion
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {

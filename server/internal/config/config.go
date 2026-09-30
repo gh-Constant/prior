@@ -44,6 +44,9 @@ type Config struct {
 	// set, signed-in users get the assistant, recommendations, mail and
 	// calendar drafts, and dictation without configuring any key themselves.
 	HostedAI HostedAIConfig
+	// MinAndroidVersion, when set (e.g. 1.4.0), makes installed Android apps
+	// older than it show a blocking update screen. Empty = never force.
+	MinAndroidVersion string
 	// Billing is Stripe plus the admin allowlist.
 	Billing BillingConfig
 	// Transactional email through Resend (password reset, verification).
@@ -168,6 +171,7 @@ func Load() Config {
 		RetentionSessionsDays:  getenvInt("RETENTION_SESSIONS_DAYS", 30),
 		TrustProxy:             getenv("TRUST_PROXY", "true") == "true",
 		HostedAI:               loadHostedAI(),
+		MinAndroidVersion:      strings.TrimSpace(os.Getenv("MIN_ANDROID_VERSION")),
 		ResendAPIKey:           os.Getenv("RESEND_API_KEY"),
 		EmailFrom:              getenv("EMAIL_FROM", "Prior <no-reply@prior.constantsuchet.fr>"),
 		WebAppURL:              strings.TrimRight(getenv("WEB_APP_URL", "https://app.prior.constantsuchet.fr"), "/"),

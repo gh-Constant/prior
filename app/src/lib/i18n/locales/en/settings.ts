@@ -63,6 +63,8 @@ export const settings = {
     installHint: "Downloads, installs and reopens Prior",
     installedHint: "Installed — restart the app to finish.",
     upToDate: "Up to date",
+    updateNow: "Update now",
+    required: { title: "Prior needs an update", body: "This version is no longer supported. Update to keep syncing." },
     download: "Download v{version}",
     downloadWithSize: "Download v{version} ({size} MB)",
     apkHint: "The APK downloads in your browser — open it to install. Allow “unknown apps” once if asked.",

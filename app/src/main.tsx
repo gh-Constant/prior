@@ -4,6 +4,7 @@ import "@fontsource-variable/dm-sans";
 import "./index.css";
 import { I18nProvider } from "./lib/i18n";
 import { App } from "./App";
+import { ForcedUpdateGate } from "./components/ForcedUpdateGate";
 import { QuickAddWindow } from "./components/QuickAddWindow";
 import { isQuickAddWindow } from "./lib/quickCapture";
 import { capturePendingLink } from "./lib/pendingLink";
@@ -21,7 +22,7 @@ if (!quickAdd) capturePendingLink();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <I18nProvider>
-      {quickAdd ? <QuickAddWindow /> : <App />}
+      {quickAdd ? <QuickAddWindow /> : <ForcedUpdateGate><App /></ForcedUpdateGate>}
     </I18nProvider>
   </StrictMode>,
 );

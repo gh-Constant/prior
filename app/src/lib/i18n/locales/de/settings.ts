@@ -63,6 +63,8 @@ export const settings = {
     installHint: "Lädt Prior herunter, installiert es und öffnet es erneut",
     installedHint: "Installiert — starte die App zum Abschließen neu.",
     upToDate: "Aktuell",
+    updateNow: "Jetzt aktualisieren",
+    required: { title: "Prior muss aktualisiert werden", body: "Diese Version wird nicht mehr unterstützt. Aktualisiere, um weiter zu synchronisieren." },
     download: "v{version} herunterladen",
     downloadWithSize: "v{version} herunterladen ({size} MB)",
     apkHint: "Die APK wird in deinem Browser heruntergeladen — öffne sie zum Installieren. Erlaube einmal unbekannte Apps, falls du gefragt wirst.",
