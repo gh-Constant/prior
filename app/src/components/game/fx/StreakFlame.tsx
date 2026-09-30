@@ -68,7 +68,7 @@ export function StreakFlame({ days, freeze = "none", freezes = 0, size = 56, cou
   }, [days, intensity, frozen, palette]);
 
   const classes = ["fx-streak", `fx-streak-${visual.stage}`, frozen ? "is-frozen" : "", intensity === "off" ? "is-static" : "", `is-count-${countPosition}`, className ?? ""].filter(Boolean).join(" ");
-  const style = { "--flame-size": `${size}px`, "--flicker": `${flicker}s`, "--ember": palette.ember } as CSSProperties;
+  const style = { "--flame-size": `${size}px`, "--flame-scale": scale, "--flicker": `${flicker}s`, "--ember": palette.ember } as CSSProperties;
 
   return (
     <span className={classes} style={style} role="img" aria-label={ariaLabel ?? `${days}-day streak`}>

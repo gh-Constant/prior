@@ -7,6 +7,7 @@ import { FxSection } from "./sections/FxSection";
 import { NameplateSection } from "./sections/NameplateSection";
 import { PetSection } from "./sections/PetSection";
 import { ProgressSection } from "./sections/ProgressSection";
+import { SidebarWidgetSection } from "./sections/SidebarWidgetSection";
 import "./lab.css";
 
 const SECTIONS = [
@@ -14,6 +15,7 @@ const SECTIONS = [
   { id: "identity", title: "Names, borders & inventory", Component: NameplateSection },
   { id: "pet", title: "Pet", Component: PetSection },
   { id: "progress", title: "Progress page", Component: ProgressSection },
+  { id: "sidebar-widget", title: "Sidebar widget", Component: SidebarWidgetSection },
 ] as const;
 
 export function Lab() {

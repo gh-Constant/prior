@@ -34,8 +34,14 @@ export function petMood(profile: Pick<GameProfile, "streak" | "timeZone">, now: 
 }
 
 export function GameSidebarWidget({ collapsed, onOpenProgress }: Props) {
-  const { t } = useI18n();
   const { enabled, profile } = useGame();
+  if (!enabled || !profile) return null;
+  return <GameSidebarPanel profile={profile} collapsed={collapsed} onOpenProgress={onOpenProgress} />;
+}
+
+/** The widget for a given profile, without the store (the Game Lab renders it from fixtures). */
+export function GameSidebarPanel({ profile, collapsed, onOpenProgress }: Props & { readonly profile: GameProfile }) {
+  const { t } = useI18n();
   const { reaction, key } = usePetReaction();
   const [lastReaction, setLastReaction] = useState<{ reaction: PetReaction; at: number } | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -50,7 +56,6 @@ export function GameSidebarWidget({ collapsed, onOpenProgress }: Props) {
     return () => window.clearInterval(timer);
   }, []);
 
-  if (!enabled || !profile) return null;
   const pet = profile.pet;
   const hatched = Boolean(pet && pet.stage !== "egg" && pet.species);
   const species = pet?.species ?? "mochi";
@@ -63,7 +68,7 @@ export function GameSidebarWidget({ collapsed, onOpenProgress }: Props) {
   if (collapsed) {
     return (
       <button type="button" className="game-sidebar-mini" onClick={onOpenProgress} title={`${t("game.xp.level", { level })} · ${rank}`} aria-label={t("game.sidebar.openProgress")}>
-        {pet && <PetHeadshot species={species} stage={hatched ? pet.stage : "baby"} accessories={accessories} size={30} background="tint" decorative />}
+        {pet && <PetHeadshot species={species} stage={hatched ? pet.stage : "egg"} mysteryEgg={!hatched} accessories={accessories} size={30} background="tint" decorative />}
         <span className="game-sidebar-mini-level">{level}</span>
       </button>
     );
@@ -90,7 +95,7 @@ export function GameSidebarWidget({ collapsed, onOpenProgress }: Props) {
           />
         )}
         <button type="button" className="game-sidebar-open" onClick={onOpenProgress} title={t("game.sidebar.openProgress")}>
-          <StreakFlame days={profile.streak.current} freeze={profile.streak.freezes > 0 ? "held" : "none"} freezes={profile.streak.freezes} size={22} countPosition="beside" ariaLabel={t("game.streak.days", { count: profile.streak.current })} />
+          <StreakFlame days={profile.streak.current} freeze={profile.streak.freezes > 0 ? "held" : "none"} freezes={profile.streak.freezes} size={24} countPosition="beside" ariaLabel={t("game.streak.days", { count: profile.streak.current })} />
         </button>
       </div>
       <button type="button" className="game-sidebar-xp" onClick={onOpenProgress} aria-label={t("game.sidebar.openProgress")}>

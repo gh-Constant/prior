@@ -1,0 +1,6 @@
+/* Lab-only: sidebar rails at the app's widths (padding matches .sidebar). */
+.lab-demo:has(.lab-widget-grid) { grid-column: 1 / -1; }
+.lab-widget-grid { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 24px; padding: 16px; }
+.lab-widget-column { display: grid; justify-items: center; align-content: start; gap: 14px; }
+.lab-widget-rail { box-sizing: border-box; display: grid; gap: 4px; padding: 0 10px; background: var(--sidebar); color: var(--sidebar-ink); }
+.lab-widget-caption { color: var(--sidebar-muted); font-size: 11px; }

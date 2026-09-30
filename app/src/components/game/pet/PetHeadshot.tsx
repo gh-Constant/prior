@@ -20,6 +20,8 @@ export type PetHeadshotProps = {
   readonly size?: number;
   /** Circle behind the head: a CSS colour, "tint" for the species tint, or "none". */
   readonly background?: string;
+  /** Egg stage only: mixed speckles and a neutral tint because the species is not known yet. */
+  readonly mysteryEgg?: boolean;
   readonly name?: string;
   readonly label?: string;
   readonly decorative?: boolean;
@@ -33,18 +35,20 @@ export const PET_HEADSHOT_TINTS: Readonly<Record<PetSpecies, string>> = {
   nova: "#e3e4fb",
   ember: "#ffe6cf",
 };
+const MYSTERY_TINT = "#ece8e1";
 
 function cleanId(id: string): string {
   return `pet${id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 }
 
-export function PetHeadshot({ species, stage, accessories, mood = "content", size = 48, background = "tint", name, label, decorative = false, className }: PetHeadshotProps) {
+export function PetHeadshot({ species, stage, accessories, mood = "content", size = 48, background = "tint", mysteryEgg = false, name, label, decorative = false, className }: PetHeadshotProps) {
   const uid = cleanId(useId());
   const equipped = useMemo(() => {
     const clean = sanitizeAccessories(accessories);
     return { hat: clean.hat ?? null, face: clean.face ?? null };
   }, [accessories]);
-  const fill = background === "tint" ? PET_HEADSHOT_TINTS[species] : background;
+  const mystery = mysteryEgg && stage === "egg";
+  const fill = background === "tint" ? (mystery ? MYSTERY_TINT : PET_HEADSHOT_TINTS[species]) : background;
   const a11y = decorative
     ? { "aria-hidden": true as const }
     : { role: "img" as const, "aria-label": label ?? name ?? species };
@@ -52,10 +56,11 @@ export function PetHeadshot({ species, stage, accessories, mood = "content", siz
   if (stage === "egg") {
     return (
       <svg className={["pet", "pet--still", "pet-headshot", className].filter(Boolean).join(" ")} width={size} height={size} viewBox="28 46 64 64" focusable="false" {...a11y}>
-        <EggDefs uid={uid} species={species} />
+        <EggDefs uid={uid} species={mystery ? null : species} />
         {fill !== "none" && <circle cx={60} cy={78} r={32} fill={fill} />}
-        <g transform="translate(60 78) scale(0.74) translate(-60 -78)">
-          <PetEggShell uid={uid} species={species} crack={0} />
+        {/* The drawn shell spans y 44.2–108 (centre 76.1): centre it in the circle. */}
+        <g transform="translate(60 78) scale(0.74) translate(-60 -76.1)">
+          <PetEggShell uid={uid} species={mystery ? null : species} crack={0} />
         </g>
       </svg>
     );

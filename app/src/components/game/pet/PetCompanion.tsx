@@ -53,7 +53,7 @@ export function PetCompanion({
   return (
     <button
       type="button"
-      className={["pet-companion", `pet-companion--${backdrop}`, className].filter(Boolean).join(" ")}
+      className={["pet-companion", `pet-companion--${backdrop}`, stage === "egg" ? "pet-companion--egg" : "", className].filter(Boolean).join(" ")}
       aria-label={actionLabel ?? `Pet ${name}`}
       onClick={() => {
         petRef.current?.play(stage === "egg" ? "wiggle" : "purr");

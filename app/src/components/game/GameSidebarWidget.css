@@ -2,9 +2,17 @@
 .game-sidebar-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
 .game-sidebar-pet { flex: 1 1 auto; min-width: 0; }
 .game-sidebar-open, .game-sidebar-xp { display: flex; align-items: center; min-width: 0; padding: 4px 6px; border: 0; border-radius: var(--r-md); background: none; color: var(--sidebar-ink); font: inherit; cursor: pointer; transition: background var(--t-fast) var(--ease); }
-.game-sidebar-xp { display: block; width: 100%; padding: 2px 2px 0; text-align: left; }
+/* Never shrink the streak: a long one would spill out of the card. The pet name truncates instead. */
+.game-sidebar-open { flex: none; padding-right: 2px; }
+/* Same insets as the row above: the badge starts where the pet slot starts, the bar ends under the streak count. */
+.game-sidebar-xp { display: block; width: 100%; padding: 2px 2px 0 5px; text-align: left; }
 .game-sidebar-open:hover, .game-sidebar-xp:hover { background: var(--sidebar-3); }
 .game-sidebar-open:focus-visible, .game-sidebar-xp:focus-visible { outline: none; box-shadow: var(--ring); }
+/* The flame grows from its base, so a small one sits low in its box: lift the drawn flame onto the count's centre line. */
+.game-sidebar-open .fx-streak-flame { translate: 0 calc(var(--flame-size) * (35 * var(--flame-scale, 1) - 34) / 80); }
+/* The freeze badge's 16px floor would cover a flame this small: a smaller chip on the flame's upper-left edge. */
+.game-sidebar-open .fx-streak-freeze-badge { top: -3px; left: -10px; height: 12px; min-width: 12px; padding: 0 1px; border-width: 1px; font-size: 8px; }
+.game-sidebar-open .fx-streak-freeze-badge svg { width: 8px; }
 
 .game-sidebar-mini { position: relative; display: grid; place-items: center; width: 40px; height: 40px; margin: 0 auto 6px; padding: 0; border: 0; border-radius: 50%; background: var(--sidebar-2); cursor: pointer; }
 .game-sidebar-mini:hover { background: var(--sidebar-3); }

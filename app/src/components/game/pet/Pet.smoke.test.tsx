@@ -82,6 +82,13 @@ describe("Pet companions", () => {
     expect(container.querySelector("[data-accessory='party-hat']")).not.toBeNull();
   });
 
+  it("keeps a mystery egg headshot neutral instead of tinting it for a species", () => {
+    const { container } = render(<><PetHeadshot species="mochi" stage="egg" size={24} /><PetHeadshot species="mochi" stage="egg" mysteryEgg size={24} /></>);
+    const [known, mystery] = [...container.querySelectorAll("svg.pet-headshot")].map((svg) => svg.querySelector("circle")?.getAttribute("fill"));
+    expect(known).toBe("#fde6dc");
+    expect(mystery).not.toBe(known);
+  });
+
   it("equips accessories and edits the name from the Den", () => {
     const onAccessoriesChange = vi.fn();
     const onNameChange = vi.fn();
