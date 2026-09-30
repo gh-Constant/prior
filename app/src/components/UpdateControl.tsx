@@ -91,11 +91,12 @@ export function UpdateControl({ update }: { readonly update: AppUpdate }) {
   if (!channel) return null;
 
   if (state === "available" && (nextVersion || channel === "android")) {
+    const version = nextVersion ?? "";
     const label = channel === "android" && !nextVersion
       ? t("settings.updates.updateNow")
       : channel === "android"
-      ? sizeMb ? t("settings.updates.downloadWithSize", { version: nextVersion, size: sizeMb }) : t("settings.updates.download", { version: nextVersion })
-      : t("settings.updates.installNow", { version: nextVersion });
+      ? sizeMb ? t("settings.updates.downloadWithSize", { version, size: sizeMb }) : t("settings.updates.download", { version })
+      : t("settings.updates.installNow", { version });
     return (
       <button type="button" className="primary-button" onClick={() => void update.install()}>
         <Icon name="download" />{label}
