@@ -25,7 +25,10 @@ function write(projects: CachedCollaborationProject[]): void {
 
 function normalizeProject(project: Project): Project {
   const planning = normalizeProjectPlanning(project);
-  return { ...project, ...planning, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || "folder", status: project.status ?? "active", deletedAt: project.deletedAt ?? null };
+  // Same rule as the personal workspace: the server sends null for projects
+  // saved before the type was synced, which are standard projects.
+  const projectType = project.projectType === "software" || (project.cycles?.length ?? 0) > 0 ? "software" as const : "standard" as const;
+  return { ...project, ...planning, projectType, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || "folder", status: project.status ?? "active", deletedAt: project.deletedAt ?? null };
 }
 
 function normalizeProjects(incoming: CachedCollaborationProject[]): CachedCollaborationProject[] {
@@ -59,6 +62,15 @@ export const collaborationStore = {
   },
   merge(incoming: CachedCollaborationProject[]): void {
     write(normalizeProjects(incoming));
+  },
+  /**
+   * Applies a local change to one project entry right away (optimistic UI).
+   * The next sync replaces it with the server's copy either way.
+   */
+  update(projectId: string, change: (entry: CachedCollaborationProject) => CachedCollaborationProject): void {
+    const current = read();
+    if (!current.some((item) => item.project.id === projectId)) return;
+    write(current.map((item) => item.project.id === projectId ? change(item) : item));
   },
   remove(projectId: string): void {
     write(read().filter((item) => item.project.id !== projectId));

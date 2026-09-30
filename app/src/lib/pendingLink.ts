@@ -1,6 +1,7 @@
-// Shared links (#invite=<token>, #project=<id>) must survive sign-in: the web
-// Google flow navigates away and returns without the hash. The link target is
-// moved into storage on arrival and consumed once the account has synced.
+// Shared links (/invite/<token>, and the older #invite=<token> and
+// #project=<id>) must survive sign-in: the web Google flow navigates away and
+// returns without them. The link target is moved into storage on arrival and
+// consumed once the account has synced.
 
 const STORAGE_KEY = "prior.pendingLink";
 /** Invites expire server-side after a week; a stale capture is dropped earlier than never. */
@@ -29,19 +30,29 @@ function read(): Stored | null {
  * Moves #invite= / #project= from the address bar into storage and returns
  * what is pending. Call it once, as early as possible on startup.
  */
+/** The token of an invitation page URL (/invite/<token>), if it is one. */
+export function inviteTokenFromPath(pathname: string): string | undefined {
+  const match = /^\/invite\/([A-Za-z0-9_-]{16,128})\/?$/.exec(pathname);
+  return match?.[1];
+}
+
 export function capturePendingLink(): PendingLink | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const invite = params.get("invite")?.trim() || undefined;
+  const pathInvite = inviteTokenFromPath(window.location.pathname);
+  const invite = pathInvite ?? (params.get("invite")?.trim() || undefined);
   const project = params.get("project")?.trim() || undefined;
   if (invite || project) {
+    // The invitation page itself is not an app page: land on the project list,
+    // where the accepted project opens once the account has synced.
+    const path = pathInvite ? "/projects" : window.location.pathname;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ invite, project, capturedAt: Date.now() } satisfies Stored));
     } catch {
-      // Private mode without storage: the hash below is the only copy, keep it.
+      // Private mode without storage: the URL is the only copy, keep it.
       return { invite, project };
     }
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    window.history.replaceState(null, "", `${path}${window.location.search}`);
   }
   return pendingLink();
 }

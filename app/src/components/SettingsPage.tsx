@@ -29,6 +29,9 @@ type SettingsPageProps = {
   readonly user: SessionUser | null;
   readonly onUserUpdated: (user: SessionUser) => void;
   readonly initialTab?: SettingsTab;
+  /** Controlled tab (the app mirrors it in the URL); falls back to local state. */
+  readonly tab?: SettingsTab;
+  readonly onTabChange?: (tab: SettingsTab) => void;
 };
 
 const LATEST_RELEASE_URL = "https://api.github.com/repos/gh-Constant/prior/releases/latest";
@@ -811,11 +814,17 @@ const TABS: ReadonlyArray<{ readonly id: SettingsTab; readonly icon: IconName; r
   { id: "developer", icon: "database", devOnly: true },
 ];
 
-export function SettingsPage({ user, onUserUpdated, initialTab }: SettingsPageProps) {
+export function SettingsPage({ user, onUserUpdated, initialTab, tab: controlledTab, onTabChange }: SettingsPageProps) {
   const { t } = useI18n();
-  const [tab, setTab] = useState<SettingsTab>(initialTab ?? "general");
+  const [localTab, setLocalTab] = useState<SettingsTab>(initialTab ?? controlledTab ?? "general");
+  const setTab = (next: SettingsTab) => {
+    setLocalTab(next);
+    onTabChange?.(next);
+  };
   const tabRefs = useRef(new Map<SettingsTab, HTMLButtonElement>());
   const tabs = TABS.filter((entry) => !entry.devOnly || import.meta.env.DEV);
+  const requestedTab = controlledTab ?? localTab;
+  const tab = tabs.some((entry) => entry.id === requestedTab) ? requestedTab : "general";
 
   function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     const index = tabs.findIndex((entry) => entry.id === tab);

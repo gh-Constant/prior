@@ -82,16 +82,16 @@ describe("compact TaskComposer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Bob" }));
     expect(planning.onPeopleChange).toHaveBeenCalledWith([alice, bob]);
     rerender(<TaskComposer {...props} planning={{ ...unlockedPlanning, people: [...unlockedPlanning.people] }} />);
-    expect(screen.getByLabelText("Task role for Bob")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Bob" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Project"), { target: { value: "p2" } });
     expect(onProjectChange).toHaveBeenCalledWith("p2");
     expect(planning.onFieldChange).toHaveBeenCalledWith("project", ["p2"]);
-    expect(screen.queryByLabelText("Task role for Alice")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove Alice" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Bob" })).not.toBeInTheDocument();
     const cara = { id: "cara", name: "Cara", role: "owner" as const };
     rerender(<TaskComposer {...props} planning={{ ...unlockedPlanning, people: [cara], availablePeople: [cara] }} />);
-    expect(screen.getByLabelText("Task role for Cara")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Cara" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "Launch site" } });
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p2", peopleIds: ["cara"] })));

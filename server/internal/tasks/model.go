@@ -1,6 +1,9 @@
 package tasks
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Task struct {
 	ID               string   `json:"id"`
@@ -22,14 +25,69 @@ type Task struct {
 	// ReminderAt is an absolute instant (RFC 3339, stored in UTC).
 	ReminderAt *string `json:"reminderAt,omitempty"`
 	// Checklist is the ordered list of subtasks (at most MaxChecklistItems).
-	Checklist      []ChecklistItem `json:"checklist,omitempty"`
-	Completed      bool            `json:"completed"`
-	Important      bool            `json:"important"`
-	Urgent         bool            `json:"urgent"`
-	CreatedAt      time.Time       `json:"createdAt"`
-	UpdatedAt      time.Time       `json:"updatedAt"`
-	DeletedAt      *time.Time      `json:"deletedAt"`
-	ServerRevision int64           `json:"serverRevision,omitempty"`
+	Checklist []ChecklistItem `json:"checklist,omitempty"`
+	// AssigneeID is the one project member responsible for the task.
+	AssigneeID *string `json:"assigneeId"`
+	// ParentID makes the task a sub-issue of another task of its project.
+	ParentID *string `json:"parentId"`
+	// MilestoneID names a milestone of the task's project.
+	MilestoneID *string `json:"milestoneId"`
+	// Relations link the task to others ("blocked_by", "related").
+	Relations      []TaskRelation `json:"relations"`
+	Completed      bool           `json:"completed"`
+	Important      bool           `json:"important"`
+	Urgent         bool           `json:"urgent"`
+	CreatedAt      time.Time      `json:"createdAt"`
+	UpdatedAt      time.Time      `json:"updatedAt"`
+	DeletedAt      *time.Time     `json:"deletedAt"`
+	ServerRevision int64          `json:"serverRevision,omitempty"`
+
+	present map[string]bool
+}
+
+// TaskRelation links a task to another task.
+type TaskRelation struct {
+	Type   string `json:"type"`
+	TaskID string `json:"taskId"`
+}
+
+const (
+	RelationBlockedBy = "blocked_by"
+	RelationRelated   = "related"
+	// MaxTaskRelations caps a task's relations.
+	MaxTaskRelations = 50
+)
+
+// optionalTaskFields are the fields older clients do not send. When a
+// mutation omits one, the server keeps the stored value instead of clearing it.
+var optionalTaskFields = []string{"assigneeId", "parentId", "milestoneId", "relations"}
+
+// UnmarshalJSON records which optional fields the payload carried.
+func (task *Task) UnmarshalJSON(data []byte) error {
+	type taskAlias Task
+	var decoded taskAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*task = Task(decoded)
+	task.present = make(map[string]bool, len(optionalTaskFields))
+	for _, name := range optionalTaskFields {
+		_, task.present[name] = fields[name]
+	}
+	return nil
+}
+
+// FieldPresent reports whether a decoded payload carried the optional
+// field. Tasks built in Go (not decoded) count every field as present.
+func (task Task) FieldPresent(name string) bool {
+	if task.present == nil {
+		return true
+	}
+	return task.present[name]
 }
 
 // MaxChecklistItems caps a task's checklist.

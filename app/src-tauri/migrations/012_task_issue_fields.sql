@@ -1,0 +1,4 @@
+ALTER TABLE tasks ADD COLUMN assignee_id TEXT;
+ALTER TABLE tasks ADD COLUMN parent_id TEXT;
+ALTER TABLE tasks ADD COLUMN milestone_id TEXT;
+ALTER TABLE tasks ADD COLUMN relations TEXT NOT NULL DEFAULT '[]';

@@ -43,10 +43,10 @@ function softwareBoardStatus(task: Task): TaskStatus {
   return SOFTWARE_BOARD_STATUSES.includes(task.status as TaskStatus) ? task.status as TaskStatus : "inbox";
 }
 
-/** Resolves the person shown on a card: the first assigned member, else the
- *  free-text assignee (someone the task is waiting on). */
+/** Resolves the person shown on a card: the assignee, else the free-text
+ *  assignee (someone the task is waiting on). */
 function taskAssignee(task: Task, people: readonly Person[]): Person | null {
-  const member = task.peopleIds?.map((id) => people.find((person) => person.id === id)).find(Boolean);
+  const member = task.assigneeId ? people.find((person) => person.id === task.assigneeId) : undefined;
   if (member) return member;
   const name = task.assigneeName?.trim();
   return name ? { id: `assignee:${name}`, name } : null;

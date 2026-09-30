@@ -13,6 +13,7 @@ import { TaskStatusBadge } from "./TaskStatusBadge";
 import { DateTimePicker } from "./DateTimePicker";
 import { TaskTitleInput } from "./TaskTitleInput";
 import { TaskPeoplePicker } from "./collaboration/TaskPlanning";
+import { AssigneeSelect } from "./collaboration/AssigneeSelect";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { TaskPlanningProps } from "./collaboration/types";
 import { parseTaskTitle, type TaskTitleField, type TaskTitleToken } from "../lib/taskTitleParser";
@@ -99,6 +100,8 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [reminderAt, setReminderAt] = useState<string | null>(task?.reminderAt ?? null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>(task?.checklist ?? []);
   const [planningPeople, setPlanningPeople] = useState(planning?.people ?? []);
+  const [assigneeId, setAssigneeId] = useState<string | null>(task?.assigneeId ?? planning?.assigneeId ?? null);
+  const assignablePeople = planning?.assignablePeople;
   const peopleSource = useRef(planning?.people);
   const awaitingProjectPeople = useRef(!planning);
   const [saving, setSaving] = useState(false);
@@ -202,6 +205,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     if (planningDisabled || submitting.current) return;
     if (id !== projectId) {
       setPlanningPeople([]);
+      setAssigneeId(null);
       peopleSource.current = planning?.people;
       awaitingProjectPeople.current = true;
     }
@@ -234,7 +238,14 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     setNotice("");
     const keepOpen = allowCreateMore && !task && createMore;
     try {
-      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate), reminderAt, checklist };
+      // Issue fields only hold within one project: moving the task clears them
+      // (the server would refuse a member or parent from another project).
+      const sameProject = (task?.projectId ?? null) === (projectId ?? null);
+      const issueFields: Partial<TaskDraft> = {
+        assigneeId: assignablePeople ? assigneeId : sameProject ? task?.assigneeId ?? null : null,
+        ...(sameProject ? {} : { parentId: null, milestoneId: null }),
+      };
+      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), ...issueFields, followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate), reminderAt, checklist };
       await (allowCreateMore ? onSave(draft, { keepOpen }) : onSave(draft));
       setNotice(task ? t("tasks.composer.saved") : t("tasks.composer.created"));
       if (!task) {
@@ -421,7 +432,17 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                 <Icon name="bolt" />
                 <span>{t("tasks.composer.urgent")}</span>
               </button>
-              <label className={`task-composer-assignee-pill ${assigneeName.trim() ? "has-value" : ""}`}>
+              {assignablePeople ? <AssigneeSelect
+                people={assignablePeople}
+                value={assigneeId}
+                currentUserId={planning?.currentUserId}
+                disabled={flagDisabled}
+                onChange={(personId) => {
+                  setAssigneeId(personId);
+                  const person = assignablePeople.find((candidate) => candidate.id === personId);
+                  if (person && !planningPeople.some((item) => item.id === person.id)) setPlanningPeople([...planningPeople, { ...person, role: "collaborator" }]);
+                }}
+              /> : <label className={`task-composer-assignee-pill ${assigneeName.trim() ? "has-value" : ""}`}>
                 <Icon name="user" aria-hidden="true" />
                 <input
                   value={assigneeName}
@@ -432,7 +453,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                   size={Math.max(t("tasks.composerPills.assign").length, assigneeName.length + 1)}
                   autoComplete="off"
                 />
-              </label>
+              </label>}
               <label className={`task-composer-assignee-pill ${estimate ? "has-value" : ""}`}>
                 <Icon name="clock" aria-hidden="true" />
                 <input
@@ -497,6 +518,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                     </p>
                     <TaskPeoplePicker
                       {...planning}
+                      assigneeId={assigneeId}
                       people={planningPeople}
                       availablePeople={awaitingProjectPeople.current ? [] : planning.availablePeople}
                       loading={planning.loading || awaitingProjectPeople.current}

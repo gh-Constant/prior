@@ -5,7 +5,12 @@ export type ProjectRole = "owner" | "editor" | "viewer";
 export type PersonPresence = "online" | "away" | "offline" | "inactive";
 export type Person = { id: string; name: string; email?: string; avatarUrl?: string | null; presence?: PersonPresence; status?: string };
 export type ProjectMember = Person & { role: ProjectRole };
-export type ProjectInvite = { id: string; email: string; role: Exclude<ProjectRole, "owner"> };
+export type ProjectInvite = { id: string; email: string; role: Exclude<ProjectRole, "owner">; expiresAt?: string };
+/** What happened to one invited address, shown in the share dialog. */
+export type InviteOutcome =
+  | { kind: "invited"; email: string; link: string; emailSent: boolean }
+  | { kind: "member"; email: string; role: ProjectInvite["role"] }
+  | { kind: "error"; email: string; message: string };
 export type TaskPerson = Person & { role: "owner" | "assignee" | "collaborator" };
 export type PlanningKey = "team" | "project" | "state" | "cycle" | "milestone" | "labels" | "parent";
 export type PlanningOption = { id: string; name: string };
@@ -23,6 +28,8 @@ export type ProjectIssue = {
   stateId: string | null;
   priority?: TaskPriority;
   people: readonly TaskPerson[];
+  /** The one person responsible (Linear's assignee). */
+  assigneeId?: string | null;
   properties?: readonly { key: PlanningKey; label: string }[];
 };
 export type ProjectCycle = {
@@ -64,19 +71,29 @@ export type ProjectOverview = {
   latestUpdate?: string;
   resources?: readonly { id: string; label: string; href: string }[];
 };
+/**
+ * Sharing actions return promises: the dialog shows progress and the real
+ * outcome (sent, emailed or not, failed) instead of assuming success.
+ */
 export type ProjectSharingProps = {
   members: readonly ProjectMember[];
   invites: readonly ProjectInvite[];
   canManage?: boolean;
   loading?: boolean;
-  busy?: boolean;
-  error?: string;
-  notice?: string;
-  onInvite?: (email: string, role: ProjectInvite["role"]) => void;
-  onRoleChange?: (personId: string, role: ProjectInvite["role"]) => void;
-  onRemoveMember?: (personId: string) => void;
-  onRevokeInvite?: (inviteId: string) => void;
-  onCopyLink?: () => void;
+  /** The signed-in account, marked "you" and offered "Leave project". */
+  currentUserId?: string | null;
+  /** People the user already works with, suggested as invitees. */
+  suggestions?: readonly Person[];
+  onInvite?: (email: string, role: ProjectInvite["role"]) => Promise<InviteOutcome | void> | void;
+  onRoleChange?: (personId: string, role: ProjectInvite["role"]) => Promise<void> | void;
+  onRemoveMember?: (personId: string) => Promise<void> | void;
+  onLeave?: () => Promise<void> | void;
+  onRevokeInvite?: (inviteId: string) => Promise<void> | void;
+  /** Gives a pending invite a fresh link; `sendEmail` also emails it again. */
+  onResendInvite?: (inviteId: string, sendEmail: boolean) => Promise<{ link: string; emailSent: boolean }>;
+  /** The project's own address (only works for members). */
+  projectLink?: string;
+  onCopyLink?: () => Promise<void> | void;
 };
 export type ProjectCollaborationProps = {
   project: Pick<Project, "id" | "name" | "description" | "status" | "icon"> & Partial<Pick<Project, "projectType" | "targetDate" | "health">>;
@@ -100,10 +117,25 @@ export type ProjectCollaborationProps = {
   /** Deletes the backing task; omitted for read-only projects. */
   onDeleteIssue?: (issueId: string) => void;
   onOpenNotes?: () => void;
+  /** Controlled tab ("board", "issues", "overview", "cycles"), mirrored in the URL. */
+  tab?: string | null;
+  onTabChange?: (tab: string) => void;
+  /** Members a task can be assigned to, and the signed-in account. */
+  assignablePeople?: readonly Person[];
+  currentUserId?: string | null;
+  /** Assigns (or unassigns with null) an issue; omitted when read-only. */
+  onAssignIssue?: (issueId: string, personId: string | null) => Promise<void>;
+  /** Loads the activity grid (tasks completed per day and person). */
+  loadActivity?: () => Promise<ProjectActivityEntry[]>;
 };
+export type ProjectActivityEntry = { date: string; userId: string | null; completed: number; created: number };
 export type TaskPlanningProps = {
   people: readonly TaskPerson[];
   availablePeople: readonly Person[];
+  /** Shared projects: who the task can be assigned to, and its assignee. */
+  assignablePeople?: readonly Person[];
+  assigneeId?: string | null;
+  currentUserId?: string | null;
   fields: readonly PlanningField[];
   readOnly?: boolean;
   loading?: boolean;

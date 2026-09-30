@@ -287,6 +287,12 @@ pub fn run() {
             sql: include_str!("../migrations/011_task_reminders_checklists.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 12,
+            description: "task assignee, parent, milestone and relations",
+            sql: include_str!("../migrations/012_task_issue_fields.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();

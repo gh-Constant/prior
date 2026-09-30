@@ -43,12 +43,28 @@ type Project struct {
 	StartDate   *string        `json:"startDate"`
 	TargetDate  *string        `json:"targetDate"`
 	Cycles      []ProjectCycle `json:"cycles,omitempty"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
-	DeletedAt   *time.Time     `json:"deletedAt"`
+	// Milestones are the project's checkpoints; tasks point at one by id.
+	Milestones []ProjectMilestone `json:"milestones,omitempty"`
+	// ProjectType is "standard" or "software" (the agile workspace). Nil
+	// means "standard" for projects saved before the type was synced.
+	ProjectType *string    `json:"projectType"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+	DeletedAt   *time.Time `json:"deletedAt"`
 
-	planningFieldsPresent bool
+	planningFieldsPresent   bool
+	projectTypeFieldPresent bool
+	milestonesFieldPresent  bool
 }
+
+type ProjectMilestone struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description,omitempty"`
+	TargetDate  *string `json:"targetDate,omitempty"`
+}
+
+const MaxProjectMilestones = 100
 
 type ProjectCycle struct {
 	ID       string   `json:"id"`
@@ -85,12 +101,35 @@ func (project *Project) UnmarshalJSON(data []byte) error {
 	_, targetDatePresent := fields["targetDate"]
 	_, cyclesPresent := fields["cycles"]
 	project.planningFieldsPresent = healthPresent || startDatePresent || targetDatePresent || cyclesPresent
+	_, project.milestonesFieldPresent = fields["milestones"]
+	_, project.projectTypeFieldPresent = fields["projectType"]
 	return nil
 }
 
 func (project Project) PlanningFieldsPresent() bool { return project.planningFieldsPresent }
 
+// ProjectTypePresent reports whether the payload carried projectType, so
+// older clients that never send it cannot reset the type to standard.
+func (project Project) ProjectTypePresent() bool { return project.projectTypeFieldPresent }
+
+// MilestonesPresent reports whether the payload carried milestones (clients
+// before 0.8 never send them and must not erase them).
+func (project Project) MilestonesPresent() bool { return project.milestonesFieldPresent }
+
+const (
+	ProjectTypeStandard = "standard"
+	ProjectTypeSoftware = "software"
+)
+
+// ValidProjectType accepts nil (standard) or one of the two known types.
+func ValidProjectType(value *string) bool {
+	return value == nil || *value == ProjectTypeStandard || *value == ProjectTypeSoftware
+}
+
 func (project Project) ValidatePlanning() error {
+	if !ValidProjectType(project.ProjectType) {
+		return errors.New("invalid project type")
+	}
 	if project.Health != nil && *project.Health != ProjectHealthOnTrack && *project.Health != ProjectHealthAtRisk && *project.Health != ProjectHealthOffTrack {
 		return errors.New("invalid project health")
 	}
@@ -102,6 +141,9 @@ func (project Project) ValidatePlanning() error {
 	}
 	if project.StartDate != nil && project.TargetDate != nil && *project.TargetDate < *project.StartDate {
 		return errors.New("invalid project target date: must be on or after the start date")
+	}
+	if err := validateMilestones(project.Milestones); err != nil {
+		return err
 	}
 	if len(project.Cycles) > MaxProjectCycles {
 		return errors.New("invalid project cycles: too many cycles")
@@ -141,6 +183,33 @@ func (project Project) ValidatePlanning() error {
 				return fmt.Errorf("invalid project cycle %q: duplicate issue id", cycleID)
 			}
 			seenIssueIDs[parsed.String()] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateMilestones(milestones []ProjectMilestone) error {
+	if len(milestones) > MaxProjectMilestones {
+		return errors.New("invalid project milestones: too many milestones")
+	}
+	seen := make(map[string]struct{}, len(milestones))
+	for index, milestone := range milestones {
+		id := strings.TrimSpace(milestone.ID)
+		if id == "" || len(id) > 128 {
+			return fmt.Errorf("invalid project milestone %d id", index)
+		}
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("invalid project milestone %q: duplicate id", id)
+		}
+		seen[id] = struct{}{}
+		if name := strings.TrimSpace(milestone.Name); name == "" || len(name) > 400 {
+			return fmt.Errorf("invalid project milestone %q name", id)
+		}
+		if len(milestone.Description) > 4000 {
+			return fmt.Errorf("invalid project milestone %q description", id)
+		}
+		if err := validateProjectDate(milestone.TargetDate, "milestone target date"); err != nil {
+			return fmt.Errorf("project milestone %q: %w", id, err)
 		}
 	}
 	return nil

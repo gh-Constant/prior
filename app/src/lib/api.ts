@@ -114,15 +114,17 @@ type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "ha
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number; nextSince?: number; hasMore?: boolean; workspaceRevision?: number; profile?: { displayName: string; profileRevision: number; updatedAt: string } };
 export type ServerSettings = { openrouterApiKey: string; recommendationOpenrouterApiKey?: string; openaiApiKey: string; webSearch: boolean; initialized?: boolean };
 export type ProfileUser = AccountUser;
-export type CollaborationMember = { userId: string; email: string; displayName: string; avatarUrl?: string; role: "owner" | "editor" | "viewer"; status: "active" | "revoked"; createdAt: string };
+export type CollaborationMember = { userId: string; email: string; displayName: string; avatarUrl?: string; role: "owner" | "editor" | "viewer"; status: "active" | "revoked"; createdAt: string; /** A live realtime connection right now. */ online?: boolean };
 export type CollaborationInvite = { id: string; email: string; role: "editor" | "viewer"; expiresAt: string; inviteToken?: string; projectId: string };
 /** A pending invite addressed to the signed-in account. */
 export type IncomingProjectInvite = { id: string; projectId: string; projectName: string; inviterName: string; inviterId: string; role: "editor" | "viewer"; expiresAt: string; createdAt: string };
 export type CollaborationProject = { project: Project; role: "owner" | "editor" | "viewer"; members: CollaborationMember[]; pendingInvites?: CollaborationInvite[] };
-export type CollaborativeProjectUpdate = Pick<Project, "health" | "startDate" | "targetDate" | "cycles"> & {
+export type CollaborativeProjectUpdate = Pick<Project, "health" | "startDate" | "targetDate" | "cycles"> & Partial<Pick<Project, "name" | "description" | "status" | "icon" | "projectType" | "milestones">> & {
   health?: ProjectHealth | null;
   cycles?: ProjectCycle[];
 };
+/** What the share dialog needs to confirm an invitation. */
+export type ProjectInviteResult = { invite: CollaborationInvite; inviteLink: string; emailSent: boolean };
 export type SessionInfo = {
   id: string;
   deviceName: string;
@@ -389,18 +391,33 @@ export const api = {
   },
   updateCollaborativeProject(projectId: string, project: CollaborativeProjectUpdate | Project, token: string): Promise<CollaborationProject> {
     const planning = {
+      ...(project.name !== undefined ? { name: project.name } : {}),
+      ...(project.description !== undefined ? { description: project.description } : {}),
+      ...(project.status !== undefined ? { status: project.status } : {}),
+      ...(project.icon !== undefined ? { icon: project.icon ?? null } : {}),
+      ...(project.projectType !== undefined ? { projectType: project.projectType } : {}),
       health: project.health ?? null,
       startDate: project.startDate ?? null,
       targetDate: project.targetDate ?? null,
       cycles: project.cycles ?? [],
+      ...(project.milestones !== undefined ? { milestones: project.milestones } : {}),
     };
     return request<CollaborationProject>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}`, { method: "PATCH", body: JSON.stringify(planning) }, token);
   },
   listProjectMembers(projectId: string, token: string): Promise<{ members: CollaborationMember[]; pendingInvites: CollaborationInvite[]; role: CollaborationProject["role"] }> {
     return request<{ members: CollaborationMember[]; pendingInvites: CollaborationInvite[]; role: CollaborationProject["role"] }>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members`, {}, token);
   },
-  shareProject(projectId: string, email: string, role: "editor" | "viewer", token: string): Promise<{ member?: CollaborationMember; invite?: CollaborationInvite }> {
-    return request<{ member?: CollaborationMember; invite?: CollaborationInvite }>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members`, { method: "POST", body: JSON.stringify({ email, role }) }, token);
+  /** Invites an email (emailed with a link) or changes an existing member's role. */
+  shareProject(projectId: string, email: string, role: "editor" | "viewer", token: string, language?: string): Promise<{ member?: CollaborationMember } & Partial<ProjectInviteResult>> {
+    return request<{ member?: CollaborationMember } & Partial<ProjectInviteResult>>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members`, { method: "POST", body: JSON.stringify({ email, role, language }) }, token);
+  },
+  /** Tasks completed/created per day and person in a project (activity grid). */
+  projectActivity(projectId: string, timeZone: string, token: string): Promise<{ entries: Array<{ date: string; userId: string | null; completed: number; created: number }> }> {
+    return request(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/activity?tz=${encodeURIComponent(timeZone)}`, {}, token);
+  },
+  /** Rotates a pending invite's link; emails it again unless `email` is false. */
+  resendProjectInvite(projectId: string, inviteId: string, options: { email: boolean; language?: string }, token: string): Promise<ProjectInviteResult> {
+    return request<ProjectInviteResult>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/invites/${encodeURIComponent(inviteId)}/resend`, { method: "POST", body: JSON.stringify(options) }, token);
   },
   updateProjectMember(projectId: string, userId: string, role: "editor" | "viewer", token: string): Promise<void> {
     return request<void>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`, { method: "PATCH", body: JSON.stringify({ role }) }, token);

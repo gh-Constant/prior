@@ -83,11 +83,36 @@ import { applyQuickAddShortcut, QUICK_TASK_CREATED_EVENT } from "./lib/quickCapt
 import { logger } from "./lib/logger";
 import { resetLastSyncedAt } from "./lib/syncStatus";
 import { purgeProductionDemoData } from "./lib/productionData";
+import { DEFAULT_ROUTE, parseRoute, routeToPath, samePage, type AppRoute } from "./lib/router";
+import { localProjectActivity, newlyAssignedToMe, tasksAssignedTo, withAssignee } from "./lib/assignment";
 import type { MailMessage } from "./types";
 
 logger.init();
 
 type Layout = "list" | "board";
+
+/**
+ * How much a sync cycle covers. Realtime events name what changed so only
+ * that part runs: "tasks" pushes/pulls tasks and habits, "shared" adds the
+ * workspace, shared projects, invites and mentions, "presence" only refreshes
+ * who is online, "full" is everything (startup, focus, manual).
+ */
+type SyncScope = "presence" | "tasks" | "shared" | "full";
+
+function mergeSyncScopes(queued: SyncScope | null, next: SyncScope): SyncScope {
+  if (!queued || queued === next) return next;
+  if (queued === "full" || next === "full") return "full";
+  if (queued === "shared" || next === "shared") return "shared";
+  // tasks + presence: the shared scope covers both.
+  return "shared";
+}
+
+function syncScopeForRealtime(type: string | undefined): SyncScope {
+  if (type === "tasks_required" || type === "sync" || type === "sync_required") return "tasks";
+  if (type === "presence_required") return "presence";
+  if (type === "collaboration_required" || type === "invites_required" || type === "workspace_required" || type === "workspace") return "shared";
+  return "full";
+}
 
 /** Where invite links point from native builds, which have no web origin. */
 const WEB_APP_URL = "https://app.prior.constantsuchet.fr/";
@@ -98,6 +123,7 @@ function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
   if (view === "calendar") return t("common.views.calendar");
   if (view === "projects") return t("common.views.projects");
   if (view === "project") return t("common.views.project");
+  if (view === "mine") return t("common.views.myTasks");
   if (view === "waiting") return t("common.views.waiting");
   if (view === "eisenhower") return t("tasks.matrix.title");
   if (view === "habits") return t("common.views.habits");
@@ -128,10 +154,10 @@ function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcu
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
-    <header className={`workspace-header ${activeView === "all" || activeView === "eisenhower" ? "tasks-header" : ""}`}>
+    <header className={`workspace-header ${activeView === "all" || activeView === "mine" || activeView === "eisenhower" ? "tasks-header" : ""}`}>
       {subtitle ? <div className="workspace-heading"><h1>{viewTitle(activeView, t)}</h1><span className="workspace-subtitle">{subtitle}</span></div> : <h1>{viewTitle(activeView, t)}</h1>}
       {activeView !== "calendar" && <div className="workspace-actions">
-        {activeView === "all" && <div className="layout-switch layout-switch-labeled" role="toolbar" aria-label={t("common.header.layout")}>
+        {(activeView === "all" || activeView === "mine") && <div className="layout-switch layout-switch-labeled" role="toolbar" aria-label={t("common.header.layout")}>
           <button type="button" className={layout === "list" ? "active" : ""} aria-label={t("tasks.list.layoutList")} aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /><span>{t("tasks.list.layoutList")}</span></button>
           <button type="button" className={layout === "board" ? "active" : ""} aria-label={t("tasks.list.layoutBoard")} aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /><span>{t("tasks.list.layoutBoard")}</span></button>
         </div>}
@@ -150,6 +176,9 @@ type WorkspaceContentProps = {
   readonly grouped: Record<string, Task[]>;
   readonly tasks: Task[];
   readonly visibleTasks: Task[];
+  /** "My tasks": tasks assigned to the signed-in account, and the filtered view of them. */
+  readonly myTasks: Task[];
+  readonly myVisibleTasks: Task[];
   readonly habits: Habit[];
   readonly onHabitAdd: () => void;
   readonly onHabitComplete: (habit: Habit, date: string) => Promise<void>;
@@ -179,24 +208,31 @@ type WorkspaceContentProps = {
   /** Settings opens on this tab (e.g. from the Progress page). */
   readonly settingsTab?: SettingsTab;
   readonly settingsKey?: number;
+  readonly onSettingsTabChange: (tab: SettingsTab) => void;
   readonly onOpenGameSettings: () => void;
+  readonly projectTab: string | null;
+  readonly onProjectTabChange: (tab: string) => void;
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onOpenGameSettings }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, myTasks, myVisibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onSettingsTabChange, onOpenGameSettings, projectTab, onProjectTabChange }: WorkspaceContentProps) {
   if (activeView === "plans") return <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={billing.checkoutReturn} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "admin") return billing.billing?.isAdmin ? <AdminView /> : <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={null} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "progress") return <ProgressView onOpenGameSettings={onOpenGameSettings} />;
-  if (activeView === "settings") return <SettingsPage key={`${settingsTab ?? "general"}-${settingsKey ?? 0}`} user={user} onUserUpdated={onUserUpdated} initialTab={settingsTab} />;
+  if (activeView === "settings") return <SettingsPage key={settingsKey ?? 0} user={user} onUserUpdated={onUserUpdated} tab={settingsTab ?? "general"} onTabChange={onSettingsTabChange} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
   if (activeView === "calendar") return <CalendarView habits={habits} />;
-  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} habits={habits} onHabitComplete={onHabitComplete} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={() => onViewChange("calendar")} onOpenHabits={() => onViewChange("habits")} />;
+  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} habits={habits} onHabitComplete={onHabitComplete} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={() => onViewChange("calendar")} onOpenHabits={() => onViewChange("habits")} projectTab={projectTab} onProjectTabChange={onProjectTabChange} currentUserId={user?.id ?? null} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
   }
   if (activeView === "eisenhower") {
     return <EisenhowerMatrix grouped={grouped} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
+  }
+  if (activeView === "mine") {
+    if (layout === "board") return <TaskColumns tasks={myVisibleTasks} projects={projects} showDone={taskFilters.status !== "open"} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
+    return <AllTasksView tasks={myTasks} visibleTasks={myVisibleTasks} filters={taskFilters} projects={projects} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
   }
   if (layout === "board") {
     return <TaskColumns tasks={visibleTasks} projects={projects} showDone={taskFilters.status !== "open"} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
@@ -205,7 +241,7 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, ta
 }
 
 export function App() {
-  const { t, tp } = useI18n();
+  const { t, tp, lang } = useI18n();
   const productionAuthRequired = import.meta.env.DEV !== true;
   const [authReady, setAuthReady] = useState(!productionAuthRequired);
   // Emailed links (/reset-password, /verify-email) open a standalone page.
@@ -230,11 +266,14 @@ export function App() {
   const [authError, setAuthError] = useState("");
   const [user, setUser] = useState<SessionUser | null>(() => getUser());
   const billing = useBilling(user !== null);
+  // The address bar is the source of the first page (reload, shared link).
+  const [initialRoute] = useState<AppRoute>(() => (typeof window === "undefined" ? DEFAULT_ROUTE : parseRoute(window.location)));
   // Coming back from Stripe Checkout lands on the plans page.
-  const [activeView, setActiveView] = useState<WorkspaceView>(() => (billing.checkoutReturn ? "plans" : "today"));
+  const [activeView, setActiveView] = useState<WorkspaceView>(() => (billing.checkoutReturn ? "plans" : initialRoute.view));
   const [calendarConnection, setCalendarConnection] = useState<{ email: string | null; error: string | null } | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [notesProjectId, setNotesProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialRoute.projectId ?? null);
+  const [projectTab, setProjectTab] = useState<string | null>(initialRoute.projectTab ?? null);
+  const [notesProjectId, setNotesProjectId] = useState<string | null>(initialRoute.notesProjectId ?? null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem("prior.sidebar.collapsed") === "true";
@@ -252,13 +291,13 @@ export function App() {
   const game = useGame();
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingPutOff, setOnboardingPutOff] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(undefined);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(initialRoute.settingsTab ?? undefined);
   const [settingsKey, bumpSettingsKey] = useReducer((value: number) => value + 1, 0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [chestToOpen, setChestToOpen] = useState<string | null>(null);
   const chestDialog = chestToOpen ? game.state?.chests.find((chest) => chest.id === chestToOpen) : undefined;
   const syncInFlight = useRef<Promise<void> | null>(null);
-  const syncQueued = useRef(false);
+  const syncQueued = useRef<SyncScope | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncIssue, setSyncIssue] = useState(false);
   const online = useOnline();
@@ -416,7 +455,7 @@ export function App() {
   // prior://task/<id>, prior://habit/<id> and prior://new-task: notification
   // taps, widgets and shortcuts. A target that arrives before the tasks are
   // loaded waits in pendingTarget.
-  const [pendingTarget, setPendingTarget] = useState<ReturnType<typeof parseNotificationTarget>>(null);
+  const [pendingTarget, setPendingTarget] = useState<ReturnType<typeof parseNotificationTarget>>(() => (initialRoute.taskId ? { kind: "task", id: initialRoute.taskId } : null));
   function openTargetUrl(url: string): boolean {
     const target = parseNotificationTarget(url);
     if (!target) return false;
@@ -444,6 +483,51 @@ export function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTarget, tasks]);
+  // Mirror the page in the address bar (lib/router): a reload or a shared
+  // link reopens it, and Back/Forward move between pages.
+  const routeTaskId = editingTask?.id || (pendingTarget?.kind === "task" ? pendingTarget.id : null);
+  const routePath = routeToPath({
+    view: activeView,
+    projectId: activeView === "project" ? selectedProjectId : null,
+    projectTab: activeView === "project" ? projectTab : null,
+    notesProjectId: activeView === "notes" ? notesProjectId : null,
+    settingsTab: activeView === "settings" ? settingsTab ?? null : null,
+    taskId: routeTaskId,
+  });
+  const lastRoutePath = useRef(routeToPath(initialRoute));
+  const editingTaskId = useRef<string | null>(null);
+  editingTaskId.current = editingTask?.id ?? null;
+  useEffect(() => {
+    if (typeof window === "undefined" || accountLink) return;
+    const previous = lastRoutePath.current;
+    if (routePath === previous) return;
+    lastRoutePath.current = routePath;
+    if (`${window.location.pathname}${window.location.search}` === routePath) return;
+    // Opening or closing a task stays on the same history entry.
+    if (samePage(previous, routePath)) window.history.replaceState(null, "", routePath);
+    else window.history.pushState(null, "", routePath);
+  }, [routePath, accountLink]);
+  useEffect(() => {
+    const onPopState = () => {
+      const route = parseRoute(window.location);
+      lastRoutePath.current = routeToPath(route);
+      setActiveView(route.view);
+      setSelectedProjectId(route.projectId ?? null);
+      setProjectTab(route.projectTab ?? null);
+      setNotesProjectId(route.notesProjectId ?? null);
+      setSettingsTab(route.settingsTab ?? undefined);
+      setMobileMoreOpen(false);
+      if (route.taskId) {
+        if (route.taskId !== editingTaskId.current) setPendingTarget({ kind: "task", id: route.taskId });
+      } else {
+        setEditingTask(null);
+        setPendingTarget((current) => (current?.kind === "task" ? null : current));
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   useEffect(() => {
     const onOpen = (event: Event) => {
       const target = (event as CustomEvent<{ target?: string }>).detail?.target;
@@ -561,14 +645,20 @@ export function App() {
     }
   }, []);
 
-  const syncNow = useCallback((): Promise<void> => {
+  const syncNow = useCallback((requested?: SyncScope | Event): Promise<void> => {
+    // Also used directly as an event listener ("online"): an Event means full.
+    const scope: SyncScope = typeof requested === "string" ? requested : "full";
     if (syncInFlight.current) {
-      syncQueued.current = true;
+      syncQueued.current = mergeSyncScopes(syncQueued.current, scope);
       return syncInFlight.current;
     }
     // Every sync (manual or automatic) flows through here, so the sidebar
-    // spinner reflects the real sync activity.
-    setSyncing(true);
+    // spinner reflects the real sync activity. Realtime events run a narrower
+    // scope (a collaborator's task, a membership change) so they land fast.
+    const full = scope === "full";
+    const shared = full || scope === "shared";
+    const syncTasks = scope !== "presence";
+    if (full) setSyncing(true);
 
     const run = (async () => {
       try {
@@ -577,13 +667,23 @@ export function App() {
         if (!token || generation !== sessionGeneration.current) return;
         const syncAccountId = getAccountId();
 
-        logger.info("sync", "Starting sync cycle");
+        logger.info("sync", "Starting sync cycle", { scope });
         const incomplete: string[] = [];
         const syncStartedAt = Date.now();
 
+        if (scope === "presence") {
+          // Someone opened or closed Prior: only the member list changes.
+          try {
+            await collaborationStore.sync(token);
+          } catch (presenceError) {
+            logger.warn("sync", "Collaboration presence refresh failed", { error: String(presenceError) });
+          }
+          return;
+        }
+
         // Profile first: the server copy wins so a rename on another device
         // converges locally. Failures are non-fatal for task data.
-        try {
+        if (full) try {
           const profile = await api.getProfile(token);
           if (generation !== sessionGeneration.current) return;
           const currentUser = getUser();
@@ -607,7 +707,7 @@ export function App() {
 
         // Calendar and preference sync must run even when a task mutation or
         // task pull fails. These domains have independent server storage.
-        try {
+        if (full) try {
           initializeCalendarSync(loadLegacyCalendarState());
           initializeAccountPreferences();
           await syncAccountDocuments(token, () => generation === sessionGeneration.current);
@@ -621,9 +721,10 @@ export function App() {
 
         let taskSyncComplete = false;
         let finalRevision = 0;
+        let pushedCount = 0;
         let pendingSnapshot = { tasks: new Set<string>(), habits: new Set<string>() };
         let pullAll: ((since: number) => Promise<Awaited<ReturnType<typeof api.pull>>>) | null = null;
-        try {
+        if (syncTasks) try {
           // navigator.onLine is unreliable in Tauri webviews. The API request has
           // its own timeout and is the source of truth for connectivity.
           const state = await localStore.getSyncState();
@@ -635,6 +736,7 @@ export function App() {
             const chunk = pending.slice(offset, offset + 100);
             const pushed = await api.push(chunk, token);
             if (generation !== sessionGeneration.current) return;
+            pushedCount += pushed.applied.length;
             await localStore.removeMutations(pushed.applied.map((item) => item.mutationId), syncAccountId);
             highestPushedRevision = pushed.applied.reduce((value, item) => Math.max(value, item.revision), highestPushedRevision);
           }
@@ -693,7 +795,15 @@ export function App() {
           // Snapshot pending ids once per sync so remote merges skip exactly the
           // edits that were still queued when this sync started.
           pendingSnapshot = await localStore.pendingIdsSnapshot();
+          // Tell the user when a collaborator assigns them a task (not on a
+          // first sync, where every assignment is old news).
+          const assignedBefore = state.lastServerRevision > 0 && pulled.tasks.length ? new Map((await localStore.listTasks()).map((task) => [task.id, task])) : null;
           await localStore.applyRemoteTasks(pulled.tasks, pendingSnapshot.tasks, syncAccountId);
+          if (assignedBefore) {
+            for (const task of newlyAssignedToMe(assignedBefore, pulled.tasks.filter((item) => !pendingSnapshot.tasks.has(item.id)), getUser()?.id)) {
+              void notificationScheduler.notifyNow({ key: `assigned:${task.id}:${task.updatedAt}`, title: t("collab.assign.notificationTitle"), body: task.title, target: `prior://task/${encodeURIComponent(task.id)}` });
+            }
+          }
           await localStore.applyRemoteHabits(pulled.habits ?? [], pendingSnapshot.habits, syncAccountId);
           if (generation !== sessionGeneration.current || syncAccountId !== getAccountId()) return;
 
@@ -718,7 +828,7 @@ export function App() {
 
         if (generation !== sessionGeneration.current) return;
 
-        try {
+        if (full) try {
           await syncNoteAttachments(token, () => generation === sessionGeneration.current);
         } catch (attachmentError) {
           incomplete.push("attachments");
@@ -726,7 +836,7 @@ export function App() {
         }
         if (generation !== sessionGeneration.current) return;
 
-        try {
+        if (shared) try {
           await workspaceSync.sync(token, () => generation === sessionGeneration.current);
           if (generation === sessionGeneration.current) {
             refreshWorkspace();
@@ -742,7 +852,7 @@ export function App() {
 
         // Collaboration sync in an isolated try/catch
         let collaborationChanged = false;
-        try {
+        if (shared) try {
           collaborationChanged = (await collaborationStore.sync(token)).changed;
         } catch (collaborationError) {
           incomplete.push("collaboration");
@@ -751,7 +861,7 @@ export function App() {
         }
 
         // A shared link opened before signing in (see lib/pendingLink).
-        const link = pendingLink();
+        const link = shared ? pendingLink() : null;
         if (link?.invite) {
           try {
             const { projectId } = await api.acceptProjectInvite(link.invite, token);
@@ -775,13 +885,15 @@ export function App() {
           }
         }
 
-        try {
-          const { invites } = await api.listIncomingInvites(token);
-          if (generation === sessionGeneration.current) setIncomingInvites(invites);
-        } catch (invitesError) {
-          logger.warn("sync", "Project invites could not be loaded", { error: String(invitesError) });
+        if (shared) {
+          try {
+            const { invites } = await api.listIncomingInvites(token);
+            if (generation === sessionGeneration.current) setIncomingInvites(invites);
+          } catch (invitesError) {
+            logger.warn("sync", "Project invites could not be loaded", { error: String(invitesError) });
+          }
+          await loadMentions(token, generation);
         }
-        await loadMentions(token, generation);
 
         // A newly accepted/shared project may contain task revisions older than
         // this account's normal sync cursor. Pull the authorized history once
@@ -801,14 +913,14 @@ export function App() {
         }
 
         // Assistant settings follow the account after workspace data.
-        try {
+        if (full) try {
           await syncAgentOutbox(token, () => generation === sessionGeneration.current);
         } catch (chatError) {
           incomplete.push("chats");
           logger.warn("sync", "Agent messages remain queued", { error: String(chatError) });
         }
         if (generation !== sessionGeneration.current) return;
-        try {
+        if (full) try {
           const settingsOk = await pullAssistantSettings();
           if (!settingsOk) { incomplete.push("settings"); logger.warn("sync", "Assistant settings not yet synced; will retry on next sync"); }
         } catch (settingsError) {
@@ -828,8 +940,9 @@ export function App() {
         if (generation !== sessionGeneration.current || syncAccountId !== getAccountId()) return;
         // XP is earned by the push above; fetch the result (and any level-up)
         // unless the push failed, so optimistic XP isn't dropped while offline.
-        if (!incomplete.includes("tasks/habits")) void gameStore.refresh(syncStartedAt);
-        setSyncIssue(incomplete.length > 0);
+        if (!incomplete.includes("tasks/habits") && (full || pushedCount > 0)) void gameStore.refresh(syncStartedAt);
+        // A narrower sync cannot vouch for the sections it skipped.
+        if (full || incomplete.length > 0) setSyncIssue(incomplete.length > 0);
         if (incomplete.length) logger.warn("sync", "Sync partially completed; pending sections will retry", { sections: incomplete });
         else {
           window.dispatchEvent(new Event("prior-sync-complete"));
@@ -851,9 +964,11 @@ export function App() {
     syncInFlight.current = run;
     void run.finally(() => {
       if (syncInFlight.current === run) syncInFlight.current = null;
-      if (syncQueued.current) {
-        syncQueued.current = false;
-        void syncNow();
+      const queued = syncQueued.current;
+      if (queued) {
+        syncQueued.current = null;
+        if (queued !== "full") setSyncing(false);
+        void syncNow(queued);
       } else {
         setSyncing(false);
       }
@@ -905,7 +1020,7 @@ export function App() {
     try {
       realtimeClose.current = await connectRealtime(
         token,
-        () => void syncNow(),
+        (_revision, type) => void syncNow(syncScopeForRealtime(type)),
         { getRevision: async () => (await localStore.getSyncState()).lastServerRevision },
       );
     } catch (error) {
@@ -1107,7 +1222,7 @@ export function App() {
       setNewTaskContext(undefined);
     }
     await refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
   async function saveEditedTask(input: TaskDraft) {
@@ -1116,7 +1231,7 @@ export function App() {
     await localStore.updateTask({ ...editingTask, ...input, completed: input.status ? input.status === "done" : editingTask.completed, description: input.description ?? "", dueDate: input.dueDate ?? null, priority: input.priority ?? 4 });
     setEditingTask(null);
     await refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
   /* Mail → task. Direct opens the composer pre-filled; AI drafts the fields
@@ -1155,7 +1270,7 @@ export function App() {
     setMailDraft(null);
     setToast(t("mail.toasts.taskCreated"));
     await refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
   function resolveAgentAreaId(areaName: string | null | undefined): string | null {
@@ -1244,7 +1359,7 @@ export function App() {
       });
     }
     await refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
   /* Applies update_task proposals the user confirmed in the assistant. Only
@@ -1261,7 +1376,7 @@ export function App() {
       await localStore.updateTask({ ...task, ...changes, completed, status });
     }
     await refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
   async function addAgentHabits(batch: HabitDraft[]) {
@@ -1269,7 +1384,7 @@ export function App() {
       await localStore.saveHabit(item);
     }
     await refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
   function resolveAgentFolderId(folderName: string | null): string | null {
@@ -1328,7 +1443,7 @@ export function App() {
     }
     setTasks((current) => current.map((item) => item.id === savedTask.id ? savedTask : item));
     void refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
   async function deleteTask(task: Task) {
@@ -1336,7 +1451,7 @@ export function App() {
     await localStore.removeTask(task);
     releaseCompletionExit(task.id);
     await refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
   async function saveHabit(input: HabitDraft) {
@@ -1344,7 +1459,7 @@ export function App() {
     setHabitComposerOpen(false);
     setEditingHabit(null);
     await refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
   async function completeHabit(habit: Habit, date: string) {
@@ -1360,11 +1475,11 @@ export function App() {
     }
     setHabits((current) => current.map((item) => item.id === savedHabit.id ? savedHabit : item));
     void refresh();
-    void syncNow();
+    void syncNow("tasks");
   }
 
-  async function changeHabit(habit: Habit) { await localStore.updateHabit(habit); await refresh(); void syncNow(); }
-  async function deleteHabit(habit: Habit) { await localStore.removeHabit(habit); await refresh(); void syncNow(); }
+  async function changeHabit(habit: Habit) { await localStore.updateHabit(habit); await refresh(); void syncNow("tasks"); }
+  async function deleteHabit(habit: Habit) { await localStore.removeHabit(habit); await refresh(); void syncNow("tasks"); }
 
   /* Viewers cannot edit, and shared projects live on the server: editing
      them offline would diverge from what the other members see. */
@@ -1389,6 +1504,38 @@ export function App() {
     void syncNow();
   }
 
+  /** The web address of a page, also from native builds (for sharing). */
+  const webBase = isTauri() ? WEB_APP_URL.replace(/\/+$/, "") : window.location.origin;
+
+  /** A shared project's token, or a prompt to sign in. */
+  async function collaborationToken(): Promise<string> {
+    const token = await getToken();
+    if (!token) {
+      setAuthOpen(true);
+      throw new Error(t("common.access.signInToUpdate"));
+    }
+    return token;
+  }
+
+  /** A project must exist on the server before it can be shared. */
+  async function ensureProjectOnServer(projectId: string, token: string): Promise<void> {
+    if (collaborationStore.get(projectId)) return;
+    await workspaceSync.sync(token);
+    await collaborationStore.sync(token);
+  }
+
+  function planLimitMessage(error: PlanLimitError): string {
+    const limits = billing.billing?.entitlements;
+    return error.limit === "projects"
+      ? t("billing.limits.projects", { count: limits?.maxSharedProjects ?? 3 })
+      : t("billing.limits.members", { count: limits?.maxMembersPerProject ?? 2 });
+  }
+
+  /** Re-reads shared projects in the background after an optimistic change. */
+  function refreshCollaboration(token: string): void {
+    void collaborationStore.sync(token).catch((error) => logger.warn("sync", "Collaboration refresh failed", { error: String(error) }));
+  }
+
   const collaborationByProject = useMemo<CollaborationByProject>(() => {
     const stateOptions = [
       { id: "backlog", name: t("common.states.backlog"), category: "backlog" as const },
@@ -1397,6 +1544,15 @@ export function App() {
       { id: "waiting", name: t("common.states.waiting"), category: "started" as const },
       { id: "done", name: t("common.states.done"), category: "completed" as const },
     ];
+    // People the user already works with, suggested in every share dialog.
+    const suggestionByEmail = new Map<string, Person>();
+    for (const entry of collaborationStore.list()) {
+      for (const member of entry.members) {
+        if (member.userId === user?.id || !member.email) continue;
+        suggestionByEmail.set(member.email.toLowerCase(), { id: member.userId, name: member.displayName || member.email, email: member.email, avatarUrl: member.avatarUrl });
+      }
+    }
+    const suggestions = [...suggestionByEmail.values()].sort((left, right) => left.name.localeCompare(right.name));
     const result: Record<string, Omit<ProjectCollaborationProps, "project">> = {};
     for (const project of projects) {
       // The collaboration workspace is the default project experience. A
@@ -1405,19 +1561,24 @@ export function App() {
       const entry = collaborationStore.get(project.id);
       const offline = !online && collaborationStore.isShared(project.id);
       const readOnly = entry?.role === "viewer" || offline;
-      const members = entry?.members.map((member, index) => {
+      // Presence is real: the API marks members with a live connection.
+      const members = entry?.members.map((member) => {
         const isSelf = member.userId === user?.id;
-        const presence = isSelf ? "online" as const : (member.status === "revoked" ? "inactive" as const : (index % 3 === 1 ? "online" as const : index % 3 === 2 ? "away" as const : "inactive" as const));
+        const presence = isSelf || member.online ? "online" as const : undefined;
         return { id: member.userId, name: member.displayName || member.email, email: member.email, avatarUrl: member.avatarUrl, role: member.role, presence };
       }) ?? (user ? [{ id: user.id, name: user.displayName || user.email, email: user.email, avatarUrl: user.avatarUrl, role: "owner" as const, presence: "online" as const }] : []);
       const memberById = new Map(members.map((member) => [member.id, member]));
-      const projectIssues = tasks.filter((task) => task.projectId === project.id).map((task) => {
+      // Assignment makes sense once someone else can see the project.
+      const assignablePeople = entry && members.length > 1 ? members.map(({ id, name, email, avatarUrl, presence }) => ({ id, name, email, avatarUrl, presence })) : undefined;
+      const projectTasks = tasks.filter((task) => task.projectId === project.id);
+      const projectIssues = projectTasks.map((task) => {
         const rawState = task.completed ? "done" : task.status ?? "backlog";
         return {
         id: task.id,
         title: task.title,
         stateId: rawState === "inbox" ? "backlog" : rawState,
         priority: task.priority,
+        assigneeId: task.assigneeId ?? null,
         people: (task.peopleIds ?? []).map((personId): TaskPerson | null => {
           const person = memberById.get(personId);
           return person ? { id: person.id, name: person.name, email: person.email, avatarUrl: person.avatarUrl, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator", presence: person.presence } : null;
@@ -1454,98 +1615,98 @@ export function App() {
           if (!task || !stateOptions.some((state) => state.id === stateId)) throw new Error(t("common.errors.moveFailed"));
           await changeTask({ ...task, status: stateId as Task["status"], completed: stateId === "done" });
         },
+        assignablePeople,
+        currentUserId: user?.id ?? null,
+        onAssignIssue: readOnly || !assignablePeople ? undefined : async (id, personId) => {
+          const task = tasks.find((item) => item.id === id && item.projectId === project.id);
+          if (!task) return;
+          await changeTask(withAssignee(task, personId));
+        },
+        loadActivity: async () => {
+          const local = localProjectActivity(projectTasks, user?.id ?? null);
+          const token = entry ? await getToken() : null;
+          if (!token) return local;
+          try {
+            return (await api.projectActivity(project.id, Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", token)).entries;
+          } catch (error) {
+            logger.warn("sync", "Project activity unavailable; showing this device's history", { error: String(error) });
+            return local;
+          }
+        },
         sharing: {
           members,
-          invites: (entry?.pendingInvites ?? []).map((invite) => ({ id: invite.id, email: invite.email, role: invite.role })),
+          invites: (entry?.pendingInvites ?? []).map((invite) => ({ id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt })),
           // A project created on this device is ours even before its first
-          // sync reaches the server; the invite below syncs it first.
+          // sync reaches the server; inviting uploads it first.
           canManage: entry ? entry.role === "owner" : Boolean(user),
-          onInvite: (email, role) => {
-            void (async () => {
-              const token = await getToken();
-              if (!token) { setAuthOpen(true); return; }
-              try {
-                if (!collaborationStore.get(project.id)) await syncNow();
-                const response = await api.shareProject(project.id, email, role, token);
-                await collaborationStore.sync(token);
-                refreshWorkspace();
-                if (response.invite?.inviteToken) {
-                  const inviteLink = `${isTauri() ? WEB_APP_URL : `${window.location.origin}${window.location.pathname}`}#invite=${encodeURIComponent(response.invite.inviteToken)}`;
-                  await navigator.clipboard?.writeText(inviteLink);
-                  setToast(t("common.toasts.inviteCopied", { email }));
-                } else {
-                  setToast(t("common.toasts.memberAdded", { email }));
-                }
-              } catch (error) {
-                if (error instanceof PlanLimitError) {
-                  const limits = billing.billing?.entitlements;
-                  setToast(error.limit === "projects"
-                    ? t("billing.limits.projects", { count: limits?.maxSharedProjects ?? 3 })
-                    : t("billing.limits.members", { count: limits?.maxMembersPerProject ?? 2 }));
-                  return;
-                }
-                setToast(error instanceof Error ? error.message : t("common.errors.shareFailed"));
+          currentUserId: user?.id ?? null,
+          suggestions,
+          projectLink: `${webBase}/projects/${encodeURIComponent(project.id)}`,
+          onInvite: async (email, role) => {
+            const token = await collaborationToken();
+            try {
+              await ensureProjectOnServer(project.id, token);
+              const response = await api.shareProject(project.id, email, role, token, lang);
+              if (response.invite) {
+                const invite = response.invite;
+                collaborationStore.update(project.id, (current) => ({ ...current, pendingInvites: [invite, ...(current.pendingInvites ?? []).filter((item) => item.email.toLowerCase() !== invite.email.toLowerCase())] }));
+                refreshCollaboration(token);
+                const link = response.inviteLink ?? `${webBase}/invite/${encodeURIComponent(invite.inviteToken ?? "")}`;
+                return { kind: "invited" as const, email: invite.email, link, emailSent: response.emailSent === true };
               }
-            })();
+              collaborationStore.update(project.id, (current) => ({ ...current, members: current.members.map((member) => member.email.toLowerCase() === email.toLowerCase() ? { ...member, role } : member) }));
+              refreshCollaboration(token);
+              return { kind: "member" as const, email, role };
+            } catch (error) {
+              if (error instanceof PlanLimitError) throw new Error(planLimitMessage(error));
+              throw error;
+            }
           },
-          onRevokeInvite: (inviteId) => {
-            void (async () => {
-              const token = await getToken();
-              if (!token) return;
-              try {
-                await api.revokeProjectInvite(project.id, inviteId, token);
-                await collaborationStore.sync(token);
-                refreshWorkspace();
-                setToast(t("common.toasts.inviteRevoked"));
-              } catch (error) {
-                setToast(error instanceof Error ? error.message : t("common.errors.revokeFailed"));
-              }
-            })();
+          onResendInvite: async (inviteId, sendEmail) => {
+            const token = await collaborationToken();
+            const result = await api.resendProjectInvite(project.id, inviteId, { email: sendEmail, language: lang }, token);
+            collaborationStore.update(project.id, (current) => ({ ...current, pendingInvites: (current.pendingInvites ?? []).map((invite) => invite.id === inviteId ? { ...invite, expiresAt: result.invite.expiresAt } : invite) }));
+            return { link: result.inviteLink, emailSent: result.emailSent };
           },
-          onRoleChange: (userId, role) => {
-            void (async () => {
-              const token = await getToken();
-              if (!token) return;
-              try {
-                await api.updateProjectMember(project.id, userId, role, token);
-                await collaborationStore.sync(token);
-                refreshWorkspace();
-                setToast(t("common.toasts.roleUpdated"));
-              } catch (error) {
-                setToast(error instanceof Error ? error.message : t("common.errors.roleFailed"));
-              }
-            })();
+          onRevokeInvite: async (inviteId) => {
+            const token = await collaborationToken();
+            await api.revokeProjectInvite(project.id, inviteId, token);
+            collaborationStore.update(project.id, (current) => ({ ...current, pendingInvites: (current.pendingInvites ?? []).filter((invite) => invite.id !== inviteId) }));
+            refreshCollaboration(token);
           },
-          onRemoveMember: (userId) => {
-            void (async () => {
-              const token = await getToken();
-              if (!token) return;
-              try {
-                await api.removeProjectMember(project.id, userId, token);
-                await collaborationStore.sync(token);
-                refreshWorkspace();
-                setToast(t("common.toasts.memberRemoved"));
-              } catch (error) {
-                setToast(error instanceof Error ? error.message : t("common.errors.removeFailed"));
-              }
-            })();
+          onRoleChange: async (userId, role) => {
+            const token = await collaborationToken();
+            const previous = collaborationStore.get(project.id)?.members.find((member) => member.userId === userId)?.role;
+            // Optimistic: the select shows the new role while it saves.
+            collaborationStore.update(project.id, (current) => ({ ...current, members: current.members.map((member) => member.userId === userId ? { ...member, role } : member) }));
+            try {
+              await api.updateProjectMember(project.id, userId, role, token);
+            } catch (error) {
+              if (previous) collaborationStore.update(project.id, (current) => ({ ...current, members: current.members.map((member) => member.userId === userId ? { ...member, role: previous } : member) }));
+              throw error;
+            }
+            refreshCollaboration(token);
           },
-          onCopyLink: () => {
-            void (async () => {
-              try {
-                await navigator.clipboard?.writeText(`${isTauri() ? WEB_APP_URL : `${window.location.origin}${window.location.pathname}`}#project=${project.id}`);
-                setToast(t("common.toasts.linkCopied"));
-              } catch {
-                setToast(t("common.errors.linkCopyFailed"));
-              }
-            })();
+          onRemoveMember: async (userId) => {
+            const token = await collaborationToken();
+            await api.removeProjectMember(project.id, userId, token);
+            collaborationStore.update(project.id, (current) => ({ ...current, members: current.members.filter((member) => member.userId !== userId) }));
+            refreshCollaboration(token);
           },
+          onLeave: user && entry && entry.role !== "owner" ? async () => {
+            const token = await collaborationToken();
+            await api.removeProjectMember(project.id, user.id, token);
+            collaborationStore.remove(project.id);
+            openProject("");
+            setToast(t("collab.share.left", { name: project.name }));
+            void syncNow("shared");
+          } : undefined,
         },
         overview: { lead: members.find((member) => member.role === "owner"), health: project.health ?? undefined, startDate: project.startDate ?? undefined, targetDate: project.targetDate ?? undefined },
       };
     }
     return result;
-  }, [openNewTask, projects, tasks, user, refreshWorkspace, t, online, syncNow]);
+  }, [openNewTask, projects, tasks, user, refreshWorkspace, t, lang, online, syncNow, billing.billing]);
 
   const taskPlanning = useMemo<TaskPlanningProps | undefined>(() => {
     const projectId = composerProjectId !== undefined ? composerProjectId : editingTask?.projectId ?? newTaskContext?.projectId;
@@ -1557,9 +1718,13 @@ export function App() {
       const person = availablePeople.find((item) => item.id === personId) ?? { id: personId, name: t("common.planning.unknownPerson") };
       return { ...person, role: personId === user?.id ? "owner" : "collaborator" };
     });
+    const assignablePeople = entry && entry.members.length > 1 ? entry.members.map((member) => ({ id: member.userId, name: member.displayName || member.email, email: member.email, avatarUrl: member.avatarUrl })) : undefined;
     return {
       people,
       availablePeople,
+      assignablePeople,
+      assigneeId: editingTask && editingTask.projectId === projectId ? editingTask.assigneeId ?? null : null,
+      currentUserId: user?.id ?? null,
       readOnly: entry?.role === "viewer" || Boolean(editingTask?.projectId && collaborationStore.role(editingTask.projectId) === "viewer"),
       fields: [
         { key: "state", label: t("common.planning.workflowState"), options: [{ id: "backlog", name: t("common.states.backlog") }, { id: "next", name: t("common.states.todo") }, { id: "in_progress", name: t("common.states.inProgress") }, { id: "done", name: t("common.states.done") }], selectedIds: [(() => { const raw = editingTask?.status ?? newTaskContext?.status ?? "backlog"; return raw === "inbox" ? "backlog" : raw; })()] },
@@ -1635,6 +1800,9 @@ export function App() {
   );
 
   const openTaskCount = useMemo(() => tasks.filter((task) => !task.completed).length, [tasks]);
+  const myTasks = useMemo(() => tasksAssignedTo(tasks, user?.id), [tasks, user?.id]);
+  const myVisibleTasks = useMemo(() => filterTasksWithExitingCompletions(myTasks, taskFilters, completionExitDeadlines), [myTasks, taskFilters, completionExitDeadlines]);
+  const myOpenCount = useMemo(() => myTasks.filter((task) => !task.completed).length, [myTasks]);
 
   const grouped = useMemo(() => Object.fromEntries(QUADRANTS.map((quadrant) => [quadrant.key, visibleTasks.filter((task) => quadrantFor(task) === quadrant.key)])), [visibleTasks]);
 
@@ -1673,7 +1841,7 @@ export function App() {
       created.push(await localStore.saveTask({ title, important: true, urgent: true, completed: false, peopleIds: user ? [user.id] : [] }));
     }
     await refresh();
-    void syncNow();
+    void syncNow("tasks");
     return created;
   }
 
@@ -1702,6 +1870,8 @@ export function App() {
   }
 
   function openProject(projectId: string): void {
+    setProjectTab(null);
+    setMobileMoreOpen(false);
     if (!projectId) {
       setSelectedProjectId(null);
       setActiveView("projects");
@@ -1738,7 +1908,7 @@ export function App() {
   }
 
   function changeView(view: WorkspaceView): void {
-    if (view !== "project") setSelectedProjectId(null);
+    if (view !== "project") { setSelectedProjectId(null); setProjectTab(null); }
     if (view === "notes") setNotesProjectId(null);
     setSettingsTab(undefined);
     setMobileMoreOpen(false);
@@ -1793,7 +1963,7 @@ export function App() {
   const paletteCommands: PaletteCommand[] = [
     { id: "new-task", label: t("palette.commands.newTask"), keywords: "add create", icon: "plus", run: () => openNewTask() },
     { id: "new-habit", label: t("palette.commands.newHabit"), keywords: "add create", icon: "refresh", run: () => setHabitComposerOpen(true) },
-    ...(["today", "inbox", "calendar", "projects", "all", "waiting", "eisenhower", "habits", "notes", ...(game.enabled ? ["progress" as const] : [])] as WorkspaceView[]).map((view) => ({
+    ...(["today", "inbox", "calendar", "projects", ...(user ? ["mine" as const] : []), "all", "waiting", "eisenhower", "habits", "notes", ...(game.enabled ? ["progress" as const] : [])] as WorkspaceView[]).map((view) => ({
       id: `view-${view}`, label: t("palette.commands.goTo", { view: viewTitle(view, t) }), keywords: "go open view", icon: "arrow" as const, run: () => changeView(view),
     })),
     ...(["general", "profile", "security", "notifications", "game", "assistant", "integrations"] as SettingsTab[]).map((tab) => ({
@@ -1855,7 +2025,7 @@ export function App() {
         user={user}
         collapsed={sidebarCollapsed}
         agentOpen={agentOpen}
-        counts={{ waiting: waitingCount }}
+        counts={{ waiting: waitingCount, mine: myOpenCount }}
         aiShortcut={aiShortcut}
         updateAvailable={desktopUpdate !== null}
         updateInstalling={updateInstalling}
@@ -1883,21 +2053,24 @@ export function App() {
           shortcut={shortcut}
           shortcutKey={shortcutKey}
           onNewTask={() => activeView === "habits" ? setHabitComposerOpen(true) : openNewTask()}
-          subtitle={activeView === "all" ? tp("tasks.list.activeCount", openTaskCount) : activeView === "eisenhower" ? tp("tasks.matrix.subtitle", visibleTasks.length) : undefined}
+          subtitle={activeView === "all" ? tp("tasks.list.activeCount", openTaskCount) : activeView === "mine" ? tp("tasks.list.activeCount", myOpenCount) : activeView === "eisenhower" ? tp("tasks.matrix.subtitle", visibleTasks.length) : undefined}
           extraActions={activeView === "eisenhower" ? <div className="scope-switch" role="group" aria-label={t("tasks.matrix.scopeLabel")}>
             <button type="button" aria-pressed={taskFilters.status === "open"} onClick={() => setTaskFilters({ ...taskFilters, status: "open" })}>{t("tasks.matrix.scopeActive")}</button>
             <button type="button" aria-pressed={taskFilters.status === "all"} onClick={() => setTaskFilters({ ...taskFilters, status: "all" })}>{t("tasks.matrix.scopeAll")}</button>
           </div> : undefined}
         />
 
-        {(activeView === "all" || activeView === "eisenhower") && <TaskFilters value={taskFilters} onChange={setTaskFilters} taskCount={activeView === "all" ? openTaskCount : undefined} />}
+        {(activeView === "all" || activeView === "mine" || activeView === "eisenhower") && <TaskFilters value={taskFilters} onChange={setTaskFilters} taskCount={activeView === "all" ? openTaskCount : activeView === "mine" ? myOpenCount : undefined} />}
 
         <CompletionExitProvider deadlines={completionExitDeadlines}>
           <WorkspaceContent
             key={user?.id ?? "anonymous"}
             settingsTab={settingsTab}
             settingsKey={settingsKey}
+            onSettingsTabChange={setSettingsTab}
             onOpenGameSettings={openGameSettings}
+            projectTab={projectTab}
+            onProjectTabChange={setProjectTab}
             activeView={activeView}
             user={user}
             onUserUpdated={handleUserUpdated}
@@ -1905,6 +2078,8 @@ export function App() {
             grouped={grouped}
             tasks={tasks}
             visibleTasks={visibleTasks}
+            myTasks={myTasks}
+            myVisibleTasks={myVisibleTasks}
             habits={habits}
             onHabitAdd={() => setHabitComposerOpen(true)}
             onHabitComplete={completeHabit}
@@ -1942,7 +2117,7 @@ export function App() {
         syncing={syncing}
         syncIssue={syncIssue}
         onSync={() => void syncNow()}
-        badges={{ waiting: waitingCount > 0 ? String(waitingCount) : undefined, habits: habitProgress.total > 0 ? `${habitProgress.done}/${habitProgress.total}` : undefined }}
+        badges={{ mine: myOpenCount > 0 ? String(myOpenCount) : undefined, waiting: waitingCount > 0 ? String(waitingCount) : undefined, habits: habitProgress.total > 0 ? `${habitProgress.done}/${habitProgress.total}` : undefined }}
         agentOpen={agentOpen}
         onNavigate={changeView}
         showAdmin={billing.billing?.isAdmin === true}

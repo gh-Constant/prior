@@ -61,6 +61,8 @@ type Server struct {
 	// accountLimiter guards account-level operations (delete, export, 2FA
 	// changes, verification resend) per token.
 	accountLimiter *rateLimiter
+	// inviteLimiter caps project invitations (and their emails) per account.
+	inviteLimiter *rateLimiter
 	// now is overridable in tests (TOTP windows).
 	now func() time.Time
 }
@@ -94,6 +96,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 		stripe:                 billing.NewStripe(cfg.Billing.StripeSecretKey, nil),
 		mail:                   mailer.New(mailer.Config{APIKey: cfg.ResendAPIKey, From: cfg.EmailFrom, Production: cfg.Production()}),
 		accountLimiter:         newRateLimiter(20, 10*time.Minute),
+		inviteLimiter:          newRateLimiter(60, time.Hour),
 		now:                    time.Now,
 	}
 }
@@ -218,10 +221,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/collaboration/projects", s.collaborationProjects)
 	mux.HandleFunc("PATCH /v1/collaboration/projects/{projectID}", s.updateCollaborativeProject)
 	mux.HandleFunc("GET /v1/collaboration/projects/{projectID}/members", s.collaborationProjectMembers)
+	mux.HandleFunc("GET /v1/collaboration/projects/{projectID}/activity", s.projectActivity)
 	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/members", s.shareProject)
 	mux.HandleFunc("PATCH /v1/collaboration/projects/{projectID}/members/{userID}", s.updateProjectMember)
 	mux.HandleFunc("DELETE /v1/collaboration/projects/{projectID}/members/{userID}", s.removeProjectMember)
 	mux.HandleFunc("DELETE /v1/collaboration/projects/{projectID}/invites/{inviteID}", s.revokeProjectInvite)
+	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/invites/{inviteID}/resend", s.resendProjectInvite)
 	mux.HandleFunc("POST /v1/collaboration/invites/accept", s.acceptProjectInvite)
 	mux.HandleFunc("GET /v1/collaboration/invites", s.incomingInvites)
 	mux.HandleFunc("POST /v1/collaboration/invites/{inviteID}/accept", s.respondToInvite(true))
@@ -1180,11 +1185,17 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	applied := store.PushApplied(results)
 	s.highestBroadcast(user.ID, applied)
 	latest := highestRevision(applied)
-	// Legacy "sync" type plus unified "tasks_required".
-	s.notifySync(r.Context(), user.ID, "sync", latest)
-	s.notifySync(r.Context(), user.ID, "tasks_required", latest)
+	// Only a push that changed something is news. Announcing rejected
+	// mutations would make every realtime client sync, push the same rejected
+	// mutations again and loop.
 	if latest > 0 {
-		s.notifyProjectPeers(r.Context(), user.ID)
+		// Legacy "sync" type plus unified "tasks_required".
+		s.notifySync(r.Context(), user.ID, "sync", latest)
+		s.notifySync(r.Context(), user.ID, "tasks_required", latest)
+		// Members of the shared projects these tasks belong to pull right away.
+		if projectIDs := sharedTaskProjects(applied); len(projectIDs) > 0 {
+			s.notifyProjectMembersRevision(r.Context(), user.ID, "tasks_required", latest, projectIDs...)
+		}
 	}
 	type appliedItem struct {
 		MutationID string      `json:"mutationId"`
@@ -1306,12 +1317,52 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// realtimeProtocol is the WebSocket subprotocol browsers negotiate. They
+// cannot set an Authorization header on the handshake, so they offer the
+// session token as a second "prior.auth.<token>" subprotocol, which (unlike a
+// query parameter) stays out of access logs.
+const realtimeProtocol = "prior.v1"
+const realtimeAuthProtocolPrefix = "prior.auth."
+
+func realtimeProtocolToken(r *http.Request) string {
+	for _, header := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, protocol := range strings.Split(header, ",") {
+			if token, ok := strings.CutPrefix(strings.TrimSpace(protocol), realtimeAuthProtocolPrefix); ok {
+				return token
+			}
+		}
+	}
+	return ""
+}
+
+// sharedTaskProjects lists the projects of the applied task mutations.
+func sharedTaskProjects(applied []store.AppliedMutation) []uuid.UUID {
+	seen := map[uuid.UUID]struct{}{}
+	projects := make([]uuid.UUID, 0)
+	for _, item := range applied {
+		if item.Entity != "task" || item.Task.ProjectID == nil {
+			continue
+		}
+		id, err := uuid.Parse(*item.Task.ProjectID)
+		if err != nil {
+			continue
+		}
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			projects = append(projects, id)
+		}
+	}
+	return projects
+}
+
 func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
 	token := bearer(r)
 	if token == "" {
-		// Browsers cannot set Authorization headers on WebSocket handshakes;
-		// accept the session token as a query parameter instead. Origin is
-		// still strictly checked below.
+		token = realtimeProtocolToken(r)
+	}
+	if token == "" {
+		// Older browser clients sent the token as a query parameter. Origin
+		// is still strictly checked below.
 		token = r.URL.Query().Get("token")
 	}
 	if token == "" {
@@ -1327,12 +1378,22 @@ func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "origin not allowed", http.StatusForbidden)
 		return
 	}
-	connection, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"localhost", "127.0.0.1", "prior.constantsuchet.fr", "*.prior.constantsuchet.fr"}})
+	connection, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		Subprotocols:   []string{realtimeProtocol},
+		OriginPatterns: []string{"localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*", "tauri.localhost", "prior.constantsuchet.fr", "*.prior.constantsuchet.fr"},
+	})
 	if err != nil {
 		return
 	}
-	s.hub.add(user.ID, connection)
-	defer s.hub.remove(user.ID, connection)
+	if s.hub.add(user.ID, connection) {
+		// First device online: collaborators see the presence dot appear.
+		s.notifyProjectPeersEvent(context.Background(), user.ID, "presence_required")
+	}
+	defer func() {
+		if s.hub.remove(user.ID, connection) {
+			s.notifyProjectPeersEvent(context.Background(), user.ID, "presence_required")
+		}
+	}()
 	expiry := time.NewTicker(time.Minute)
 	defer expiry.Stop()
 	ctx, cancel := context.WithCancel(r.Context())
@@ -1714,9 +1775,19 @@ func (l *rateLimiter) sweep() {
 }
 
 func newHub() *hub { return &hub{clients: make(map[uuid.UUID][]*websocket.Conn)} }
-func (h *hub) add(userID uuid.UUID, connection *websocket.Conn) {
+
+// isOnline reports whether the user has a live realtime connection here.
+func (h *hub) isOnline(userID uuid.UUID) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	return len(h.clients[userID]) > 0
+}
+
+// add registers a connection and reports whether it is the user's first.
+func (h *hub) add(userID uuid.UUID, connection *websocket.Conn) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	first := len(h.clients[userID]) == 0
 	connections := append(h.clients[userID], connection)
 	for len(connections) > maxRealtimeConnsPerUser {
 		oldest := connections[0]
@@ -1724,22 +1795,31 @@ func (h *hub) add(userID uuid.UUID, connection *websocket.Conn) {
 		go oldest.Close(4400, "too many connections")
 	}
 	h.clients[userID] = connections
+	return first
 }
-func (h *hub) remove(userID uuid.UUID, connection *websocket.Conn) {
+
+// remove drops a connection and reports whether the user just went offline.
+func (h *hub) remove(userID uuid.UUID, connection *websocket.Conn) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	kept := h.clients[userID][:0]
-	for _, existing := range h.clients[userID] {
-		if existing != connection {
-			kept = append(kept, existing)
+	existing := h.clients[userID]
+	kept := make([]*websocket.Conn, 0, len(existing))
+	found := false
+	for _, candidate := range existing {
+		if candidate == connection {
+			found = true
+		} else {
+			kept = append(kept, candidate)
 		}
 	}
+	wentOffline := found && len(kept) == 0
 	if len(kept) == 0 {
 		delete(h.clients, userID)
 	} else {
 		h.clients[userID] = kept
 	}
 	connection.Close(websocket.StatusNormalClosure, "bye")
+	return wentOffline
 }
 
 func (h *hub) count() int {

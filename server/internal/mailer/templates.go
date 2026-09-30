@@ -13,6 +13,7 @@ type Kind string
 const (
 	KindPasswordReset Kind = "password_reset"
 	KindVerifyEmail   Kind = "verify_email"
+	KindProjectInvite Kind = "project_invite"
 )
 
 // Languages lists the locales emails are written in (same as the app).
@@ -105,6 +106,43 @@ var texts = map[Kind]map[string]copyText{
 			Ignore: "Não criou uma conta no Prior? Ignore este e-mail.", Footer: "Prior · Decida o que merece sua atenção.",
 		},
 	},
+	KindProjectInvite: {
+		"en": {
+			Subject: "{inviter} invited you to “{project}” on Prior", Preview: "Join the project to see its tasks and work together.",
+			Heading: "Join “{project}”", Intro: "{inviter} invited {email} to work together on the project “{project}” in Prior.",
+			Button: "Open the invitation", Fallback: "If the button does not work, copy this link into your browser:",
+			Expiry: "This invitation expires in 7 days. Sign in or create a Prior account with this email address to join.",
+			Ignore: "Not expecting this? You can ignore this email; nothing changes until you accept.", Footer: "Prior · Decide what deserves your attention.",
+		},
+		"fr": {
+			Subject: "{inviter} vous invite sur « {project} » dans Prior", Preview: "Rejoignez le projet pour voir ses tâches et travailler ensemble.",
+			Heading: "Rejoindre « {project} »", Intro: "{inviter} a invité {email} à collaborer sur le projet « {project} » dans Prior.",
+			Button: "Voir l’invitation", Fallback: "Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :",
+			Expiry: "Cette invitation expire dans 7 jours. Connectez-vous ou créez un compte Prior avec cette adresse e-mail pour rejoindre le projet.",
+			Ignore: "Vous ne vous attendiez pas à cet e-mail ? Ignorez-le : rien ne change tant que vous n’acceptez pas.", Footer: "Prior · Décidez de ce qui mérite votre attention.",
+		},
+		"de": {
+			Subject: "{inviter} hat dich zu „{project}“ in Prior eingeladen", Preview: "Tritt dem Projekt bei, um seine Aufgaben zu sehen und gemeinsam zu arbeiten.",
+			Heading: "„{project}“ beitreten", Intro: "{inviter} hat {email} eingeladen, in Prior am Projekt „{project}“ mitzuarbeiten.",
+			Button: "Einladung öffnen", Fallback: "Falls die Schaltfläche nicht funktioniert, kopiere diesen Link in deinen Browser:",
+			Expiry: "Diese Einladung läuft nach 7 Tagen ab. Melde dich mit dieser E-Mail-Adresse bei Prior an oder erstelle ein Konto, um beizutreten.",
+			Ignore: "Nicht erwartet? Ignoriere diese E-Mail; es ändert sich nichts, solange du nicht annimmst.", Footer: "Prior · Entscheide, was deine Aufmerksamkeit verdient.",
+		},
+		"es": {
+			Subject: "{inviter} te ha invitado a «{project}» en Prior", Preview: "Únete al proyecto para ver sus tareas y trabajar en equipo.",
+			Heading: "Únete a «{project}»", Intro: "{inviter} ha invitado a {email} a colaborar en el proyecto «{project}» en Prior.",
+			Button: "Ver la invitación", Fallback: "Si el botón no funciona, copia este enlace en tu navegador:",
+			Expiry: "Esta invitación caduca en 7 días. Inicia sesión o crea una cuenta de Prior con esta dirección de correo para unirte.",
+			Ignore: "¿No lo esperabas? Ignora este correo; nada cambia hasta que aceptes.", Footer: "Prior · Decide qué merece tu atención.",
+		},
+		"pt": {
+			Subject: "{inviter} convidou você para “{project}” no Prior", Preview: "Entre no projeto para ver as tarefas e trabalhar em equipe.",
+			Heading: "Entrar em “{project}”", Intro: "{inviter} convidou {email} para colaborar no projeto “{project}” no Prior.",
+			Button: "Ver o convite", Fallback: "Se o botão não funcionar, copie este link no seu navegador:",
+			Expiry: "Este convite expira em 7 dias. Entre ou crie uma conta do Prior com este endereço de e-mail para participar.",
+			Ignore: "Não esperava por isso? Ignore este e-mail; nada muda até você aceitar.", Footer: "Prior · Decida o que merece sua atenção.",
+		},
+	},
 }
 
 // NormalizeLanguage maps any locale ("fr-FR", "PT") to a supported language.
@@ -169,13 +207,27 @@ var htmlTemplate = template.Must(template.New("email").Parse(`<!DOCTYPE html>
 
 // Render builds a localized message. link is the only dynamic URL.
 func Render(kind Kind, language, to, link string) (Message, error) {
+	return RenderWith(kind, language, to, link, nil)
+}
+
+// RenderWith is Render with extra {placeholders} (inviter, project, ...)
+// replaced in the subject, preview, heading and intro. Values are plain
+// text: the HTML template escapes them.
+func RenderWith(kind Kind, language, to, link string, vars map[string]string) (Message, error) {
 	byLang, ok := texts[kind]
 	if !ok {
 		return Message{}, fmt.Errorf("unknown email kind %q", kind)
 	}
 	language = NormalizeLanguage(language)
 	copy := byLang[language]
-	intro := strings.ReplaceAll(copy.Intro, "{email}", to)
+	fill := func(value string) string {
+		for key, replacement := range vars {
+			value = strings.ReplaceAll(value, "{"+key+"}", replacement)
+		}
+		return value
+	}
+	copy.Subject, copy.Preview, copy.Heading = fill(copy.Subject), fill(copy.Preview), fill(copy.Heading)
+	intro := strings.ReplaceAll(fill(copy.Intro), "{email}", to)
 	var html bytes.Buffer
 	err := htmlTemplate.Execute(&html, map[string]any{
 		"Lang": language, "Subject": copy.Subject, "Preview": copy.Preview, "Heading": copy.Heading, "Intro": intro,

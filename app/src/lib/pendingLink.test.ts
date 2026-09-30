@@ -19,6 +19,13 @@ describe("pending shared links", () => {
     expect(pendingLink()).toEqual({ invite: "abc123" });
   });
 
+  it("captures the invitation page link from an email and lands on the projects", () => {
+    const token = "a".repeat(64);
+    window.history.replaceState(null, "", `/invite/${token}`);
+    expect(capturePendingLink()).toEqual({ invite: token, project: undefined });
+    expect(window.location.pathname).toBe("/projects");
+  });
+
   it("keeps a shared project link too", () => {
     window.history.replaceState(null, "", "/?x=1#project=p-42");
     expect(capturePendingLink()).toEqual({ invite: undefined, project: "p-42" });

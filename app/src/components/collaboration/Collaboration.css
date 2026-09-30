@@ -148,3 +148,52 @@ details[open] > .collab-disclosure-summary .collab-disclosure-chevron { transfor
 @media (max-width: 640px) {
   .collab-invite-toasts { top: auto; bottom: calc(76px + env(safe-area-inset-bottom)); right: 16px; left: 16px; width: auto; }
 }
+
+/* Share dialog: invite outcome, inline confirmations and suggestions. */
+.collab-invite-hint { grid-column: 1 / -1; margin: 0; font-size: var(--fs-xs); line-height: 1.5; }
+.collab-invite-hint .collab-error { font-size: inherit; }
+.collab-suggestions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-xs); }
+.collab-suggestions .collab-chip-btn { min-height: 26px; padding: 0 8px 0 3px; }
+.collab-avatar-xs { width: 20px; height: 20px; font-size: 10px; }
+.collab-avatar-pending { display: inline-flex; align-items: center; justify-content: center; border: 1px dashed var(--line-strong); background: transparent; color: var(--muted); }
+.collab-avatar-pending svg { width: 14px; height: 14px; }
+.collab-outcomes { display: grid; gap: 8px; }
+.collab-outcome { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); font-size: var(--fs-sm); line-height: 1.45; }
+.collab-outcome > svg { flex-shrink: 0; margin-top: 1px; }
+.collab-outcome.is-success { border-color: color-mix(in srgb, var(--green, #2f8f5b) 35%, var(--line)); background: color-mix(in srgb, var(--green, #2f8f5b) 8%, var(--panel)); }
+.collab-outcome.is-success > svg { color: var(--green, #2f8f5b); }
+.collab-outcome.is-error { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+.collab-outcome-copy { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.collab-outcome-copy small { color: var(--muted); font-size: var(--fs-xs); }
+.collab-link-row { display: flex; gap: 6px; margin-top: 4px; }
+.collab-link-row input { flex: 1; min-width: 0; min-height: var(--control-h); padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink-2); font: inherit; font-size: var(--fs-xs); }
+.collab-link-row .secondary-button { display: inline-flex; align-items: center; gap: 6px; }
+.collab-saved { display: inline-flex; align-items: center; gap: 4px; color: var(--green, #2f8f5b); font-size: var(--fs-xs); font-weight: 550; white-space: nowrap; }
+.collab-saved svg { width: 14px; height: 14px; }
+.collab-spin { width: 16px; height: 16px; color: var(--muted); animation: collab-spin 900ms linear infinite; }
+@keyframes collab-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .collab-spin { animation: none; } }
+.collab-confirm, .collab-invite-actions, .collab-share-footer-start { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.collab-share-body .danger-button { width: auto; margin: 0; }
+.collab-icon-button { display: inline-flex; align-items: center; justify-content: center; width: var(--control-h); padding: 0; }
+.collab-presence-dot.presence-online { background: var(--green, #2f8f5b); }
+
+/* Assignee (Linear-style): pill in the composer, avatar on cards. */
+.assignee-option { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.assignee-option > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assignee-none-icon { width: 16px; height: 16px; color: var(--muted); }
+.collab-avatar-sm { width: 22px; height: 22px; font-size: 10px; }
+.assignee-select.is-compact .custom-select-trigger { min-height: 0; padding: 1px; border: 0; border-radius: 50%; background: transparent; box-shadow: none; }
+.assignee-select.is-compact .custom-select-trigger:hover, .assignee-select.is-compact .custom-select-trigger.open { background: var(--hover); }
+.assignee-select.is-compact .custom-select-chevron { display: none; }
+.assignee-empty { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1px dashed var(--line-strong); border-radius: 50%; color: var(--muted); }
+.assignee-empty svg { width: 12px; height: 12px; }
+.collab-assignee-filter { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.collab-assignee-filter .collab-chip-btn { min-height: 28px; }
+.collab-assignee-filter .collab-avatar-btn { display: inline-grid; place-items: center; padding: 1px; border: 2px solid transparent; border-radius: 50%; background: transparent; cursor: pointer; }
+.collab-assignee-filter .collab-avatar-btn[aria-pressed="true"] { border-color: var(--accent); }
+.collab-issue-row-meta { display: flex; align-items: center; gap: 8px; }
+.board-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 10px 8px; }
+.collab-issue-card { position: relative; }
+.board-card-assignee { position: absolute; right: 8px; bottom: 8px; }
+.collab-issue-card .board-card-meta { padding-right: 28px; min-height: 22px; }

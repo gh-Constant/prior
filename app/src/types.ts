@@ -26,6 +26,13 @@ export type ProjectCycle = {
 
 export type ProjectType = "standard" | "software";
 
+export type ProjectMilestone = {
+  id: string;
+  name: string;
+  description?: string;
+  targetDate?: string | null;
+};
+
 export type Project = {
   id: string;
   areaId: string | null;
@@ -38,6 +45,8 @@ export type Project = {
   targetDate?: string | null;
   projectType?: ProjectType;
   cycles?: ProjectCycle[];
+  /** Checkpoints of the project; tasks point at one with milestoneId. */
+  milestones?: ProjectMilestone[];
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -64,6 +73,14 @@ export type Task = {
   reminderAt?: string | null;
   /** Ordered subtasks, at most 100. Checking one never earns XP. */
   checklist?: ChecklistItem[];
+  /** The one project member responsible for the task (a user id). */
+  assigneeId?: string | null;
+  /** Parent task: this task is a sub-issue of it (same project). */
+  parentId?: string | null;
+  /** A milestone of the task's project (Project.milestones). */
+  milestoneId?: string | null;
+  /** Links to other tasks: blocked by them, or simply related. */
+  relations?: TaskRelation[];
   completed: boolean;
   important: boolean;
   urgent: boolean;
@@ -82,7 +99,9 @@ export type ChecklistItem = {
 
 export const MAX_CHECKLIST_ITEMS = 100;
 
-export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes" | "reminderAt" | "checklist">>;
+export type TaskRelation = { type: "blocked_by" | "related"; taskId: string };
+
+export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes" | "reminderAt" | "checklist" | "assigneeId" | "parentId" | "milestoneId" | "relations">>;
 
 export type HabitUnit = "day" | "week" | "month" | "year";
 

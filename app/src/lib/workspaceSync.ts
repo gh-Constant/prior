@@ -23,7 +23,11 @@ export const workspaceSync = {
           ...p,
           areaId: isValidUuid(p.areaId) ? p.areaId : null,
         })),
-      folders: notes.folders.filter((folder) => isValidUuid(folder.id)),
+      // A folder pointing at a local-only (non-UUID) parent or area/project
+      // stays on this device: sending it would fail the whole snapshot.
+      folders: notes.folders.filter((folder) => isValidUuid(folder.id)
+        && (!folder.parentId || isValidUuid(folder.parentId))
+        && (!folder.workspaceId || isValidUuid(folder.workspaceId))),
       notes: notes.notes
         .filter((note) => isValidUuid(note.id))
         .map((n) => ({

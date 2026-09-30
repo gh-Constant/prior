@@ -92,8 +92,10 @@ func TestProjectSharingPostgres(t *testing.T) {
 	}
 
 	// Existing accounts get an invite to accept, not a silent membership.
-	if code, body := call("POST", share, alice, `{"email":"Bob@example.com","role":"editor"}`); code != 200 || body["invite"] == nil {
-		t.Fatalf("share = %d %v", code, body)
+	// The response carries the link to copy and says whether an email left.
+	code, shared := call("POST", share, alice, `{"email":"Bob@example.com","role":"editor","language":"fr"}`)
+	if code != 200 || shared["invite"] == nil || shared["emailSent"] != true || !strings.Contains(shared["inviteLink"].(string), "/invite/") {
+		t.Fatalf("share = %d %v", code, shared)
 	}
 	if projectCount(bob) != 0 {
 		t.Fatal("bob must not join before accepting")
@@ -123,6 +125,77 @@ func TestProjectSharingPostgres(t *testing.T) {
 	if code, body := call("POST", share, alice, `{"email":"bob@example.com","role":"viewer"}`); code != 200 || body["member"] == nil {
 		t.Fatalf("role change = %d %v", code, body)
 	}
+	bobID := mustUserID(t, srv, bob).String()
+	memberPath := share + "/" + bobID
+	// A viewer cannot edit the project; an editor can rename it and change
+	// its type, and the owner's workspace picks the change up.
+	if code, _ := call("PATCH", "/v1/collaboration/projects/"+projectID, bob, `{"name":"Nope"}`); code != 403 {
+		t.Fatalf("viewer patch = %d", code)
+	}
+	if code, _ := call("PATCH", memberPath, alice, `{"role":"editor"}`); code != 204 {
+		t.Fatalf("promote bob = %d", code)
+	}
+	if code, body := call("PATCH", "/v1/collaboration/projects/"+projectID, bob, `{"name":"Launch v2","projectType":"software"}`); code != 200 {
+		t.Fatalf("editor patch = %d %v", code, body)
+	}
+	projectFor := func(token string) map[string]any {
+		_, body := call("GET", "/v1/collaboration/projects", token, "")
+		for _, raw := range body["projects"].([]any) {
+			entry := raw.(map[string]any)
+			project := entry["project"].(map[string]any)
+			if project["id"] == projectID {
+				return entry
+			}
+		}
+		t.Fatalf("project %s missing", projectID)
+		return nil
+	}
+	if project := projectFor(alice)["project"].(map[string]any); project["name"] != "Launch v2" || project["projectType"] != "software" {
+		t.Fatalf("owner project after editor patch = %v", project)
+	}
+	if code, _ := call("PATCH", "/v1/collaboration/projects/"+projectID, bob, `{"projectType":"kanban"}`); code != 400 {
+		t.Fatalf("invalid type = %d", code)
+	}
+	// A member can leave; a removed member cannot be brought back by a role change.
+	if code, _ := call("DELETE", share+"/"+mustUserID(t, srv, alice).String(), bob, ""); code != 403 {
+		t.Fatalf("member removing the owner = %d", code)
+	}
+	if code, _ := call("DELETE", memberPath, bob, ""); code != 204 {
+		t.Fatalf("leave = %d", code)
+	}
+	if projectCount(bob) != 0 {
+		t.Fatal("bob left the project")
+	}
+	if code, _ := call("PATCH", memberPath, alice, `{"role":"editor"}`); code != 404 {
+		t.Fatalf("role change of a removed member = %d", code)
+	}
+
+	// Resending rotates the link: the old token stops working.
+	code, again := call("POST", share, alice, `{"email":"dave@example.com","role":"editor"}`)
+	if code != 200 {
+		t.Fatalf("invite dave = %d %v", code, again)
+	}
+	daveInvite := again["invite"].(map[string]any)
+	oldLink := again["inviteLink"].(string)
+	code, resent := call("POST", "/v1/collaboration/projects/"+projectID+"/invites/"+daveInvite["id"].(string)+"/resend", alice, `{"email":false}`)
+	if code != 200 || resent["inviteLink"] == oldLink || resent["emailSent"] != false {
+		t.Fatalf("resend = %d %v", code, resent)
+	}
+	if code, _ := call("POST", "/v1/collaboration/projects/"+projectID+"/invites/"+daveInvite["id"].(string)+"/resend", bob, ""); code != 404 {
+		t.Fatalf("only the owner resends, got %d", code)
+	}
+	dave := newUser("dave@example.com")
+	oldToken := oldLink[strings.LastIndex(oldLink, "/")+1:]
+	if code, _ := call("POST", "/v1/collaboration/invites/accept", dave, `{"token":"`+oldToken+`"}`); code != 404 {
+		t.Fatalf("rotated link must stop working, got %d", code)
+	}
+	newLink := resent["inviteLink"].(string)
+	if code, body := call("POST", "/v1/collaboration/invites/accept", dave, `{"token":"`+newLink[strings.LastIndex(newLink, "/")+1:]+`"}`); code != 200 || body["projectId"] != projectID {
+		t.Fatalf("accept rotated link = %d %v", code, body)
+	}
+	if role := projectFor(dave)["role"]; role != "editor" {
+		t.Fatalf("dave role = %v", role)
+	}
 
 	// Declining leaves the project untouched.
 	carol := newUser("carol@example.com")
@@ -143,8 +216,72 @@ func TestProjectSharingPostgres(t *testing.T) {
 	}
 
 	peers, err := srv.store.ProjectPeerIDs(ctx, mustUserID(t, srv, alice))
-	if err != nil || len(peers) != 1 {
+	if err != nil || len(peers) != 1 { // dave; bob left
 		t.Fatalf("alice peers = %v %v", peers, err)
+	}
+}
+
+// The project type survives workspace sync, and a client that does not send
+// it (an older version) keeps it instead of resetting it to standard.
+func TestProjectTypeSyncPostgres(t *testing.T) {
+	url := os.Getenv("PRIOR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set PRIOR_TEST_DATABASE_URL for PostgreSQL integration")
+	}
+	ctx := context.Background()
+	adminPool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adminPool.Close()
+	schema := "type_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	if _, err := adminPool.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer adminPool.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
+	poolConfig, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	poolConfig.ConnConfig.RuntimeParams["search_path"] = schema + ",public"
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(config.Config{}, pool)
+	handler := srv.Handler()
+	user, err := srv.store.CreatePasswordUser(ctx, "erin@example.com", "x", "erin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := uuid.NewString()
+	if err := srv.store.CreateSession(ctx, user.ID, token, "test", "web", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	sync := func(project string) map[string]any {
+		request := httptest.NewRequest("POST", "/v1/workspace/sync", strings.NewReader(`{"areas":[],"folders":[],"notes":[],"projects":[`+project+`]}`))
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != 200 {
+			t.Fatalf("sync = %d %s", response.Code, response.Body.String())
+		}
+		var decoded map[string]any
+		_ = json.Unmarshal(response.Body.Bytes(), &decoded)
+		return decoded["projects"].([]any)[0].(map[string]any)
+	}
+	id := uuid.NewString()
+	first := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+	if project := sync(`{"id":"` + id + `","areaId":null,"name":"App","description":"","icon":"code","status":"active","projectType":"software","createdAt":"` + first + `","updatedAt":"` + first + `","deletedAt":null}`); project["projectType"] != "software" {
+		t.Fatalf("software project = %v", project)
+	}
+	later := time.Now().UTC().Format(time.RFC3339Nano)
+	if project := sync(`{"id":"` + id + `","areaId":null,"name":"App 2","description":"","icon":"code","status":"active","createdAt":"` + first + `","updatedAt":"` + later + `","deletedAt":null}`); project["projectType"] != "software" || project["name"] != "App 2" {
+		t.Fatalf("older client reset the type: %v", project)
 	}
 }
 

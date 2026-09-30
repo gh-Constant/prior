@@ -4,8 +4,43 @@
     {
       "name": "app",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--dir", "app", "dev"],
+      "runtimeArgs": [
+        "--dir",
+        "app",
+        "dev"
+      ],
       "port": 1420
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "go",
+      "runtimeArgs": [
+        "run",
+        "./cmd/prior"
+      ],
+      "port": 8080,
+      "cwd": "server",
+      "env": {
+        "APP_ENV": "development",
+        "HTTP_ADDR": ":8080",
+        "DATABASE_URL": "postgres://prior:prior@localhost:5432/prior?sslmode=disable"
+      }
+    },
+    {
+      "name": "app-ipv4",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "app",
+        "dev",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "1420",
+        "--strictPort"
+      ],
+      "port": 1420,
+      "url": "http://127.0.0.1:1420"
     }
   ]
 }

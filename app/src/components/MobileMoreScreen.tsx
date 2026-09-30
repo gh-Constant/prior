@@ -13,6 +13,7 @@ type Destination = { readonly view: WorkspaceView; readonly labelKey: string; re
 export const MORE_DESTINATIONS: readonly Destination[] = [
   { view: "inbox", labelKey: "common.nav.items.inbox", icon: "inbox" },
   { view: "projects", labelKey: "common.nav.items.projects", icon: "folder" },
+  { view: "mine", labelKey: "common.nav.items.myTasks", icon: "user" },
   { view: "waiting", labelKey: "common.nav.items.waiting", icon: "clock" },
   { view: "eisenhower", labelKey: "common.nav.items.priorityLens", icon: "grid" },
   { view: "habits", labelKey: "common.nav.items.habits", icon: "sun" },
@@ -89,7 +90,7 @@ export function MobileMoreScreen({ activeView, user, badges, agentOpen, syncing,
 
       <nav className="mobile-more-card" aria-label={t("common.shell.more.destinations")}>
         <ul>
-          {MORE_DESTINATIONS.filter((item) => (item.view !== "admin" || showAdmin) && (item.view !== "progress" || showProgress)).map((item) => {
+          {MORE_DESTINATIONS.filter((item) => (item.view !== "admin" || showAdmin) && (item.view !== "progress" || showProgress) && (item.view !== "mine" || user)).map((item) => {
             const current = activeView === item.view || (item.view === "projects" && activeView === "project");
             const badge = badges?.[item.view];
             return (

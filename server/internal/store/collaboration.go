@@ -22,6 +22,8 @@ type ProjectMember struct {
 	Role        string    `json:"role"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"createdAt"`
+	// Online is filled by the API from live realtime connections.
+	Online bool `json:"online"`
 }
 
 type ProjectInvite struct {
@@ -34,6 +36,9 @@ type ProjectInvite struct {
 	// InviteeUserID is set when the email already has an account, so the
 	// API can notify that person in real time.
 	InviteeUserID string `json:"-"`
+	// ProjectName and InviterName fill the invitation email.
+	ProjectName string `json:"-"`
+	InviterName string `json:"-"`
 }
 
 // IncomingInvite is a pending invite addressed to the signed-in account.
@@ -228,14 +233,16 @@ func (s *Store) GetCollaborativeProject(ctx context.Context, userID, projectID u
 
 func (s *Store) listProjectMembers(ctx context.Context, projectID uuid.UUID) ([]ProjectMember, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT u.id::text, u.email, u.display_name, u.avatar_url, 'owner', 'active', p.created_at
-		FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id = $1
-		UNION ALL
-		SELECT u.id::text, u.email, u.display_name, u.avatar_url, pm.role, pm.status, pm.created_at
-		FROM project_members pm JOIN users u ON u.id = pm.user_id
-		JOIN projects p ON p.id = pm.project_id
-		WHERE pm.project_id = $1 AND pm.status = 'active' AND pm.user_id <> p.user_id
-		ORDER BY 5, 3, 2`, projectID)
+		SELECT id, email, display_name, avatar_url, role, status, created_at FROM (
+			SELECT u.id::text AS id, u.email, u.display_name, u.avatar_url, 'owner' AS role, 'active' AS status, p.created_at
+			FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id = $1
+			UNION ALL
+			SELECT u.id::text, u.email, u.display_name, u.avatar_url, pm.role, pm.status, pm.created_at
+			FROM project_members pm JOIN users u ON u.id = pm.user_id
+			JOIN projects p ON p.id = pm.project_id
+			WHERE pm.project_id = $1 AND pm.status = 'active' AND pm.user_id <> p.user_id
+		) members
+		ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, lower(display_name), email`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +337,11 @@ func (s *Store) ShareProject(ctx context.Context, ownerID, projectID uuid.UUID, 
 	}
 	defer tx.Rollback(ctx)
 	var projectOwner uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT user_id FROM projects WHERE id = $1`, projectID).Scan(&projectOwner); err != nil {
+	var projectName, inviterName string
+	if err := tx.QueryRow(ctx, `
+		SELECT p.user_id, p.name, COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1))
+		FROM projects p JOIN users u ON u.id = p.user_id
+		WHERE p.id = $1 AND p.deleted_at IS NULL`, projectID).Scan(&projectOwner, &projectName, &inviterName); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ProjectMember{}, nil, ErrNotFound
 		}
@@ -366,24 +377,65 @@ func (s *Store) ShareProject(ctx context.Context, ownerID, projectID uuid.UUID, 
 		}
 		return member, nil, nil
 	}
-	rawToken := make([]byte, 32)
-	if _, err := rand.Read(rawToken); err != nil {
+	token, hash, err := newInviteToken()
+	if err != nil {
 		return ProjectMember{}, nil, err
 	}
-	token := hex.EncodeToString(rawToken)
-	hash := sha256.Sum256(rawToken)
-	expires := time.Now().UTC().Add(7 * 24 * time.Hour)
+	expires := time.Now().UTC().Add(inviteTTL)
 	if _, err := tx.Exec(ctx, `UPDATE project_invites SET accepted_at = now() WHERE project_id = $1 AND invitee_email = $2 AND accepted_at IS NULL`, projectID, email); err != nil {
 		return ProjectMember{}, nil, err
 	}
 	var inviteID string
-	if err := tx.QueryRow(ctx, `INSERT INTO project_invites (project_id, inviter_user_id, invitee_email, role, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id::text`, projectID, ownerID, email, role, hash[:], expires).Scan(&inviteID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO project_invites (project_id, inviter_user_id, invitee_email, role, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id::text`, projectID, ownerID, email, role, hash, expires).Scan(&inviteID); err != nil {
 		return ProjectMember{}, nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return ProjectMember{}, nil, err
 	}
-	return ProjectMember{}, &ProjectInvite{ID: inviteID, Email: email, Role: role, ExpiresAt: expires, InviteToken: token, ProjectID: projectID.String(), InviteeUserID: member.UserID}, nil
+	return ProjectMember{}, &ProjectInvite{ID: inviteID, Email: email, Role: role, ExpiresAt: expires, InviteToken: token, ProjectID: projectID.String(), InviteeUserID: member.UserID, ProjectName: projectName, InviterName: inviterName}, nil
+}
+
+// inviteTTL is how long an invitation (and its link) stays valid.
+const inviteTTL = 7 * 24 * time.Hour
+
+// newInviteToken returns a random invite token and the hash stored for it.
+func newInviteToken() (string, []byte, error) {
+	rawToken := make([]byte, 32)
+	if _, err := rand.Read(rawToken); err != nil {
+		return "", nil, err
+	}
+	hash := sha256.Sum256(rawToken)
+	return hex.EncodeToString(rawToken), hash[:], nil
+}
+
+// RotateProjectInvite gives a pending invite a fresh link and expiry, for
+// "resend" and "copy link": only a hash is stored, so the previous link
+// stops working. Only the project owner can do it.
+func (s *Store) RotateProjectInvite(ctx context.Context, ownerID, projectID, inviteID uuid.UUID) (ProjectInvite, error) {
+	token, hash, err := newInviteToken()
+	if err != nil {
+		return ProjectInvite{}, err
+	}
+	expires := time.Now().UTC().Add(inviteTTL)
+	invite := ProjectInvite{ID: inviteID.String(), ProjectID: projectID.String(), InviteToken: token, ExpiresAt: expires}
+	var inviteeID *string
+	err = s.pool.QueryRow(ctx, `
+		UPDATE project_invites i SET token_hash = $4, expires_at = $5, created_at = now()
+		FROM projects p JOIN users u ON u.id = p.user_id
+		WHERE i.id = $1 AND i.project_id = $2 AND p.id = i.project_id AND p.user_id = $3 AND p.deleted_at IS NULL AND i.accepted_at IS NULL
+		RETURNING i.invitee_email, i.role, p.name, COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)),
+			(SELECT invitee.id::text FROM users invitee WHERE lower(invitee.email) = i.invitee_email)`,
+		inviteID, projectID, ownerID, hash, expires).Scan(&invite.Email, &invite.Role, &invite.ProjectName, &invite.InviterName, &inviteeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ProjectInvite{}, ErrNotFound
+	}
+	if err != nil {
+		return ProjectInvite{}, err
+	}
+	if inviteeID != nil {
+		invite.InviteeUserID = *inviteeID
+	}
+	return invite, nil
 }
 
 func (s *Store) UpdateProjectMember(ctx context.Context, ownerID, projectID, memberID uuid.UUID, role string) error {
@@ -395,8 +447,8 @@ func (s *Store) UpdateProjectMember(ctx context.Context, ownerID, projectID, mem
 		return errors.New("the project owner role cannot be changed")
 	}
 	result, err := s.pool.Exec(ctx, `
-		UPDATE project_members pm SET role = $1, status = 'active', updated_at = now()
-		FROM projects p WHERE pm.project_id = p.id AND pm.project_id = $2 AND pm.user_id = $3 AND p.user_id = $4`, role, projectID, memberID, ownerID)
+		UPDATE project_members pm SET role = $1, updated_at = now()
+		FROM projects p WHERE pm.project_id = p.id AND pm.project_id = $2 AND pm.user_id = $3 AND p.user_id = $4 AND pm.status = 'active'`, role, projectID, memberID, ownerID)
 	if err != nil {
 		return err
 	}
@@ -406,13 +458,28 @@ func (s *Store) UpdateProjectMember(ctx context.Context, ownerID, projectID, mem
 	return nil
 }
 
-func (s *Store) RemoveProjectMember(ctx context.Context, ownerID, projectID, memberID uuid.UUID) error {
-	if ownerID == memberID {
+// RemoveProjectMember revokes a membership. The owner can remove anyone but
+// themselves; any other member can remove only themselves (leave).
+func (s *Store) RemoveProjectMember(ctx context.Context, actorID, projectID, memberID uuid.UUID) error {
+	var ownerID uuid.UUID
+	if err := s.pool.QueryRow(ctx, `SELECT user_id FROM projects WHERE id = $1`, projectID).Scan(&ownerID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if memberID == ownerID {
 		return errors.New("the project owner cannot be removed")
 	}
+	if actorID != ownerID && actorID != memberID {
+		if _, err := s.projectRoleFromPool(ctx, actorID, projectID); err != nil {
+			return err
+		}
+		return errors.New("only the project owner can remove members")
+	}
 	result, err := s.pool.Exec(ctx, `
-		UPDATE project_members pm SET status = 'revoked', updated_at = now()
-		FROM projects p WHERE pm.project_id = p.id AND pm.project_id = $1 AND pm.user_id = $2 AND p.user_id = $3`, projectID, memberID, ownerID)
+		UPDATE project_members SET status = 'revoked', updated_at = now()
+		WHERE project_id = $1 AND user_id = $2 AND status = 'active'`, projectID, memberID)
 	if err != nil {
 		return err
 	}
@@ -422,17 +489,50 @@ func (s *Store) RemoveProjectMember(ctx context.Context, ownerID, projectID, mem
 	return nil
 }
 
-func (s *Store) RevokeProjectInvite(ctx context.Context, ownerID, projectID, inviteID uuid.UUID) error {
-	result, err := s.pool.Exec(ctx, `
+// RevokeProjectInvite cancels a pending invite and returns the invitee's
+// account id (uuid.Nil without an account) so their devices can update.
+func (s *Store) RevokeProjectInvite(ctx context.Context, ownerID, projectID, inviteID uuid.UUID) (uuid.UUID, error) {
+	var inviteeID *uuid.UUID
+	err := s.pool.QueryRow(ctx, `
 		UPDATE project_invites i SET accepted_at = now()
-		FROM projects p WHERE i.id = $1 AND i.project_id = $2 AND p.id = i.project_id AND p.user_id = $3 AND i.accepted_at IS NULL`, inviteID, projectID, ownerID)
+		FROM projects p WHERE i.id = $1 AND i.project_id = $2 AND p.id = i.project_id AND p.user_id = $3 AND i.accepted_at IS NULL
+		RETURNING (SELECT invitee.id FROM users invitee WHERE lower(invitee.email) = i.invitee_email)`, inviteID, projectID, ownerID).Scan(&inviteeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, ErrNotFound
+	}
 	if err != nil {
-		return err
+		return uuid.Nil, err
 	}
-	if result.RowsAffected() != 1 {
-		return ErrNotFound
+	if inviteeID == nil {
+		return uuid.Nil, nil
 	}
-	return nil
+	return *inviteeID, nil
+}
+
+// ProjectMemberIDs lists the owner and active members of the given projects,
+// so a change can be pushed to exactly the people who can see it.
+func (s *Store) ProjectMemberIDs(ctx context.Context, projectIDs []uuid.UUID) ([]uuid.UUID, error) {
+	if len(projectIDs) == 0 {
+		return []uuid.UUID{}, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT user_id FROM projects WHERE id = ANY($1) AND deleted_at IS NULL
+		UNION
+		SELECT pm.user_id FROM project_members pm JOIN projects p ON p.id = pm.project_id
+		WHERE pm.project_id = ANY($1) AND pm.status = 'active' AND p.deleted_at IS NULL`, projectIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	members := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		members = append(members, id)
+	}
+	return members, rows.Err()
 }
 
 func (s *Store) AcceptProjectInvite(ctx context.Context, userID uuid.UUID, token string) (uuid.UUID, error) {

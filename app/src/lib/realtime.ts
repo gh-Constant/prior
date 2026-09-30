@@ -21,6 +21,12 @@ function backoffWithJitter(attempt: number): number {
   return exponential + Math.floor(Math.random() * 500);
 }
 
+/** Browsers negotiate this subprotocol and pass the session token as a second one. */
+const REALTIME_PROTOCOL = "prior.v1";
+const REALTIME_AUTH_PROTOCOL_PREFIX = "prior.auth.";
+/** Characters a WebSocket subprotocol may carry (RFC 7230 tchar, as used by session tokens). */
+const SUBPROTOCOL_SAFE = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
+
 function toWsEndpoints(): string[] {
   return [API_URL, FALLBACK_API_URL]
     .filter((url): url is string => Boolean(url))
@@ -67,6 +73,47 @@ async function openNativeConnection(token: string, onMessage: (event: SyncEvent)
   };
 }
 
+/**
+ * Browser WebSocket. It cannot send an Authorization header, so the token
+ * travels as a subprotocol (never in the URL, which proxies log).
+ */
+function openBrowserConnection(token: string, onMessage: (event: SyncEvent) => void, onDrop: () => void): Promise<Connection> {
+  return new Promise((resolve, reject) => {
+    const [endpoint] = toWsEndpoints();
+    if (!endpoint || !SUBPROTOCOL_SAFE.test(token)) {
+      reject(new Error("Prior realtime is unavailable for this session."));
+      return;
+    }
+    let opened = false;
+    const socket = new WebSocket(endpoint, [REALTIME_PROTOCOL, `${REALTIME_AUTH_PROTOCOL_PREFIX}${token}`]);
+    socket.onmessage = (message) => {
+      if (typeof message.data !== "string") return;
+      try {
+        onMessage(JSON.parse(message.data) as SyncEvent);
+      } catch {
+        console.warn("Prior realtime received a malformed message; ignoring.");
+      }
+    };
+    socket.onopen = () => {
+      opened = true;
+      resolve({
+        sendText: (data: string) => {
+          if (socket.readyState === WebSocket.OPEN) socket.send(data);
+          else throw new Error("Prior realtime socket is not open.");
+        },
+        disconnect: async () => {
+          socket.onclose = null;
+          socket.close(1000, "bye");
+        },
+      });
+    };
+    socket.onclose = () => {
+      if (opened) onDrop();
+      else reject(new Error("Prior realtime connection was refused."));
+    };
+  });
+}
+
 async function resolveRevision(getRevision?: RealtimeOptions["getRevision"]): Promise<number> {
   if (getRevision) {
     try {
@@ -93,14 +140,16 @@ let activeSession: { token: string; dispose: () => Promise<void> } | null = null
  * - Native (Tauri): websocket with exponential backoff (1s -> 30s + jitter),
  *   30s ping, last-revision resume via an immediate sync on reconnect, and
  *   online/visibility triggers.
- * - Web: polling pull(since) every 30s.
+ * - Web: the same over a browser WebSocket (token as a subprotocol), so
+ *   shared projects update live in the browser too.
+ * - Without WebSocket support: polling pull(since) every 30s.
  *
  * Failures are logged with console.warn and retried; they are never swallowed
  * silently. The returned closer disposes the session.
  */
 export async function connectRealtime(
   token: string,
-  onSyncRequired: (revision?: number) => void,
+  onSyncRequired: (revision?: number, type?: string) => void,
   options: RealtimeOptions = {},
 ): Promise<() => Promise<void>> {
   // Ensure a single shared socket per token.
@@ -124,12 +173,15 @@ export async function connectRealtime(
     // Comments and mentions are re-fetched by their own views, not by a sync.
     if (event.type === "comments_required" || event.type === "mentions_required") return;
     // Server emits legacy "sync_required"/"sync" plus unified
-    // "tasks_required"/"workspace_required"/"profile_required"/"settings_required"/"workspace".
+    // "tasks_required"/"workspace_required"/"collaboration_required"/
+    // "presence_required"/"profile_required"/"settings_required"/"workspace".
+    // The type lets the caller run only the part of the sync that changed.
     if (event.type === undefined || event.type === "sync_required" || event.type === "sync" || event.type.endsWith("_required") || event.type === "workspace" || event.type === "chat" || event.type === "settings") {
-      if (typeof event.revision === "number") lastRevision = event.revision;
-      onSyncRequired(lastRevision);
+      if (typeof event.revision === "number" && event.revision > 0) lastRevision = event.revision;
+      onSyncRequired(lastRevision, event.type);
     }
   };
+  const browserRealtime = !supportsRealtime() && typeof WebSocket !== "undefined";
 
   const clearTimers = () => {
     if (retryTimer !== undefined) { window.clearTimeout(retryTimer); retryTimer = undefined; }
@@ -147,10 +199,16 @@ export async function connectRealtime(
     }, wait);
   };
 
+  const onDrop = () => {
+    connection = undefined;
+    if (pingTimer !== undefined) { window.clearInterval(pingTimer); pingTimer = undefined; }
+    scheduleRetry();
+  };
+
   const connectNative = async (): Promise<void> => {
     if (disposed) return;
     try {
-      connection = await openNativeConnection(token, onEvent);
+      connection = browserRealtime ? await openBrowserConnection(token, onEvent, onDrop) : await openNativeConnection(token, onEvent);
       if (disposed) {
         await connection.disconnect().catch(() => undefined);
         return;
@@ -185,7 +243,7 @@ export async function connectRealtime(
 
   const handleOnline = () => {
     if (disposed) return;
-    if (!supportsRealtime()) {
+    if (!supportsRealtime() && !browserRealtime) {
       void pollOnce().catch((error) => console.warn("Prior realtime poll failed:", error));
       return;
     }
@@ -220,8 +278,8 @@ export async function connectRealtime(
     }
   };
 
-  if (!supportsRealtime()) {
-    // Web fallback: poll pull(since) every 30s.
+  if (!supportsRealtime() && !browserRealtime) {
+    // Fallback without WebSocket support: poll pull(since) every 30s.
     await pollOnce().catch((error) => console.warn("Prior realtime poll failed:", error));
     pollTimer = window.setInterval(() => {
       void pollOnce();
@@ -237,7 +295,7 @@ export async function connectRealtime(
   document.addEventListener("visibilitychange", handleVisibility);
   const handleOffline = () => {
     // Proactively drop a stale socket when the browser reports offline.
-    if (connection && supportsRealtime()) {
+    if (connection && (supportsRealtime() || browserRealtime)) {
       void connection.disconnect().catch(() => undefined);
       connection = undefined;
     }

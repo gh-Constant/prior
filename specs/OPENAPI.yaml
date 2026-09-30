@@ -416,6 +416,54 @@ paths:
           description: invite preview
         '404':
           description: unknown token
+  /v1/collaboration/projects/{projectID}:
+    patch:
+      summary: Edit a shared project (owner and editors)
+      description: Any of name, description, status, icon, projectType ("standard" or "software"), health, startDate, targetDate, cycles and milestones. Omitted fields keep their value; null clears nullable ones. Broadcasts collaboration_required to the project's members.
+      responses:
+        '200':
+          description: the project with role, members (each with online) and, for the owner, pending invites
+        '400':
+          description: invalid field
+        '403':
+          description: viewers cannot edit
+  /v1/collaboration/projects/{projectID}/members:
+    post:
+      summary: Invite an email ({"email", "role", "language"?}) or change an existing member's role
+      description: Owner only, rate-limited per account. An invitation is emailed in the given language (Resend) and announced in real time (invites_required) when the email already has an account; it still has to be accepted. Returns {invite, inviteLink, emailSent} or {member}.
+      responses:
+        '200':
+          description: invite or member
+        '402':
+          description: plan limit (PLAN_LIMIT)
+        '403':
+          description: not the owner
+  /v1/collaboration/projects/{projectID}/members/{userID}:
+    delete:
+      summary: Remove a member (owner), or leave the project (the member themselves)
+      responses:
+        '204':
+          description: removed
+        '403':
+          description: the owner cannot be removed; others can only remove themselves
+  /v1/collaboration/projects/{projectID}/invites/{inviteID}/resend:
+    post:
+      summary: Give a pending invite a fresh link ({"email": false} to skip the email)
+      description: Owner only. Only a hash of each link is stored, so the previous link stops working. Returns {invite, inviteLink, emailSent}.
+      responses:
+        '200':
+          description: invite with its new link
+        '404':
+          description: unknown or accepted invite
+  /v1/collaboration/projects/{projectID}/activity:
+    get:
+      summary: Tasks completed and created per day and person over the last year (query tz, an IANA time zone)
+      description: Any member. Returns {entries: [{date, userId, completed, created}], days, timeZone}; a completion is a change that marks a task done, credited to whoever pushed it.
+      responses:
+        '200':
+          description: activity entries
+        '404':
+          description: not a member
   /v1/collaboration/projects/{projectID}/tasks/{taskID}/comments:
     get:
       summary: Comment thread of a shared-project task, oldest first (see specs/COMMENTS.md)

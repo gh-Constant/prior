@@ -6,7 +6,7 @@ import { useI18n } from "../../lib/i18n";
 import { CustomSelect } from "../CustomSelect";
 import { TaskStatusBadge } from "../TaskStatusBadge";
 import { taskStatusTone } from "../../lib/taskStatusAppearance";
-import type { Person, PlanningKey, ProjectIssue, TaskPerson, TaskPlanningProps, WorkflowState } from "./types";
+import type { Person, PlanningKey, ProjectIssue, TaskPlanningProps, WorkflowState } from "./types";
 import "./Collaboration.css";
 
 const propertyIcons: Record<PlanningKey, IconName> = {
@@ -33,43 +33,27 @@ export function AgilePropertyChips({ properties = [], priority, state }: Pick<Pr
   </div>;
 }
 
-export function TaskPeoplePicker({ people, availablePeople, readOnly = false, loading = false, onPeopleChange }: Omit<TaskPlanningProps, "fields" | "onFieldChange">) {
+/**
+ * The people who follow a task (they see it in their lists and in comment
+ * mentions). Who is responsible is the assignee, chosen separately.
+ */
+export function TaskPeoplePicker({ people, availablePeople, readOnly = false, loading = false, onPeopleChange, assigneeId }: Omit<TaskPlanningProps, "fields" | "onFieldChange">) {
   const [query, setQuery] = useState("");
   const { t } = useI18n();
   const editable = !readOnly && !loading && Boolean(onPeopleChange);
-  const ownerCount = people.filter((person) => person.role === "owner").length;
   const selectedIds = new Set(people.map((person) => person.id));
   const candidates = availablePeople.filter((person) => !selectedIds.has(person.id) && `${person.name} ${person.email ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()));
 
-  function changeRole(person: TaskPerson, role: TaskPerson["role"]) {
-    if (!editable || (person.role === "owner" && ownerCount === 1)) return;
-    onPeopleChange?.(people.map((item) => item.id === person.id ? { ...item, role } : item));
-  }
-
   return <section className="collab-people-picker" aria-label={t("collab.taskPeople.group")}>
     <h3>{t("collab.people.label")}</h3>
-    <PeopleChips people={people} />
     {readOnly && <ReadOnlyNotice />}
     {loading ? <CollaborationState title={t("collab.taskPeople.loading")} loading /> : <>
       {people.length > 0 && <ul className="collab-members">{people.map((person) => {
-        const lastOwner = person.role === "owner" && ownerCount === 1;
+        const last = people.length === 1;
         return <li key={person.id}>
           <PersonAvatar person={person} />
-          <div className="collab-person-copy"><strong>{person.name}</strong>{lastOwner && <small>{t("collab.taskPeople.lastOwner")}</small>}</div>
-          <div className="collab-role-select-wrap">
-            <CustomSelect
-              ariaLabel={t("collab.taskPeople.roleFor", { name: person.name })}
-              value={person.role}
-              disabled={!editable || lastOwner}
-              onChange={(val) => changeRole(person, val as TaskPerson["role"])}
-              options={[
-                { value: "owner", label: t("collab.roles.owner") },
-                { value: "assignee", label: t("collab.roles.assignee") },
-                { value: "collaborator", label: t("collab.roles.collaborator") },
-              ]}
-            />
-          </div>
-          <button type="button" className="icon-button" aria-label={t("collab.taskPeople.removeFor", { name: person.name })} disabled={!editable || lastOwner} onClick={() => { if (editable && !lastOwner) onPeopleChange?.(people.filter((item) => item.id !== person.id)); }}><Icon name="close" /></button>
+          <div className="collab-person-copy"><strong>{person.name}</strong>{person.id === assigneeId ? <small>{t("collab.assign.assignee")}</small> : last && <small>{t("collab.taskPeople.lastPerson")}</small>}</div>
+          <button type="button" className="icon-button" aria-label={t("collab.taskPeople.removeFor", { name: person.name })} disabled={!editable || last} onClick={() => { if (editable && !last) onPeopleChange?.(people.filter((item) => item.id !== person.id)); }}><Icon name="close" /></button>
         </li>;
       })}</ul>}
       {editable && <details className="collab-picker-options">

@@ -1,0 +1,35 @@
+/* GitHub-style activity grid (agile projects → Activity tab). */
+.project-activity { --activity-cell: 12px; display: grid; gap: 16px; }
+.project-activity-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.project-activity-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.project-activity-stats > div { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+.project-activity-stats strong { color: var(--ink); font-size: 22px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.project-activity-stats span { color: var(--muted); font-size: var(--fs-xs); }
+.project-activity-scroll { overflow-x: auto; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+.project-activity-grid { display: grid; grid-template-rows: auto repeat(7, var(--activity-cell)); grid-auto-flow: row; gap: 3px; width: max-content; }
+.project-activity-month { height: 14px; color: var(--muted); font-size: 10px; line-height: 14px; white-space: nowrap; overflow: visible; }
+.project-activity-weekday { padding-right: 6px; color: var(--muted); font-size: 10px; line-height: var(--activity-cell); text-transform: capitalize; }
+.project-activity-cell { width: var(--activity-cell); height: var(--activity-cell); border-radius: 3px; background: var(--surface-2); outline: 1px solid color-mix(in srgb, var(--ink) 5%, transparent); outline-offset: -1px; }
+.project-activity-cell.level-1 { background: color-mix(in srgb, var(--green) 30%, var(--surface-2)); }
+.project-activity-cell.level-2 { background: color-mix(in srgb, var(--green) 55%, var(--surface-2)); }
+.project-activity-cell.level-3 { background: color-mix(in srgb, var(--green) 78%, var(--surface-2)); }
+.project-activity-cell.level-4 { background: var(--green); }
+.project-activity-cell.level-none { background: transparent; outline: none; }
+.project-activity-legend { display: flex; align-items: center; justify-content: flex-end; gap: 3px; color: var(--muted); font-size: 10px; }
+.project-activity-legend > span:first-child { margin-right: 4px; }
+.project-activity-legend > span:last-child { margin-left: 4px; }
+.project-activity-people h3 { margin: 0 0 8px; color: var(--ink); font-size: var(--fs-md); font-weight: 600; }
+.project-activity-people ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.project-activity-people button { display: grid; grid-template-columns: auto minmax(90px, 1fr) minmax(60px, 2fr) auto; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--r-md); background: transparent; color: var(--ink-2); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.project-activity-people button:hover:not(:disabled) { background: var(--hover); }
+.project-activity-people button.is-selected { border-color: var(--accent-line); background: var(--accent-soft); }
+.project-activity-people button:disabled { cursor: default; }
+.project-activity-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-activity-bar { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.project-activity-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--green); }
+.project-activity-count { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) {
+  .project-activity { --activity-cell: 10px; }
+  .project-activity-people button { grid-template-columns: auto 1fr auto; }
+  .project-activity-bar { display: none; }
+}

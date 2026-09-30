@@ -89,7 +89,7 @@ describe("MobileMoreScreen", () => {
     const props = renderMore({ badges: { waiting: "2", habits: "1/3" } });
     const list = screen.getByRole("navigation", { name: "Other views" });
     const rows = within(list).getAllByRole("button");
-    expect(rows.map((row) => row.dataset.view)).toEqual(["inbox", "projects", "waiting", "eisenhower", "habits", "notes", "plans"]);
+    expect(rows.map((row) => row.dataset.view)).toEqual(["inbox", "projects", "mine", "waiting", "eisenhower", "habits", "notes", "plans"]);
     expect(within(list).getByRole("button", { name: /Waiting/ })).toHaveTextContent("2");
     expect(within(list).getByRole("button", { name: /Habits/ })).toHaveTextContent("1/3");
     fireEvent.click(within(list).getByRole("button", { name: /Notes/ }));

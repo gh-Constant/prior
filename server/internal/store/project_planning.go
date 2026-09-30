@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gh-Constant/prior/server/internal/workspace"
@@ -15,19 +16,32 @@ import (
 
 // ProjectPlanningPatch is the collaboration PATCH contract. Raw JSON values
 // distinguish omitted fields (preserve the current value) from explicit null
-// fields (clear the current value).
+// fields (clear the current value). Editors of a shared project use it for
+// the same details the owner edits locally; the owner's workspace sync picks
+// the change up through updated_at.
 type ProjectPlanningPatch struct {
-	Health     json.RawMessage `json:"health"`
-	StartDate  json.RawMessage `json:"startDate"`
-	TargetDate json.RawMessage `json:"targetDate"`
-	Cycles     json.RawMessage `json:"cycles"`
+	Name        json.RawMessage `json:"name"`
+	Description json.RawMessage `json:"description"`
+	Status      json.RawMessage `json:"status"`
+	Icon        json.RawMessage `json:"icon"`
+	ProjectType json.RawMessage `json:"projectType"`
+	Health      json.RawMessage `json:"health"`
+	StartDate   json.RawMessage `json:"startDate"`
+	TargetDate  json.RawMessage `json:"targetDate"`
+	Cycles      json.RawMessage `json:"cycles"`
+	Milestones  json.RawMessage `json:"milestones"`
 }
 
+// maxProjectIconLength bounds uploaded icons (data URLs) sent by editors.
+const maxProjectIconLength = 700_000
+
 type projectMetadata struct {
-	Health     *string                  `json:"health,omitempty"`
-	StartDate  *string                  `json:"startDate,omitempty"`
-	TargetDate *string                  `json:"targetDate,omitempty"`
-	Cycles     []workspace.ProjectCycle `json:"cycles,omitempty"`
+	ProjectType *string                      `json:"projectType,omitempty"`
+	Health      *string                      `json:"health,omitempty"`
+	StartDate   *string                      `json:"startDate,omitempty"`
+	TargetDate  *string                      `json:"targetDate,omitempty"`
+	Cycles      []workspace.ProjectCycle     `json:"cycles,omitempty"`
+	Milestones  []workspace.ProjectMilestone `json:"milestones,omitempty"`
 }
 
 func metadataForProject(project workspace.Project) ([]byte, error) {
@@ -35,12 +49,32 @@ func metadataForProject(project workspace.Project) ([]byte, error) {
 		return nil, err
 	}
 	metadata, err := json.Marshal(projectMetadata{
-		Health: project.Health, StartDate: project.StartDate, TargetDate: project.TargetDate, Cycles: project.Cycles,
+		ProjectType: project.ProjectType, Health: project.Health, StartDate: project.StartDate, TargetDate: project.TargetDate, Cycles: project.Cycles, Milestones: project.Milestones,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return metadata, nil
+}
+
+// syncedProjectMetadata merges an incoming workspace project into the stored
+// metadata: planning fields and the project type are only replaced when the
+// client sent them, so an older client cannot wipe what a newer one saved.
+func syncedProjectMetadata(stored []byte, incoming workspace.Project) ([]byte, error) {
+	var current workspace.Project
+	if err := applyProjectMetadata(&current, stored); err != nil {
+		current = workspace.Project{}
+	}
+	if incoming.PlanningFieldsPresent() {
+		current.Health, current.StartDate, current.TargetDate, current.Cycles = incoming.Health, incoming.StartDate, incoming.TargetDate, incoming.Cycles
+	}
+	if incoming.MilestonesPresent() {
+		current.Milestones = incoming.Milestones
+	}
+	if incoming.ProjectTypePresent() {
+		current.ProjectType = incoming.ProjectType
+	}
+	return metadataForProject(current)
 }
 
 func applyProjectMetadata(project *workspace.Project, raw []byte) error {
@@ -51,17 +85,75 @@ func applyProjectMetadata(project *workspace.Project, raw []byte) error {
 	if err := json.Unmarshal(raw, &metadata); err != nil {
 		return fmt.Errorf("invalid project metadata: %w", err)
 	}
+	project.ProjectType = metadata.ProjectType
 	project.Health = metadata.Health
 	project.StartDate = metadata.StartDate
 	project.TargetDate = metadata.TargetDate
 	project.Cycles = metadata.Cycles
+	project.Milestones = metadata.Milestones
 	if err := project.ValidatePlanning(); err != nil {
 		return err
 	}
 	return nil
 }
 
+func requiredPatchString(raw json.RawMessage, field string) (string, error) {
+	var value string
+	if err := json.Unmarshal(bytes.TrimSpace(raw), &value); err != nil {
+		return "", fmt.Errorf("invalid %s", field)
+	}
+	return value, nil
+}
+
 func applyProjectPlanningPatch(project *workspace.Project, patch ProjectPlanningPatch) error {
+	if len(patch.Name) > 0 {
+		value, err := requiredPatchString(patch.Name, "project name")
+		if err != nil {
+			return err
+		}
+		value = strings.TrimSpace(value)
+		if value == "" || len(value) > 400 {
+			return errors.New("invalid project name")
+		}
+		project.Name = value
+	}
+	if len(patch.Description) > 0 {
+		value, err := requiredPatchString(patch.Description, "project description")
+		if err != nil {
+			return err
+		}
+		if len(value) > 10000 {
+			return errors.New("invalid project description: too long")
+		}
+		project.Description = value
+	}
+	if len(patch.Status) > 0 {
+		value, err := requiredPatchString(patch.Status, "project status")
+		if err != nil {
+			return err
+		}
+		if value != "planned" && value != "active" && value != "paused" && value != "completed" {
+			return errors.New("invalid project status")
+		}
+		project.Status = value
+	}
+	if len(patch.Icon) > 0 {
+		value, err := nullableString(patch.Icon, "project icon")
+		if err != nil {
+			return err
+		}
+		if value != nil && len(*value) > maxProjectIconLength {
+			return errors.New("invalid project icon: too large")
+		}
+		project.Icon = value
+	}
+	if len(patch.ProjectType) > 0 {
+		value, err := nullableString(patch.ProjectType, "project type")
+		if err != nil {
+			return err
+		}
+		project.ProjectType = value
+	}
 	if len(patch.Health) > 0 {
 		value, err := nullableString(patch.Health, "project health")
 		if err != nil {
@@ -82,6 +174,13 @@ func applyProjectPlanningPatch(project *workspace.Project, patch ProjectPlanning
 			return err
 		}
 		project.TargetDate = value
+	}
+	if len(patch.Milestones) > 0 {
+		if bytes.Equal(bytes.TrimSpace(patch.Milestones), []byte("null")) {
+			project.Milestones = nil
+		} else if err := json.Unmarshal(patch.Milestones, &project.Milestones); err != nil {
+			return errors.New("invalid project milestones")
+		}
 	}
 	if len(patch.Cycles) > 0 {
 		if bytes.Equal(bytes.TrimSpace(patch.Cycles), []byte("null")) {
@@ -196,8 +295,8 @@ func (s *Store) UpdateCollaborativeProjectPlanning(ctx context.Context, userID, 
 
 	_, err = tx.Exec(ctx, `
 		UPDATE projects
-		SET metadata = $1, updated_at = $2, revision = $3
-		WHERE id = $4`, newMetadata, now, revision, projectID)
+		SET metadata = $1, updated_at = $2, revision = $3, name = $5, description = $6, status = $7, icon = $8
+		WHERE id = $4`, newMetadata, now, revision, projectID, project.Name, project.Description, project.Status, project.Icon)
 	if err != nil {
 		return CollaborationProject{}, err
 	}

@@ -33,6 +33,37 @@ composer. The workspace/team/cycle/view tables described below are the target
 architecture for the next slices; they are intentionally not faked as client
 only JSON or treated as complete in this change.
 
+### Release 0.8 (collaboration redo)
+
+- **Project type** (`projectType`: `standard` or `software`) lives in the
+  project metadata and syncs like the planning fields, so the owner and every
+  member see the same page. A client that omits the field keeps the stored
+  value. Milestones (`milestones`) are stored the same way.
+- **Invitations**: one click invites one or several emails. The owner gets
+  the outcome inline (sent, emailed or not) and the link to copy
+  (`/invite/<token>`, a web page that survives sign-up). Invitees receive an
+  email (Resend, in the inviter's language) and, with an account, a realtime
+  notification; they still accept. Pending invites can be resent (the link is
+  rotated: only hashes are stored), copied or revoked. Members can leave.
+  Role changes are optimistic and confirmed inline.
+- **Issue fields** on tasks (migration `031`, SQLite `012`): `assigneeId` (a
+  project member, validated on the server), `parentId` (same project, no
+  cycles), `milestoneId` and `relations` (`blocked_by`, `related`). Older
+  clients that omit them keep the stored values. The people picker lists who
+  follows a task; the assignee is the one responsible ("My tasks", filters,
+  quick assign on cards, a local notification when someone assigns you).
+- **Activity** tab on agile projects: a GitHub-style grid of tasks completed
+  (or created) per day, per person, from the task changelog
+  (`GET /v1/collaboration/projects/{id}/activity`).
+- **Realtime**: browsers now use the WebSocket too (the session token travels
+  as the `prior.auth.<token>` subprotocol, never in the URL). Pushes notify
+  only the members of the touched projects with `tasks_required`; the client
+  runs just the part of the sync an event names (`tasks`, `shared`,
+  `presence`). Member lists carry real presence (`online`).
+- **URLs**: every page has an address (`/projects/<id>/<tab>`, `/my-tasks`,
+  `?task=<id>`…, see `app/src/lib/router.ts`); reloads and shared links
+  reopen it, Back/Forward move between pages.
+
 ## What Linear's model contributes
 
 The research used the following first-party documentation:

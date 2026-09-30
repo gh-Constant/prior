@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gh-Constant/prior/server/internal/tasks"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // normalizeReminder accepts any RFC 3339 instant and stores it in UTC.
@@ -81,5 +84,154 @@ func decodeTaskJSON(task *tasks.Task, peopleJSON, checklist []byte) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func relationsJSON(items []tasks.TaskRelation) ([]byte, error) {
+	if items == nil {
+		items = []tasks.TaskRelation{}
+	}
+	return json.Marshal(items)
+}
+
+func decodeRelations(task *tasks.Task, raw []byte) error {
+	task.Relations = []tasks.TaskRelation{}
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	return json.Unmarshal(raw, &task.Relations)
+}
+
+// resolveIssueFieldsTx keeps the stored assignee, parent, milestone and
+// relations when an older client omits them, then validates the result:
+// the assignee must be able to see the task, a parent must be another task
+// of the same project (without cycles), relations must be well formed.
+func resolveIssueFieldsTx(ctx context.Context, tx pgx.Tx, taskID, ownerID uuid.UUID, task *tasks.Task) error {
+	var storedAssignee, storedParent, storedMilestone *string
+	var storedRelations []byte
+	err := tx.QueryRow(ctx, `SELECT assignee_id::text, parent_id::text, milestone_id, relations FROM tasks WHERE id = $1`, taskID).Scan(&storedAssignee, &storedParent, &storedMilestone, &storedRelations)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if !task.FieldPresent("assigneeId") {
+		task.AssigneeID = storedAssignee
+	}
+	if !task.FieldPresent("parentId") {
+		task.ParentID = storedParent
+	}
+	if !task.FieldPresent("milestoneId") {
+		task.MilestoneID = storedMilestone
+	}
+	if !task.FieldPresent("relations") {
+		stored := tasks.Task{}
+		if err := decodeRelations(&stored, storedRelations); err != nil {
+			return err
+		}
+		task.Relations = stored.Relations
+	}
+	var projectID *uuid.UUID
+	if task.ProjectID != nil && *task.ProjectID != "" {
+		parsed, err := uuid.Parse(*task.ProjectID)
+		if err != nil {
+			return errors.New("task contains an invalid project")
+		}
+		projectID = &parsed
+	}
+	if task.AssigneeID != nil && *task.AssigneeID == "" {
+		task.AssigneeID = nil
+	}
+	if task.AssigneeID != nil {
+		assignee, err := uuid.Parse(*task.AssigneeID)
+		if err != nil {
+			return errors.New("task contains an invalid assignee")
+		}
+		normalized := assignee.String()
+		task.AssigneeID = &normalized
+		if projectID != nil {
+			var exists bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id = $1)`, *projectID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				if _, err := projectRoleTx(ctx, tx, assignee, *projectID); err != nil {
+					return errors.New("task assignee is not a member of the project")
+				}
+			} else if assignee != ownerID {
+				// A personal project not synced yet: only its owner.
+				return errors.New("task assignee is not a member of the project")
+			}
+		} else if assignee != ownerID {
+			return errors.New("private tasks can only be assigned to their owner")
+		}
+	}
+	if task.ParentID != nil && *task.ParentID == "" {
+		task.ParentID = nil
+	}
+	if task.ParentID != nil {
+		parent, err := uuid.Parse(*task.ParentID)
+		if err != nil || parent == taskID {
+			return errors.New("task contains an invalid parent")
+		}
+		normalized := parent.String()
+		task.ParentID = &normalized
+		// Walk up: the parent must not descend from this task. A parent the
+		// server has not seen yet (same batch, later) is accepted as is.
+		current := parent
+		for depth := 0; depth < 20; depth++ {
+			var next *uuid.UUID
+			var parentProject *string
+			err := tx.QueryRow(ctx, `SELECT parent_id, project_id::text FROM tasks WHERE id = $1`, current).Scan(&next, &parentProject)
+			if errors.Is(err, pgx.ErrNoRows) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if depth == 0 {
+				same := (parentProject == nil && projectID == nil) || (parentProject != nil && projectID != nil && *parentProject == projectID.String())
+				if !same {
+					return errors.New("invalid task parent: it belongs to another project")
+				}
+			}
+			if next == nil {
+				break
+			}
+			if *next == taskID {
+				return errors.New("invalid task parent: it would create a cycle")
+			}
+			current = *next
+		}
+	}
+	if task.MilestoneID != nil {
+		milestone := strings.TrimSpace(*task.MilestoneID)
+		if milestone == "" {
+			task.MilestoneID = nil
+		} else if len(milestone) > 128 || projectID == nil {
+			return errors.New("task contains an invalid milestone")
+		} else {
+			task.MilestoneID = &milestone
+		}
+	}
+	if len(task.Relations) > tasks.MaxTaskRelations {
+		return fmt.Errorf("a task holds at most %d relations", tasks.MaxTaskRelations)
+	}
+	seen := make(map[string]struct{}, len(task.Relations))
+	relations := make([]tasks.TaskRelation, 0, len(task.Relations))
+	for _, relation := range task.Relations {
+		if relation.Type != tasks.RelationBlockedBy && relation.Type != tasks.RelationRelated {
+			return errors.New("task contains an invalid relation type")
+		}
+		related, err := uuid.Parse(relation.TaskID)
+		if err != nil || related == taskID {
+			return errors.New("task contains an invalid related task")
+		}
+		key := relation.Type + ":" + related.String()
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		relations = append(relations, tasks.TaskRelation{Type: relation.Type, TaskID: related.String()})
+	}
+	task.Relations = relations
 	return nil
 }
