@@ -90,6 +90,12 @@ type HostedAIConfig struct {
 	CalendarModel        string
 	// Extra models OpenRouter tries in order when the primary one fails.
 	FallbackModels []string
+	// Decision model (TypeSafe Jev): picks and scores instead of writing
+	// text, ~100x cheaper and faster than a chat model. It serves the Today
+	// recommendations; the chat model above is the fallback when it fails.
+	// An empty URL or model disables it.
+	DecisionsURL   string
+	DecisionsModel string
 	// OpenRouter reasoning.effort for the assistant and for the short drafts
 	// (recommendations, mail, calendar). Empty keeps the provider default.
 	AgentReasoningEffort string
@@ -106,6 +112,12 @@ type HostedAIConfig struct {
 }
 
 func (c HostedAIConfig) Enabled() bool { return strings.TrimSpace(c.APIKey) != "" }
+
+// DecisionsEnabled reports whether hosted decisions go to the decision
+// model (Jev) before the chat model.
+func (c HostedAIConfig) DecisionsEnabled() bool {
+	return c.Enabled() && strings.TrimSpace(c.DecisionsURL) != "" && strings.TrimSpace(c.DecisionsModel) != ""
+}
 
 func (c HostedAIConfig) TranscriptionEnabled() bool {
 	return strings.TrimSpace(c.TranscriptionAPIKey) != "" && strings.TrimSpace(c.TranscriptionURL) != ""
@@ -200,6 +212,8 @@ func loadHostedAI() HostedAIConfig {
 		MailModel:            getenv("AI_MODEL_MAIL", "openai/gpt-6-luna"),
 		CalendarModel:        getenv("AI_MODEL_CALENDAR", "openai/gpt-6-luna"),
 		FallbackModels:       split(getenv("AI_MODEL_FALLBACKS", "deepseek/deepseek-v4.1-flash")),
+		DecisionsURL:         decisionsURL(baseURL),
+		DecisionsModel:       decisionsModel(),
 		AgentReasoningEffort: os.Getenv("AI_REASONING_EFFORT_AGENT"),
 		DraftReasoningEffort: getenv("AI_REASONING_EFFORT_DRAFTS", "low"),
 		DailyRequestsPerUser: getenvInt("AI_DAILY_REQUESTS_PER_USER", 300),
@@ -209,6 +223,32 @@ func loadHostedAI() HostedAIConfig {
 		TranscriptionURL:    getenv("AI_TRANSCRIPTION_URL", baseURL+"/audio/transcriptions"),
 		TranscriptionModel:  getenv("AI_TRANSCRIPTION_MODEL", "microsoft/mai-transcribe-2"),
 	}
+}
+
+// decisionsURL is AI_DECISIONS_URL, or OpenRouter's decisions endpoint when
+// the hosted provider is OpenRouter. "off" disables decisions.
+func decisionsURL(baseURL string) string {
+	value := strings.TrimSpace(os.Getenv("AI_DECISIONS_URL"))
+	if strings.EqualFold(value, "off") {
+		return ""
+	}
+	if value != "" {
+		return strings.TrimRight(value, "/")
+	}
+	if strings.HasPrefix(baseURL, "https://openrouter.ai/") {
+		return "https://openrouter.ai/api/alpha/decisions"
+	}
+	return ""
+}
+
+// decisionsModel is AI_MODEL_DECISIONS (pinned Jev by default, so score
+// thresholds stay calibrated). "off" disables decisions.
+func decisionsModel() string {
+	value := strings.TrimSpace(getenv("AI_MODEL_DECISIONS", "typesafe/jev-1.13"))
+	if strings.EqualFold(value, "off") {
+		return ""
+	}
+	return value
 }
 
 func (c Config) Production() bool { return c.Env == "production" }

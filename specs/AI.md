@@ -17,11 +17,20 @@ Each completion declares a `purpose`, and the API maps it to its own model so th
 | Purpose | Used by | Env | Default (2026-09-29 research) |
 |---|---|---|---|
 | `agent` | Assistant chat, create and update actions | `AI_MODEL_AGENT` | `z-ai/glm-5.3-flash` |
-| `recommendations` | Today recommendations | `AI_MODEL_RECOMMENDATIONS` | `openai/gpt-6-luna` |
+| `recommendations` | Today recommendations | `AI_MODEL_DECISIONS`, then `AI_MODEL_RECOMMENDATIONS` if it fails | `typesafe/jev-1.13`, then `openai/gpt-6-luna` |
 | `mail` | Mail to task | `AI_MODEL_MAIL` | `openai/gpt-6-luna` |
 | `calendar` | Calendar event drafts | `AI_MODEL_CALENDAR` | `openai/gpt-6-luna` |
 
 `AI_MODEL_FALLBACKS` is sent as OpenRouter's `models` list. `AI_REASONING_EFFORT_DRAFTS` (default `low`) applies to the three draft purposes; `AI_REASONING_EFFORT_AGENT` to chat. Dictation falls back to `AI_TRANSCRIPTION_*`, which default to the same key and `AI_BASE_URL/audio/transcriptions` when the user has no OpenAI key. `AI_BASE_URL` accepts any OpenAI-compatible endpoint.
+
+## Decision model (Jev, 2026-09-30)
+
+Jev (TypeSafe, `typesafe/jev-1.13` on OpenRouter) does not write text: it reads a state and answers typed questions — `score` (a position on ordered levels), `choice` (one option of a set) or `noul` (probability of yes). It costs about $0.04 per million input tokens (output is free) and answers in 70–500 ms, roughly 100× cheaper and faster than a chat model. Prior uses it wherever a feature only has to pick or rank; everything the user reads stays written by code or by a chat model.
+
+- **Today recommendations** (hosted only). `agentComplete` sends `purpose: "recommendations"` to `jevTodayRecommendations` (`server/internal/httpapi/today_decisions.go`) before any chat model. Code drops waiting/done tasks and tasks planned for a later day, and turns dates into words ("overdue by 2 days", "planned for today at 14:30"), since Jev is unreliable at date arithmetic. One call asks one 5-level `score` question per task ("how much should the user focus on this task today?"). Tasks under 1.5 are left out, near ties (< 0.1) go to the earlier deadline, then the higher priority, and at most three are kept. Code writes the reasons (the two most telling facts), the summary, the tips and the start times (a task planned at a time keeps it; the first other one takes the client's next free slot) in the user's language (`today_copy.go`). The answer has the chat model's JSON shape, so clients need no change. A decision error, an unreadable prompt or an empty answer falls back to `AI_MODEL_RECOMMENDATIONS`; no open task means no call at all.
+- **Not moved**: assistant chat, mail to task and calendar drafts must write text (titles, descriptions, replies), which Jev cannot do.
+
+`AI_DECISIONS_URL` defaults to `https://openrouter.ai/api/alpha/decisions` when `AI_BASE_URL` is OpenRouter (same `AI_API_KEY`); `off` in `AI_DECISIONS_URL` or `AI_MODEL_DECISIONS` turns decisions off. Keep the model pinned: the 1.5 threshold is calibrated on its scores, and `~typesafe/jev-latest` moves. Usage and cost are recorded under the `recommendations` purpose.
 
 ## Who gets Prior AI
 

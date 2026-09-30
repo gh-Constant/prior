@@ -147,6 +147,26 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 		writeHostedAIError(w, http.StatusTooManyRequests, errors.New("daily Prior AI limit reached; try again tomorrow or add your own OpenRouter key"))
 		return
 	}
+	if route.hosted && purpose == "recommendations" && s.cfg.HostedAI.DecisionsEnabled() {
+		// Picking today's focus tasks is a decision, not writing: the
+		// decision model answers it for a fraction of a chat model's cost.
+		content, decision, err := s.jevTodayRecommendations(r.Context(), prompt)
+		if err == nil {
+			s.recordHostedUsage(r.Context(), user.ID, purpose, decision.totalTokens, decision.costMicros)
+			slog.Info("agent decision request",
+				"user_id_hash", userIDHash(user.ID),
+				"purpose", purpose,
+				"model", firstNonEmpty(decision.model, s.cfg.HostedAI.DecisionsModel),
+				"prompt_chars", len(prompt))
+			writeJSON(w, http.StatusOK, map[string]any{
+				"content":     content,
+				"actualModel": firstNonEmpty(decision.model, s.cfg.HostedAI.DecisionsModel),
+				"provider":    "hosted",
+			})
+			return
+		}
+		slog.Warn("decision model failed; using the chat model", "user_id_hash", userIDHash(user.ID), "purpose", purpose, "error", err)
+	}
 	payload := completionPayload(route, messages, body.WebSearch, reasoningEffort, body.JSON)
 	slog.Info("agent proxy request",
 		"user_id_hash", userIDHash(user.ID),

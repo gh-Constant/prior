@@ -17,7 +17,8 @@ import (
 // Prior AI: the server-owned, OpenAI-compatible provider (OpenRouter by
 // default) that powers the assistant, recommendations, mail and calendar
 // drafts, and dictation for signed-in users who have not configured their
-// own keys. The key lives only in the API environment (AI_API_KEY).
+// own keys. The key lives only in the API environment (AI_API_KEY). Today
+// recommendations go to the decision model first (decisions.go).
 
 // agentPurposes lists the use cases a completion may declare. Each maps to
 // its own hosted model (see config.HostedAIConfig.ModelFor).
@@ -223,9 +224,13 @@ func (s *Server) hostedAIStatus(w http.ResponseWriter, r *http.Request) {
 		"usedToday":     s.hostedUsage.used(user.ID),
 	}
 	if hosted.Enabled() {
+		recommendations := hosted.ModelFor("recommendations")
+		if hosted.DecisionsEnabled() {
+			recommendations = hosted.DecisionsModel
+		}
 		response["models"] = map[string]string{
 			"agent":           hosted.ModelFor("agent"),
-			"recommendations": hosted.ModelFor("recommendations"),
+			"recommendations": recommendations,
 			"mail":            hosted.ModelFor("mail"),
 			"calendar":        hosted.ModelFor("calendar"),
 		}
