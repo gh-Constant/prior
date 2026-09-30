@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+.scannerwork
+.env
+.env.*
+**/node_modules
+**/dist
+**/target
+coverage
+specs
+scripts
+*.md
+app/src-tauri

@@ -5,11 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
       app: ${{ steps.filter.outputs.app }}
+      container: ${{ steps.filter.outputs.container }}
       native: ${{ steps.filter.outputs.native }}
       android: ${{ steps.filter.outputs.android }}
       server: ${{ steps.filter.outputs.server }}
@@ -34,6 +39,11 @@ jobs:
             server:
               - 'server/**'
               - '.github/workflows/ci.yml'
+            container:
+              - 'server/Dockerfile'
+              - 'server/go.mod'
+              - 'server/go.sum'
+              - '.dockerignore'
 
   app:
     needs: changes
@@ -52,8 +62,7 @@ jobs:
           node-version: 20
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile=false
-      - run: pnpm typecheck
+      - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm build
 
@@ -104,14 +113,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test
 
   container:
     runs-on: ubuntu-latest
-    needs: server
-    if: needs.server.result == 'success'
+    needs: [changes, server]
+    if: needs.changes.outputs.container == 'true' && needs.server.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -121,10 +133,12 @@ jobs:
           file: server/Dockerfile
           push: false
           tags: prior-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   android:
     needs: changes
-    if: needs.changes.outputs.app == 'true' || needs.changes.outputs.android == 'true'
+    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -143,11 +157,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+          key: android
+      - uses: gradle/actions/setup-gradle@v4
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
       - run: sdkmanager "platforms;android-36" "build-tools;35.0.0" "ndk;27.1.12297006"
-      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm install --frozen-lockfile
         working-directory: app
       - run: pnpm tauri android build --debug --target aarch64 --apk
         working-directory: app

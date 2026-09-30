@@ -40,3 +40,10 @@ keyring = { version = "3.6", features = ["windows-native"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["sync-secret-service", "crypto-rust"] }
+
+# Debug info for dependencies is what makes dev/CI builds and target/ huge.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
