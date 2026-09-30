@@ -1,17 +1,59 @@
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { invoke } from "@tauri-apps/api/core";
-import { API_URL, api, isAuthError } from "./api";
+import { API_URL, api, isAuthError, type AccountUser, type SignInResponse } from "./api";
 import { clearAgentSettings } from "./ai";
 import { claimAnonymousStorageForAccount, emitAccountScopeChange, migrateLegacyStorageForAccount } from "./accountScope";
 import { openExternalUrl } from "./browser";
 import { getSecret, removeSecret, setSecret } from "./secureStore";
-import { translateStored } from "./i18n";
+import { storedLanguage, translateStored } from "./i18n";
 import { isAndroid, isTauri } from "./platform";
 import { purgeProductionDemoData } from "./productionData";
 
 const USER_KEY = "prior.session.user";
 
-export type SessionUser = { id: string; email: string; displayName: string; avatarUrl?: string };
+export type SessionUser = Pick<AccountUser, "id" | "email" | "displayName" | "avatarUrl" | "emailVerified" | "hasPassword" | "googleLinked" | "twoFactorEnabled" | "locale">;
+
+/** Whether the server copy of the account differs from the cached one. */
+export function sessionUserChanged(current: SessionUser, next: SessionUser): boolean {
+  const fields: Array<keyof SessionUser> = ["displayName", "email", "avatarUrl", "emailVerified", "hasPassword", "googleLinked", "twoFactorEnabled"];
+  return fields.some((field) => current[field] !== next[field]);
+}
+
+/** Fired when sign-in needs a 2FA code: the sign-in surfaces show the code step. */
+export const TWO_FACTOR_CHALLENGE_EVENT = "prior-2fa-challenge";
+
+let pendingChallenge: string | null = null;
+
+function emitTwoFactorChallenge(challenge: string): void {
+  // Kept until a sign-in surface takes it: a Google return can arrive before
+  // the sign-in screen has mounted.
+  pendingChallenge = challenge;
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(TWO_FACTOR_CHALLENGE_EVENT, { detail: { challenge } }));
+}
+
+/** The challenge waiting for a code, if any (cleared once read). */
+export function takePendingChallenge(): string | null {
+  const challenge = pendingChallenge;
+  pendingChallenge = null;
+  return challenge;
+}
+
+function pickSessionUser(user: AccountUser): SessionUser {
+  const { id, email, displayName, avatarUrl, emailVerified, hasPassword, googleLinked, twoFactorEnabled, locale } = user;
+  return { id, email, displayName, avatarUrl, emailVerified, hasPassword, googleLinked, twoFactorEnabled, locale };
+}
+
+/**
+ * Finishes any sign-in answer: a session is saved, a 2FA challenge is
+ * announced (null is returned and the code step takes over).
+ */
+async function completeSignIn(response: SignInResponse): Promise<SessionUser | null> {
+  if ("twoFactorRequired" in response && response.twoFactorRequired) {
+    emitTwoFactorChallenge(response.challenge);
+    return null;
+  }
+  return saveSession(response as { token: string; user: AccountUser });
+}
 
 let cachedToken: string | null | undefined;
 let tokenRead: Promise<string | null> | null = null;
@@ -55,19 +97,20 @@ export async function clearSession(): Promise<void> {
   if (failure) throw failure;
 }
 
-async function saveSession(result: { token: string; user: SessionUser }): Promise<SessionUser> {
+async function saveSession(result: { token: string; user: AccountUser }): Promise<SessionUser> {
+  const user = pickSessionUser(result.user);
   // Clean any local fixtures before anonymous data can be claimed by a real
   // account. The helper is a no-op for local development builds.
   if (import.meta.env.DEV !== true) await purgeProductionFixtures();
   await setSecret("session_token", result.token);
   cachedToken = result.token;
   tokenRead = null;
-  saveUser(result.user);
-  migrateLegacyStorageForAccount(result.user.id);
-  claimAnonymousStorageForAccount(result.user.id);
+  saveUser(user);
+  migrateLegacyStorageForAccount(user.id);
+  claimAnonymousStorageForAccount(user.id);
   if (import.meta.env.DEV !== true) await purgeProductionFixtures();
   emitAccountScopeChange();
-  return result.user;
+  return user;
 }
 
 async function purgeProductionFixtures(): Promise<void> {
@@ -80,12 +123,18 @@ async function purgeProductionFixtures(): Promise<void> {
   }
 }
 
-export async function signInWithPassword(email: string, password: string): Promise<SessionUser> {
-  return saveSession(await api.login(email.trim(), password));
+/** Returns null when a 2FA code is needed (see TWO_FACTOR_CHALLENGE_EVENT). */
+export async function signInWithPassword(email: string, password: string): Promise<SessionUser | null> {
+  return completeSignIn(await api.login(email.trim(), password, storedLanguage()));
 }
 
 export async function signUpWithPassword(email: string, password: string, displayName: string): Promise<SessionUser> {
-  return saveSession(await api.register(email.trim(), password, displayName.trim()));
+  return saveSession(await api.register(email.trim(), password, displayName.trim(), storedLanguage()));
+}
+
+/** Second sign-in step: a TOTP code or a recovery code for a challenge. */
+export async function completeTwoFactor(challenge: string, input: { code?: string; recoveryCode?: string }): Promise<SessionUser> {
+  return saveSession(await api.verifyTwoFactor(challenge, input));
 }
 
 export async function startGoogleLogin(): Promise<void> {
@@ -128,15 +177,20 @@ export async function handleAuthError(error: unknown): Promise<boolean> {
   return true;
 }
 
+/** Returned by native sign-in when a 2FA code step has taken over. */
+export const CHALLENGE_PENDING = "challenge" as const;
+
 // Native Android sign-in via the system account picker. Returns the
 // authenticated user, null when the user dismisses the picker, and throws
 // when native sign-in is unavailable so the caller can fall back to the
 // browser OAuth flow.
-export async function startNativeGoogleLogin(): Promise<SessionUser | null> {
+export async function startNativeGoogleLogin(): Promise<SessionUser | typeof CHALLENGE_PENDING | null> {
   const raw = await invoke<unknown>("google_sign_in");
   const idToken = typeof raw === "string" ? raw : (raw as { idToken?: unknown } | null)?.idToken;
   if (typeof idToken !== "string" || !idToken) return null;
-  return saveSession(await api.googleNative(idToken));
+  const user = await completeSignIn(await api.googleNative(idToken));
+  // A 2FA challenge was announced: report it as handled, not dismissed.
+  return user ?? CHALLENGE_PENDING;
 }
 
 const HANDLED_CODES_KEY = "prior.auth.handled_codes";
@@ -186,7 +240,7 @@ async function finish(url: string, handledCodes: Set<string>): Promise<SessionUs
   handledCodes.add(code);
   const result = await api.exchange(code);
   markCodeHandled(code);
-  return saveSession(result);
+  return completeSignIn(result);
 }
 
 export function listenForAuth(onAuthenticated: (user: SessionUser) => void, onError: (error: Error) => void): () => void {

@@ -1,0 +1,71 @@
+/* Account flows: forgot password, two-step sign-in, email links, account
+   settings (specs/ACCOUNT.md). Tokens only, so both themes follow. */
+
+.auth-link-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
+.auth-link-row:has(> :only-child) { justify-content: center; }
+.link-button { min-height: 32px; padding: 0 2px; border: 0; background: transparent; color: var(--accent-dark); font-size: var(--fs-sm); font-weight: 550; text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.link-button:hover { color: var(--accent); text-decoration-color: currentColor; }
+.link-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-xs); }
+:root[data-theme="dark"] .link-button { color: var(--accent-hover); }
+
+.two-factor-heading { display: flex; align-items: flex-start; gap: 12px; }
+.two-factor-heading > svg { flex: none; width: 20px; height: 20px; margin-top: 2px; color: var(--accent); }
+.two-factor-heading h2 { margin: 0 0 4px; color: var(--ink); font-size: var(--fs-lg, 16px); font-weight: 600; letter-spacing: -.02em; }
+.two-factor-heading p { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; }
+.two-factor-code-input { font-variant-numeric: tabular-nums; letter-spacing: .3em; font-size: 18px !important; }
+.auth-notice { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.55; }
+
+/* /reset-password and /verify-email */
+.account-link-card .auth-form { margin-bottom: 4px; }
+.account-link-actions { display: flex; flex-direction: column; gap: 10px; margin: 18px 24px 0; }
+.account-link-actions a { text-align: center; text-decoration: none; }
+.account-link-status { margin: 0 24px; }
+
+/* Verify-your-email banner */
+.verify-email-banner { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 10px 8px 12px; border: 1px solid var(--accent-line); border-radius: var(--r-md); background: var(--accent-soft); color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.45; }
+.verify-email-banner > svg { flex: none; width: 15px; height: 15px; color: var(--accent-dark); }
+.verify-email-banner p { flex: 1; min-width: 0; margin: 0; }
+.verify-email-banner .link-button { min-height: 28px; white-space: nowrap; }
+.verify-email-banner .icon-button { flex: none; }
+:root[data-theme="dark"] .verify-email-banner { border-color: color-mix(in oklab, var(--accent) 35%, var(--line)); background: color-mix(in oklab, var(--accent) 12%, var(--panel)); }
+:root[data-theme="dark"] .verify-email-banner > svg { color: var(--accent-hover); }
+@media (max-width: 640px) {
+  .verify-email-banner { flex-wrap: wrap; margin: 0 12px 12px; }
+  .verify-email-banner p { flex-basis: calc(100% - 60px); }
+}
+
+/* Settings: account, danger zone and two-step verification */
+.settings-status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.settings-status-pill.is-ok { background: color-mix(in oklab, var(--green, #3a9d5d) 14%, transparent); color: var(--green, #2f7d4a); }
+.settings-status-pill.is-warn { background: var(--accent-soft); color: var(--accent-dark); }
+:root[data-theme="dark"] .settings-status-pill.is-warn { background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent-hover); }
+.settings-danger-zone .settings-group { border-color: var(--red-line); }
+.settings-danger-button { display: inline-flex; align-items: center; gap: 7px; min-height: var(--control-h); padding: 0 12px; border: 1px solid var(--red-line); border-radius: var(--r-md); background: var(--red-soft); color: var(--red); font-size: var(--fs-sm); font-weight: 550; white-space: nowrap; }
+.settings-danger-button:hover:not(:disabled) { border-color: var(--red); }
+.settings-danger-button:disabled { opacity: .55; }
+.settings-danger-button svg { width: 15px; height: 15px; }
+
+.account-dialog-body { display: flex; flex-direction: column; gap: 14px; padding: 0 20px 20px; }
+.account-dialog-body p { margin: 0; color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.55; }
+.account-dialog-body .account-dialog-warning { color: var(--red); font-weight: 600; }
+.account-dialog-body label { display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); font-size: var(--fs-sm); font-weight: 500; }
+.account-dialog-body label strong { color: var(--ink); font-weight: 650; word-break: break-all; }
+.account-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.account-dialog-actions .danger-button { width: auto; margin: 0; }
+@media (max-width: 480px) {
+  .account-dialog-actions { flex-direction: column-reverse; }
+  .account-dialog-actions > * { width: 100%; }
+}
+
+.two-factor-setup { display: grid; grid-template-columns: auto 1fr; gap: 16px 20px; align-items: start; }
+.two-factor-qr { display: grid; place-items: center; width: 172px; height: 172px; padding: 10px; border-radius: var(--r-md); background: #ffffff; box-shadow: 0 0 0 1px var(--line); }
+.two-factor-qr svg { width: 100%; height: 100%; }
+.two-factor-secret { display: block; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; letter-spacing: .08em; word-break: break-all; user-select: all; }
+.two-factor-setup-fields { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.two-factor-setup-fields p { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; }
+.recovery-codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; margin: 0; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: var(--r-md); background: var(--surface-2); list-style: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: var(--ink); }
+@media (max-width: 560px) {
+  .two-factor-setup { grid-template-columns: 1fr; justify-items: center; }
+  .two-factor-setup-fields { width: 100%; }
+  .recovery-codes { grid-template-columns: 1fr; }
+}

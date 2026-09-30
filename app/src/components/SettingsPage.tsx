@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { DEFAULT_MODEL, getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
 import { clearCachedCodexAccount, codexBinaryAvailable, getCachedCodexAccount, logoutCodex, setCachedCodexAccount, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
 import type { AgentProvider } from "../types";
@@ -15,9 +15,12 @@ import { logger } from "../lib/logger";
 import { useHostedAiAvailable } from "../hooks/useHostedAi";
 import { localStore } from "../lib/localStore";
 import "./SettingsPage.css";
+import { SettingsRow, SettingsSection } from "./SettingsLayout";
+import { AccountSettings } from "./account/AccountSettings";
+import { SecuritySettings } from "./account/SecuritySettings";
 import { GameSettingsPanel } from "./game/GameSettingsPanel";
 
-export type SettingsTab = "general" | "profile" | "game" | "assistant" | "integrations" | "diagnostics" | "developer";
+export type SettingsTab = "general" | "profile" | "security" | "game" | "assistant" | "integrations" | "diagnostics" | "developer";
 
 type SettingsPageProps = {
   readonly user: SessionUser | null;
@@ -38,43 +41,6 @@ async function fetchLatestReleaseVersion(): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-/* ── Layout primitives: titled sections of bordered cards made of rows ── */
-
-function SettingsSection({ title, children, footer }: { readonly title: string; readonly children: ReactNode; readonly footer?: ReactNode }) {
-  const headingId = useId();
-  return (
-    <section className="settings-section" aria-labelledby={headingId}>
-      <h2 id={headingId} className="settings-section-title">{title}</h2>
-      <div className="settings-group">
-        {children}
-        {footer && <div className="settings-group-footer">{footer}</div>}
-      </div>
-    </section>
-  );
-}
-
-type SettingsRowProps = {
-  readonly label: ReactNode;
-  readonly description?: ReactNode;
-  /** Associates the label with a form control inside the row. */
-  readonly htmlFor?: string;
-  /** Control spans the full width under the text (long inputs, log viewers). */
-  readonly stacked?: boolean;
-  readonly children?: ReactNode;
-};
-
-function SettingsRow({ label, description, htmlFor, stacked = false, children }: SettingsRowProps) {
-  return (
-    <div className={`settings-row ${stacked ? "is-stacked" : ""}`}>
-      <div className="settings-row-text">
-        {htmlFor ? <label className="settings-row-label" htmlFor={htmlFor}>{label}</label> : <div className="settings-row-label">{label}</div>}
-        {description && <div className="settings-row-description">{description}</div>}
-      </div>
-      {children !== undefined && children !== null && children !== false && <div className="settings-row-control">{children}</div>}
-    </div>
-  );
 }
 
 /* ── General ── */
@@ -832,6 +798,7 @@ function IntegrationsSettings() {
 const TABS: ReadonlyArray<{ readonly id: SettingsTab; readonly icon: IconName; readonly devOnly?: boolean }> = [
   { id: "general", icon: "sliders" },
   { id: "profile", icon: "user" },
+  { id: "security", icon: "shield" },
   { id: "game", icon: "award" },
   { id: "assistant", icon: "sparkles" },
   { id: "integrations", icon: "code" },
@@ -887,7 +854,11 @@ export function SettingsPage({ user, onUserUpdated, initialTab }: SettingsPagePr
         </div>
         <div className="settings-panel" role="tabpanel" id={`settings-panel-${tab}`} aria-labelledby={`settings-tab-${tab}`}>
           {tab === "general" && <GeneralSettings />}
-          {tab === "profile" && <ProfileSettings user={user} onUserUpdated={onUserUpdated} />}
+          {tab === "profile" && <>
+            <ProfileSettings user={user} onUserUpdated={onUserUpdated} />
+            <AccountSettings user={user} />
+          </>}
+          {tab === "security" && <SecuritySettings user={user} onUserUpdated={onUserUpdated} />}
           {tab === "game" && <GameSettingsPanel />}
           {tab === "assistant" && <AssistantSettings />}
           {tab === "integrations" && <IntegrationsSettings />}

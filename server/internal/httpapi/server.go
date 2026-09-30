@@ -26,6 +26,7 @@ import (
 	"github.com/gh-Constant/prior/server/internal/auth"
 	"github.com/gh-Constant/prior/server/internal/billing"
 	"github.com/gh-Constant/prior/server/internal/config"
+	"github.com/gh-Constant/prior/server/internal/mailer"
 	"github.com/gh-Constant/prior/server/internal/store"
 	"github.com/gh-Constant/prior/server/internal/tasks"
 	"github.com/gh-Constant/prior/server/internal/workspace"
@@ -55,6 +56,13 @@ type Server struct {
 	openRouterCompletionsURL string
 	completionClient         *http.Client
 	hostedUsage              *hostedUsage
+	// mail sends account emails (mailer.Recorder in tests).
+	mail mailer.Sender
+	// accountLimiter guards account-level operations (delete, export, 2FA
+	// changes, verification resend) per token.
+	accountLimiter *rateLimiter
+	// now is overridable in tests (TOTP windows).
+	now func() time.Time
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool) *Server {
@@ -84,6 +92,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) *Server {
 		completionClient:       &http.Client{Timeout: 60 * time.Second},
 		hostedUsage:            newHostedUsage(cfg.HostedAI.DailyRequestsPerUser),
 		stripe:                 billing.NewStripe(cfg.Billing.StripeSecretKey, nil),
+		mail:                   mailer.New(mailer.Config{APIKey: cfg.ResendAPIKey, From: cfg.EmailFrom, Production: cfg.Production()}),
+		accountLimiter:         newRateLimiter(20, 10*time.Minute),
+		now:                    time.Now,
 	}
 }
 
@@ -114,6 +125,9 @@ func (s *Server) CleanupLoop(ctx context.Context) {
 			}
 			if time.Since(lastRetention) >= 24*time.Hour {
 				retentionCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				if err := s.store.CleanupAuthArtifacts(retentionCtx); err != nil {
+					slog.Warn("auth token cleanup failed", "error", err)
+				}
 				if err := s.store.CleanupRetention(retentionCtx, s.cfg.RetentionMutationsDays, s.cfg.RetentionSessionsDays); err != nil {
 					slog.Warn("retention cleanup failed", "error", err)
 				} else {
@@ -128,7 +142,7 @@ func (s *Server) CleanupLoop(ctx context.Context) {
 }
 
 func (s *Server) sweepLimiters() {
-	for _, limiter := range []*rateLimiter{s.limiter, s.pushLimiter, s.pullLimiter, s.workspaceLimiter, s.transcribeLimiter, s.agentLimiter, s.settingsLimiter, s.mcpLimiter} {
+	for _, limiter := range []*rateLimiter{s.limiter, s.pushLimiter, s.pullLimiter, s.workspaceLimiter, s.transcribeLimiter, s.agentLimiter, s.settingsLimiter, s.mcpLimiter, s.accountLimiter} {
 		if limiter != nil {
 			limiter.sweep()
 		}
@@ -150,6 +164,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/password/change", s.changePassword)
 	mux.HandleFunc("GET /v1/me", s.me)
 	mux.HandleFunc("PATCH /v1/me", s.updateMe)
+	mux.HandleFunc("DELETE /v1/me", s.deleteMe)
+	mux.HandleFunc("GET /v1/me/export", s.exportMe)
+	mux.HandleFunc("POST /v1/auth/password/forgot", s.forgotPassword)
+	mux.HandleFunc("POST /v1/auth/password/reset", s.resetPassword)
+	mux.HandleFunc("POST /v1/auth/email/verify", s.verifyEmail)
+	mux.HandleFunc("POST /v1/auth/email/verify/resend", s.resendVerification)
+	mux.HandleFunc("GET /v1/auth/2fa", s.twoFactorStatus)
+	mux.HandleFunc("POST /v1/auth/2fa/setup", s.twoFactorSetup)
+	mux.HandleFunc("POST /v1/auth/2fa/enable", s.twoFactorEnable)
+	mux.HandleFunc("POST /v1/auth/2fa/disable", s.twoFactorDisable)
+	mux.HandleFunc("POST /v1/auth/2fa/recovery-codes", s.twoFactorRecoveryCodes)
+	mux.HandleFunc("POST /v1/auth/2fa/verify", s.twoFactorVerify)
 	mux.HandleFunc("POST /transcribe", s.transcribe)
 	mux.HandleFunc("GET /v1/settings", s.getSettings)
 	mux.HandleFunc("POST /v1/settings", s.saveSettings)
@@ -598,6 +624,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		DisplayName string `json:"displayName"`
 		Device      string `json:"device"`
 		Platform    string `json:"platform"`
+		Language    string `json:"language"`
 	}
 	if err := decodeJSONStrict(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid registration request"))
@@ -617,7 +644,13 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, status, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"token": token, "user": user})
+	language := mailer.NormalizeLanguage(body.Language)
+	_ = s.store.SetUserLocale(r.Context(), user.ID, language)
+	// A failed email never fails the registration: the app offers a resend.
+	if err := s.sendVerificationEmail(r.Context(), user, language); err != nil {
+		slog.Warn("verification email failed", "user_id_hash", userIDHash(user.ID), "error", err)
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"token": token, "user": s.meView(r.Context(), user)})
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -631,6 +664,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		Device   string `json:"device"`
 		Platform string `json:"platform"`
+		Language string `json:"language"`
 	}
 	if err := decodeJSONStrict(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, errors.New("invalid login request"))
@@ -641,7 +675,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	token, user, err := s.auth.Login(r.Context(), body.Email, body.Password, device, platform)
+	user, err := s.auth.CheckPassword(r.Context(), body.Email, body.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			writeUnauthorized(w, err)
@@ -650,7 +684,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
+	if body.Language != "" {
+		_ = s.store.SetUserLocale(r.Context(), user.ID, mailer.NormalizeLanguage(body.Language))
+	}
+	s.finishSignIn(w, r, user, device, platform)
 }
 
 func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
@@ -664,12 +701,12 @@ func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	token, user, err := s.auth.Exchange(r.Context(), body.Code, device, platform)
+	user, err := s.auth.ExchangeUser(body.Code)
 	if err != nil {
 		writeUnauthorized(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
+	s.finishSignIn(w, r, user, device, platform)
 }
 
 func (s *Server) googleNative(w http.ResponseWriter, r *http.Request) {
@@ -692,12 +729,12 @@ func (s *Server) googleNative(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	token, user, err := s.auth.VerifyNativeIDToken(r.Context(), body.IDToken, device, platform)
+	user, err := s.auth.NativeIdentity(r.Context(), body.IDToken)
 	if err != nil {
 		writeUnauthorized(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
+	s.finishSignIn(w, r, user, device, platform)
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -768,7 +805,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		writeUnauthorized(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, user)
+	writeJSON(w, http.StatusOK, s.meView(r.Context(), user))
 }
 
 func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {

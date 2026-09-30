@@ -1,3 +1,4 @@
+import { account } from "./account";
 import { agent } from "./agent";
 import { auth } from "./auth";
 import { billing } from "./billing";
@@ -12,6 +13,6 @@ import { progress } from "./progress";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 
-export const en = { agent, auth, billing, collab, common, game, habits, mail, notes, onboarding, progress, settings, tasks };
+export const en = { account, agent, auth, billing, collab, common, game, habits, mail, notes, onboarding, progress, settings, tasks };
 
 export type AppDictionary = typeof en;

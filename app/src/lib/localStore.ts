@@ -653,6 +653,21 @@ export const localStore = {
     mergeRemoteHabitsLocally(pendingHabitIds, normalizedHabits);
   },
 
+  /**
+   * Removes every local task, habit, pending mutation and sync cursor of an
+   * account (after the account is deleted). localStorage copies are removed
+   * by wipeAccountLocalData together with the other scoped collections.
+   */
+  async wipeAccount(accountId: string): Promise<void> {
+    const db = await getSqlDatabase();
+    if (!db) return;
+    await withDbLock(async () => {
+      for (const table of ["tasks", "habits", "outbox", "sync_state"]) {
+        await db.execute(`DELETE FROM ${table} WHERE account_id = ?`, [accountId]);
+      }
+    });
+  },
+
   async resetSyncRevision(): Promise<void> {
     const db = await getSqlDatabase();
     if (db) {

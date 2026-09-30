@@ -76,6 +76,7 @@ paths:
   /v1/me:
     get:
       summary: Current profile
+      description: The user plus account flags (emailVerified, emailVerifiedAt, hasPassword, googleLinked, twoFactorEnabled, locale, createdAt). Never a secret.
       responses:
         '200':
           description: user
@@ -85,6 +86,192 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Unauthenticated'
+    delete:
+      summary: Delete the account and its data (specs/ACCOUNT.md)
+      description: >
+        Re-authentication is required: `email` must match the account; password accounts send
+        `password`; Google-only accounts need a session that signed in less than 10 minutes ago;
+        accounts with 2FA also send `code` (TOTP) or `recoveryCode`. Any active Stripe subscription is
+        canceled first. Shared projects the user owns move to the oldest editor (else the oldest member);
+        projects without another member are deleted. Rate-limited per token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reauth'
+      responses:
+        '204':
+          description: deleted; every session is revoked
+        '400':
+          description: EMAIL_MISMATCH, INVALID_CODE or invalid body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodedError'
+        '403':
+          description: INVALID_PASSWORD, REAUTH_REQUIRED or TWO_FACTOR_REQUIRED
+        '429':
+          description: TWO_FACTOR_LOCKED or RATE_LIMITED
+        '502':
+          description: BILLING_CANCEL_FAILED (nothing was deleted)
+  /v1/me/export:
+    get:
+      summary: Download the account's data as a zip
+      description: >
+        profile.json, tasks.json, tasks.csv, habits.json, areas.json, projects.json (personal and shared;
+        other members by display name and role only), notes.json, attachments/, settings.json (no keys),
+        assistant-chats.json, game.json, README.txt. Never password hashes, tokens, API keys or OAuth tokens.
+        Rate-limited per token.
+      responses:
+        '200':
+          description: application/zip attachment
+        '401':
+          description: unauthenticated
+  /v1/auth/password/forgot:
+    post:
+      summary: Email a password reset link
+      description: Always 202, whether or not the account exists. Links expire after 30 minutes. At most one email a minute and five an hour per account; auth rate limit per IP.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                language: { type: string, enum: [en, fr, de, es, pt] }
+      responses:
+        '202':
+          description: accepted
+  /v1/auth/password/reset:
+    post:
+      summary: Set a new password with a reset token
+      description: Single-use token; success revokes every session (MCP keys included) and verifies the email.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 8, maxLength: 128 }
+      responses:
+        '204':
+          description: password changed
+        '400':
+          description: TOKEN_INVALID or INVALID_PASSWORD
+  /v1/auth/email/verify:
+    post:
+      summary: Confirm an email address with a verification token (24 h, single-use)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: '{"verified": true}'
+        '400':
+          description: TOKEN_INVALID
+  /v1/auth/email/verify/resend:
+    post:
+      summary: Send the verification email again
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                language: { type: string }
+      responses:
+        '202':
+          description: sent
+        '200':
+          description: '{"alreadyVerified": true}'
+        '429':
+          description: RATE_LIMITED (one a minute, five an hour)
+        '502':
+          description: the email provider refused the message
+  /v1/auth/login:
+    post:
+      summary: Password sign-in
+      description: >
+        Returns `{token, user}`, or `{twoFactorRequired: true, challenge, expiresAt}` when 2FA is on.
+        POST /v1/auth/exchange and POST /v1/auth/google/native answer the same way.
+      responses:
+        '200':
+          description: session or 2FA challenge
+        '401':
+          description: invalid credentials
+  /v1/auth/2fa:
+    get:
+      summary: Two-factor status
+      responses:
+        '200':
+          description: '{"enabled": bool, "available": bool, "recoveryCodesLeft": int}'
+  /v1/auth/2fa/setup:
+    post:
+      summary: Start TOTP setup
+      description: Returns `{secret, otpauthUrl}`; the secret is stored sealed (AES-256-GCM, TOTP_ENCRYPTION_KEY) until confirmed.
+      responses:
+        '200':
+          description: secret and otpauth URI
+        '409':
+          description: TWO_FACTOR_ENABLED
+        '503':
+          description: TWO_FACTOR_UNAVAILABLE (no TOTP_ENCRYPTION_KEY)
+  /v1/auth/2fa/enable:
+    post:
+      summary: Confirm setup with a 6-digit code
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: '{"recoveryCodes": [10 single-use codes]} shown once'
+        '400':
+          description: INVALID_CODE or TWO_FACTOR_NOT_STARTED
+  /v1/auth/2fa/disable:
+    post:
+      summary: Turn 2FA off (re-authentication plus a code)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reauth'
+      responses:
+        '204':
+          description: disabled
+        '403':
+          description: INVALID_PASSWORD, REAUTH_REQUIRED or TWO_FACTOR_REQUIRED
+  /v1/auth/2fa/recovery-codes:
+    post:
+      summary: Replace the recovery codes (needs a current TOTP code)
+      responses:
+        '200':
+          description: '{"recoveryCodes": [...]}'
+  /v1/auth/2fa/verify:
+    post:
+      summary: Finish a 2FA sign-in
+      description: >
+        `{challenge, code}` or `{challenge, recoveryCode}`. Accepts the current step ±1; a used step is refused.
+        A challenge lives 5 minutes and allows 5 attempts; 10 consecutive failures lock verification for 15 minutes.
+      responses:
+        '200':
+          description: '{token, user}'
+        '400':
+          description: INVALID_CODE or CHALLENGE_EXPIRED
+        '429':
+          description: TWO_FACTOR_LOCKED
   /v1/settings:
     get:
       summary: Per-user assistant settings
@@ -346,6 +533,18 @@ paths:
           description: not allowed
 components:
   schemas:
+    CodedError:
+      type: object
+      properties:
+        code: { type: string }
+        error: { type: string }
+    Reauth:
+      type: object
+      properties:
+        email: { type: string, description: 'DELETE /v1/me only: must equal the account email' }
+        password: { type: string }
+        code: { type: string, description: 6-digit TOTP code }
+        recoveryCode: { type: string }
     Unauthenticated:
       type: object
       required: [code]

@@ -1,6 +1,6 @@
 # Authentication
 
-Prior supports email/password authentication and Google OAuth. Passwords are hashed with bcrypt and are never returned by the API. `POST /v1/auth/register` creates an account and session; `POST /v1/auth/login` validates the credentials and creates a session. Email addresses are normalized to lowercase and are unique. Passwords must contain 8–128 characters.
+Prior supports email/password authentication and Google OAuth, with optional TOTP two-factor authentication. Passwords are hashed with bcrypt and are never returned by the API. `POST /v1/auth/register` creates an account and session; `POST /v1/auth/login` validates the credentials and creates a session. Email addresses are normalized to lowercase and are unique. Passwords must contain 8–128 characters.
 
 Google OAuth runs in the system browser. The API owns the callback and asks only for `openid email profile`. It validates the authorization code exchange, issuer, audience, expiry, `sub`, verified email, and the OIDC nonce. A random state value and PKCE verifier are stored server-side with a short expiry. The callback creates a short-lived one-time Prior exchange code, never a long-lived session token in a URL.
 
@@ -23,3 +23,15 @@ Because browser `localStorage` is more exposed than the keychain, prefer a short
 `GET /v1/sessions` lists active sessions (the current one flagged), `DELETE /v1/sessions/{id}` revokes one, and `DELETE /v1/sessions` revokes all ("sign out everywhere"); live realtime sockets observe revocation within a minute and close with code `4401`. Every `401` response carries `{"code":"UNAUTHENTICATED","error":...}` for the client's central session handling.
 
 Long-term direction is a backend-for-frontend: `POST /v1/agent/complete` proxies OpenRouter with the user's stored key (allowlisted models only, email redaction, budget logging). The client-direct OpenRouter path remains as fallback.
+
+## Two-factor authentication (TOTP)
+
+RFC 6238 (`server/internal/totp`): HMAC-SHA1, 30-second steps, 6 digits, the current step ±1 accepted.
+
+- **Setup** (Settings → Security, `SecuritySettings`): `POST /v1/auth/2fa/setup` returns a new 160-bit secret and its `otpauth://` URI, shown as a QR code (`qrcode-generator`, drawn as SVG on a white card so it scans in both themes) and as a grouped key. The secret is stored sealed with AES-256-GCM under `TOTP_ENCRYPTION_KEY` (32 bytes, hex); without that key setup answers `503 TWO_FACTOR_UNAVAILABLE`. `POST /v1/auth/2fa/enable {code}` confirms a code and returns 10 recovery codes (`xxxxx-xxxxx`, stored as SHA-256, shown once, downloadable or copyable).
+- **Sign-in:** when 2FA is on, `POST /v1/auth/login`, `/v1/auth/exchange` and `/v1/auth/google/native` return `{twoFactorRequired, challenge, expiresAt}` instead of a session. The challenge (hashed, 5 minutes, 5 attempts) is redeemed by `POST /v1/auth/2fa/verify {challenge, code | recoveryCode}`, which mints the session with the original device and platform. The client (`TwoFactorStep` in `SignInPanel`) receives the challenge from any flow through `TWO_FACTOR_CHALLENGE_EVENT`, including a Google return that lands before the sign-in screen mounts.
+- **Replay and lockout:** the last accepted step is stored and only a later step is accepted (a conditional update, so two racing requests cannot both use a code). Ten consecutive failures lock verification for 15 minutes (`429 TWO_FACTOR_LOCKED`), on top of the per-IP auth limiter.
+- **Disable / new recovery codes:** `POST /v1/auth/2fa/disable` needs re-authentication (the password, or for Google-only accounts a sign-in less than 10 minutes old) plus a code; `POST /v1/auth/2fa/recovery-codes` needs a current TOTP code.
+- MCP bearer tokens are unaffected: they are sessions minted after sign-in and never pass through the challenge.
+
+Password reset, email verification, account deletion and export are described in `ACCOUNT.md`.

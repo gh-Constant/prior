@@ -9,7 +9,7 @@ import { GameSidebarWidget } from "./components/game/GameSidebarWidget";
 import { REPLAY_ONBOARDING_EVENT } from "./components/game/GameSettingsPanel";
 import { OnboardingFlow } from "./components/game/onboarding/OnboardingFlow";
 import { ChestDialog, ProgressView } from "./components/game/progress";
-import { AUTH_REQUIRED_EVENT, clearSession, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, type SessionUser } from "./lib/auth";
+import { AUTH_REQUIRED_EVENT, TWO_FACTOR_CHALLENGE_EVENT, clearSession, sessionUserChanged, getToken, getUser, handleAuthError, isAndroidTauri, listenForAuth, saveUser, startGoogleLogin, startNativeGoogleLogin, CHALLENGE_PENDING, type SessionUser } from "./lib/auth";
 import { useI18n } from "./lib/i18n";
 import { localStore } from "./lib/localStore";
 import { getAccountId } from "./lib/accountScope";
@@ -26,6 +26,10 @@ import { TaskColumns } from "./components/TaskColumns";
 import { AllTasksView } from "./components/AllTasksView";
 import { AccountDialog } from "./components/AccountDialog";
 import { AuthGate } from "./components/AuthGate";
+import { AccountLinkPage, parseAccountLinkRoute, type AccountLinkRoute } from "./components/account/AccountLinkPage";
+import { VerifyEmailBanner } from "./components/account/VerifyEmailBanner";
+import { ACCOUNT_DELETED_EVENT } from "./components/account/DeleteAccountDialog";
+import { wipeAccountLocalData } from "./lib/accountData";
 import { defaultTaskFilters, type TaskFilterState } from "./lib/taskFilters";
 import { TaskFilters } from "./components/TaskFilters";
 import { AgentSidebar } from "./components/AgentSidebar";
@@ -195,6 +199,8 @@ export function App() {
   const { t, tp } = useI18n();
   const productionAuthRequired = import.meta.env.DEV !== true;
   const [authReady, setAuthReady] = useState(!productionAuthRequired);
+  // Emailed links (/reset-password, /verify-email) open a standalone page.
+  const [accountLink, setAccountLink] = useState<AccountLinkRoute | null>(() => (typeof window !== "undefined" && !isTauri() ? parseAccountLinkRoute(window.location) : null));
   const [tasks, setTasks] = useState<Task[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [areas, setAreas] = useState<Area[]>(() => workspaceStore.listAreas());
@@ -448,7 +454,7 @@ export function App() {
           const profile = await api.getProfile(token);
           if (generation !== sessionGeneration.current) return;
           const currentUser = getUser();
-          if (!currentUser || currentUser.displayName !== profile.displayName || currentUser.email !== profile.email || currentUser.avatarUrl !== profile.avatarUrl) {
+          if (!currentUser || sessionUserChanged(currentUser, profile)) {
             saveUser(profile);
             setUser(profile);
           }
@@ -1421,6 +1427,44 @@ export function App() {
     };
   }, [editingTask, newTaskContext, composerProjectId, user, projects, t]);
 
+  // After DELETE /v1/me: wipe everything the account left on this device,
+  // then return to the sign-in screen.
+  useEffect(() => {
+    const onDeleted = (event: Event) => {
+      const accountId = (event as CustomEvent<{ accountId?: string }>).detail?.accountId ?? getAccountId();
+      void (async () => {
+        sessionGeneration.current += 1;
+        realtimeGeneration.current += 1;
+        const close = realtimeClose.current;
+        realtimeClose.current = undefined;
+        void close?.().catch(() => undefined);
+        setIncomingInvites([]);
+        await wipeAccountLocalData(accountId);
+        await clearSession().catch((error) => console.warn("Prior could not clear the saved session:", error));
+        setUser(null);
+        setSelectedProjectId(null);
+        setNotesProjectId(null);
+        setTasks([]);
+        setHabits([]);
+        refreshWorkspace();
+        setActiveView("today");
+        setToast(t("account.danger.deleted"));
+        await refresh().catch(() => undefined);
+      })();
+    };
+    const onChallenge = () => setAuthOpen(true);
+    const onVerified = () => { void syncNow(); };
+    window.addEventListener(ACCOUNT_DELETED_EVENT, onDeleted);
+    window.addEventListener(TWO_FACTOR_CHALLENGE_EVENT, onChallenge);
+    window.addEventListener("prior-email-verified", onVerified);
+    return () => {
+      window.removeEventListener(ACCOUNT_DELETED_EVENT, onDeleted);
+      window.removeEventListener(TWO_FACTOR_CHALLENGE_EVENT, onChallenge);
+      window.removeEventListener("prior-email-verified", onVerified);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncNow]);
+
   async function logout() {
     const token = await getToken().catch(() => null);
     sessionGeneration.current += 1;
@@ -1573,6 +1617,11 @@ export function App() {
       if (isAndroidTauri()) {
         try {
           const nativeUser = await startNativeGoogleLogin();
+          // A 2FA code step took over the sign-in surface.
+          if (nativeUser === CHALLENGE_PENDING) {
+            setAuthOpen(true);
+            return;
+          }
           if (nativeUser) {
             handleAuthenticated(nativeUser);
             return;
@@ -1593,6 +1642,10 @@ export function App() {
   }
 
   const effectsIntensity = game.enabled && game.profile ? game.profile.effects : "off";
+
+  if (accountLink) {
+    return <AccountLinkPage route={accountLink} onDone={() => setAccountLink(null)} />;
+  }
 
   if (productionAuthRequired && !authReady) {
     return <main className="auth-required-page auth-required-loading" aria-live="polite">{t("common.actions.loading")}</main>;
@@ -1657,6 +1710,7 @@ export function App() {
 
       <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || mobileMoreOpen}>
         <MobileTopBar view={activeView} title={viewTitle(activeView, t)} agentOpen={agentOpen} onAgent={() => setAgentOpen((value) => !value)} />
+        <VerifyEmailBanner key={user?.id ?? "anonymous"} user={user} />
         <WorkspaceHeader
           activeView={activeView}
           layout={layout}

@@ -46,6 +46,15 @@ type Config struct {
 	HostedAI HostedAIConfig
 	// Billing is Stripe plus the admin allowlist.
 	Billing BillingConfig
+	// Transactional email through Resend (password reset, verification).
+	// An empty key logs links in development and sends nothing in production.
+	ResendAPIKey string
+	EmailFrom    string
+	// Web app origin used in emailed links (/reset-password, /verify-email).
+	WebAppURL string
+	// Hex-encoded 32-byte AES-256-GCM key sealing TOTP secrets. 2FA cannot be
+	// turned on while it is empty.
+	TOTPEncryptionKey string
 }
 
 // BillingConfig holds Stripe settings. Keys only ever come from the
@@ -159,6 +168,10 @@ func Load() Config {
 		RetentionSessionsDays:  getenvInt("RETENTION_SESSIONS_DAYS", 30),
 		TrustProxy:             getenv("TRUST_PROXY", "true") == "true",
 		HostedAI:               loadHostedAI(),
+		ResendAPIKey:           os.Getenv("RESEND_API_KEY"),
+		EmailFrom:              getenv("EMAIL_FROM", "Prior <no-reply@prior.constantsuchet.fr>"),
+		WebAppURL:              strings.TrimRight(getenv("WEB_APP_URL", "https://app.prior.constantsuchet.fr"), "/"),
+		TOTPEncryptionKey:      os.Getenv("TOTP_ENCRYPTION_KEY"),
 		Billing: BillingConfig{
 			StripeSecretKey:      os.Getenv("STRIPE_SECRET_KEY"),
 			StripePublishableKey: os.Getenv("STRIPE_PUBLISHABLE_KEY"),

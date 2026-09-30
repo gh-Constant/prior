@@ -83,3 +83,15 @@ func (s *Server) listenOnce(ctx context.Context) error {
 		s.hub.broadcast(userID, realtimeEvent{Type: event.Type, Revision: event.Revision})
 	}
 }
+
+// closeUser ends every live socket of an account whose sessions just ended
+// (password reset, account deletion), without waiting for the minute check.
+func (h *hub) closeUser(userID uuid.UUID) {
+	h.mu.Lock()
+	connections := h.clients[userID]
+	delete(h.clients, userID)
+	h.mu.Unlock()
+	for _, connection := range connections {
+		connection.Close(4401, "session revoked")
+	}
+}

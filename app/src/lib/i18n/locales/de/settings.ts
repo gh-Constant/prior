@@ -9,6 +9,7 @@ export const settings = {
   tabs: {
     general: "Allgemein",
     profile: "Profil & Konto",
+    security: "Sicherheit",
     game: "Spiel",
     assistant: "Prior Agent",
     diagnostics: "Diagnose",

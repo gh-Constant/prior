@@ -721,6 +721,7 @@ func (s *Store) UpsertUser(ctx context.Context, googleSub, email string, verifie
 	}
 	err = tx.QueryRow(ctx, `
 		UPDATE users SET google_sub = $1, email = $2, email_verified = $3, display_name = $4, avatar_url = $5,
+		email_verified_at = CASE WHEN $3 THEN COALESCE(email_verified_at, now()) ELSE email_verified_at END,
 		updated_at = now(), last_login_at = now(),
 		profile_revision = nextval('server_revision_seq')
 		WHERE id = $6
@@ -756,8 +757,8 @@ func upsertInsertUser(ctx context.Context, tx pgx.Tx, user *User, googleSub, ema
 		displayName = strings.Split(email, "@")[0]
 	}
 	err := tx.QueryRow(ctx, `
-		INSERT INTO users (google_sub, email, email_verified, display_name, avatar_url, last_login_at, profile_revision)
-		VALUES ($1, $2, $3, $4, $5, now(), nextval('server_revision_seq'))
+		INSERT INTO users (google_sub, email, email_verified, display_name, avatar_url, last_login_at, profile_revision, email_verified_at)
+		VALUES ($1, $2, $3, $4, $5, now(), nextval('server_revision_seq'), CASE WHEN $3 THEN now() END)
 		RETURNING id, email, email_verified, display_name, avatar_url`, googleSub, email, verified, displayName, avatarURL).
 		Scan(&user.ID, &user.Email, &user.EmailVerified, &user.DisplayName, &user.AvatarURL)
 	if err != nil {

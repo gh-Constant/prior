@@ -3,6 +3,9 @@ import type { SessionUser } from "../lib/auth";
 import { signInWithPassword, signUpWithPassword } from "../lib/auth";
 import { useI18n, type Translator } from "../lib/i18n";
 import { Icon } from "./Icon";
+import { ForgotPasswordForm } from "./account/ForgotPasswordForm";
+import { TwoFactorStep, useTwoFactorChallenge } from "./account/TwoFactorStep";
+import "./account/Account.css";
 
 export type AuthMode = "signin" | "signup";
 
@@ -11,10 +14,11 @@ function submitLabelFor(t: Translator["t"], busy: boolean, mode: AuthMode): stri
   return mode === "signin" ? t("auth.tabs.signin") : t("auth.tabs.signup");
 }
 
-function AuthForm({ mode, authError, onAuthenticated }: {
+function AuthForm({ mode, authError, onAuthenticated, onForgot }: {
   readonly mode: AuthMode;
   readonly authError?: string;
   readonly onAuthenticated: (user: SessionUser) => void;
+  readonly onForgot: (email: string) => void;
 }) {
   const { t } = useI18n();
   const [name, setName] = useState("");
@@ -30,7 +34,8 @@ function AuthForm({ mode, authError, onAuthenticated }: {
       const nextUser = mode === "signup"
         ? await signUpWithPassword(email, password, name)
         : await signInWithPassword(email, password);
-      onAuthenticated(nextUser);
+      // null: two-step verification takes over (useTwoFactorChallenge).
+      if (nextUser) onAuthenticated(nextUser);
     } catch (error_) {
       setError(error_ instanceof Error ? error_.message : t("auth.form.failed"));
     } finally {
@@ -46,6 +51,7 @@ function AuthForm({ mode, authError, onAuthenticated }: {
       <label><span>{t("auth.form.password")}</span><div className="field"><Icon name="lock" /><input type="password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "signup" ? "new-password" : "current-password"} placeholder={t("auth.form.passwordPlaceholder")} /></div></label>
       {(error || authError) && <p className="auth-error" role="alert">{error || authError}</p>}
       <button className="primary-button auth-submit" type="submit" disabled={busy}>{submitLabel}</button>
+      {mode === "signin" && <div className="auth-link-row"><button type="button" className="link-button" onClick={() => onForgot(email)}>{t("account.forgot.link")}</button></div>}
     </form>
   );
 }
@@ -58,13 +64,21 @@ export function SignInPanel({ mode, onModeChange, authError, onAuthenticated, on
   readonly onGoogle: () => void;
 }) {
   const { t } = useI18n();
+  const [challenge, clearChallenge] = useTwoFactorChallenge();
+  const [forgotEmail, setForgotEmail] = useState<string | null>(null);
+  if (challenge) {
+    return <TwoFactorStep challenge={challenge} onAuthenticated={(user) => { clearChallenge(); onAuthenticated(user); }} onCancel={clearChallenge} />;
+  }
+  if (forgotEmail !== null) {
+    return <ForgotPasswordForm initialEmail={forgotEmail} onBack={() => setForgotEmail(null)} />;
+  }
   return (
     <>
       <div className="auth-tabs" role="tablist" aria-label={t("auth.tabs.accessLabel")}>
         <button className={mode === "signin" ? "active" : ""} type="button" role="tab" aria-selected={mode === "signin"} onClick={() => onModeChange("signin")}>{t("auth.tabs.signin")}</button>
         <button className={mode === "signup" ? "active" : ""} type="button" role="tab" aria-selected={mode === "signup"} onClick={() => onModeChange("signup")}>{t("auth.tabs.signup")}</button>
       </div>
-      <AuthForm key={mode} mode={mode} authError={authError} onAuthenticated={onAuthenticated} />
+      <AuthForm key={mode} mode={mode} authError={authError} onAuthenticated={onAuthenticated} onForgot={setForgotEmail} />
       <div className="auth-divider"><span>{t("auth.divider.or")}</span></div>
       <button className="google-button" type="button" onClick={onGoogle}><Icon name="google" /> {t("auth.google.continue")}</button>
     </>

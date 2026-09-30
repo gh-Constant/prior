@@ -75,11 +75,42 @@ function isNetworkFailure(error: unknown): boolean {
   return error instanceof TypeError || (error instanceof Error && /load failed|failed to fetch|networkerror|network request failed/i.test(error.message));
 }
 
-type ExchangeResponse = { token: string; user: { id: string; email: string; displayName: string; avatarUrl?: string } };
+/** The account as GET /v1/me returns it (never a secret). */
+export type AccountUser = {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl?: string;
+  emailVerified?: boolean;
+  emailVerifiedAt?: string;
+  hasPassword?: boolean;
+  googleLinked?: boolean;
+  twoFactorEnabled?: boolean;
+  locale?: string;
+  createdAt?: string;
+};
+type ExchangeResponse = { token: string; user: AccountUser };
+/** Sign-in answers with a session, or a 2FA challenge when 2FA is on. */
+export type SignInResponse = ExchangeResponse | { twoFactorRequired: true; challenge: string; expiresAt: string };
+export function isTwoFactorChallenge(response: SignInResponse): response is { twoFactorRequired: true; challenge: string; expiresAt: string } {
+  return "twoFactorRequired" in response && response.twoFactorRequired === true;
+}
+/** A refused request with a stable machine code (INVALID_PASSWORD, REAUTH_REQUIRED…). */
+export class ApiCodeError extends Error {
+  constructor(message: string, public readonly code: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiCodeError";
+  }
+}
+export function apiErrorCode(error: unknown): string | undefined {
+  return error instanceof ApiCodeError ? error.code : undefined;
+}
+export type TwoFactorStatus = { enabled: boolean; available: boolean; recoveryCodesLeft: number };
+export type ReauthInput = { email?: string; password?: string; code?: string; recoveryCode?: string };
 type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }>; results?: Array<{ mutationId: string; ok: boolean; revision?: number; entity?: string; task?: Task; habit?: Habit; error?: { code: string; message: string } }> };
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number; nextSince?: number; hasMore?: boolean; workspaceRevision?: number; profile?: { displayName: string; profileRevision: number; updatedAt: string } };
 export type ServerSettings = { openrouterApiKey: string; recommendationOpenrouterApiKey?: string; openaiApiKey: string; webSearch: boolean; initialized?: boolean };
-export type ProfileUser = { id: string; email: string; displayName: string; avatarUrl?: string };
+export type ProfileUser = AccountUser;
 export type CollaborationMember = { userId: string; email: string; displayName: string; avatarUrl?: string; role: "owner" | "editor" | "viewer"; status: "active" | "revoked"; createdAt: string };
 export type CollaborationInvite = { id: string; email: string; role: "editor" | "viewer"; expiresAt: string; inviteToken?: string; projectId: string };
 /** A pending invite addressed to the signed-in account. */
@@ -125,8 +156,15 @@ async function requestOnce<T>(url: string, path: string, init: RequestInit, toke
       const message = body.error ?? `Prior API returned ${response.status}`;
       if (response.status === 401) throw new ApiAuthError(message);
       if (response.status === 402 && body.code === "PLAN_LIMIT") throw new PlanLimitError(message, body.limit === "projects" ? "projects" : "members");
-      if (response.status === 429) throw new ApiRequestError("rate_limited", message, response.status);
-      if (response.status >= 500) throw new ApiRequestError("server", message, response.status);
+      if (response.status === 429) {
+        if (body.code === "TWO_FACTOR_LOCKED") throw new ApiCodeError(message, body.code, response.status);
+        throw new ApiRequestError("rate_limited", message, response.status);
+      }
+      if (response.status >= 500) {
+        if (body.code === "BILLING_CANCEL_FAILED" || body.code === "TWO_FACTOR_UNAVAILABLE") throw new ApiCodeError(message, body.code, response.status);
+        throw new ApiRequestError("server", message, response.status);
+      }
+      if (body.code) throw new ApiCodeError(message, body.code, response.status);
       throw new Error(message);
     }
     if (response.status === 204) return undefined as T;
@@ -234,18 +272,79 @@ export type AdminUser = {
   adminPlan?: PlanId; revenueCents: number; aiCost30dMicros: number; agentTokensMonth: number; aiRequests30d: number; tasks: number; sharedProjects: number;
 };
 
+/** Downloads an authenticated binary response (the data export). */
+async function requestBlob(path: string, token: string, timeoutMs = 120_000): Promise<{ blob: Blob; filename: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${API_URL}${path}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string; code?: string };
+      const message = body.error ?? `Prior API returned ${response.status}`;
+      if (response.status === 401) throw new ApiAuthError(message);
+      if (response.status === 429) throw new ApiRequestError("rate_limited", message, response.status);
+      throw new Error(message);
+    }
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "prior-export.zip";
+    return { blob: await response.blob(), filename };
+  } catch (error) {
+    if (controller.signal.aborted) throw new ApiRequestError("timeout", "Prior API request timed out. Check your connection and try again.");
+    if (isNetworkFailure(error)) throw new ApiRequestError("network", "Prior could not reach the server. Check your connection and try again.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export const api = {
-  register(email: string, password: string, displayName: string): Promise<ExchangeResponse> {
-    return request<ExchangeResponse>("/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName, device: "Prior", platform: "web" }) });
+  register(email: string, password: string, displayName: string, language?: string): Promise<ExchangeResponse> {
+    return request<ExchangeResponse>("/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName, device: "Prior", platform: "web", language }) });
   },
-  login(email: string, password: string): Promise<ExchangeResponse> {
-    return request<ExchangeResponse>("/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password, device: "Prior", platform: "web" }) });
+  login(email: string, password: string, language?: string): Promise<SignInResponse> {
+    return request<SignInResponse>("/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password, device: "Prior", platform: "web", language }) });
   },
-  async exchange(code: string): Promise<ExchangeResponse> {
+  verifyTwoFactor(challenge: string, input: { code?: string; recoveryCode?: string }): Promise<ExchangeResponse> {
+    return request<ExchangeResponse>("/v1/auth/2fa/verify", { method: "POST", body: JSON.stringify({ challenge, ...input }) });
+  },
+  forgotPassword(email: string, language: string): Promise<void> {
+    return request<void>("/v1/auth/password/forgot", { method: "POST", body: JSON.stringify({ email, language }) });
+  },
+  resetPassword(resetToken: string, password: string): Promise<void> {
+    return request<void>("/v1/auth/password/reset", { method: "POST", body: JSON.stringify({ token: resetToken, password }) });
+  },
+  verifyEmail(verifyToken: string): Promise<{ verified: boolean }> {
+    return request<{ verified: boolean }>("/v1/auth/email/verify", { method: "POST", body: JSON.stringify({ token: verifyToken }) });
+  },
+  resendVerification(language: string, token: string): Promise<{ alreadyVerified?: boolean } | undefined> {
+    return request<{ alreadyVerified?: boolean } | undefined>("/v1/auth/email/verify/resend", { method: "POST", body: JSON.stringify({ language }) }, token);
+  },
+  twoFactorStatus(token: string): Promise<TwoFactorStatus> {
+    return request<TwoFactorStatus>("/v1/auth/2fa", {}, token);
+  },
+  twoFactorSetup(token: string): Promise<{ secret: string; otpauthUrl: string }> {
+    return request<{ secret: string; otpauthUrl: string }>("/v1/auth/2fa/setup", { method: "POST" }, token);
+  },
+  twoFactorEnable(code: string, token: string): Promise<{ recoveryCodes: string[] }> {
+    return request<{ recoveryCodes: string[] }>("/v1/auth/2fa/enable", { method: "POST", body: JSON.stringify({ code }) }, token);
+  },
+  twoFactorDisable(input: ReauthInput, token: string): Promise<void> {
+    return request<void>("/v1/auth/2fa/disable", { method: "POST", body: JSON.stringify({ password: input.password, code: input.code, recoveryCode: input.recoveryCode }) }, token);
+  },
+  twoFactorRecoveryCodes(code: string, token: string): Promise<{ recoveryCodes: string[] }> {
+    return request<{ recoveryCodes: string[] }>("/v1/auth/2fa/recovery-codes", { method: "POST", body: JSON.stringify({ code }) }, token);
+  },
+  deleteAccount(input: ReauthInput, token: string): Promise<void> {
+    return request<void>("/v1/me", { method: "DELETE", body: JSON.stringify({ email: input.email ?? "", password: input.password, code: input.code, recoveryCode: input.recoveryCode }) }, token, 60_000);
+  },
+  exportAccount(token: string): Promise<{ blob: Blob; filename: string }> {
+    return requestBlob("/v1/me/export", token);
+  },
+  async exchange(code: string): Promise<SignInResponse> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
-      return await request<ExchangeResponse>("/v1/auth/exchange", { method: "POST", body: JSON.stringify({ code }), signal: controller.signal }, undefined, 30_000);
+      return await request<SignInResponse>("/v1/auth/exchange", { method: "POST", body: JSON.stringify({ code }), signal: controller.signal }, undefined, 30_000);
     } catch (error) {
       if (controller.signal.aborted) throw new Error(translateStored("auth.errors.signInTimeout"));
       throw error;
@@ -256,14 +355,14 @@ export const api = {
   logout(token: string): Promise<void> {
     return request<void>("/v1/auth/logout", { method: "POST" }, token, 5_000);
   },
-  googleNative(idToken: string): Promise<ExchangeResponse> {
-    return request<ExchangeResponse>("/v1/auth/google/native", { method: "POST", body: JSON.stringify({ id_token: idToken, device: "Prior", platform: "android" }) });
+  googleNative(idToken: string): Promise<SignInResponse> {
+    return request<SignInResponse>("/v1/auth/google/native", { method: "POST", body: JSON.stringify({ id_token: idToken, device: "Prior", platform: "android" }) });
   },
-  updateProfile(displayName: string, token: string): Promise<ProfileUser> {
-    return request<ProfileUser>("/v1/me", { method: "PATCH", body: JSON.stringify({ displayName }) }, token);
+  updateProfile(displayName: string, token: string): Promise<AccountUser> {
+    return request<AccountUser>("/v1/me", { method: "PATCH", body: JSON.stringify({ displayName }) }, token);
   },
-  getProfile(token: string): Promise<ProfileUser> {
-    return request<ProfileUser>("/v1/me", {}, token);
+  getProfile(token: string): Promise<AccountUser> {
+    return request<AccountUser>("/v1/me", {}, token);
   },
   transcribe(audio: Blob, filename: string, token: string, signal?: AbortSignal): Promise<{ text: string }> {
     const form = new FormData();

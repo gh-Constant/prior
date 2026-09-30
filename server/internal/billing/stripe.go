@@ -521,6 +521,17 @@ func (s *Stripe) GetSubscription(ctx context.Context, id string) (Subscription, 
 	return sub, err
 }
 
+// CancelSubscriptionNow ends a subscription immediately, without proration
+// (account deletion). An already canceled subscription is not an error.
+func (s *Stripe) CancelSubscriptionNow(ctx context.Context, id string) error {
+	err := s.do(ctx, http.MethodDelete, "/v1/subscriptions/"+url.PathEscape(id), nil, "", nil)
+	var stripeErr *StripeError
+	if errors.As(err, &stripeErr) && stripeErr.Status == http.StatusNotFound {
+		return nil
+	}
+	return err
+}
+
 // ListSubscriptions returns the customer's subscriptions in every status,
 // newest first.
 func (s *Stripe) ListSubscriptions(ctx context.Context, customer string) ([]Subscription, error) {

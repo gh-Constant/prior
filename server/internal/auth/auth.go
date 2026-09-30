@@ -75,24 +75,59 @@ func (m *Manager) Register(ctx context.Context, email, password, displayName, de
 	if err != nil {
 		return "", store.User{}, err
 	}
-	token, err := m.createSession(ctx, user, device, platform)
+	token, err := m.CreateSession(ctx, user, device, platform)
 	return token, user, err
 }
 
 func (m *Manager) Login(ctx context.Context, email, password, device, platform string) (string, store.User, error) {
+	user, err := m.CheckPassword(ctx, email, password)
+	if err != nil {
+		return "", store.User{}, err
+	}
+	token, err := m.CreateSession(ctx, user, device, platform)
+	return token, user, err
+}
+
+// CheckPassword validates email + password and records the login, without
+// creating a session: the caller decides whether a 2FA step comes first.
+func (m *Manager) CheckPassword(ctx context.Context, email, password string) (store.User, error) {
 	normalized, err := normalizeEmail(email)
 	if err != nil || password == "" {
-		return "", store.User{}, ErrInvalidCredentials
+		return store.User{}, ErrInvalidCredentials
 	}
 	user, hash, err := m.store.UserWithPasswordHash(ctx, normalized)
 	if err != nil || hash == "" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
-		return "", store.User{}, ErrInvalidCredentials
+		return store.User{}, ErrInvalidCredentials
 	}
 	if err := m.store.TouchLogin(ctx, user.ID); err != nil {
-		return "", store.User{}, err
+		return store.User{}, err
 	}
-	token, err := m.createSession(ctx, user, device, platform)
-	return token, user, err
+	return user, nil
+}
+
+// VerifyPassword checks the current password of a signed-in account (re-auth
+// before deleting the account or turning 2FA off).
+func (m *Manager) VerifyPassword(ctx context.Context, userID uuid.UUID, password string) error {
+	existing, err := m.store.PasswordHashByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if existing == "" || password == "" || bcrypt.CompareHashAndPassword([]byte(existing), []byte(password)) != nil {
+		return ErrInvalidCredentials
+	}
+	return nil
+}
+
+// HashPassword validates and hashes a new password.
+func HashPassword(password string) (string, error) {
+	if err := validatePassword(password); err != nil {
+		return "", err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", errors.New("unable to set password")
+	}
+	return string(hash), nil
 }
 
 // SetPassword sets an initial password for an OAuth-only account. If the
@@ -139,7 +174,8 @@ func (m *Manager) ChangePassword(ctx context.Context, userID uuid.UUID, currentP
 	return m.store.UpdatePasswordHash(ctx, userID, string(hash))
 }
 
-func (m *Manager) createSession(ctx context.Context, user store.User, device, platform string) (string, error) {
+// CreateSession mints a new opaque session token for user.
+func (m *Manager) CreateSession(ctx context.Context, user store.User, device, platform string) (string, error) {
 	token, err := randomString(32)
 	if err != nil {
 		return "", err
@@ -269,22 +305,25 @@ func (m *Manager) Callback(ctx context.Context, code, state string) (string, err
 }
 
 func (m *Manager) Exchange(ctx context.Context, code string, device, platform string) (string, store.User, error) {
+	user, err := m.ExchangeUser(code)
+	if err != nil {
+		return "", store.User{}, err
+	}
+	token, err := m.CreateSession(ctx, user, device, platform)
+	return token, user, err
+}
+
+// ExchangeUser redeems a one-time Google exchange code for its user.
+func (m *Manager) ExchangeUser(code string) (store.User, error) {
 	hash := sha256.Sum256([]byte(code))
 	m.mu.Lock()
 	value, ok := m.exchanges[hash]
 	delete(m.exchanges, hash)
 	m.mu.Unlock()
 	if !ok || time.Now().After(value.expiresAt) {
-		return "", store.User{}, errors.New("invalid or expired exchange code")
+		return store.User{}, errors.New("invalid or expired exchange code")
 	}
-	token, err := randomString(32)
-	if err != nil {
-		return "", store.User{}, err
-	}
-	if err := m.store.CreateSession(ctx, value.user.ID, token, device, platform, m.cfg.SessionTTL); err != nil {
-		return "", store.User{}, err
-	}
-	return token, value.user, nil
+	return value.user, nil
 }
 
 // VerifyNativeIDToken authenticates a Google ID token obtained natively on
@@ -292,25 +331,35 @@ func (m *Manager) Exchange(ctx context.Context, code string, device, platform st
 // Unlike Callback there is no OAuth state/nonce round trip: trust comes from
 // the token signature plus strict audience and verified-email checks.
 func (m *Manager) VerifyNativeIDToken(ctx context.Context, rawIDToken, device, platform string) (string, store.User, error) {
+	user, err := m.NativeIdentity(ctx, rawIDToken)
+	if err != nil {
+		return "", store.User{}, err
+	}
+	token, err := m.CreateSession(ctx, user, device, platform)
+	return token, user, err
+}
+
+// NativeIdentity verifies a native Google ID token and returns its user.
+func (m *Manager) NativeIdentity(ctx context.Context, rawIDToken string) (store.User, error) {
 	if m.cfg.GoogleClientID == "" {
-		return "", store.User{}, errors.New("Google OAuth is not configured")
+		return store.User{}, errors.New("Google OAuth is not configured")
 	}
 	if rawIDToken == "" {
-		return "", store.User{}, errors.New("Google ID token is required")
+		return store.User{}, errors.New("Google ID token is required")
 	}
 	// Verify signature/issuer/expiry without pinning the audience yet: native
 	// tokens may target the server client or a platform OAuth client.
 	provider, err := oidc.NewProvider(ctx, "https://accounts.google.com")
 	if err != nil {
-		return "", store.User{}, fmt.Errorf("load Google OpenID configuration: %w", err)
+		return store.User{}, fmt.Errorf("load Google OpenID configuration: %w", err)
 	}
 	verifier := provider.Verifier(&oidc.Config{SkipClientIDCheck: true})
 	idToken, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		return "", store.User{}, fmt.Errorf("verify Google identity: %w", err)
+		return store.User{}, fmt.Errorf("verify Google identity: %w", err)
 	}
 	if !m.validNativeAudience(idToken.Audience) {
-		return "", store.User{}, errors.New("Google identity is not intended for Prior")
+		return store.User{}, errors.New("Google identity is not intended for Prior")
 	}
 	var claims struct {
 		Subject       string `json:"sub"`
@@ -320,21 +369,20 @@ func (m *Manager) VerifyNativeIDToken(ctx context.Context, rawIDToken, device, p
 		Picture       string `json:"picture"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
-		return "", store.User{}, fmt.Errorf("read Google identity: %w", err)
+		return store.User{}, fmt.Errorf("read Google identity: %w", err)
 	}
 	if claims.Subject == "" || claims.Email == "" || !claims.EmailVerified {
-		return "", store.User{}, errors.New("Google account has no verified email")
+		return store.User{}, errors.New("Google account has no verified email")
 	}
 	normalizedEmail, err := normalizeEmail(claims.Email)
 	if err != nil {
-		return "", store.User{}, errors.New("Google account has no verified email")
+		return store.User{}, errors.New("Google account has no verified email")
 	}
 	user, err := m.store.UpsertUser(ctx, claims.Subject, normalizedEmail, claims.EmailVerified, claims.Name, claims.Picture)
 	if err != nil {
-		return "", store.User{}, fmt.Errorf("save Prior user: %w", err)
+		return store.User{}, fmt.Errorf("save Prior user: %w", err)
 	}
-	token, err := m.createSession(ctx, user, device, platform)
-	return token, user, err
+	return user, nil
 }
 
 func (m *Manager) validNativeAudience(audience []string) bool {
