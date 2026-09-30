@@ -393,6 +393,9 @@
 .proposed-task-title { color: var(--ink); font-size: 13px; font-weight: 550; line-height: 1.4; overflow-wrap: anywhere; }
 .proposed-task-item.is-added .proposed-task-title { text-decoration: line-through; text-decoration-color: var(--line-strong); }
 .proposed-description, .proposed-note-preview { margin: 0 0 0 24px; color: var(--muted); font-size: var(--fs-xs); line-height: 1.5; overflow-wrap: anywhere; }
+.proposed-checklist { margin: 2px 0 0 24px; padding: 0; list-style: none; color: var(--ink-2); font-size: var(--fs-xs); line-height: 1.6; }
+.proposed-checklist li { overflow-wrap: anywhere; }
+.proposed-checklist span { color: var(--faint); }
 .proposed-note-preview { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .proposed-reasoning { margin: 2px 0 0 24px; padding-left: 9px; border-left: 2px solid var(--line); color: var(--muted); font-size: var(--fs-xs); font-style: italic; line-height: 1.45; }
 

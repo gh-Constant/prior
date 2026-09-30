@@ -654,12 +654,23 @@ function NoteGraph({ notes, selected, onSelect, onClose }: { notes: Note[]; sele
   return <div className="notes-graph-overlay" role="dialog" aria-label={t("notes.graph.label")}><div className="notes-graph-card"><div className="notes-graph-header"><div><span className="notes-eyebrow">{t("notes.graph.eyebrow")}</span><h2>{t("notes.graph.title")}</h2></div><button type="button" className="notes-icon-button" aria-label={t("notes.graph.close")} onClick={onClose}><Icon name="close" /></button></div><svg viewBox="0 0 460 380" role="img" aria-label={t("notes.graph.imageLabel")}>{edges.map(([from, to]) => { const start = positions.get(from); const end = positions.get(to); return start && end ? <line key={`${from}-${to}`} x1={start.x} y1={start.y} x2={end.x} y2={end.y} /> : null; })}{nodes.map((note) => { const position = positions.get(note.id); if (!position) return null; return <g key={note.id} className={note.id === selected?.id ? "selected" : ""} tabIndex={0} role="button" aria-label={note.title} onClick={() => onSelect(note)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(note); }}><circle cx={position.x} cy={position.y} r={note.id === selected?.id ? 16 : 11} /><text x={position.x} y={position.y + 32} textAnchor="middle">{note.title.length > 20 ? `${note.title.slice(0, 18)}…` : note.title}</text></g>; })}</svg><p className="notes-graph-help">{t("notes.graph.help", { example: "[[double brackets]]" })}</p></div></div>;
 }
 
+let pendingNoteOpen: string | null = null;
+
+/** Opens a note from outside the notes view (command palette). */
+export function requestNoteOpen(id: string): void {
+  pendingNoteOpen = id;
+  window.dispatchEvent(new CustomEvent("prior-notes-open", { detail: { id } }));
+}
+
 export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   const { t, tp, lang } = useI18n();
   const scopedNotes = () => notesStore.list().filter((note) => projectId ? note.projectId === projectId : true);
   const [notes, setNotes] = useState<Note[]>(scopedNotes);
   const [folders, setFolders] = useState<NoteFolder[]>(() => notesStore.listFolders());
-  const [selectedId, setSelectedId] = useState<string | null>(() => scopedNotes()[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const requested = pendingNoteOpen && scopedNotes().some((note) => note.id === pendingNoteOpen) ? pendingNoteOpen : null;
+    return requested ?? scopedNotes()[0]?.id ?? null;
+  });
   const [openIds, setOpenIds] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("prior.notes.tabs") ?? "[]") as string[]; } catch { return []; } });
   // "Write" maps to the source editor (optionally with the side-by-side preview), "Read" to the rendered note.
   const [reading, setReading] = useState(true);
@@ -700,6 +711,19 @@ export function NotesWorkspace({ onOpenNote, projectId }: NotesWorkspaceProps) {
   useEffect(() => notesStore.subscribe(() => { setNotes(scopedNotes()); setFolders(notesStore.listFolders()); }), [projectId]);
   useEffect(() => { const next = scopedNotes(); setNotes(next); setSelectedId(next[0]?.id ?? null); setOpenIds((current) => current.filter((id) => next.some((note) => note.id === id))); setFolderFilter(null); setQuery(""); }, [projectId]);
   useEffect(() => { const handler = () => newNote(); window.addEventListener("prior-notes-new", handler); return () => window.removeEventListener("prior-notes-new", handler); });
+  useEffect(() => {
+    const open = (id: string | null) => {
+      if (!id || !notesStore.list().some((note) => note.id === id)) return;
+      pendingNoteOpen = null;
+      setSelectedId(id);
+      setOpenIds((current) => (current.includes(id) ? current : [...current, id]));
+      setMobileView("note");
+    };
+    open(pendingNoteOpen);
+    const handler = (event: Event) => open((event as CustomEvent<{ id?: string }>).detail?.id ?? null);
+    window.addEventListener("prior-notes-open", handler);
+    return () => window.removeEventListener("prior-notes-open", handler);
+  }, []);
   useEffect(() => { if (!notes.some((note) => note.id === selectedId)) setSelectedId(notes[0]?.id ?? null); if (!openIds.length && notes[0]) { setOpenIds([notes[0].id]); setSelectedId(notes[0].id); } }, [notes, openIds.length, selectedId]);
   useEffect(() => { try { localStorage.setItem("prior.notes.tabs", JSON.stringify(openIds)); } catch { /* storage unavailable */ } }, [openIds]);
   useEffect(() => { try { localStorage.setItem("prior.notes.library", String(libraryOpen)); } catch { /* storage unavailable */ } }, [libraryOpen]);

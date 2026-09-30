@@ -10,6 +10,7 @@ export const settings = {
     general: "General",
     profile: "Perfil y cuenta",
     security: "Seguridad",
+    notifications: "Notificaciones",
     game: "Juego",
     assistant: "Prior Agent",
     diagnostics: "Diagnóstico",

@@ -37,8 +37,8 @@ MCP keys are confined to `/mcp`: `UserForToken` and `SessionUserForToken` reject
 | --- | --- |
 | `list_tasks` | Open tasks by default (`filter`: open/completed/all), optional `query`, `project_id`, `due_before`, `limit`; sorted by due date then priority. Includes tasks of projects shared with the user. |
 | `get_task` | One task with every field. |
-| `create_task` | Title required; description, due/scheduled date and time, priority 1–4, importance, urgency, status, project/area. |
-| `update_task` | Patch an existing task; omitted fields are kept, `null` clears optional dates and project/area. |
+| `create_task` | Title required; description, due/scheduled date and time, priority 1–4, importance, urgency, status, project/area, `reminder_at` (RFC 3339) and `checklist` (`[{title, done?}]`, at most 100). |
+| `update_task` | Patch an existing task; omitted fields are kept, `null` clears optional dates, project/area and the reminder. `checklist` replaces the whole list (pass existing `id`s to keep items). |
 | `complete_task` | Mark done, or reopen with `completed: false`. |
 | `delete_task` | Soft-delete (same as deleting in the app). |
 | `list_habits`, `create_habit`, `complete_habit` | Read habits, create one, check/uncheck a day (default today, UTC). |

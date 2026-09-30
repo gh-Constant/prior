@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Area, Project, Task, TaskDraft, TaskPriority, TaskStatus } from "../types";
+import type { Area, ChecklistItem, Project, Task, TaskDraft, TaskPriority, TaskStatus } from "../types";
 import { useModalDialog } from "../hooks/useModalDialog";
 import { useI18n } from "../lib/i18n";
 import { normalizeEstimate } from "../lib/taskEstimate";
+import { ChecklistEditor } from "./tasks/ChecklistEditor";
+import { ReminderPicker } from "./tasks/ReminderPicker";
 import { Icon } from "./Icon";
 import { CustomSelect } from "./CustomSelect";
 import { taskStatusTone } from "../lib/taskStatusAppearance";
@@ -93,6 +95,8 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [followUpDate, setFollowUpDate] = useState(task?.followUpDate ?? "");
   const [followUpTime, setFollowUpTime] = useState(task?.followUpTime ?? null);
   const [estimate, setEstimate] = useState(task?.estimatedMinutes ? String(task.estimatedMinutes) : "");
+  const [reminderAt, setReminderAt] = useState<string | null>(task?.reminderAt ?? null);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(task?.checklist ?? []);
   const [planningPeople, setPlanningPeople] = useState(planning?.people ?? []);
   const peopleSource = useRef(planning?.people);
   const awaitingProjectPeople = useRef(!planning);
@@ -118,7 +122,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const isAreaLocked = Boolean(initialContext?.areaId ?? (isProjectLocked ? lockedProject?.areaId : null));
   const isStatusLocked = Boolean(!task && initialContext?.status);
   const effectiveAreaId = areaId ?? (isAreaLocked ? initialContext?.areaId ?? lockedProject?.areaId ?? null : null);
-  const hasOptionalDetail = Boolean(followUpDate || (!isAreaLocked && areaId) || planningPeople.length || extraFields.some((field) => field.selectedIds.length > 0));
+  const hasOptionalDetail = Boolean(checklist.length || followUpDate || (!isAreaLocked && areaId) || planningPeople.length || extraFields.some((field) => field.selectedIds.length > 0));
   const parsedTitle = useMemo(() => parseTaskTitle(title, {
     lang,
     projects: isProjectLocked ? [] : projects,
@@ -229,7 +233,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     setNotice("");
     const keepOpen = allowCreateMore && !task && createMore;
     try {
-      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate) };
+      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate), reminderAt, checklist };
       await (allowCreateMore ? onSave(draft, { keepOpen }) : onSave(draft));
       setNotice(task ? t("tasks.composer.saved") : t("tasks.composer.created"));
       if (!task) {
@@ -257,6 +261,8 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
         setFollowUpDate("");
         setFollowUpTime(null);
         setEstimate("");
+        setReminderAt(null);
+        setChecklist([]);
         setIgnoredTitleTokens([]);
         autoTitleValues.current = {};
       }
@@ -393,6 +399,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                 />
               )}
               <DateTimePicker className="pill" value={dueDate} onChange={setDueDate} time={dueTime} onTimeChange={setDueTime} allowTime ariaLabel={t("tasks.composer.dueDate")} placeholder={t("tasks.composer.dueDate")} disabled={saving || planningDisabled} />
+              <ReminderPicker task={{ dueDate: dueDate || null, dueTime: dueDate ? dueTime : null }} value={reminderAt} onChange={setReminderAt} disabled={saving || flagDisabled} />
               <button
                 type="button"
                 disabled={flagDisabled}
@@ -570,6 +577,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                     </div>
                   </div>
                 )}
+                <ChecklistEditor items={checklist} onChange={setChecklist} disabled={saving || flagDisabled} />
               </div>
             </details>
           </div>

@@ -39,4 +39,4 @@ Prior AI is for paying users. Every hosted completion and transcription goes thr
 
 ## Updating existing tasks
 
-The system prompt lists active tasks with their IDs and describes `update_task`. The model returns `taskUpdates: [{ taskId, changes, reasoning }]`. The client keeps only updates whose ID is in the task list it sent and whose fields actually change, shows them as review cards, and applies them through `localStore.updateTask` and the normal sync path after the user clicks Apply. Tasks cannot be deleted by the assistant.
+The system prompt lists active tasks with their IDs and describes `update_task`. The model returns `taskUpdates: [{ taskId, changes, reasoning }]`. The client keeps only updates whose ID is in the task list it sent and whose fields actually change, shows them as review cards, and applies them through `localStore.updateTask` and the normal sync path after the user clicks Apply. Tasks cannot be deleted by the assistant. `create_task` and `update_task` also carry `checklist` and `reminderAt` (see `CHECKLISTS.md` and `REMINDERS.md`); review cards show the checklist and the reminder before anything is saved.

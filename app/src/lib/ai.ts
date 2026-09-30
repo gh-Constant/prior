@@ -1,4 +1,5 @@
 import type {
+  ChecklistItem,
   AgentMessage,
   AgentProvider,
   AgentSettings,
@@ -182,8 +183,10 @@ function describeTaskForPrompt(task: Task, areas: Area[] = [], projects: Project
   const scheduled = task.scheduledDate ? `, scheduled ${task.scheduledDate}` : "";
   const assignee = task.assigneeName ? `, assigned to: ${task.assigneeName}` : "";
   const followUp = task.followUpDate ? `, follow-up: ${task.followUpDate}` : "";
+  const reminder = task.reminderAt ? `, reminder ${task.reminderAt}` : "";
+  const checklist = task.checklist?.length ? `, checklist ${task.checklist.filter((item) => item.done).length}/${task.checklist.length}: ${task.checklist.slice(0, 12).map((item) => `[${item.done ? "x" : " "}] ${item.title.slice(0, 60)}`).join("; ")}` : "";
   const details = task.description ? `, details: ${task.description.slice(0, 120)}` : "";
-  return `- [id: ${task.id}] "${task.title}" (P${task.priority ?? 4}, ${importance}, ${urgency}${status}${projectLabel}${areaLabel}${due}${scheduled}${assignee}${followUp}${details})`;
+  return `- [id: ${task.id}] "${task.title}" (P${task.priority ?? 4}, ${importance}, ${urgency}${status}${projectLabel}${areaLabel}${due}${scheduled}${assignee}${followUp}${reminder}${checklist}${details})`;
 }
 
 const PROMPT_WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -323,8 +326,8 @@ PRIOR CAPABILITIES (use these exact names when the user asks what tools you have
 - list_projects: inspect the projects already provided in this prompt.
 - create_area: prepare one or more high-level Areas (e.g. Work, Personal, Health, Finance) with optional icon (e.g. "briefcase", "heart", "home", "dollar-sign", "user") and color. The app shows them as an approval card; they are saved when the user clicks Add.
 - create_project: prepare one or more outcome-oriented Projects optionally tied to an Area, with optional status ("planned", "active", "paused", "completed"), optional targetDate (YYYY-MM-DD), and optional icon (e.g. "folder", "rocket", "target", "star", "check-circle"). The app shows them as an approval card; they are saved when the user clicks Add.
-- create_task: prepare one or more one-off tasks with optional area, project, status, scheduled date, assignee, and follow-up date. The app shows them as an approval card; they are saved when the user clicks Add.
-- update_task: prepare changes to one or more EXISTING tasks from the active task list (rename, reword the description, reschedule, change priority, importance or urgency, change status, delegate, or mark done). Reference each task by its exact [id: ...] from the list below and include only the fields that change. The app shows the changes as a review card; they are applied when the user clicks Apply.
+- create_task: prepare one or more one-off tasks with optional area, project, status, scheduled date, assignee, follow-up date, a checklist of subtasks, and a reminder time (reminderAt, ISO 8601 with the user's UTC offset). The app shows them as an approval card; they are saved when the user clicks Add.
+- update_task: prepare changes to one or more EXISTING tasks from the active task list (rename, reword the description, reschedule, change priority, importance or urgency, change status, delegate, set or clear a reminder, edit or check checklist items, or mark done). A checklist change replaces the whole checklist: send every item as {"title", "done"} in order. Reference each task by its exact [id: ...] from the list below and include only the fields that change. The app shows the changes as a review card; they are applied when the user clicks Apply.
 - create_habit: prepare one or more recurring habits following Prior's 3 frequency modes:
   1) Daily: repeats every day (interval: 1, unit: "day", daysOfWeek: []).
   2) Specific days / Weekdays: repeats weekly on chosen days of the week (interval: 1, unit: "week", daysOfWeek: [0..6 where 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday]). Use presets [1, 2, 3, 4, 5] for workdays/weekdays, [6, 0] for weekend, or specific days like [1, 3, 5] for Mon/Wed/Fri.
@@ -480,6 +483,8 @@ OUTPUT CONTRACT:
       "scheduledDate": null,
       "assigneeName": null,
       "followUpDate": null,
+      "checklist": ["Optional subtask", "Another subtask"],
+      "reminderAt": null,
       "reasoning": "Short reason for this classification"
     }
   ],
@@ -892,6 +897,40 @@ function sanitizeTaskStatus(value: unknown): TaskStatus | undefined {
   return undefined;
 }
 
+const MAX_AI_CHECKLIST = 100;
+
+/** ISO 8601 instant, or null for anything unparsable. */
+function reminderValue(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const time = Date.parse(value.trim());
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
+function checklistTitles(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === "string" ? entry : entry && typeof entry === "object" && typeof (entry as { title?: unknown }).title === "string" ? (entry as { title: string }).title : ""))
+    .map((title) => title.trim().slice(0, 400))
+    .filter(Boolean)
+    .slice(0, MAX_AI_CHECKLIST);
+}
+
+/** A checklist change for an existing task: keeps ids of items with the same title. */
+function checklistChange(value: unknown, current: readonly ChecklistItem[]): ChecklistItem[] | null {
+  if (!Array.isArray(value)) return null;
+  const available = [...current];
+  const items: ChecklistItem[] = [];
+  for (const entry of value.slice(0, MAX_AI_CHECKLIST)) {
+    const record = typeof entry === "string" ? { title: entry } : entry && typeof entry === "object" ? entry as Record<string, unknown> : null;
+    const title = typeof record?.title === "string" ? record.title.trim().slice(0, 400) : "";
+    if (!title) continue;
+    const matchIndex = available.findIndex((item) => (typeof record?.id === "string" && item.id === record.id) || item.title.toLowerCase() === title.toLowerCase());
+    const match = matchIndex >= 0 ? available.splice(matchIndex, 1)[0] : undefined;
+    items.push({ id: match?.id ?? crypto.randomUUID(), title, done: typeof record?.done === "boolean" ? record.done : match?.done ?? false, position: items.length });
+  }
+  return items;
+}
+
 function buildProposedTask(item: Record<string, unknown>): ProposedTask {
   const areaName = typeof item.areaName === "string" ? item.areaName.trim() : (typeof item.area === "string" ? item.area.trim() : null);
   const projectName = typeof item.projectName === "string" ? item.projectName.trim() : (typeof item.project === "string" ? item.project.trim() : null);
@@ -910,6 +949,8 @@ function buildProposedTask(item: Record<string, unknown>): ProposedTask {
     scheduledDate: taskDueDate(item.scheduledDate ?? item.scheduled_date),
     assigneeName: assigneeName || undefined,
     followUpDate: taskDueDate(item.followUpDate ?? item.follow_up_date),
+    checklist: checklistTitles(item.checklist ?? item.subtasks),
+    reminderAt: reminderValue(item.reminderAt ?? item.reminder_at),
     reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
     selected: true,
     added: false,
@@ -970,6 +1011,16 @@ export function buildProposedTaskUpdate(item: Record<string, unknown>, tasksById
   if (status && status !== task.status) changes.status = status;
   const completed = typeof raw.completed === "boolean" ? raw.completed : status ? status === "done" : undefined;
   if (completed !== undefined && completed !== task.completed) changes.completed = completed;
+  if ("reminderAt" in raw || "reminder_at" in raw) {
+    const input = "reminderAt" in raw ? raw.reminderAt : raw.reminder_at;
+    const value = input === null || input === "" ? null : reminderValue(input);
+    if ((value !== null || input === null || input === "") && value !== (task.reminderAt ?? null)) changes.reminderAt = value;
+  }
+  if ("checklist" in raw) {
+    const checklist = checklistChange(raw.checklist, task.checklist ?? []);
+    const comparable = (items: readonly ChecklistItem[]) => JSON.stringify(items.map((entry) => [entry.id, entry.title, entry.done]));
+    if (checklist && comparable(checklist) !== comparable(task.checklist ?? [])) changes.checklist = checklist;
+  }
   if (Object.keys(changes).length === 0) return null;
   return {
     id: crypto.randomUUID(),

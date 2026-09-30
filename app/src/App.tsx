@@ -47,7 +47,10 @@ import { MobileMoreScreen } from "./components/MobileMoreScreen";
 import { habitProgressForDay, waitingTaskCount } from "./lib/navCounts";
 import { DesktopTitleBar } from "./components/DesktopTitleBar";
 import { pullAssistantSettings } from "./lib/settingsSync";
-import { SettingsPage } from "./components/SettingsPage";
+import { SettingsPage, type SettingsTab } from "./components/SettingsPage";
+import { CommandPalette, isPaletteShortcut, type PaletteCommand } from "./components/CommandPalette";
+import { requestNoteOpen } from "./components/NotesWorkspace";
+import { setThemePreference } from "./lib/theme";
 import { NotesWorkspace } from "./components/NotesWorkspace";
 import { notesStore } from "./lib/notes";
 import { workspaceSync } from "./lib/workspaceSync";
@@ -72,6 +75,8 @@ import { generateTaskFromMail } from "./lib/mailTask";
 import { emitMailAccountChange, saveMailAccount } from "./lib/mailAuth";
 import { emitCalendarAccountChange, parseCalendarConnectedUrl, startGoogleCalendarConnect } from "./lib/calendarAuth";
 import { parseWidgetUrl, refreshWidgetSnapshot } from "./lib/widgetSnapshot";
+import { NOTIFICATION_OPEN_EVENT, notificationScheduler } from "./lib/notificationScheduler";
+import { NOTIFICATION_SETTINGS_EVENT, parseNotificationTarget } from "./lib/reminders";
 import { logger } from "./lib/logger";
 import { resetLastSyncedAt } from "./lib/syncStatus";
 import { purgeProductionDemoData } from "./lib/productionData";
@@ -169,16 +174,17 @@ type WorkspaceContentProps = {
   readonly onViewChange: (view: WorkspaceView) => void;
   readonly billing: ReturnType<typeof useBilling>;
   /** Settings opens on this tab (e.g. from the Progress page). */
-  readonly settingsTab?: "game";
+  readonly settingsTab?: SettingsTab;
+  readonly settingsKey?: number;
   readonly onOpenGameSettings: () => void;
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, onOpenGameSettings }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onOpenGameSettings }: WorkspaceContentProps) {
   if (activeView === "plans") return <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={billing.checkoutReturn} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "admin") return billing.billing?.isAdmin ? <AdminView /> : <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={null} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "progress") return <ProgressView onOpenGameSettings={onOpenGameSettings} />;
-  if (activeView === "settings") return <SettingsPage key={settingsTab ?? "general"} user={user} onUserUpdated={onUserUpdated} initialTab={settingsTab} />;
+  if (activeView === "settings") return <SettingsPage key={`${settingsTab ?? "general"}-${settingsKey ?? 0}`} user={user} onUserUpdated={onUserUpdated} initialTab={settingsTab} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
   if (activeView === "calendar") return <CalendarView habits={habits} />;
@@ -243,7 +249,9 @@ export function App() {
   const game = useGame();
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingPutOff, setOnboardingPutOff] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"game" | undefined>(undefined);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(undefined);
+  const [settingsKey, bumpSettingsKey] = useReducer((value: number) => value + 1, 0);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [chestToOpen, setChestToOpen] = useState<string | null>(null);
   const chestDialog = chestToOpen ? game.state?.chests.find((chest) => chest.id === chestToOpen) : undefined;
   const syncInFlight = useRef<Promise<void> | null>(null);
@@ -271,6 +279,7 @@ export function App() {
   const shortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ N" : "Ctrl N";
   const shortcutKey = shortcut.startsWith("⌘") ? "Meta+N" : "Control+N";
   const aiShortcut = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘ J" : "Ctrl J";
+  const isApplePlatform = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform);
 
   useEffect(() => {
     if (!productionAuthRequired) return undefined;
@@ -383,6 +392,7 @@ export function App() {
           // Taps on the macOS/Android widgets land here (prior://widget/<view>).
           const widgetView = parseWidgetUrl(url);
           if (widgetView) changeView(widgetView);
+          else openTargetUrl(url);
         }
       });
     })();
@@ -392,6 +402,69 @@ export function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // prior://task/<id>, prior://habit/<id> and prior://new-task: notification
+  // taps, widgets and shortcuts. A target that arrives before the tasks are
+  // loaded waits in pendingTarget.
+  const [pendingTarget, setPendingTarget] = useState<ReturnType<typeof parseNotificationTarget>>(null);
+  function openTargetUrl(url: string): boolean {
+    const target = parseNotificationTarget(url);
+    if (!target) return false;
+    setPendingTarget(target);
+    return true;
+  }
+  useEffect(() => {
+    if (!pendingTarget) return;
+    if (pendingTarget.kind === "new-task") {
+      setPendingTarget(null);
+      setMobileMoreOpen(false);
+      openNewTask();
+      return;
+    }
+    if (pendingTarget.kind === "habit") {
+      setPendingTarget(null);
+      changeView("habits");
+      return;
+    }
+    const task = tasks.find((item) => item.id === pendingTarget.id);
+    if (task) {
+      setPendingTarget(null);
+      setComposerProjectId(task.projectId ?? null);
+      setEditingTask(task);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTarget, tasks]);
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const target = (event as CustomEvent<{ target?: string }>).detail?.target;
+      if (target) openTargetUrl(target);
+    };
+    window.addEventListener(NOTIFICATION_OPEN_EVENT, onOpen);
+    let cancelled = false;
+    // A cold start from a widget or shortcut delivers its URL at launch.
+    if (isTauri()) {
+      void import("@tauri-apps/plugin-deep-link").then(({ getCurrent }) => getCurrent()).then((urls) => {
+        if (cancelled) return;
+        for (const url of urls ?? []) openTargetUrl(url);
+      }).catch(() => undefined);
+    }
+    return () => { cancelled = true; window.removeEventListener(NOTIFICATION_OPEN_EVENT, onOpen); };
+  }, []);
+
+  // Reminders follow every local change and sync (both land in tasks/habits).
+  useEffect(() => {
+    void notificationScheduler.sync(tasks, habits);
+  }, [tasks, habits]);
+  useEffect(() => {
+    const resync = () => { void notificationScheduler.sync(tasks, habits); };
+    window.addEventListener(NOTIFICATION_SETTINGS_EVENT, resync);
+    // Timers drift while a laptop sleeps: reschedule when the app returns.
+    document.addEventListener("visibilitychange", resync);
+    return () => {
+      window.removeEventListener(NOTIFICATION_SETTINGS_EVENT, resync);
+      document.removeEventListener("visibilitychange", resync);
+    };
+  }, [tasks, habits]);
 
   useEffect(() => {
     if (!completionCelebration) return undefined;
@@ -929,6 +1002,11 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isPaletteShortcut(event, isApplePlatform)) {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
         if (activeView === "notes") window.dispatchEvent(new Event("prior-notes-new"));
@@ -945,6 +1023,7 @@ export function App() {
         setAuthOpen(false);
         setAgentOpen(false);
         setMobileMoreOpen(false);
+        setPaletteOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1643,6 +1722,30 @@ export function App() {
 
   const effectsIntensity = game.enabled && game.profile ? game.profile.effects : "off";
 
+  function openSettingsTab(tab: SettingsTab): void {
+    changeView("settings");
+    setSettingsTab(tab);
+    bumpSettingsKey();
+  }
+
+  const paletteCommands: PaletteCommand[] = [
+    { id: "new-task", label: t("palette.commands.newTask"), keywords: "add create", icon: "plus", run: () => openNewTask() },
+    { id: "new-habit", label: t("palette.commands.newHabit"), keywords: "add create", icon: "refresh", run: () => setHabitComposerOpen(true) },
+    ...(["today", "inbox", "calendar", "projects", "all", "waiting", "eisenhower", "habits", "notes", ...(game.enabled ? ["progress" as const] : [])] as WorkspaceView[]).map((view) => ({
+      id: `view-${view}`, label: t("palette.commands.goTo", { view: viewTitle(view, t) }), keywords: "go open view", icon: "arrow" as const, run: () => changeView(view),
+    })),
+    ...(["general", "profile", "security", "notifications", "game", "assistant", "integrations"] as SettingsTab[]).map((tab) => ({
+      id: `settings-${tab}`, label: t("palette.commands.settings", { tab: t(`settings.tabs.${tab}`) }), keywords: "settings preferences", icon: "gear" as const, run: () => openSettingsTab(tab),
+    })),
+    { id: "theme-light", label: t("palette.commands.themeLight"), keywords: "theme appearance", icon: "sun", run: () => setThemePreference("light") },
+    { id: "theme-dark", label: t("palette.commands.themeDark"), keywords: "theme appearance", icon: "moon", run: () => setThemePreference("dark") },
+    { id: "theme-system", label: t("palette.commands.themeSystem"), keywords: "theme appearance", icon: "sliders", run: () => setThemePreference("system") },
+    ...(user ? [
+      { id: "game-toggle", label: game.enabled ? t("palette.commands.gameOff") : t("palette.commands.gameOn"), keywords: "game gamified calm xp", icon: "award" as const, run: () => { void gameStore.updateSettings({ enabled: !game.enabled }).catch(() => setToast(t("palette.commands.gameFailed"))); } },
+      { id: "sign-out", label: t("palette.commands.signOut"), keywords: "logout log out", icon: "logout" as const, run: () => { void logout(); } },
+    ] : []),
+  ];
+
   if (accountLink) {
     return <AccountLinkPage route={accountLink} onDone={() => setAccountLink(null)} />;
   }
@@ -1709,7 +1812,7 @@ export function App() {
       />
 
       <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || mobileMoreOpen}>
-        <MobileTopBar view={activeView} title={viewTitle(activeView, t)} agentOpen={agentOpen} onAgent={() => setAgentOpen((value) => !value)} />
+        <MobileTopBar view={activeView} title={viewTitle(activeView, t)} agentOpen={agentOpen} onAgent={() => setAgentOpen((value) => !value)} onSearch={() => setPaletteOpen(true)} />
         <VerifyEmailBanner key={user?.id ?? "anonymous"} user={user} />
         <WorkspaceHeader
           activeView={activeView}
@@ -1731,6 +1834,7 @@ export function App() {
           <WorkspaceContent
             key={user?.id ?? "anonymous"}
             settingsTab={settingsTab}
+            settingsKey={settingsKey}
             onOpenGameSettings={openGameSettings}
             activeView={activeView}
             user={user}
@@ -1852,6 +1956,18 @@ export function App() {
       {user && <ProjectInviteNotifications invites={incomingInvites} onRespond={respondToInvite} />}
       {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>{t("common.celebration.notice")}</strong><small>{toast}</small></span><button type="button" aria-label={t("common.actions.dismiss")} onClick={() => setToast(null)}>✕</button></div>}
       {user && game.enabled && <GameCelebrations onOpenChest={setChestToOpen} />}
+      {paletteOpen && <CommandPalette
+        tasks={tasks}
+        habits={habits}
+        notes={notesStore.list()}
+        projects={projects}
+        commands={paletteCommands}
+        onClose={() => setPaletteOpen(false)}
+        onOpenTask={(task) => { setComposerProjectId(task.projectId ?? null); setEditingTask(task); }}
+        onOpenHabit={() => changeView("habits")}
+        onOpenNote={(note) => { requestNoteOpen(note.id); openNotes(note.projectId ?? undefined); }}
+        onOpenProject={(project) => openProject(project.id)}
+      />}
       {chestDialog && <ChestDialog chest={chestDialog} onClose={() => setChestToOpen(null)} />}
     </div>
     </EffectsProvider>

@@ -328,6 +328,8 @@ paths:
           description: changes
         '401':
           description: unauthenticated
+  # Task snapshots (push and pull) also carry optional reminderAt (RFC 3339,
+  # stored in UTC) and checklist ([{id, title, done, position}], at most 100).
   /v1/sync/push:
     post:
       summary: Push up to 100 task/habit mutations (unknown fields ignored)

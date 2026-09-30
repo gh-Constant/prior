@@ -60,6 +60,10 @@ export type Task = {
   followUpDate?: string | null;
   followUpTime?: string | null;
   estimatedMinutes?: number | null;
+  /** Absolute reminder instant (ISO 8601 / RFC 3339), or none. */
+  reminderAt?: string | null;
+  /** Ordered subtasks, at most 100. Checking one never earns XP. */
+  checklist?: ChecklistItem[];
   completed: boolean;
   important: boolean;
   urgent: boolean;
@@ -69,7 +73,16 @@ export type Task = {
   serverRevision?: number;
 };
 
-export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes">>;
+export type ChecklistItem = {
+  id: string;
+  title: string;
+  done: boolean;
+  position: number;
+};
+
+export const MAX_CHECKLIST_ITEMS = 100;
+
+export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes" | "reminderAt" | "checklist">>;
 
 export type HabitUnit = "day" | "week" | "month" | "year";
 
@@ -159,13 +172,16 @@ export type ProposedTask = {
   scheduledDate?: string | null;
   assigneeName?: string;
   followUpDate?: string | null;
+  /** Checklist item titles, in order (all unchecked). */
+  checklist?: string[];
+  reminderAt?: string | null;
   reasoning: string;
   selected: boolean;
   added?: boolean;
 };
 
 /** Fields the assistant may change on an existing task (update_task). */
-export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed">>;
+export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt">>;
 
 /** A reviewable edit to an existing task; applied only after the user confirms. */
 export type ProposedTaskUpdate = {

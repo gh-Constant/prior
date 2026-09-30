@@ -3,6 +3,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Reminders (specs/REMINDERS.md). POST_NOTIFICATIONS comes from the
+         notification plugin and is requested at runtime on Android 13+.
+         Exact alarms are optional: without this grant the plugin falls back
+         to inexact alarms. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -56,6 +62,17 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="prior" android:host="widget" />
+            </intent-filter>
+            <!-- PRIOR CUSTOM SCHEME (not generated): open a task or habit and
+                 quick capture (prior://task/<id>, prior://habit/<id>,
+                 prior://new-task). Keep when regenerating. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="prior" android:host="task" />
+                <data android:scheme="prior" android:host="habit" />
+                <data android:scheme="prior" android:host="new-task" />
             </intent-filter>
         </activity>
 

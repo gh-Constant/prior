@@ -1,4 +1,4 @@
-import type { Habit, HabitMutation, HabitUnit, Mutation, SyncState, Task, TaskDraft, TaskMutation, TaskPriority, TaskStatus } from "../types";
+import { MAX_CHECKLIST_ITEMS, type ChecklistItem, type Habit, type HabitMutation, type HabitUnit, type Mutation, type SyncState, type Task, type TaskDraft, type TaskMutation, type TaskPriority, type TaskStatus } from "../types";
 import { normalizeEstimate } from "./taskEstimate";
 import { getAccountId, readScopedStorage, writeScopedStorage } from "./accountScope";
 import { dateKey } from "./habits";
@@ -10,6 +10,7 @@ const HABITS_KEY = "prior.habits.v1";
 const OUTBOX_KEY = "prior.outbox.v1";
 const SYNC_KEY = "prior.sync.v1";
 const LEGACY_SYNC_KEY = "prior.legacy-sync.v2";
+const TASK_SELECT = "SELECT id, title, description, due_date as dueDate, due_time as dueTime, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, scheduled_time as scheduledTime, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, follow_up_time as followUpTime, estimated_minutes as estimatedMinutes, reminder_at as reminderAt, checklist, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks";
 
 type SqlDatabase = {
   select<T>(query: string, bindValues?: unknown[]): Promise<T[]>;
@@ -149,6 +150,31 @@ function normalizeWeekdays(value: unknown): number[] {
   return [...new Set(value.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((left, right) => left - right);
 }
 
+/** A reminder is an absolute instant; anything unparsable means none. */
+export function normalizeReminder(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const time = Date.parse(value.trim());
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
+/** Parses (SQLite stores JSON text), validates and renumbers a checklist. */
+export function normalizeChecklist(value: unknown): ChecklistItem[] {
+  let items: unknown = value;
+  if (typeof items === "string") {
+    try { items = JSON.parse(items); } catch { items = []; }
+  }
+  if (!Array.isArray(items)) return [];
+  const seen = new Set<string>();
+  return items
+    .filter((item): item is Partial<ChecklistItem> => Boolean(item) && typeof item === "object")
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => (Number(left.item.position ?? left.index) - Number(right.item.position ?? right.index)) || left.index - right.index)
+    .map(({ item }) => ({ id: typeof item.id === "string" ? item.id.trim() : "", title: typeof item.title === "string" ? item.title.trim().slice(0, 400) : "", done: Boolean(item.done) }))
+    .filter((item) => item.id && item.title && !seen.has(item.id) && seen.add(item.id))
+    .slice(0, MAX_CHECKLIST_ITEMS)
+    .map((item, position) => ({ ...item, position }));
+}
+
 // Pure, adapter-independent normalizers shared by SQLite + localStorage paths.
 export function normalizeTask(task: Task): Task {
   let peopleIds: unknown = task.peopleIds;
@@ -171,6 +197,8 @@ export function normalizeTask(task: Task): Task {
     followUpDate: normalizeDueDate(task.followUpDate),
     followUpTime: normalizeTime(task.followUpTime),
     estimatedMinutes: normalizeEstimate(task.estimatedMinutes),
+    reminderAt: normalizeReminder(task.reminderAt),
+    checklist: normalizeChecklist(task.checklist),
     completed: Boolean(task.completed),
     important: Boolean(task.important),
     urgent: Boolean(task.urgent),
@@ -224,6 +252,8 @@ export function buildTask(
     followUpDate: normalizeDueDate(input.followUpDate !== undefined ? input.followUpDate : previous?.followUpDate),
     followUpTime: normalizeTime(input.followUpTime !== undefined ? input.followUpTime : previous?.followUpTime),
     estimatedMinutes: normalizeEstimate(input.estimatedMinutes !== undefined ? input.estimatedMinutes : previous?.estimatedMinutes),
+    reminderAt: input.reminderAt !== undefined ? input.reminderAt : previous?.reminderAt ?? null,
+    checklist: input.checklist !== undefined ? input.checklist : previous?.checklist ?? [],
     completed: Boolean(input.completed ?? previous?.completed ?? false),
     important: Boolean(input.important),
     urgent: Boolean(input.urgent),
@@ -303,7 +333,7 @@ async function findPreviousTask(db: SqlDatabase | null, accountId: string, id: s
   if (!id) return undefined;
   if (db) {
     const rows = await db.select<Task>(
-      "SELECT id, title, description, due_date as dueDate, due_time as dueTime, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, scheduled_time as scheduledTime, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, follow_up_time as followUpTime, estimated_minutes as estimatedMinutes, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE id = ? AND account_id = ?",
+      `${TASK_SELECT} WHERE id = ? AND account_id = ?`,
       [id, accountId],
     );
     return rows[0] ? normalizeTask(rows[0]) : undefined;
@@ -339,8 +369,8 @@ async function mergeRemoteTasksIntoDb(db: SqlDatabase, accountId: string, pendin
     for (const task of candidates) {
       if (isRemoteStale(task.serverRevision, revisions.get(task.id))) continue;
       await db.execute(
-        "INSERT INTO tasks (account_id, id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, people_ids, follow_up_date, follow_up_time, estimated_minutes, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, due_time=excluded.due_time, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, follow_up_time=excluded.follow_up_time, estimated_minutes=excluded.estimated_minutes, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
-        [accountId, task.id, task.title, task.description ?? "", task.dueDate ?? null, task.dueTime ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.scheduledTime ?? null, task.assigneeName ?? "", JSON.stringify(task.peopleIds ?? []), task.followUpDate ?? null, task.followUpTime ?? null, task.estimatedMinutes ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
+        "INSERT INTO tasks (account_id, id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, people_ids, follow_up_date, follow_up_time, estimated_minutes, reminder_at, checklist, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, due_time=excluded.due_time, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, follow_up_time=excluded.follow_up_time, estimated_minutes=excluded.estimated_minutes, reminder_at=excluded.reminder_at, checklist=excluded.checklist, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=excluded.deleted_at, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+        [accountId, task.id, task.title, task.description ?? "", task.dueDate ?? null, task.dueTime ?? null, normalizePriority(task.priority), task.areaId ?? null, task.projectId ?? null, normalizeStatus(task.status, task.completed), task.scheduledDate ?? null, task.scheduledTime ?? null, task.assigneeName ?? "", JSON.stringify(task.peopleIds ?? []), task.followUpDate ?? null, task.followUpTime ?? null, task.estimatedMinutes ?? null, task.reminderAt ?? null, JSON.stringify(task.checklist ?? []), task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, task.deletedAt, task.serverRevision ?? null],
       );
     }
   });
@@ -392,7 +422,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       const rows = await db.select<Task>(
-        "SELECT id, title, description, due_date as dueDate, due_time as dueTime, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, scheduled_time as scheduledTime, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, follow_up_time as followUpTime, estimated_minutes as estimatedMinutes, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? ORDER BY updated_at DESC",
+        `${TASK_SELECT} WHERE account_id = ? ORDER BY updated_at DESC`,
         [accountId],
       );
       return rows.map(normalizeTask);
@@ -405,7 +435,7 @@ export const localStore = {
     if (db) {
       const accountId = getAccountId();
       const rows = await db.select<Task>(
-      "SELECT id, title, description, due_date as dueDate, due_time as dueTime, priority, area_id as areaId, project_id as projectId, status, scheduled_date as scheduledDate, scheduled_time as scheduledTime, assignee_name as assigneeName, people_ids as peopleIds, follow_up_date as followUpDate, follow_up_time as followUpTime, estimated_minutes as estimatedMinutes, completed, important, urgent, created_at as createdAt, updated_at as updatedAt, deleted_at as deletedAt, server_revision as serverRevision FROM tasks WHERE account_id = ? AND deleted_at IS NULL ORDER BY completed ASC, updated_at DESC",
+      `${TASK_SELECT} WHERE account_id = ? AND deleted_at IS NULL ORDER BY completed ASC, updated_at DESC`,
       [accountId],
       );
       return rows.map(normalizeTask);
@@ -435,8 +465,8 @@ export const localStore = {
     if (db) {
       await withDbLock(() =>
         db.execute(
-          "INSERT INTO tasks (account_id, id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, people_ids, follow_up_date, follow_up_time, estimated_minutes, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, due_time=excluded.due_time, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, follow_up_time=excluded.follow_up_time, estimated_minutes=excluded.estimated_minutes, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
-          [accountId, task.id, task.title, task.description, task.dueDate, task.dueTime, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.scheduledTime, task.assigneeName, JSON.stringify(task.peopleIds ?? []), task.followUpDate, task.followUpTime, task.estimatedMinutes ?? null, task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
+          "INSERT INTO tasks (account_id, id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, people_ids, follow_up_date, follow_up_time, estimated_minutes, reminder_at, checklist, completed, important, urgent, created_at, updated_at, deleted_at, server_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, id) DO UPDATE SET title=excluded.title, description=excluded.description, due_date=excluded.due_date, due_time=excluded.due_time, priority=excluded.priority, area_id=excluded.area_id, project_id=excluded.project_id, status=excluded.status, scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, assignee_name=excluded.assignee_name, people_ids=excluded.people_ids, follow_up_date=excluded.follow_up_date, follow_up_time=excluded.follow_up_time, estimated_minutes=excluded.estimated_minutes, reminder_at=excluded.reminder_at, checklist=excluded.checklist, completed=excluded.completed, important=excluded.important, urgent=excluded.urgent, updated_at=excluded.updated_at, deleted_at=NULL, server_revision=excluded.server_revision WHERE tasks.account_id = excluded.account_id",
+          [accountId, task.id, task.title, task.description, task.dueDate, task.dueTime, task.priority, task.areaId, task.projectId, task.status, task.scheduledDate, task.scheduledTime, task.assigneeName, JSON.stringify(task.peopleIds ?? []), task.followUpDate, task.followUpTime, task.estimatedMinutes ?? null, task.reminderAt ?? null, JSON.stringify(task.checklist ?? []), task.completed ? 1 : 0, task.important ? 1 : 0, task.urgent ? 1 : 0, task.createdAt, task.updatedAt, null, task.serverRevision ?? null],
         )
       );
     } else {

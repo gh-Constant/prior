@@ -258,6 +258,12 @@ pub fn run() {
             sql: include_str!("../migrations/010_task_estimates.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 11,
+            description: "task reminders and checklists",
+            sql: include_str!("../migrations/011_task_reminders_checklists.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();
@@ -295,6 +301,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_websocket::init())

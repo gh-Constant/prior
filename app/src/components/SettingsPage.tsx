@@ -18,9 +18,10 @@ import "./SettingsPage.css";
 import { SettingsRow, SettingsSection } from "./SettingsLayout";
 import { AccountSettings } from "./account/AccountSettings";
 import { SecuritySettings } from "./account/SecuritySettings";
+import { NotificationSettings } from "./tasks/NotificationSettings";
 import { GameSettingsPanel } from "./game/GameSettingsPanel";
 
-export type SettingsTab = "general" | "profile" | "security" | "game" | "assistant" | "integrations" | "diagnostics" | "developer";
+export type SettingsTab = "general" | "profile" | "security" | "notifications" | "game" | "assistant" | "integrations" | "diagnostics" | "developer";
 
 type SettingsPageProps = {
   readonly user: SessionUser | null;
@@ -799,6 +800,7 @@ const TABS: ReadonlyArray<{ readonly id: SettingsTab; readonly icon: IconName; r
   { id: "general", icon: "sliders" },
   { id: "profile", icon: "user" },
   { id: "security", icon: "shield" },
+  { id: "notifications", icon: "bell" },
   { id: "game", icon: "award" },
   { id: "assistant", icon: "sparkles" },
   { id: "integrations", icon: "code" },
@@ -859,6 +861,7 @@ export function SettingsPage({ user, onUserUpdated, initialTab }: SettingsPagePr
             <AccountSettings user={user} />
           </>}
           {tab === "security" && <SecuritySettings user={user} onUserUpdated={onUserUpdated} />}
+          {tab === "notifications" && <NotificationSettings />}
           {tab === "game" && <GameSettingsPanel />}
           {tab === "assistant" && <AssistantSettings />}
           {tab === "integrations" && <IntegrationsSettings />}

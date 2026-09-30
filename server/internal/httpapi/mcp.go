@@ -304,6 +304,21 @@ func taskFieldProperties(nullable bool) map[string]any {
 		"status":         propStatus,
 		"project_id":     optional("Project ID from list_projects."),
 		"area_id":        optional("Area ID from list_projects."),
+		"reminder_at":    optional("When to remind the user, an RFC 3339 date-time with offset (e.g. 2026-10-01T09:00:00+02:00)."),
+		"checklist": map[string]any{
+			"type":        "array",
+			"maxItems":    tasks.MaxChecklistItems,
+			"description": "Ordered subtasks. Replaces the whole checklist; keep existing ids to keep items. Checking items never earns XP.",
+			"items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":    propString("Existing item id (omit for a new item)."),
+					"title": propString("Item text (1-400 characters)."),
+					"done":  propBool("Checked."),
+				},
+				"required": []string{"title"},
+			},
+		},
 	}
 }
 
@@ -608,6 +623,38 @@ func applyTaskFields(task *tasks.Task, fields map[string]json.RawMessage) error 
 			var completed bool
 			if err = json.Unmarshal(raw, &completed); err == nil {
 				setTaskCompleted(task, completed)
+			}
+		case "reminder_at":
+			var value *string
+			if err = json.Unmarshal(raw, &value); err == nil {
+				if value == nil || strings.TrimSpace(*value) == "" {
+					task.ReminderAt = nil
+				} else if _, parseErr := time.Parse(time.RFC3339, strings.TrimSpace(*value)); parseErr != nil {
+					return errors.New("reminder_at must be an RFC 3339 date-time such as 2026-10-01T09:00:00+02:00")
+				} else {
+					trimmed := strings.TrimSpace(*value)
+					task.ReminderAt = &trimmed
+				}
+			}
+		case "checklist":
+			var items []struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+				Done  bool   `json:"done"`
+			}
+			if err = json.Unmarshal(raw, &items); err == nil {
+				if len(items) > tasks.MaxChecklistItems {
+					return fmt.Errorf("a checklist holds at most %d items", tasks.MaxChecklistItems)
+				}
+				checklist := make([]tasks.ChecklistItem, 0, len(items))
+				for index, item := range items {
+					id := strings.TrimSpace(item.ID)
+					if id == "" {
+						id = uuid.NewString()
+					}
+					checklist = append(checklist, tasks.ChecklistItem{ID: id, Title: strings.TrimSpace(item.Title), Done: item.Done, Position: index})
+				}
+				task.Checklist = checklist
 			}
 		default:
 			target, ok := optional[key]

@@ -21,6 +21,8 @@ import { habitScheduleLabel } from "../lib/habits";
 import { useI18n } from "../lib/i18n";
 import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
+import { formatReminder } from "./tasks/ReminderPicker";
+import { generateUuid } from "../lib/uuid";
 import "katex/dist/katex.min.css";
 
 export function getQuadrantBadge(task: Pick<Task, "important" | "urgent">): { key: QuadrantKey; label: string } {
@@ -201,6 +203,8 @@ export function taskDraftOf(task: ProposedTask): TaskDraft & { areaName?: string
     scheduledDate: task.scheduledDate,
     assigneeName: task.assigneeName,
     followUpDate: task.followUpDate,
+    ...(task.reminderAt ? { reminderAt: task.reminderAt } : {}),
+    ...(task.checklist?.length ? { checklist: task.checklist.map((title, position) => ({ id: generateUuid(), title, done: false, position })) } : {}),
   };
 }
 
@@ -491,7 +495,7 @@ type ProposedTaskCardProps = {
 };
 
 export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onToggleImportant, onToggleUrgent, onAdd }: ProposedTaskCardProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const badge = getQuadrantBadge(task);
   const priority = task.priority ?? 4;
   const taskStatus = statusLabel(t, task.status);
@@ -524,6 +528,11 @@ export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onTo
         )}
       </div>
       {task.description && <p className="proposed-description">{task.description}</p>}
+      {task.checklist && task.checklist.length > 0 && (
+        <ul className="proposed-checklist" aria-label={t("checklist.title")}>
+          {task.checklist.map((title, index) => <li key={`${index}-${title}`}><span aria-hidden="true">☐</span> {title}</li>)}
+        </ul>
+      )}
       <div className="proposed-task-meta">
         <span className={`quadrant-chip quadrant-chip-${badge.key}`}>
           {quadrantLabel(t, badge.key)}
@@ -536,6 +545,7 @@ export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onTo
         {task.scheduledDate && <span className="proposed-scheduled-date">{t("agent.cards.scheduled", { date: formatDueDate(task.scheduledDate) })}</span>}
         {task.assigneeName && <span className="proposed-assignee-badge">{t("agent.cards.waitingOn", { name: task.assigneeName })}</span>}
         {task.followUpDate && <span className="proposed-followup-date">{t("agent.cards.followUp", { date: formatDueDate(task.followUpDate) })}</span>}
+        {task.reminderAt && <span className="proposed-scheduled-date">{t("reminders.picker.set", { when: formatReminder(task.reminderAt, lang) })}</span>}
         <FlagToggles
           important={task.important}
           urgent={task.urgent}
@@ -604,7 +614,7 @@ type ProposedTaskUpdateCardProps = {
 };
 
 /** Human-readable chips describing each proposed field change. */
-function taskChangeChips(t: (key: string, params?: Record<string, string | number>) => string, update: ProposedTaskUpdate) {
+function taskChangeChips(t: (key: string, params?: Record<string, string | number>) => string, update: ProposedTaskUpdate, lang: string) {
   const { changes } = update;
   const chips: Array<{ key: string; className: string; label: string }> = [];
   if (changes.title !== undefined) chips.push({ key: "title", className: "proposed-project-badge", label: t("agent.updates.renameTo", { title: changes.title }) });
@@ -618,11 +628,16 @@ function taskChangeChips(t: (key: string, params?: Record<string, string | numbe
   if (changes.assigneeName !== undefined) chips.push({ key: "assignee", className: "proposed-assignee-badge", label: changes.assigneeName ? t("agent.cards.waitingOn", { name: changes.assigneeName }) : t("agent.updates.clearAssignee") });
   if (changes.followUpDate !== undefined) chips.push({ key: "followUp", className: "proposed-followup-date", label: changes.followUpDate ? t("agent.cards.followUp", { date: formatDueDate(changes.followUpDate) }) : t("agent.updates.clearFollowUp") });
   if (changes.description !== undefined) chips.push({ key: "description", className: "proposed-area-badge", label: t("agent.updates.newDescription") });
+  if (changes.reminderAt !== undefined) chips.push({ key: "reminder", className: "proposed-scheduled-date", label: changes.reminderAt ? t("reminders.picker.set", { when: formatReminder(changes.reminderAt, lang) }) : t("reminders.picker.clear") });
+  if (changes.checklist !== undefined) {
+    const done = changes.checklist.filter((item) => item.done).length;
+    chips.push({ key: "checklist", className: "proposed-area-badge", label: t("checklist.change", { done, total: changes.checklist.length }) });
+  }
   return chips;
 }
 
 export function ProposedTaskUpdateCard({ messageId, update, applying, onToggleSelect, onApply }: ProposedTaskUpdateCardProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <div className={`proposed-task-item proposed-task-update-item ${update.added ? "is-added" : ""}`}>
       <div className="proposed-task-top">
@@ -654,7 +669,7 @@ export function ProposedTaskUpdateCard({ messageId, update, applying, onToggleSe
       </div>
       {update.changes.description && <p className="proposed-description">{update.changes.description}</p>}
       <div className="proposed-task-meta">
-        {taskChangeChips(t, update).map((chip) => <span key={chip.key} className={chip.className}>{chip.label}</span>)}
+        {taskChangeChips(t, update, lang).map((chip) => <span key={chip.key} className={chip.className}>{chip.label}</span>)}
       </div>
       {update.reasoning && <p className="proposed-reasoning">{update.reasoning}</p>}
     </div>

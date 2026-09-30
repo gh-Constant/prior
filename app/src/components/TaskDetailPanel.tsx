@@ -10,6 +10,8 @@ import { priorityLabel } from "./TaskRow";
 import { DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import "./TaskDetailPanel.css";
 import { KudosButton } from "./game/KudosButton";
+import { ChecklistEditor } from "./tasks/ChecklistEditor";
+import { ReminderPicker } from "./tasks/ReminderPicker";
 
 type Props = {
   readonly task: Task;
@@ -141,6 +143,12 @@ export function TaskDetailPanel({ task, project, onChange, onEdit, onClose }: Pr
           </dd>
         </div>
         <div className="task-detail-property">
+          <dt>{t("reminders.picker.label")}</dt>
+          <dd>
+            <ReminderPicker task={task} value={task.reminderAt} onChange={(reminderAt) => void onChange({ ...task, reminderAt })} />
+          </dd>
+        </div>
+        <div className="task-detail-property">
           <dt>{t("tasks.detail.assignee")}</dt>
           <dd className={task.assigneeName ? "task-detail-value" : "task-detail-value muted"}>
             {task.assigneeName ? <><InitialsAvatar initials={initialsFor(task.assigneeName)} name={task.assigneeName} /><span>{task.assigneeName}</span></> : t("tasks.detail.unassigned")}
@@ -157,6 +165,8 @@ export function TaskDetailPanel({ task, project, onChange, onEdit, onClose }: Pr
           </dd>
         </div>
       </dl>
+
+      <ChecklistEditor items={task.checklist ?? []} onChange={(checklist) => void onChange({ ...task, checklist })} />
 
       <section className="task-detail-activity" aria-labelledby="task-detail-activity-heading">
         <h3 id="task-detail-activity-heading">{t("tasks.detail.activity")}</h3>

@@ -1,0 +1,2 @@
+ALTER TABLE tasks ADD COLUMN reminder_at TEXT;
+ALTER TABLE tasks ADD COLUMN checklist TEXT NOT NULL DEFAULT '[]';

@@ -2,6 +2,7 @@ import { account } from "./account";
 import { agent } from "./agent";
 import { auth } from "./auth";
 import { billing } from "./billing";
+import { checklist } from "./checklist";
 import { collab } from "./collab";
 import { common } from "./common";
 import { game } from "./game";
@@ -9,10 +10,12 @@ import { habits } from "./habits";
 import { mail } from "./mail";
 import { notes } from "./notes";
 import { onboarding } from "./onboarding";
+import { palette } from "./palette";
 import { progress } from "./progress";
+import { reminders } from "./reminders";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 
-export const en = { account, agent, auth, billing, collab, common, game, habits, mail, notes, onboarding, progress, settings, tasks };
+export const en = { account, agent, auth, billing, checklist, collab, common, game, habits, mail, notes, onboarding, palette, progress, reminders, settings, tasks };
 
 export type AppDictionary = typeof en;

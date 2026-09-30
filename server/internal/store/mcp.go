@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/gh-Constant/prior/server/internal/tasks"
 	"github.com/google/uuid"
@@ -27,7 +26,7 @@ type MCPProject struct {
 // with them, read from the materialized tasks table (not the changelog).
 func (s *Store) CurrentTasks(ctx context.Context, userID uuid.UUID) ([]tasks.Task, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date::text, scheduled_time, assignee_name, follow_up_date::text, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision
+		SELECT id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date::text, scheduled_time, assignee_name, follow_up_date::text, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision, reminder_at, checklist
 		FROM tasks t WHERE t.deleted_at IS NULL AND (t.user_id = $1 OR EXISTS (
 			SELECT 1 FROM project_members pm
 			WHERE pm.project_id = t.project_id AND pm.user_id = $1 AND pm.status = 'active'
@@ -39,14 +38,12 @@ func (s *Store) CurrentTasks(ctx context.Context, userID uuid.UUID) ([]tasks.Tas
 	result := make([]tasks.Task, 0)
 	for rows.Next() {
 		var task tasks.Task
-		var peopleJSON []byte
-		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.DueTime, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.ScheduledTime, &task.AssigneeName, &task.FollowUpDate, &task.FollowUpTime, &task.EstimatedMinutes, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision); err != nil {
+		var peopleJSON, checklist []byte
+		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.DueTime, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.ScheduledTime, &task.AssigneeName, &task.FollowUpDate, &task.FollowUpTime, &task.EstimatedMinutes, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision, &task.ReminderAt, &checklist); err != nil {
 			return nil, err
 		}
-		if len(peopleJSON) > 0 && string(peopleJSON) != "null" {
-			if err := json.Unmarshal(peopleJSON, &task.PeopleIDs); err != nil {
-				return nil, err
-			}
+		if err := decodeTaskJSON(&task, peopleJSON, checklist); err != nil {
+			return nil, err
 		}
 		result = append(result, task)
 	}

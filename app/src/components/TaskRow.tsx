@@ -10,6 +10,7 @@ import { Icon } from "./Icon";
 import { CalendarGlyph, InitialsAvatar, MoreGlyph, PriorityGlyph, StatusGlyph } from "./TaskGlyphs";
 import { TaskStatusBadge } from "./TaskStatusBadge";
 import { DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
+import { checklistProgress } from "./tasks/ChecklistEditor";
 
 /**
  * - `default`: the original two-line row used by Today, projects and waiting.
@@ -187,6 +188,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
     const dueChip = due && <span className={`task-chip task-due-chip due-${due.tone}`} title={due.tone === "overdue" ? t("tasks.list.dueOverdue") : undefined}><CalendarGlyph />{due.label}</span>;
     const estimate = formatEstimate(task.estimatedMinutes);
     const estimateChip = estimate && <span className="task-chip task-estimate-chip" title={t("tasks.composer.estimate")}><Icon name="clock" />{estimate}</span>;
+    const checklistChip = <ChecklistProgressChip task={task} />;
     const avatar = initials && task.assigneeName ? <InitialsAvatar initials={initials} name={task.assigneeName} /> : null;
     const className = `task-row task-row-${variant} ${task.completed ? "completed" : ""} ${isExiting ? "completion-exiting" : ""} ${selected ? "selected" : ""}`;
 
@@ -204,6 +206,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
             {task.urgent && <span className="task-flag-mark urgent" role="img" aria-label={t("tasks.composer.urgent")} title={t("tasks.composer.urgent")}><Icon name="bolt" /></span>}
             {dueChip}
             {estimateChip}
+            {checklistChip}
             {projectChip}
             {avatar && <span className="task-meta-end">{avatar}</span>}
           </div>
@@ -226,6 +229,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
           {projectChip}
           {dueChip}
           {estimateChip}
+          {checklistChip}
           {avatar}
         </div>
         {menuElement}
@@ -252,6 +256,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
           {task.projectId && project?.name ? <span className="task-project-meta" title={project.name}><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /><span className="task-project-name">{project.name}</span></span> : null}
           {task.dueDate && <span className="task-due-date"><Icon name="calendar-check" /> {formatDueDate(task.dueDate, lang)}{task.dueTime ? ` · ${task.dueTime}` : ""}</span>}
           {task.estimatedMinutes ? <span className="task-due-date"><Icon name="clock" /> {formatEstimate(task.estimatedMinutes)}</span> : null}
+          <ChecklistProgressChip task={task} />
           {!(hideNextStatus && !task.completed && task.status === "next") && <TaskStatusBadge status={task.completed ? "done" : task.status ?? "inbox"} label={statusLabel(task.completed ? "done" : task.status, t)} />}
           {task.assigneeName && <span className="task-assignee-meta"><Icon name="user" /> {task.assigneeName}</span>}
         </div>
@@ -262,5 +267,18 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
       </div>
       {menuElement}
     </div>
+  );
+}
+
+/** "3/5" checklist progress; nothing for tasks without a checklist. */
+function ChecklistProgressChip({ task }: { readonly task: Task }) {
+  const { t } = useI18n();
+  const progress = checklistProgress(task.checklist);
+  if (!progress) return null;
+  const label = t("checklist.progress", { done: progress.done, total: progress.total });
+  return (
+    <span className={`task-chip task-checklist-progress ${progress.done === progress.total ? "complete" : ""}`} role="img" aria-label={label} title={label}>
+      <Icon name="check-circle" />{progress.done}/{progress.total}
+    </span>
   );
 }

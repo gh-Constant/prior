@@ -518,9 +518,22 @@ func optional(value *string) string {
 	return *value
 }
 
+// checklistText renders a checklist as "[x] done; [ ] open".
+func checklistText(items []tasks.ChecklistItem) string {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		mark := "[ ] "
+		if item.Done {
+			mark = "[x] "
+		}
+		parts = append(parts, mark+item.Title)
+	}
+	return strings.Join(parts, "; ")
+}
+
 func writeTasksCSV(out io.Writer, list []tasks.Task) error {
 	writer := csv.NewWriter(out)
-	header := []string{"id", "title", "description", "status", "completed", "important", "urgent", "priority", "dueDate", "dueTime", "scheduledDate", "scheduledTime", "projectId", "areaId", "estimatedMinutes", "createdAt", "updatedAt"}
+	header := []string{"id", "title", "description", "status", "completed", "important", "urgent", "priority", "dueDate", "dueTime", "scheduledDate", "scheduledTime", "reminderAt", "checklist", "projectId", "areaId", "estimatedMinutes", "createdAt", "updatedAt"}
 	if err := writer.Write(header); err != nil {
 		return err
 	}
@@ -533,6 +546,7 @@ func writeTasksCSV(out io.Writer, list []tasks.Task) error {
 			task.ID, csvCell(task.Title), csvCell(task.Description), task.Status, strconv.FormatBool(task.Completed),
 			strconv.FormatBool(task.Important), strconv.FormatBool(task.Urgent), strconv.Itoa(task.Priority),
 			optional(task.DueDate), optional(task.DueTime), optional(task.ScheduledDate), optional(task.ScheduledTime),
+			optional(task.ReminderAt), csvCell(checklistText(task.Checklist)),
 			optional(task.ProjectID), optional(task.AreaID), estimate,
 			task.CreatedAt.UTC().Format(time.RFC3339), task.UpdatedAt.UTC().Format(time.RFC3339),
 		}
