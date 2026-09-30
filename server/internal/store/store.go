@@ -354,6 +354,11 @@ func workspaceUpdatedAt(ctx context.Context, tx pgx.Tx, table string, userID uui
 	return result, rows.Err()
 }
 
+// applyIfNewer lets equal timestamps through (two edits in the same
+// millisecond still merge); the upserts themselves skip rows whose content is
+// unchanged, so resending an identical snapshot keeps the workspace revision
+// still. A bumped revision notifies every connected client, which syncs and
+// resends its snapshot: without that guard, web clients looped forever.
 func applyIfNewer(incoming time.Time, current map[string]time.Time, id string) bool {
 	updatedAt, exists := current[id]
 	return !exists || !incoming.Before(updatedAt)
@@ -421,7 +426,9 @@ func syncAreas(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []work
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			ON CONFLICT (user_id, id) DO UPDATE SET name = EXCLUDED.name, color = EXCLUDED.color, icon = EXCLUDED.icon,
 			updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
-			WHERE areas.updated_at IS NULL OR EXCLUDED.updated_at >= areas.updated_at`,
+			WHERE (areas.updated_at IS NULL OR EXCLUDED.updated_at >= areas.updated_at)
+			AND (areas.name, areas.color, areas.icon, areas.updated_at, areas.deleted_at)
+				IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.color, EXCLUDED.icon, EXCLUDED.updated_at, EXCLUDED.deleted_at)`,
 			area.ID, userID, area.Name, area.Color, area.Icon, createdAt, area.UpdatedAt, area.DeletedAt, revision)
 		if err != nil {
 			return err
@@ -476,7 +483,9 @@ func syncProjects(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []w
 			description = EXCLUDED.description, icon = EXCLUDED.icon, status = EXCLUDED.status,
 			metadata = EXCLUDED.metadata,
 			updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
-			WHERE projects.updated_at IS NULL OR EXCLUDED.updated_at >= projects.updated_at`,
+			WHERE (projects.updated_at IS NULL OR EXCLUDED.updated_at >= projects.updated_at)
+			AND (projects.area_id, projects.name, projects.description, projects.icon, projects.status, projects.metadata, projects.updated_at, projects.deleted_at)
+				IS DISTINCT FROM (EXCLUDED.area_id, EXCLUDED.name, EXCLUDED.description, EXCLUDED.icon, EXCLUDED.status, EXCLUDED.metadata, EXCLUDED.updated_at, EXCLUDED.deleted_at)`,
 			project.ID, userID, project.AreaID, project.Name, project.Description, project.Icon, project.Status, metadata, createdAt, project.UpdatedAt, project.DeletedAt, revision)
 		if err != nil {
 			return err
@@ -515,7 +524,9 @@ func syncFolders(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []wo
 			ON CONFLICT (user_id, id) DO UPDATE SET name = EXCLUDED.name, parent_id = EXCLUDED.parent_id,
 			color = EXCLUDED.color, workspace_kind = EXCLUDED.workspace_kind, workspace_id = EXCLUDED.workspace_id,
 			icon = EXCLUDED.icon, updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
-			WHERE note_folders.updated_at IS NULL OR EXCLUDED.updated_at >= note_folders.updated_at`,
+			WHERE (note_folders.updated_at IS NULL OR EXCLUDED.updated_at >= note_folders.updated_at)
+			AND (note_folders.name, note_folders.parent_id, note_folders.color, note_folders.workspace_kind, note_folders.workspace_id, note_folders.icon, note_folders.updated_at, note_folders.deleted_at)
+				IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.parent_id, EXCLUDED.color, EXCLUDED.workspace_kind, EXCLUDED.workspace_id, EXCLUDED.icon, EXCLUDED.updated_at, EXCLUDED.deleted_at)`,
 			folder.ID, userID, folder.Name, folder.ParentID, folder.Color, folder.WorkspaceKind, folder.WorkspaceID, folder.Icon, createdAt, folder.UpdatedAt, folder.DeletedAt, revision)
 		if err != nil {
 			return err
@@ -554,7 +565,9 @@ func syncNotes(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []work
 			ON CONFLICT (user_id, id) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body, folder_id = EXCLUDED.folder_id,
 			project_id = EXCLUDED.project_id, favorite = EXCLUDED.favorite, updated_at = EXCLUDED.updated_at,
 			deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision
-			WHERE notes.updated_at IS NULL OR EXCLUDED.updated_at >= notes.updated_at`,
+			WHERE (notes.updated_at IS NULL OR EXCLUDED.updated_at >= notes.updated_at)
+			AND (notes.title, notes.body, notes.folder_id, notes.project_id, notes.favorite, notes.updated_at, notes.deleted_at)
+				IS DISTINCT FROM (EXCLUDED.title, EXCLUDED.body, EXCLUDED.folder_id, EXCLUDED.project_id, EXCLUDED.favorite, EXCLUDED.updated_at, EXCLUDED.deleted_at)`,
 			note.ID, userID, note.Title, note.Body, note.FolderID, note.ProjectID, note.Favorite, createdAt, note.UpdatedAt, note.DeletedAt, revision)
 		if err != nil {
 			return err

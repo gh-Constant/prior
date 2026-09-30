@@ -285,6 +285,87 @@ func TestProjectTypeSyncPostgres(t *testing.T) {
 	}
 }
 
+// Resending an unchanged snapshot must not move the workspace revision: a
+// new revision notifies every realtime client, which syncs and resends its
+// snapshot, so web clients looped (and re-rendered) several times a second.
+func TestWorkspaceResyncKeepsRevisionPostgres(t *testing.T) {
+	url := os.Getenv("PRIOR_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set PRIOR_TEST_DATABASE_URL for PostgreSQL integration")
+	}
+	ctx := context.Background()
+	adminPool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adminPool.Close()
+	schema := "resync_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	if _, err := adminPool.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer adminPool.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
+	poolConfig, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	poolConfig.ConnConfig.RuntimeParams["search_path"] = schema + ",public"
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(config.Config{}, pool)
+	handler := srv.Handler()
+	user, err := srv.store.CreatePasswordUser(ctx, "resync@example.com", "x", "resync")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := uuid.NewString()
+	if err := srv.store.CreateSession(ctx, user.ID, token, "test", "web", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	sync := func(snapshot string) float64 {
+		request := httptest.NewRequest("POST", "/v1/workspace/sync", strings.NewReader(snapshot))
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != 200 {
+			t.Fatalf("sync = %d %s", response.Code, response.Body.String())
+		}
+		var decoded struct {
+			WorkspaceRevision float64 `json:"workspaceRevision"`
+		}
+		_ = json.Unmarshal(response.Body.Bytes(), &decoded)
+		return decoded.WorkspaceRevision
+	}
+	at := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339Nano)
+	stamps := `"createdAt":"` + at + `","updatedAt":"` + at + `","deletedAt":null`
+	areaID, projectID, folderID, noteID, milestoneID := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
+	snapshot := func(noteBody, noteUpdatedAt string) string {
+		return `{"areas":[{"id":"` + areaID + `","name":"Work","color":"red","icon":null,` + stamps + `}],` +
+			`"projects":[{"id":"` + projectID + `","areaId":"` + areaID + `","name":"App","description":"","icon":"code","status":"active","projectType":"software","milestones":[{"id":"` + milestoneID + `","name":"Beta"}],` + stamps + `}],` +
+			`"folders":[{"id":"` + folderID + `","name":"Docs","parentId":null,"color":null,"workspaceKind":"project","workspaceId":"` + projectID + `","icon":null,` + stamps + `}],` +
+			`"notes":[{"id":"` + noteID + `","title":"Spec","body":"` + noteBody + `","folderId":"` + folderID + `","projectId":"` + projectID + `","favorite":false,"createdAt":"` + at + `","updatedAt":"` + noteUpdatedAt + `","deletedAt":null}]}`
+	}
+	first := sync(snapshot("v1", at))
+	if first <= 0 {
+		t.Fatalf("first revision = %v", first)
+	}
+	unchanged := snapshot("v1", at)
+	for attempt := 0; attempt < 3; attempt++ {
+		if got := sync(unchanged); got != first {
+			t.Fatalf("resending an unchanged snapshot moved the revision: %v -> %v", first, got)
+		}
+	}
+	edited := time.Now().UTC().Format(time.RFC3339Nano)
+	if got := sync(snapshot("v2", edited)); got <= first {
+		t.Fatalf("an edited note must move the revision: %v -> %v", first, got)
+	}
+}
+
 func mustUserID(t *testing.T, srv *Server, token string) uuid.UUID {
 	t.Helper()
 	user, err := srv.store.UserForToken(context.Background(), token)

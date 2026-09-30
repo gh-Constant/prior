@@ -20,12 +20,21 @@ export function Modal({ title, onClose, children, className = "", ariaLabelledBy
       : null
   );
 
+  // Parents pass a new onClose on every render. Reading it through a ref keeps
+  // the effect below mounted for the modal's whole life: re-running it would
+  // run its cleanup, which hands focus back to the opener and pulled the
+  // caret out of whatever field the user was typing in on each sync.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
       }
     };
 
@@ -37,7 +46,7 @@ export function Modal({ title, onClose, children, className = "", ariaLabelledBy
         opener.focus();
       }
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div

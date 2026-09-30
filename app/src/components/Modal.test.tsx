@@ -49,6 +49,39 @@ describe("Modal component", () => {
     document.body.removeChild(button);
   });
 
+  it("keeps focus in the field the user is typing in when the parent re-renders", () => {
+    const opener = document.createElement("button");
+    opener.textContent = "Open modal";
+    document.body.appendChild(opener);
+    opener.focus();
+    const first = vi.fn();
+    const latest = vi.fn();
+
+    // Each parent render (a sync, a realtime event...) passes a new onClose.
+    const { rerender, unmount } = render(
+      <Modal title="Rerender Test" onClose={() => first()}>
+        <input placeholder="Name" />
+      </Modal>
+    );
+    const input = screen.getByPlaceholderText("Name");
+    input.focus();
+    rerender(
+      <Modal title="Rerender Test" onClose={() => latest()}>
+        <input placeholder="Name" />
+      </Modal>
+    );
+    expect(document.activeElement).toBe(input);
+
+    // Escape still calls the latest onClose.
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(first).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(document.activeElement).toBe(opener);
+    document.body.removeChild(opener);
+  });
+
   it("submits on Enter in SimpleFormModal when input is valid, rejects empty input", () => {
     const onSubmit = vi.fn();
     const onClose = vi.fn();
