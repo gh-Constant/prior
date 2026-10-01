@@ -17,10 +17,11 @@ import { mail } from "./mail";
 import { notes } from "./notes";
 import { onboarding } from "./onboarding";
 import { palette } from "./palette";
+import { planning } from "./planning";
 import { progress } from "./progress";
 import { recurrence } from "./recurrence";
 import { reminders } from "./reminders";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 
-export const pt: AppDictionary = { account, agent, agentui, auth, billing, capture, checklist, collab, comments, common, game, habits, import: importer, kanban, mail, notes, onboarding, palette, progress, recurrence, reminders, settings, tasks };
+export const pt: AppDictionary = { account, agent, agentui, auth, billing, capture, checklist, collab, comments, common, game, habits, import: importer, kanban, mail, notes, onboarding, palette, planning, progress, recurrence, reminders, settings, tasks };

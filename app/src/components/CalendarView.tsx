@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
-import type { Habit } from "../types";
+import type { Habit, Task } from "../types";
 import { useI18n } from "../lib/i18n";
 import {
   addDays,
@@ -36,11 +36,23 @@ import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 import { createLocalCalendar, saveLocalEvent, deleteLocalEvent, normalizeCalendarText } from "../lib/calendarEvents";
 import { useCalendarLabels } from "../lib/calendarLabels";
+import type { PlanIssue } from "../lib/timeBlocking";
 import { CalendarEventEditor, CalendarColors } from "./CalendarEventEditor";
 import { CalendarSourceEditor } from "./CalendarSourceEditor";
+import { useTimeBlocking } from "../hooks/useTimeBlocking";
+import { blocksAsCalendarEvents, savePlanningSettings } from "../lib/planning";
+import { PlannedBlockDialog, PlanningSettingsDialog } from "./planning/PlannedBlockDialog";
 import "./CalendarView.css";
+import "./planning/Planning.css";
 
-type Props = { readonly habits: Habit[] };
+type Props = {
+  readonly habits: Habit[];
+  /** The user's own open tasks: automatic time blocking places them on the grid. */
+  readonly tasks?: Task[];
+  readonly onTaskChange?: (task: Task) => Promise<void>;
+  readonly onTaskEdit?: (task: Task) => void;
+};
+const NO_TASKS: Task[] = [];
 type Translate = (key: string) => string;
 
 const DAY_MINUTES = 24 * 60;
@@ -129,7 +141,13 @@ function groupByDate(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
 }
 
 function eventClasses(base: string, event: CalendarEvent): string {
-  return `${base}${event.kind === "habit" ? " is-habit" : ""}${event.completed ? " is-done" : ""}`;
+  return `${base}${event.kind === "habit" ? " is-habit" : ""}${event.kind === "task" ? ` is-task${event.locked ? " is-fixed" : ""}` : ""}${event.completed ? " is-done" : ""}`;
+}
+
+/** Lock for fixed times, sparkles for blocks Prior planned. */
+function EventBadge({ event }: { readonly event: CalendarEvent }) {
+  if (event.kind === "task" && !event.locked) return <Icon name="sparkles" className="cal-lock" aria-hidden="true" />;
+  return event.locked ? <Icon name="lock" className="cal-lock" aria-hidden="true" /> : null;
 }
 
 /** Re-renders once per minute, aligned to the minute boundary, for the now indicator. */
@@ -200,7 +218,7 @@ function EventPill({ event, lang, t, showTime = false, onOpen }: { readonly even
       aria-label={time ? `${eventLabel(event, t)} · ${time}` : eventLabel(event, t)}
     >
       <span className="cal-pill-dot" aria-hidden="true" />
-      <span className="cal-pill-title">{event.locked && <Icon name="lock" className="cal-lock" aria-hidden="true" />}{event.title}</span>
+      <span className="cal-pill-title"><EventBadge event={event} />{event.title}</span>
       {showTime && event.startTime && <span className="cal-pill-time">{formatClock(event.startTime, lang)}</span>}
     </button>
   );
@@ -221,7 +239,7 @@ function TimedEvent({ item, lang, t, onOpen }: { readonly item: LaidOutEvent; re
       title={`${event.title} · ${range}${event.location ? ` · ${event.location}` : ""}`}
       aria-label={`${eventLabel(event, t)} · ${range}${event.location ? ` · ${event.location}` : ""}`}
     >
-      <span className="cal-event-title">{event.locked && <Icon name="lock" className="cal-lock" aria-hidden="true" />}{event.title}</span>
+      <span className="cal-event-title"><EventBadge event={event} />{event.title}</span>
       <span className="cal-event-time">{detail}</span>
     </button>
   );
@@ -364,7 +382,7 @@ function AgendaList({ events, sources, now, lang, t, onOpen }: { readonly events
             </header>
             <ul className="cal-agenda-list">
               {dayEvents.map((event) => {
-                const meta = [event.kind === "habit" ? t("common.calendar.habitsTitle") : sourceNames.get(event.sourceId), event.location].filter(Boolean).join(" · ");
+                const meta = [event.kind === "habit" ? t("common.calendar.habitsTitle") : event.kind === "task" ? t("planning.block.planned") : sourceNames.get(event.sourceId), event.location].filter(Boolean).join(" · ");
                 return (
                   <li key={event.id}>
                     <button type="button" className={eventClasses("cal-agenda-row", event)} style={{ "--event-color": event.color } as CSSProperties} onClick={() => onOpen(event)}>
@@ -373,7 +391,7 @@ function AgendaList({ events, sources, now, lang, t, onOpen }: { readonly events
                       </span>
                       <span className="cal-agenda-bar" aria-hidden="true" />
                       <span className="cal-agenda-main">
-                        <strong>{event.locked && <Icon name="lock" className="cal-lock" aria-hidden="true" />}{eventLabel(event, t)}</strong>
+                        <strong><EventBadge event={event} />{eventLabel(event, t)}</strong>
                         {meta && <small>{meta}</small>}
                       </span>
                     </button>
@@ -428,7 +446,32 @@ function MiniMonth({ month, selection, now, lang, t, onMonth, onPick }: MiniMont
   );
 }
 
-export function CalendarView({ habits }: Props) {
+/** Tasks that cannot be done before their deadline or found no free time. */
+export function PlanIssuesBanner({ issues, tasks, onOpen, onSettings }: { readonly issues: readonly PlanIssue[]; readonly tasks: ReadonlyMap<string, Task>; readonly onOpen: (task: Task) => void; readonly onSettings: () => void }) {
+  const { t, tp, lang } = useI18n();
+  const late = issues.filter((issue) => issue.kind === "late");
+  const unscheduled = issues.filter((issue) => issue.kind === "unscheduled");
+  const shown = [...late, ...unscheduled].slice(0, 4);
+  return (
+    <div className="planning-banner" role="status">
+      <Icon name="flag" aria-hidden="true" />
+      <div className="planning-banner-body">
+        <strong>{[late.length ? tp("planning.issues.late", late.length) : "", unscheduled.length ? tp("planning.issues.unscheduled", unscheduled.length) : ""].filter(Boolean).join(" · ")}</strong>
+        <ul className="planning-banner-items">
+          {shown.map((issue) => {
+            const task = tasks.get(issue.taskId);
+            if (!task) return null;
+            const due = task.dueDate ? ` · ${t("planning.issues.lateItem", { date: new Intl.DateTimeFormat(lang, { day: "numeric", month: "short" }).format(new Date(`${task.dueDate.slice(0, 10)}T00:00:00`)) })}` : "";
+            return <li key={issue.taskId}><button type="button" onClick={() => onOpen(task)}>{task.title}{due}</button></li>;
+          })}
+        </ul>
+        <small>{t("planning.issues.hint")} <button type="button" className="planning-link" onClick={onSettings}>{t("planning.block.settings")}</button></small>
+      </div>
+    </div>
+  );
+}
+
+export function CalendarView({ habits, tasks = NO_TASKS, onTaskChange, onTaskEdit }: Props) {
   const { t, lang } = useI18n();
   const l = useCalendarLabels();
   const now = useMinuteClock();
@@ -459,6 +502,7 @@ export function CalendarView({ habits }: Props) {
   const [importError, setImportError] = useState("");
   const [syncingSourceId, setSyncingSourceId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [planningSettingsOpen, setPlanningSettingsOpen] = useState(false);
   const accountId = useRef(getAccountId());
   const [accountVersion, setAccountVersion] = useState(0);
   useEffect(() => {
@@ -509,7 +553,15 @@ export function CalendarView({ habits }: Props) {
     const days = Array.from({ length: 7 }, (_, index) => addDays(mondayOf(anchorDate), index));
     return { from: days[0], to: days[days.length - 1], days };
   }, [anchorDate, mode]);
-  const events = useMemo(() => eventsInRange(state, habits, range.from, range.to).filter((event) => normalizeCalendarText(`${event.title} ${event.location ?? ""} ${event.description ?? ""}`).includes(normalizeCalendarText(query))), [habits, range.from, range.to, state, query]);
+  const planning = useTimeBlocking(tasks, habits, state);
+  const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const plannedEvents = useMemo(() => planning.plan && onTaskChange ? blocksAsCalendarEvents(planning.plan.blocks, taskById, dateKey(range.from), dateKey(range.to), "var(--accent)") : [], [planning.plan, onTaskChange, taskById, range.from, range.to]);
+  const events = useMemo(() => [...eventsInRange(state, habits, range.from, range.to), ...plannedEvents]
+    .filter((event) => normalizeCalendarText(`${event.title} ${event.location ?? ""} ${event.description ?? ""}`).includes(normalizeCalendarText(query)))
+    .sort((left, right) => left.date.localeCompare(right.date) || (minutesFromTime(left.startTime) ?? -1) - (minutesFromTime(right.startTime) ?? -1)), [habits, range.from, range.to, state, query, plannedEvents]);
+  const planIssues = useMemo(() => (planning.plan?.issues ?? []).filter((issue) => issue.kind !== "overdue" && taskById.has(issue.taskId)), [planning.plan, taskById]);
+  const selectedBlock = selectedEvent?.kind === "task" ? planning.plan?.blocks.find((block) => `plan:${block.id}` === selectedEvent.id) ?? null : null;
+  const selectedTask = selectedBlock ? taskById.get(selectedBlock.taskId) ?? null : null;
   const eventCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const event of events) counts.set(event.sourceId, (counts.get(event.sourceId) ?? 0) + 1);
@@ -823,6 +875,14 @@ export function CalendarView({ habits }: Props) {
             <span className="cal-switch-label">{t("common.calendar.habitsTitle")}</span>
             <span className="cal-switch" aria-hidden="true" />
           </button>
+          {onTaskChange && <div className="cal-switch-group">
+            <button type="button" role="switch" aria-checked={planning.settings.enabled} aria-label={t("planning.calendar.toggle")} className="cal-switch-row" onClick={() => savePlanningSettings({ ...planning.settings, enabled: !planning.settings.enabled })}>
+              <Icon name="sparkles" className="cal-switch-icon" aria-hidden="true" />
+              <span className="cal-switch-label">{t("planning.calendar.toggle")}</span>
+              <span className="cal-switch" aria-hidden="true" />
+            </button>
+            <button type="button" className="cal-icon-btn is-small" aria-label={t("planning.block.settings")} title={t("planning.block.settings")} onClick={() => setPlanningSettingsOpen(true)}><Icon name="gear" /></button>
+          </div>}
         </section>
         <p className="cal-rail-foot">{l.timezone}</p>
       </aside>
@@ -866,6 +926,7 @@ export function CalendarView({ habits }: Props) {
         </header>
 
         {storageError && <p role="alert" className="cal-banner">{storageError}</p>}
+        {planIssues.length > 0 && <PlanIssuesBanner issues={planIssues} tasks={taskById} onOpen={(task) => onTaskEdit?.(task)} onSettings={() => setPlanningSettingsOpen(true)} />}
         <div className="cal-body">
           {(mode === "week" || mode === "day") && <TimeGrid key={mode} days={range.days} events={events} now={now} lang={lang} t={t} onOpen={setSelectedEvent} onCreate={createEvent} onDay={mode === "week" ? openDay : undefined} />}
           {mode === "month" && <MonthGrid days={range.days} anchor={anchorDate} events={events} now={now} lang={lang} t={t} onOpen={setSelectedEvent} onCreate={createEvent} onDay={openDay} />}
@@ -873,7 +934,9 @@ export function CalendarView({ habits }: Props) {
         </div>
       </div>
 
-      {selectedEvent && <Modal title={selectedEvent.title} onClose={() => setSelectedEvent(null)} className="calendar-editor-modal"><div className="calendar-editor-form calendar-detail">
+      {selectedBlock && selectedTask && onTaskChange && <PlannedBlockDialog block={selectedBlock} task={selectedTask} estimate={planning.plan?.estimates.get(selectedTask.id)} settings={planning.settings} now={now} onClose={() => setSelectedEvent(null)} onTaskChange={onTaskChange} onTaskEdit={(task) => onTaskEdit?.(task)} onOpenSettings={() => setPlanningSettingsOpen(true)} />}
+      {planningSettingsOpen && <PlanningSettingsDialog onClose={() => setPlanningSettingsOpen(false)} />}
+      {selectedEvent && selectedEvent.kind !== "task" && <Modal title={selectedEvent.title} onClose={() => setSelectedEvent(null)} className="calendar-editor-modal"><div className="calendar-editor-form calendar-detail">
         <div className="calendar-detail-heading"><span style={{ background: selectedEvent.color }} className="calendar-source-swatch" /><strong>{eventLabel(selectedEvent, t)}</strong></div>
         <p className="calendar-detail-meta"><Icon name="clock" aria-hidden="true" /><span>{capitalize(dayLabel(parseDateKey(selectedEvent.date), lang, { dateStyle: "full" }), lang)} · {formatTimeRange(selectedEvent, lang) || l.allDay}</span></p>
         {selectedEvent.location && <p className="calendar-detail-meta"><Icon name="map-pin" aria-hidden="true" /><span>{selectedEvent.location}</span></p>}{selectedEvent.description && <p className="calendar-description">{selectedEvent.description}</p>}

@@ -1,0 +1,76 @@
+/* Automatic time blocking: settings, calendar blocks, Today plan (specs/TIME_BLOCKING.md). */
+
+.planning-days { display: flex; flex-wrap: wrap; gap: 4px; }
+.planning-day { min-width: 40px; height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--muted); font-size: var(--fs-xs); font-weight: 550; text-transform: capitalize; }
+.planning-day:hover:not(:disabled) { border-color: var(--line-strong); color: var(--ink); }
+.planning-day.is-active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-dark); }
+.planning-time { width: 124px; height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.planning-select { min-width: 110px; }
+
+/* Calendar: planned task blocks look like drafts on the grid; locked ones are solid. */
+.cal-event.is-task,
+.cal-pill.is-task:not(.is-timed) {
+  background:
+    repeating-linear-gradient(135deg, color-mix(in oklab, var(--event-color) 9%, transparent) 0 6px, transparent 6px 12px),
+    color-mix(in oklab, var(--event-color) 8%, var(--panel));
+  outline: 1px dashed color-mix(in oklab, var(--event-color) 55%, transparent);
+  outline-offset: -1px;
+}
+.cal-event.is-task.is-fixed,
+.cal-pill.is-task.is-fixed:not(.is-timed) { background: color-mix(in oklab, var(--event-color) 16%, var(--panel)); outline-style: solid; }
+.cal-event.is-task.is-late { --event-color: var(--red); }
+.cal-event-badge { display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; vertical-align: -1px; }
+.cal-event-badge svg { width: 11px; height: 11px; }
+
+.planning-banner { display: flex; align-items: flex-start; gap: 10px; margin: 0 16px 8px; padding: 10px 12px; border: 1px solid var(--amber-line); border-radius: var(--r-md); background: var(--amber-soft); color: var(--ink); font-size: var(--fs-sm); }
+.planning-banner > svg { flex: 0 0 auto; width: 16px; height: 16px; margin-top: 2px; color: var(--amber); }
+.planning-banner-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 4px; min-width: 0; }
+.planning-banner-body strong { font-weight: 600; }
+.planning-banner-body small { color: var(--muted); }
+.planning-banner-items { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.planning-banner-items button { max-width: 260px; overflow: hidden; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink-2); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
+.planning-banner-items button:hover { border-color: var(--line-strong); color: var(--ink); }
+
+/* Block detail dialog */
+.planning-detail { display: flex; flex-direction: column; gap: 10px; }
+.planning-detail-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.planning-tag { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--ink-2); font-size: var(--fs-xs); font-weight: 500; }
+.planning-tag svg { width: 12px; height: 12px; }
+.planning-tag.is-accent { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-dark); }
+.planning-tag.is-deep { border-color: var(--violet-line); background: var(--violet-soft); color: var(--violet); }
+.planning-tag.is-danger { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+.planning-detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.planning-detail-actions .primary-button,
+.planning-detail-actions .secondary-button { justify-content: center; }
+.planning-detail small { color: var(--muted); font-size: var(--fs-xs); }
+.prior-modal-card.planning-settings-modal { width: min(100%, 680px); }
+.planning-settings-dialog { display: flex; flex-direction: column; gap: 4px; padding: 0 16px 16px; }
+.settings-switch:disabled { opacity: .5; }
+
+/* Today: the planned day */
+.today-plan-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.today-plan-row { display: grid; grid-template-columns: auto 92px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 42px; padding: 0 14px; border-bottom: 1px solid var(--line-soft); }
+.today-plan-row:last-child { border-bottom: 0; }
+.today-plan-row.is-now { background: color-mix(in oklab, var(--accent-soft) 55%, transparent); }
+.today-plan-time { color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.today-plan-row.is-now .today-plan-time { color: var(--accent-dark); font-weight: 600; }
+.today-plan-title { min-width: 0; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: var(--fs-md); font-weight: 500; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.today-plan-title:hover { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.today-plan-meta { display: flex; align-items: center; gap: 6px; }
+.today-plan-empty { margin: 0; padding: 12px 14px; color: var(--muted); font-size: var(--fs-sm); }
+.today-plan-issues { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--line-soft); color: var(--amber); font-size: var(--fs-xs); font-weight: 550; }
+.today-plan-issues svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.today-plan-issues button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.today-timeline-block.is-task { --today-block-color: var(--accent); background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--accent) 10%, transparent) 0 6px, transparent 6px 12px), color-mix(in oklab, var(--accent) 8%, var(--panel)); box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent); }
+.today-timeline-block.is-task.is-fixed { background: color-mix(in oklab, var(--accent) 16%, var(--panel)); }
+
+@media (max-width: 760px) {
+  .today-plan-row { grid-template-columns: auto 74px minmax(0, 1fr); }
+  .today-plan-meta { display: none; }
+  .planning-banner { margin: 0 12px 8px; }
+  .planning-detail-actions { grid-template-columns: 1fr; }
+}
+
+.cal-switch-group { display: flex; align-items: center; gap: 2px; }
+.cal-switch-group .cal-switch-row { flex: 1 1 auto; min-width: 0; }
+.planning-link { padding: 0; border: 0; background: none; color: var(--accent-dark); font: inherit; text-decoration: underline; text-underline-offset: 2px; }

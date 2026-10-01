@@ -1498,7 +1498,7 @@ export type AskAgentStreamOptions = {
 };
 
 /** Use cases the API maps to their own Prior AI model. */
-export type AgentPurpose = "agent" | "recommendations" | "mail" | "calendar" | "import";
+export type AgentPurpose = "agent" | "recommendations" | "mail" | "calendar" | "import" | "planning";
 
 /**
  * One Prior AI (hosted) completion through the API. Needs a session: the

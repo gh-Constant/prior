@@ -92,7 +92,8 @@ import { logger } from "./lib/logger";
 import { resetLastSyncedAt } from "./lib/syncStatus";
 import { purgeProductionDemoData } from "./lib/productionData";
 import { DEFAULT_ROUTE, parseRoute, routeToPath, samePage, type AppRoute } from "./lib/router";
-import { localProjectActivity, newlyAssignedToMe, tasksAssignedTo, withAssignee } from "./lib/assignment";
+import { isAssignedToSomeoneElse, localProjectActivity, newlyAssignedToMe, tasksAssignedTo, withAssignee } from "./lib/assignment";
+import { mergeAssignedProjectTasks } from "./lib/projectTasks";
 import type { MailMessage } from "./types";
 
 logger.init();
@@ -237,6 +238,12 @@ type WorkspaceContentProps = {
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
+/** The calendar with automatic time blocking for the tasks I own (shared ones assigned to me included). */
+function PlannedCalendar({ habits, tasks, collaborationByProject, currentUserId, onTaskChange, onTaskEdit }: { readonly habits: Habit[]; readonly tasks: Task[]; readonly collaborationByProject: CollaborationByProject; readonly currentUserId: string | null; readonly onTaskChange: (task: Task) => Promise<void>; readonly onTaskEdit: (task: Task) => void }) {
+  const mine = useMemo(() => mergeAssignedProjectTasks(tasks, collaborationByProject, currentUserId).filter((task) => !isAssignedToSomeoneElse(task, currentUserId)), [tasks, collaborationByProject, currentUserId]);
+  return <CalendarView habits={habits} tasks={mine} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
+}
+
 function WorkspaceContent({ activeView, user, onUserUpdated, layout, groupBy, onGroupByChange, grouped, tasks, visibleTasks, myTasks, myVisibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onSettingsTabChange, onOpenGameSettings, onImportTasks, projectTab, onProjectTabChange }: WorkspaceContentProps) {
   if (activeView === "plans") return <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={billing.checkoutReturn} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "admin") return billing.billing?.isAdmin ? <AdminView /> : <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={null} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
@@ -244,7 +251,7 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, groupBy, on
   if (activeView === "settings") return <SettingsPage key={settingsKey ?? 0} user={user} onUserUpdated={onUserUpdated} tab={settingsTab ?? "general"} onTabChange={onSettingsTabChange} onImportTasks={onImportTasks} onNavigate={onViewChange} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
-  if (activeView === "calendar") return <CalendarView habits={habits} />;
+  if (activeView === "calendar") return <PlannedCalendar habits={habits} tasks={tasks} collaborationByProject={collaborationByProject} currentUserId={user?.id ?? null} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
   if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} habits={habits} onHabitComplete={onHabitComplete} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={() => onViewChange("calendar")} onOpenHabits={() => onViewChange("habits")} projectTab={projectTab} onProjectTabChange={onProjectTabChange} currentUserId={user?.id ?? null} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
@@ -2154,6 +2161,7 @@ export function App() {
     { id: "new-task", label: t("palette.commands.newTask"), keywords: "add create", icon: "plus", run: () => openNewTask() },
     { id: "new-habit", label: t("palette.commands.newHabit"), keywords: "add create", icon: "refresh", run: () => setHabitComposerOpen(true) },
     { id: "import", label: t("import.palette"), keywords: "import todoist linear notion csv importer exporter", icon: "download", run: () => openSettingsTab("import") },
+    { id: "planning", label: t("palette.commands.settings", { tab: t("planning.settings.tab") }), keywords: "time blocking planning schedule planifier planification agenda", icon: "calendar-check", run: () => openSettingsTab("planning") },
     ...(["today", "inbox", "calendar", "projects", ...(user ? ["mine" as const] : []), "all", "waiting", "eisenhower", "habits", "notes", ...(game.enabled ? ["progress" as const] : [])] as WorkspaceView[]).map((view) => ({
       id: `view-${view}`, label: t("palette.commands.goTo", { view: viewTitle(view, t) }), keywords: "go open view", icon: "arrow" as const, run: () => changeView(view),
     })),

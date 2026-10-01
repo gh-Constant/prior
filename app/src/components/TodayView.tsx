@@ -30,6 +30,10 @@ import {
   waitingSince,
   type BusySpan,
 } from "../lib/todayPlan";
+import { useTimeBlocking } from "../hooks/useTimeBlocking";
+import type { PlannedBlock } from "../lib/timeBlocking";
+import { PlannedBlockDialog, PlanningSettingsDialog } from "./planning/PlannedBlockDialog";
+import "./planning/Planning.css";
 import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
 import { TaskRow } from "./TaskRow";
@@ -112,7 +116,7 @@ function useTodayRecommendations(tasks: Task[], events: CalendarEvent[], now: Da
   return { recommendations, loading, error, enabled, refresh: () => setRefreshVersion((value) => value + 1) };
 }
 
-type TimelineBlock = { readonly id: string; readonly kind: "event" | "habit"; readonly title: string; readonly start: number; readonly end: number; readonly color: string; readonly lane: number };
+type TimelineBlock = { readonly id: string; readonly kind: "event" | "habit" | "task"; readonly title: string; readonly start: number; readonly end: number; readonly color: string; readonly lane: number; readonly fixed?: boolean };
 
 function addDays(value: Date, amount: number): Date {
   const next = new Date(value.getFullYear(), value.getMonth(), value.getDate());
@@ -223,6 +227,16 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
   [habits, todayKey, lang]);
   const habitsDone = todaysHabits.filter((habit) => habit.completedDates.includes(todayKey)).length;
 
+  const planning = useTimeBlocking(tasks, habits, calendar);
+  const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const plannedToday = useMemo(() => (planning.plan?.blocks ?? []).filter((block) => block.date === todayKey && block.end > nowMinutes && taskById.has(block.taskId)), [planning.plan, todayKey, nowMinutes, taskById]);
+  const nextPlanned = useMemo(() => (planning.plan?.blocks ?? []).find((block) => block.date > todayKey && taskById.has(block.taskId)) ?? null, [planning.plan, todayKey, taskById]);
+  const planIssues = useMemo(() => (planning.plan?.issues ?? []).filter((issue) => issue.kind !== "overdue" && taskById.has(issue.taskId)), [planning.plan, taskById]);
+  const plannedMinutes = plannedToday.reduce((total, block) => total + block.end - Math.max(block.start, nowMinutes), 0);
+  const todayCapacity = planning.plan?.days.find((day) => day.date === todayKey)?.capacity ?? 0;
+  const [openBlock, setOpenBlock] = useState<PlannedBlock | null>(null);
+  const [planningSettingsOpen, setPlanningSettingsOpen] = useState(false);
+
   const blocks = useMemo(() => {
     const raw: Omit<TimelineBlock, "lane">[] = [];
     for (const event of todayEvents) {
@@ -233,9 +247,13 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
       const start = parseClock(habit.timeOfDay);
       if (start !== null && start < DAY_END_MINUTES && start + 45 > DAY_START_MINUTES) raw.push({ id: `habit-${habit.id}`, kind: "habit", title: habit.title, color: "", start, end: start + 45 });
     }
+    for (const block of plannedToday) {
+      if (block.end > DAY_START_MINUTES && block.start < DAY_END_MINUTES) raw.push({ id: `plan-${block.id}`, kind: "task", title: taskById.get(block.taskId)?.title ?? "", color: "", start: block.start, end: block.end, fixed: block.fixed });
+    }
     return assignLanes(raw);
-  }, [todayEvents, todaysHabits]);
-  const busy = blocks.map(({ start, end }) => ({ start, end }));
+  }, [todayEvents, todaysHabits, plannedToday, taskById]);
+  // Planned blocks are a proposal, not busy time.
+  const busy = blocks.filter((block) => block.kind !== "task").map(({ start, end }) => ({ start, end }));
   const freeMinutes = remainingFreeMinutes(busy, nowMinutes);
   const freeSlot = firstFreeSlot(busy, nowMinutes);
   const laneCount = Math.max(1, ...blocks.map((block) => block.lane + 1));
@@ -346,7 +364,7 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
               <span className="today-timeline-hour-label">{hour}:00</span>
             </span>
           ))}
-          {freeSlot && (
+          {freeSlot && !planning.plan && (
             <span className="today-timeline-free" style={{ left: `${percent(freeSlot.start)}%`, width: `${percent(freeSlot.end) - percent(freeSlot.start)}%` }} title={t("tasks.today.freeSlotLabel", { start: formatClock(freeSlot.start), end: formatClock(freeSlot.end) })}>
               <span>{priorities[0] ? t("tasks.today.freeSlot", { title: priorities[0].title }) : t("tasks.today.freeSlotPlain", { duration: duration(freeSlot.end - freeSlot.start) })}</span>
             </span>
@@ -354,12 +372,12 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
           {blocks.map((block) => (
             <span
               key={block.id}
-              className={`today-timeline-block ${block.kind === "habit" ? "is-habit" : ""}`}
+              className={`today-timeline-block ${block.kind === "habit" ? "is-habit" : ""}${block.kind === "task" ? ` is-task${block.fixed ? " is-fixed" : ""}` : ""}`}
               style={{ left: `${percent(block.start)}%`, width: `${percent(block.end) - percent(block.start)}%`, "--today-lane": block.lane, ...(block.kind === "event" ? { "--today-block-color": block.color } : {}) } as CSSProperties}
               title={`${block.title} · ${formatClock(block.start)} – ${formatClock(block.end)}`}
             >
               <strong>{block.title}</strong>
-              <span>{block.kind === "habit" ? t("tasks.today.habitTag") : formatClock(block.start)}</span>
+              <span>{block.kind === "habit" ? t("tasks.today.habitTag") : block.kind === "task" ? `${formatClock(block.start)} – ${formatClock(block.end)}` : formatClock(block.start)}</span>
             </span>
           ))}
           {showNowLine && <span className="today-timeline-now" style={{ left: `${percent(nowMinutes)}%` }} title={`${t("tasks.today.now")} · ${formatClock(nowMinutes)}`} />}
@@ -368,6 +386,41 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
 
       <div className="today-dash-grid">
         <div className="today-dash-main">
+          {planning.plan && <section className="today-card today-plan" aria-labelledby="today-plan-title">
+            <div className="today-card-head">
+              <div className="today-card-heading">
+                <Icon name="calendar-check" className="today-priorities-icon" aria-hidden="true" />
+                <h3 id="today-plan-title" className="today-card-title">{t("planning.today.title")}</h3>
+                {plannedToday.length > 0 && <span className="today-count-muted">{t("planning.today.summary", { planned: duration(plannedMinutes), free: duration(Math.max(0, todayCapacity - plannedMinutes)) })}</span>}
+              </div>
+              <button type="button" className="today-ghost-button" aria-label={t("planning.block.settings")} title={t("planning.block.settings")} onClick={() => setPlanningSettingsOpen(true)}><Icon name="sliders" aria-hidden="true" /></button>
+            </div>
+            {plannedToday.length > 0
+              ? <ul className="today-plan-list">{plannedToday.map((block) => {
+                const task = taskById.get(block.taskId)!;
+                const current = block.start <= nowMinutes && nowMinutes < block.end;
+                return (
+                  <li key={block.id} className={`today-plan-row${current ? " is-now" : ""}`}>
+                    <button type="button" className="complete-button" aria-label={t("tasks.row.markTitleComplete", { title: task.title })} onClick={() => void onTaskChange({ ...task, completed: true })}><Icon name="check" aria-hidden="true" /></button>
+                    <span className="today-plan-time">{formatClock(block.start)} – {formatClock(block.end)}</span>
+                    <button type="button" className="today-plan-title" aria-label={t("planning.block.label", { title: task.title, start: formatClock(block.start), end: formatClock(block.end) })} onClick={() => setOpenBlock(block)}>{task.title}</button>
+                    <span className="today-plan-meta">
+                      {block.fixed && <span className="today-chip"><Icon name="lock" aria-hidden="true" /></span>}
+                      {block.energy === "deep" && <span className="today-chip"><Icon name="focus" aria-hidden="true" /><span>{t("planning.block.deep")}</span></span>}
+                      {block.parts > 1 && <span className="today-chip"><span>{block.part}/{block.parts}</span></span>}
+                      {block.late && <span className="today-chip is-danger"><Icon name="flag" aria-hidden="true" /><span>{t("planning.issues.overdue")}</span></span>}
+                    </span>
+                  </li>
+                );
+              })}</ul>
+              : <p className="today-plan-empty">{todayCapacity > 0 ? t("planning.today.empty") : t("planning.today.noTime")}{nextPlanned && taskById.get(nextPlanned.taskId) ? ` ${t("planning.today.later", { title: taskById.get(nextPlanned.taskId)!.title, when: `${new Date(`${nextPlanned.date}T00:00:00`).toLocaleDateString(lang, { weekday: "long" })} ${formatClock(nextPlanned.start)}` })}` : ""}</p>}
+            {planIssues.length > 0 && <div className="today-plan-issues" role="status">
+              <Icon name="flag" aria-hidden="true" />
+              <button type="button" onClick={() => { const task = taskById.get(planIssues[0].taskId); if (task) onTaskEdit(task); }}>
+                {[planIssues.filter((issue) => issue.kind === "late").length ? tp("planning.issues.late", planIssues.filter((issue) => issue.kind === "late").length) : "", planIssues.filter((issue) => issue.kind === "unscheduled").length ? tp("planning.issues.unscheduled", planIssues.filter((issue) => issue.kind === "unscheduled").length) : ""].filter(Boolean).join(" · ")}
+              </button>
+            </div>}
+          </section>}
           {aiPlan.enabled && recommendationTasks.length > 0 && <section className="today-card today-ai-plan" aria-labelledby="today-ai-plan-title">
             <div className="today-card-head"><div className="today-card-heading"><Icon name="sparkles" aria-hidden="true" /><h3 id="today-ai-plan-title" className="today-card-title">{t("tasks.today.aiPlanTitle")}</h3></div><button type="button" className="today-ghost-button" onClick={aiPlan.refresh} disabled={aiPlan.loading}><Icon name="refresh" aria-hidden="true" /><span>{t("tasks.today.aiPlanRefresh")}</span></button></div>
             {aiPlan.loading && !aiPlan.recommendations && <p className="today-ai-plan-status" role="status">{t("tasks.today.aiPlanLoading")}</p>}
@@ -540,6 +593,8 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
           )}
         </aside>
       </div>
+      {openBlock && taskById.get(openBlock.taskId) && <PlannedBlockDialog block={openBlock} task={taskById.get(openBlock.taskId)!} estimate={planning.plan?.estimates.get(openBlock.taskId)} settings={planning.settings} now={now} onClose={() => setOpenBlock(null)} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} onOpenSettings={() => setPlanningSettingsOpen(true)} />}
+      {planningSettingsOpen && <PlanningSettingsDialog onClose={() => setPlanningSettingsOpen(false)} />}
     </section>
   );
 }

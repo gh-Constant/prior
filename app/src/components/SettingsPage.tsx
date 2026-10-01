@@ -10,6 +10,7 @@ import { Icon, type IconName } from "./Icon";
 import { LANGUAGES, useI18n, type Language } from "../lib/i18n";
 import { EditableAvatar, IconUpload } from "./IconPicker";
 import { CustomSelect } from "./CustomSelect";
+import { PlanningSettingsPanel } from "./planning/PlanningSettingsPanel";
 import { ThemePicker } from "./ThemePicker";
 import { logger } from "../lib/logger";
 import { useHostedAiAvailable } from "../hooks/useHostedAi";
@@ -28,7 +29,7 @@ import type { WorkspaceView } from "./AppSidebar";
 // Loaded on demand: the import wizard brings its own parsers and the zip reader.
 const ImportWizard = lazy(() => import("./import/ImportWizard").then((module) => ({ default: module.ImportWizard })));
 
-export type SettingsTab ="general" | "profile" | "security" | "notifications" | "game" | "assistant" | "integrations" | "import" | "diagnostics" | "developer";
+export type SettingsTab ="general" | "profile" | "security" | "notifications" | "planning" | "game" | "assistant" | "integrations" | "import" | "diagnostics" | "developer";
 
 type SettingsPageProps = {
   readonly user: SessionUser | null;
@@ -816,6 +817,7 @@ const TABS: ReadonlyArray<{ readonly id: SettingsTab; readonly icon: IconName; r
   { id: "profile", icon: "user" },
   { id: "security", icon: "shield" },
   { id: "notifications", icon: "bell" },
+  { id: "planning", icon: "calendar-check" },
   { id: "game", icon: "award" },
   { id: "assistant", icon: "sparkles" },
   { id: "integrations", icon: "code" },
@@ -872,7 +874,7 @@ export function SettingsPage({ user, onUserUpdated, onImportTasks, onNavigate, i
               onKeyDown={handleTabKeyDown}
             >
               <Icon name={entry.icon} />
-              <span>{entry.id === "import" ? t("import.tabTitle") : t(`settings.tabs.${entry.id}`)}</span>
+              <span>{entry.id === "import" ? t("import.tabTitle") : entry.id === "planning" ? t("planning.settings.tab") : t(`settings.tabs.${entry.id}`)}</span>
             </button>
           ))}
         </div>
@@ -884,6 +886,7 @@ export function SettingsPage({ user, onUserUpdated, onImportTasks, onNavigate, i
           </>}
           {tab === "security" && <SecuritySettings user={user} onUserUpdated={onUserUpdated} />}
           {tab === "notifications" && <NotificationSettings />}
+          {tab === "planning" && <PlanningSettingsPanel />}
           {tab === "game" && <GameSettingsPanel />}
           {tab === "assistant" && <AssistantSettings />}
           {tab === "integrations" && <IntegrationsSettings />}

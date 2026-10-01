@@ -33,7 +33,7 @@ func ValidateDocumentMutations(mutations []DocumentMutation) error {
 		if _, err := uuid.Parse(m.ID); err != nil {
 			return errors.New("invalid mutation id")
 		}
-		if len(m.Key) > 2048 || strings.ContainsRune(m.Key, 0) || !(strings.HasPrefix(m.Key, "calendar/") || m.Key == "preferences/agent" || m.Key == "preferences/ui") {
+		if len(m.Key) > 2048 || strings.ContainsRune(m.Key, 0) || !(strings.HasPrefix(m.Key, "calendar/") || m.Key == "preferences/agent" || m.Key == "preferences/ui" || m.Key == "preferences/planning") {
 			return errors.New("invalid document key")
 		}
 		if len(m.Patch) > 12<<20 {

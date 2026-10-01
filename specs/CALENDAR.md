@@ -21,7 +21,7 @@ Les calendriers utilisent `prior.account-data.v1`, isolé par compte Prior, dans
 
 Les règles utilisent une recherche littérale dans le titre, insensible à la casse et aux accents. Une règle `sae` masque donc `SAE` et `SAÉ`. L'éditeur affiche un aperçu des correspondances en cache. Supprimer une règle réaffiche les événements ; les masquages individuels ont leur propre bouton de restauration. Retirer un calendrier Google de Prior ne le supprime pas chez Google ; une nouvelle connexion permet de le retrouver.
 
-Le verrouillage d'un calendrier s'applique à tous ses événements. Un événement peut aussi être verrouillé individuellement. Cela prépare la future planification automatique et n'interdit pas les modifications manuelles.
+Le verrouillage d'un calendrier s'applique à tous ses événements. Un événement peut aussi être verrouillé individuellement. Il n'interdit pas les modifications manuelles. Pour la planification automatique ([TIME_BLOCKING.md](TIME_BLOCKING.md)), chaque événement horaire rend occupé ; un événement sur la journée ne bloque la journée entière que s'il est verrouillé (vacances, congés). L'option « Me rend indisponible » d'un calendrier (`planningFree` quand elle est décochée, synchronisée avec ses métadonnées) l'exclut entièrement du temps occupé.
 
 ## Temps et récurrences
 

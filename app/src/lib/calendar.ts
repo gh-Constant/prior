@@ -20,8 +20,10 @@ export type CalendarEvent = {
   endTime: string | null;
   color: string;
   location?: string;
-  kind: "event" | "habit";
+  /** "task": a time block planned by Prior (lib/timeBlocking.ts), never saved. */
+  kind: "event" | "habit" | "task";
   habitId?: string;
+  taskId?: string;
   completed?: boolean;
   description?: string;
   endDate?: string;
@@ -52,6 +54,8 @@ export type CalendarSource = {
   syncError?: string;
   description?: string;
   locked?: boolean;
+  /** Events of this calendar do not make the user busy for automatic planning. */
+  planningFree?: boolean;
   hiddenTitles?: string[];
   eventOverrides?: Record<string, { hidden?: boolean; color?: string; locked?: boolean }>;
 };

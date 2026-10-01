@@ -147,6 +147,27 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 		writeHostedAIError(w, http.StatusTooManyRequests, errors.New("daily Prior AI limit reached; try again tomorrow or add your own OpenRouter key"))
 		return
 	}
+	if purpose == "planning" {
+		// Estimates are typed judgements: the decision model answers them
+		// and a chat model never does (the client keeps local estimates).
+		if !s.cfg.HostedAI.DecisionsEnabled() {
+			writeError(w, http.StatusServiceUnavailable, errors.New("planning estimates are not configured on this server"))
+			return
+		}
+		content, decision, err := s.jevPlanningEstimates(r.Context(), prompt)
+		s.recordHostedUsage(r.Context(), user.ID, purpose, decision.totalTokens, decision.costMicros)
+		if err != nil {
+			slog.Warn("planning estimates failed", "user_id_hash", userIDHash(user.ID), "error", err)
+			writeError(w, http.StatusBadGateway, errors.New("planning estimates are unavailable"))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"content":     content,
+			"actualModel": firstNonEmpty(decision.model, s.cfg.HostedAI.DecisionsModel),
+			"provider":    "hosted",
+		})
+		return
+	}
 	if route.hosted && purpose == "recommendations" && s.cfg.HostedAI.DecisionsEnabled() {
 		// Picking today's focus tasks is a decision, not writing: the
 		// decision model answers it for a fraction of a chat model's cost.
@@ -203,7 +224,9 @@ func (s *Server) resolveCompletionRoute(r *http.Request, user store.User, purpos
 	hosted := s.cfg.HostedAI
 	// AI import is a paid-plan feature: it always runs on Prior AI, so a
 	// user's own OpenRouter key cannot unlock it.
-	if purpose == "import" {
+	// Time-blocking estimates use the operator's decision model, never a
+	// user's key.
+	if purpose == "import" || purpose == "planning" {
 		wantHosted = true
 	}
 	if !wantHosted {

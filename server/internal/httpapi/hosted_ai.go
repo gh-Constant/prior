@@ -30,6 +30,9 @@ var agentPurposes = map[string]struct{}{
 	// "import" organises files exported from Todoist, Linear or Notion. It
 	// is Prior AI only (see resolveCompletionRoute), so it is a Pro feature.
 	"import": {},
+	// "planning" estimates task durations for time blocking. It is answered
+	// only by the decision model (planning_decisions.go) and is Prior AI only.
+	"planning": {},
 }
 
 func normalizeAgentPurpose(value string) (string, bool) {

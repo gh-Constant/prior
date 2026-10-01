@@ -488,7 +488,7 @@ export const api = {
   agentComplete(
     input: {
       model: string; prompt: string; system: string; history: Array<{ role: string; content: string }>; webSearch: boolean; reasoningEffort?: string;
-      purpose?: "agent" | "recommendations" | "mail" | "calendar" | "import";
+      purpose?: "agent" | "recommendations" | "mail" | "calendar" | "import" | "planning";
       /** "hosted" forces Prior AI; omitted uses the stored key, then Prior AI. */
       provider?: "hosted";
       /** Ask the model for a JSON object (response_format). */

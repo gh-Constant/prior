@@ -395,7 +395,7 @@ paths:
   /v1/agent/complete:
     post:
       summary: Server-side completion proxy (Prior AI or the user's stored OpenRouter key)
-      description: Accepts model, prompt, system, history, webSearch, an optional reasoningEffort (none/minimal/low/medium/high/xhigh; omitted or auto means the provider default), purpose (agent/recommendations/mail/calendar/import; import always runs on Prior AI and needs a paid plan, 402 HOSTED_AI_REQUIRES_PLAN otherwise), provider ("hosted" forces Prior AI) and json (request a JSON object). Without provider, the stored OpenRouter key is used and Prior AI is the fallback. Hosted requests pick the model per purpose and count toward a daily per-user cap (429 when reached). See specs/AI.md.
+      description: Accepts model, prompt, system, history, webSearch, an optional reasoningEffort (none/minimal/low/medium/high/xhigh; omitted or auto means the provider default), purpose (agent/recommendations/mail/calendar/import/planning; import and planning always run on Prior AI and need a paid plan, 402 HOSTED_AI_REQUIRES_PLAN otherwise; planning is answered only by the decision model, 503 when it is not configured, 502 when it fails), provider ("hosted" forces Prior AI) and json (request a JSON object). Without provider, the stored OpenRouter key is used and Prior AI is the fallback. Hosted requests pick the model per purpose and count toward a daily per-user cap (429 when reached). See specs/AI.md.
       responses:
         '200':
           description: completion with content, actualModel and provider (hosted or openrouter)
