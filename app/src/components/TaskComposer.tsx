@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Area, ChecklistItem, Project, Task, TaskDraft, TaskPriority, TaskStatus } from "../types";
+import type { Area, ChecklistItem, Project, Task, TaskDraft, TaskPriority, TaskRecurrence, TaskStatus } from "../types";
 import { useModalDialog } from "../hooks/useModalDialog";
 import { useI18n } from "../lib/i18n";
+import { localDateKey, normalizeRecurrence } from "../lib/recurrence";
 import { normalizeEstimate } from "../lib/taskEstimate";
 import { ChecklistEditor } from "./tasks/ChecklistEditor";
+import { RecurrencePicker } from "./tasks/RecurrencePicker";
 import { ReminderPicker } from "./tasks/ReminderPicker";
 import { SharedTaskComments } from "./collaboration/TaskComments";
 import { Icon } from "./Icon";
@@ -104,6 +106,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [followUpTime, setFollowUpTime] = useState(task?.followUpTime ?? null);
   const [estimate, setEstimate] = useState(task?.estimatedMinutes ? String(task.estimatedMinutes) : "");
   const [reminderAt, setReminderAt] = useState<string | null>(task?.reminderAt ?? null);
+  const [recurrence, setRecurrence] = useState<TaskRecurrence | null>(() => normalizeRecurrence(task?.recurrence));
   const [checklist, setChecklist] = useState<ChecklistItem[]>(task?.checklist ?? []);
   const [planningPeople, setPlanningPeople] = useState(planning?.people ?? []);
   const [assigneeId, setAssigneeId] = useState<string | null>(task?.assigneeId ?? planning?.assigneeId ?? null);
@@ -153,7 +156,14 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     assigneeName,
     important,
     urgent,
+    recurrence: recurrence ? JSON.stringify(recurrence) : "",
   };
+
+  /** A repeating task needs a first date: today unless it already has one. */
+  function changeRecurrence(next: TaskRecurrence | null) {
+    setRecurrence(next);
+    if (next && !dueDate) setDueDate(localDateKey(new Date()));
+  }
 
   function clearParsedField(field: TaskTitleField) {
     switch (field) {
@@ -166,6 +176,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
       case "assigneeName": setAssigneeName(""); break;
       case "important": setImportant(false); break;
       case "urgent": setUrgent(false); break;
+      case "recurrence": setRecurrence(null); break;
     }
   }
 
@@ -180,6 +191,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
       case "assigneeName": setAssigneeName(String(value)); break;
       case "important": setImportant(Boolean(value)); break;
       case "urgent": setUrgent(Boolean(value)); break;
+      case "recurrence": setRecurrence(normalizeRecurrence(String(value))); break;
     }
   }
 
@@ -260,7 +272,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
         milestoneId: allTasks ? milestoneId : sameProject ? task?.milestoneId ?? null : null,
         relations: allTasks ? [...otherRelations, ...blockedBy.map((taskId) => ({ type: "blocked_by" as const, taskId }))] : sameProject ? task?.relations ?? [] : [],
       };
-      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), ...issueFields, followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate), reminderAt, checklist };
+      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), ...issueFields, followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate), reminderAt, checklist, recurrence };
       await (allowCreateMore ? onSave(draft, { keepOpen }) : onSave(draft));
       setNotice(task ? t("tasks.composer.saved") : t("tasks.composer.created"));
       if (!task) {
@@ -289,6 +301,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
         setFollowUpTime(null);
         setEstimate("");
         setReminderAt(null);
+        setRecurrence(null);
         setChecklist([]);
         setIgnoredTitleTokens([]);
         autoTitleValues.current = {};
@@ -427,6 +440,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
               )}
               <DateTimePicker className="pill" value={dueDate} onChange={setDueDate} time={dueTime} onTimeChange={setDueTime} allowTime ariaLabel={t("tasks.composer.dueDate")} placeholder={t("tasks.composer.dueDate")} disabled={saving || planningDisabled} />
               <ReminderPicker task={{ dueDate: dueDate || null, dueTime: dueDate ? dueTime : null }} value={reminderAt} onChange={setReminderAt} disabled={saving || flagDisabled} />
+              <RecurrencePicker value={recurrence} dueDate={dueDate || null} onChange={changeRecurrence} disabled={saving || flagDisabled} />
               <button
                 type="button"
                 disabled={flagDisabled}

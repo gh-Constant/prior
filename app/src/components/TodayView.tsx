@@ -4,6 +4,7 @@ import { useI18n } from "../lib/i18n";
 import { rankFocusTasks } from "../lib/taskFocus";
 import { pomodoroTaskOptions } from "../lib/pomodoro";
 import { PomodoroCard } from "./PomodoroCard";
+import { normalizeRecurrence } from "../lib/recurrence";
 import { parseTaskTitle, type TaskTitleToken } from "../lib/taskTitleParser";
 import { eventsInRange, loadCalendarState, type CalendarEvent, type CalendarState } from "../lib/calendar";
 import { ACCOUNT_DATA_CHANGED } from "../lib/accountDocuments";
@@ -610,6 +611,7 @@ export function quickAddDraft(parsed: ReturnType<typeof parseTaskTitle>, project
     projectId,
     areaId: typeof fields.areaId === "string" ? fields.areaId : project?.areaId ?? null,
     assigneeName: typeof fields.assigneeName === "string" ? fields.assigneeName : "",
+    recurrence: normalizeRecurrence(fields.recurrence),
   };
 }
 

@@ -48,6 +48,21 @@ describe("localStore SQLite statements validation", () => {
     }
   });
 
+  it("stores the recurrence as JSON text in its own column, and reads it back", async () => {
+    const { localStore } = await import("./localStore");
+    await localStore.saveTask({ title: "Repeat", important: false, urgent: false, recurrence: { interval: 2, unit: "week", daysOfWeek: [1, 4] } });
+    const insert = executedStatements.find((stmt) => /INSERT INTO tasks/.test(stmt.query));
+    expect(insert).toBeDefined();
+    const columns = /INSERT INTO tasks \(([^)]+)\)/.exec(insert!.query)![1].split(",").map((name) => name.trim());
+    expect(insert!.bindValues![columns.indexOf("recurrence")]).toBe('{"interval":2,"unit":"week","daysOfWeek":[1,4]}');
+    await localStore.saveTask({ title: "Plain", important: false, urgent: false });
+    const plain = executedStatements.filter((stmt) => /INSERT INTO tasks/.test(stmt.query)).at(-1)!;
+    expect(plain.bindValues![columns.indexOf("recurrence")]).toBeNull();
+    await localStore.listTasks();
+    const select = executedStatements.find((stmt) => /^SELECT id, title.*FROM tasks/.test(stmt.query));
+    expect(select?.query).toContain("recurrence");
+  });
+
   it("validates SQL placeholder and column count on saveHabit", async () => {
     const { localStore } = await import("./localStore");
     await localStore.saveHabit({ title: "Test habit", important: false, urgent: true, interval: 1, unit: "day" });

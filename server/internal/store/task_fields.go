@@ -94,6 +94,27 @@ func relationsJSON(items []tasks.TaskRelation) ([]byte, error) {
 	return json.Marshal(items)
 }
 
+// recurrenceJSON encodes a repeat rule for its JSONB column (NULL when none).
+func recurrenceJSON(rule *tasks.TaskRecurrence) ([]byte, error) {
+	if rule == nil {
+		return nil, nil
+	}
+	return json.Marshal(rule)
+}
+
+func decodeRecurrence(task *tasks.Task, raw []byte) error {
+	task.Recurrence = nil
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var rule tasks.TaskRecurrence
+	if err := json.Unmarshal(raw, &rule); err != nil {
+		return err
+	}
+	task.Recurrence = &rule
+	return nil
+}
+
 func decodeRelations(task *tasks.Task, raw []byte) error {
 	task.Relations = []tasks.TaskRelation{}
 	if len(raw) == 0 || string(raw) == "null" {
@@ -103,13 +124,13 @@ func decodeRelations(task *tasks.Task, raw []byte) error {
 }
 
 // resolveIssueFieldsTx keeps the stored assignee, parent, milestone and
-// relations when an older client omits them, then validates the result:
+// relations and recurrence when an older client omits them, then validates the result:
 // the assignee must be able to see the task, a parent must be another task
 // of the same project (without cycles), relations must be well formed.
 func resolveIssueFieldsTx(ctx context.Context, tx pgx.Tx, taskID, ownerID uuid.UUID, task *tasks.Task) error {
 	var storedAssignee, storedParent, storedMilestone *string
-	var storedRelations []byte
-	err := tx.QueryRow(ctx, `SELECT assignee_id::text, parent_id::text, milestone_id, relations FROM tasks WHERE id = $1`, taskID).Scan(&storedAssignee, &storedParent, &storedMilestone, &storedRelations)
+	var storedRelations, storedRecurrence []byte
+	err := tx.QueryRow(ctx, `SELECT assignee_id::text, parent_id::text, milestone_id, relations, recurrence FROM tasks WHERE id = $1`, taskID).Scan(&storedAssignee, &storedParent, &storedMilestone, &storedRelations, &storedRecurrence)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
@@ -128,6 +149,13 @@ func resolveIssueFieldsTx(ctx context.Context, tx pgx.Tx, taskID, ownerID uuid.U
 			return err
 		}
 		task.Relations = stored.Relations
+	}
+	if !task.FieldPresent("recurrence") {
+		stored := tasks.Task{}
+		if err := decodeRecurrence(&stored, storedRecurrence); err != nil {
+			return err
+		}
+		task.Recurrence = stored.Recurrence
 	}
 	var projectID *uuid.UUID
 	if task.ProjectID != nil && *task.ProjectID != "" {

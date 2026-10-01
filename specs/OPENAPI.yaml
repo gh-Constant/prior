@@ -329,7 +329,10 @@ paths:
         '401':
           description: unauthenticated
   # Task snapshots (push and pull) also carry optional reminderAt (RFC 3339,
-  # stored in UTC) and checklist ([{id, title, done, position}], at most 100).
+  # stored in UTC) and checklist ([{id, title, done, position}], at most 100),
+  # and recurrence ({interval 1-365, unit day|week|month|year, daysOfWeek?
+  # (0 = Sunday, weekly only), basis? "completion", until? YYYY-MM-DD} or null).
+  # Like assigneeId and relations, an omitted recurrence keeps the stored rule.
   /v1/sync/push:
     post:
       summary: Push up to 100 task/habit mutations (unknown fields ignored)

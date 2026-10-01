@@ -48,3 +48,33 @@
 .task-checklist-progress.complete { color: var(--green, #2f7d4a); }
 .task-reminder-badge { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: var(--fs-2xs, 11px); white-space: nowrap; }
 .task-reminder-badge svg { width: 11px; height: 11px; }
+
+.task-recurrence-chip { white-space: nowrap; }
+.task-recurrence-chip svg { width: 11px; height: 11px; }
+
+/* Recurrence picker (specs/RECURRING_TASKS.md) */
+.recurrence-picker { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.recurrence-picker-select svg { width: 13px; height: 13px; }
+.recurrence-custom { flex: 1 0 100%; display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 2px 0 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2, var(--panel)); }
+.recurrence-custom legend { padding: 0 4px; color: var(--ink-2); font-size: var(--fs-xs); font-weight: 600; }
+.recurrence-custom-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.recurrence-custom-field { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: var(--fs-sm); }
+.recurrence-custom-field input { width: 72px; min-height: 32px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.recurrence-custom-field input:focus-visible, .recurrence-day:focus-visible, .recurrence-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.recurrence-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.recurrence-day { display: grid; place-items: center; min-width: 36px; min-height: 32px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--panel); color: var(--ink-2); font: inherit; font-size: var(--fs-xs); font-weight: 600; text-transform: capitalize; cursor: pointer; }
+.recurrence-day:hover { background: var(--hover); }
+.recurrence-day.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
+.recurrence-switch { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-size: var(--fs-sm); cursor: pointer; }
+.recurrence-switch input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); }
+.recurrence-switch small { display: block; margin-top: 2px; color: var(--muted); font-size: var(--fs-xs); font-weight: 400; }
+.recurrence-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.recurrence-link { padding: 0; border: 0; background: none; color: var(--accent-dark); font: inherit; font-size: var(--fs-xs); text-decoration: underline; cursor: pointer; }
+.recurrence-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.recurrence-summary { min-width: 0; color: var(--muted); font-size: var(--fs-xs); }
+@media (max-width: 760px) {
+  .recurrence-custom-field input, .recurrence-day { min-height: 44px; font-size: 16px; }
+  .recurrence-day { min-width: 44px; }
+  .recurrence-switch input { width: 20px; height: 20px; }
+  .recurrence-actions .secondary-button { min-height: 44px; }
+}

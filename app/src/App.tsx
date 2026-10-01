@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { api, ApiRequestError, PlanLimitError, type IncomingProjectInvite, type MentionNotification } from "./lib/api";
 import { clearPendingLink, pendingLink } from "./lib/pendingLink";
+import { formatOccurrenceDate } from "./lib/recurrence";
+import { updateTaskAndRepeat } from "./lib/recurringTasks";
 import { EffectsProvider } from "./lib/gamification/effects";
 import { gameStore, useGame } from "./lib/gamification/gameStore";
 import { revokeCompletion, rewardHabitCheckIn, rewardTaskCompletion } from "./lib/gamification/celebrations";
@@ -1246,7 +1248,8 @@ export function App() {
   async function saveEditedTask(input: TaskDraft) {
     if (!editingTask) return;
     assertProjectWritable(editingTask.projectId);
-    await localStore.updateTask({ ...editingTask, ...input, completed: input.status ? input.status === "done" : editingTask.completed, description: input.description ?? "", dueDate: input.dueDate ?? null, priority: input.priority ?? 4 });
+    const { next: nextOccurrence } = await updateTaskAndRepeat({ ...editingTask, ...input, completed: input.status ? input.status === "done" : editingTask.completed, description: input.description ?? "", dueDate: input.dueDate ?? null, priority: input.priority ?? 4 }, editingTask);
+    if (nextOccurrence?.dueDate) setToast(t("recurrence.next", { date: formatOccurrenceDate(nextOccurrence.dueDate, lang) }));
     setEditingTask(null);
     await refresh();
     void syncNow("tasks");
@@ -1463,7 +1466,7 @@ export function App() {
       const completed = changes.completed ?? (changes.status ? changes.status === "done" : task.completed);
       const status = changes.status ?? (changes.completed === true ? "done" : changes.completed === false && task.status === "done" ? "next" : task.status);
       const people = task.peopleIds ?? [];
-      await localStore.updateTask({ ...task, ...changes, completed, status, ...(changes.assigneeId && !people.includes(changes.assigneeId) ? { peopleIds: [...people, changes.assigneeId] } : {}) });
+      await updateTaskAndRepeat({ ...task, ...changes, completed, status, ...(changes.assigneeId && !people.includes(changes.assigneeId) ? { peopleIds: [...people, changes.assigneeId] } : {}) }, task);
     }
     await refresh();
     void syncNow("tasks");
@@ -1521,7 +1524,8 @@ export function App() {
   async function changeTask(task: Task) {
     assertProjectWritable(task.projectId);
     const previous = tasks.find((item) => item.id === task.id);
-    const savedTask = await localStore.updateTask(task);
+    const { saved: savedTask, next: nextOccurrence } = await updateTaskAndRepeat(task, previous);
+    if (nextOccurrence?.dueDate) setToast(t("recurrence.next", { date: formatOccurrenceDate(nextOccurrence.dueDate, lang) }));
     if (previous && !previous.completed && task.completed) {
       retainCompletionExit(task.id);
       // Gamified: confetti and XP flying to the bar. Calm: the quiet toast.

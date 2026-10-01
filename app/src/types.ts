@@ -81,6 +81,8 @@ export type Task = {
   milestoneId?: string | null;
   /** Links to other tasks: blocked by them, or simply related. */
   relations?: TaskRelation[];
+  /** Repeat rule: completing the task creates the next occurrence (specs/RECURRING_TASKS.md). */
+  recurrence?: TaskRecurrence | null;
   completed: boolean;
   important: boolean;
   urgent: boolean;
@@ -101,7 +103,22 @@ export const MAX_CHECKLIST_ITEMS = 100;
 
 export type TaskRelation = { type: "blocked_by" | "related"; taskId: string };
 
-export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes" | "reminderAt" | "checklist" | "assigneeId" | "parentId" | "milestoneId" | "relations">>;
+export type RecurrenceUnit = "day" | "week" | "month" | "year";
+
+export type TaskRecurrence = {
+  /** Repeat every `interval` units (1-365). */
+  interval: number;
+  unit: RecurrenceUnit;
+  /** Weekly only: JS weekdays (0 = Sunday). Empty/absent = the due date's weekday. */
+  daysOfWeek?: number[];
+  /** "due": the next date counts from the due date (Todoist "every"); "completion": from the day it
+   *  was completed (Todoist "every!"). Default "due". */
+  basis?: "due" | "completion";
+  /** Last allowed occurrence date (YYYY-MM-DD), inclusive, or none. */
+  until?: string | null;
+};
+
+export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes" | "reminderAt" | "checklist" | "assigneeId" | "parentId" | "milestoneId" | "relations" | "recurrence">>;
 
 export type HabitUnit = "day" | "week" | "month" | "year";
 
@@ -194,6 +211,8 @@ export type ProposedTask = {
   /** Checklist item titles, in order (all unchecked). */
   checklist?: string[];
   reminderAt?: string | null;
+  /** Repeat rule: completing the task creates the next occurrence. */
+  recurrence?: TaskRecurrence | null;
   /** A member of a shared project, resolved from the name the model used. */
   assigneeId?: string | null;
   /** Display name of that member, for the review card. */
@@ -212,7 +231,7 @@ export type ProposedTask = {
 };
 
 /** Fields the assistant may change on an existing task (update_task). */
-export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt" | "assigneeId" | "milestoneId" | "parentId" | "relations">>;
+export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt" | "assigneeId" | "milestoneId" | "parentId" | "relations" | "recurrence">>;
 
 /** Kinds of existing items the assistant can change besides tasks. */
 export type EntityUpdateKind = "project" | "habit" | "note" | "area";

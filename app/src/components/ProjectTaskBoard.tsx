@@ -3,6 +3,7 @@ import type { Project, ProjectType, Task, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { Icon } from "./Icon";
+import { RecurrenceChip } from "./tasks/RecurrenceChip";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { Person } from "./collaboration/types";
 import { PriorityGlyph, daysBetween, formatShortDate, glyphStatus, localDateKey } from "./ProjectVisuals";
@@ -78,6 +79,7 @@ function BoardCard({ task, people, today, onEdit, onDragStart, onDragEnd, onMenu
       <span className="board-card-meta">
         <PriorityGlyph priority={task.priority} />
         <TaskDueChip task={task} today={today} />
+        <RecurrenceChip task={task} variant="project" />
         {assignee && <PersonAvatar person={assignee} className="project-avatar board-card-avatar" showPresence={false} />}
       </span>
     </button>

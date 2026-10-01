@@ -532,9 +532,34 @@ func checklistText(items []tasks.ChecklistItem) string {
 	return strings.Join(parts, "; ")
 }
 
+// recurrenceText renders a repeat rule as "every 2 weeks on 1,4 from completion until 2026-12-31".
+func recurrenceText(rule *tasks.TaskRecurrence) string {
+	if rule == nil {
+		return ""
+	}
+	text := "every " + strconv.Itoa(rule.Interval) + " " + rule.Unit
+	if rule.Interval > 1 {
+		text += "s"
+	}
+	if len(rule.DaysOfWeek) > 0 {
+		days := make([]string, len(rule.DaysOfWeek))
+		for index, day := range rule.DaysOfWeek {
+			days[index] = strconv.Itoa(day)
+		}
+		text += " on weekdays " + strings.Join(days, ",")
+	}
+	if rule.Basis == tasks.RecurrenceBasisCompletion {
+		text += " from completion"
+	}
+	if rule.Until != nil {
+		text += " until " + *rule.Until
+	}
+	return text
+}
+
 func writeTasksCSV(out io.Writer, list []tasks.Task) error {
 	writer := csv.NewWriter(out)
-	header := []string{"id", "title", "description", "status", "completed", "important", "urgent", "priority", "dueDate", "dueTime", "scheduledDate", "scheduledTime", "reminderAt", "checklist", "projectId", "areaId", "estimatedMinutes", "createdAt", "updatedAt"}
+	header := []string{"id", "title", "description", "status", "completed", "important", "urgent", "priority", "dueDate", "dueTime", "scheduledDate", "scheduledTime", "reminderAt", "recurrence", "checklist", "projectId", "areaId", "estimatedMinutes", "createdAt", "updatedAt"}
 	if err := writer.Write(header); err != nil {
 		return err
 	}
@@ -547,7 +572,7 @@ func writeTasksCSV(out io.Writer, list []tasks.Task) error {
 			task.ID, csvCell(task.Title), csvCell(task.Description), task.Status, strconv.FormatBool(task.Completed),
 			strconv.FormatBool(task.Important), strconv.FormatBool(task.Urgent), strconv.Itoa(task.Priority),
 			optional(task.DueDate), optional(task.DueTime), optional(task.ScheduledDate), optional(task.ScheduledTime),
-			optional(task.ReminderAt), csvCell(checklistText(task.Checklist)),
+			optional(task.ReminderAt), recurrenceText(task.Recurrence), csvCell(checklistText(task.Checklist)),
 			optional(task.ProjectID), optional(task.AreaID), estimate,
 			task.CreatedAt.UTC().Format(time.RFC3339), task.UpdatedAt.UTC().Format(time.RFC3339),
 		}

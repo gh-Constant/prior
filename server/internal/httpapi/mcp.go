@@ -305,6 +305,18 @@ func taskFieldProperties(nullable bool) map[string]any {
 		"project_id":     optional("Project ID from list_projects."),
 		"area_id":        optional("Area ID from list_projects."),
 		"reminder_at":    optional("When to remind the user, an RFC 3339 date-time with offset (e.g. 2026-10-01T09:00:00+02:00)."),
+		"recurrence": map[string]any{
+			"type":        []string{"object", "null"},
+			"description": "Repeat rule. Completing the task then creates the next occurrence (the completed one stops repeating). Without a due date the first one is today. Pass null to stop repeating.",
+			"properties": map[string]any{
+				"interval":     map[string]any{"type": "integer", "minimum": 1, "maximum": tasks.MaxRecurrenceInterval, "description": "Repeat every N units, default 1."},
+				"unit":         map[string]any{"type": "string", "enum": []string{"day", "week", "month", "year"}},
+				"days_of_week": map[string]any{"type": "array", "items": map[string]any{"type": "integer", "minimum": 0, "maximum": 6}, "description": "0 = Sunday. Weekly rules only; default is the due date's weekday."},
+				"basis":        map[string]any{"type": "string", "enum": []string{"due", "completion"}, "description": "due (default): count from the due date; completion: count from the day it is completed."},
+				"until":        propNullable("Last occurrence, YYYY-MM-DD."),
+			},
+			"required": []string{"unit"},
+		},
 		"checklist": map[string]any{
 			"type":        "array",
 			"maxItems":    tasks.MaxChecklistItems,
@@ -445,8 +457,9 @@ func (h *mcpHandler) callTool(ctx context.Context, userID uuid.UUID, name string
 		if err != nil {
 			return nil, err
 		}
+		before := task
 		setTaskCompleted(&task, completed)
-		return h.saveTask(ctx, userID, task, "upsert")
+		return h.saveTaskCompletion(ctx, userID, before, task)
 	case "delete_task":
 		var input struct {
 			ID string `json:"id"`
@@ -636,6 +649,12 @@ func applyTaskFields(task *tasks.Task, fields map[string]json.RawMessage) error 
 					task.ReminderAt = &trimmed
 				}
 			}
+		case "recurrence":
+			rule, parseErr := parseMCPRecurrence(raw)
+			if parseErr != nil {
+				return parseErr
+			}
+			task.Recurrence = rule
 		case "checklist":
 			var items []struct {
 				ID    string `json:"id"`
@@ -699,6 +718,7 @@ func (h *mcpHandler) createTask(ctx context.Context, userID uuid.UUID, args json
 	if task.Title == "" {
 		return nil, errors.New("title is required")
 	}
+	h.defaultRecurringDueDate(&task)
 	return h.saveTask(ctx, userID, task, "upsert")
 }
 
@@ -715,10 +735,78 @@ func (h *mcpHandler) updateTask(ctx context.Context, userID uuid.UUID, args json
 	if err != nil {
 		return nil, err
 	}
+	before := task
 	if err := applyTaskFields(&task, fields); err != nil {
 		return nil, err
 	}
-	return h.saveTask(ctx, userID, task, "upsert")
+	h.defaultRecurringDueDate(&task)
+	return h.saveTaskCompletion(ctx, userID, before, task)
+}
+
+// defaultRecurringDueDate gives a repeating task without a due date today as
+// its first occurrence, like the apps do.
+func (h *mcpHandler) defaultRecurringDueDate(task *tasks.Task) {
+	if task.Recurrence != nil && task.DueDate == nil {
+		today := h.now().UTC().Format("2006-01-02")
+		task.DueDate = &today
+	}
+}
+
+// saveTaskCompletion saves the task. When this update completes a repeating
+// task it also creates the next occurrence, as the apps do: the completed task
+// stops repeating, and the result is {task, nextOccurrence} (null when the
+// series reached its end date). "Today" is the UTC date; the server does not
+// know the user's time zone.
+func (h *mcpHandler) saveTaskCompletion(ctx context.Context, userID uuid.UUID, before, task tasks.Task) (any, error) {
+	if before.Completed || !task.Completed || task.Recurrence == nil {
+		return h.saveTask(ctx, userID, task, "upsert")
+	}
+	now := h.now().UTC()
+	next := tasks.NextOccurrence(task, now, before.Status, uuid.NewString, now)
+	task.Recurrence = nil
+	saved, err := h.saveTask(ctx, userID, task, "upsert")
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]any{"task": saved, "nextOccurrence": nil}
+	if next != nil {
+		savedNext, err := h.saveTask(ctx, userID, *next, "upsert")
+		if err != nil {
+			return nil, err
+		}
+		result["nextOccurrence"] = savedNext
+	}
+	return result, nil
+}
+
+// parseMCPRecurrence reads the recurrence argument (null clears it).
+func parseMCPRecurrence(raw json.RawMessage) (*tasks.TaskRecurrence, error) {
+	if strings.TrimSpace(string(raw)) == "null" {
+		return nil, nil
+	}
+	var input struct {
+		Interval      *int    `json:"interval"`
+		Unit          string  `json:"unit"`
+		DaysOfWeek    []int   `json:"days_of_week"`
+		DaysOfWeekAlt []int   `json:"daysOfWeek"`
+		Basis         string  `json:"basis"`
+		Until         *string `json:"until"`
+	}
+	if err := decodeArgs(raw, &input); err != nil {
+		return nil, errors.New("invalid recurrence: expected {interval, unit, days_of_week, basis, until} or null")
+	}
+	rule := &tasks.TaskRecurrence{Interval: 1, Unit: input.Unit, DaysOfWeek: input.DaysOfWeek, Basis: input.Basis, Until: input.Until}
+	if input.Interval != nil {
+		rule.Interval = *input.Interval
+	}
+	if len(rule.DaysOfWeek) == 0 {
+		rule.DaysOfWeek = input.DaysOfWeekAlt
+	}
+	normalized, err := tasks.NormalizeRecurrence(rule)
+	if err != nil {
+		return nil, err
+	}
+	return normalized, nil
 }
 
 func (h *mcpHandler) saveHabit(ctx context.Context, userID uuid.UUID, habit tasks.Habit) (tasks.Habit, error) {
