@@ -10,6 +10,7 @@ import { comments } from "./comments";
 import { common } from "./common";
 import { game } from "./game";
 import { habits } from "./habits";
+import { importer } from "./import";
 import { mail } from "./mail";
 import { notes } from "./notes";
 import { onboarding } from "./onboarding";
@@ -19,4 +20,4 @@ import { reminders } from "./reminders";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 
-export const de: AppDictionary = { account, agent, auth, billing, capture, checklist, collab, comments, common, game, habits, mail, notes, onboarding, palette, progress, reminders, settings, tasks };
+export const de: AppDictionary = { account, agent, auth, billing, capture, checklist, collab, comments, common, game, habits, import: importer, mail, notes, onboarding, palette, progress, reminders, settings, tasks };

@@ -44,7 +44,7 @@ const VIEW_PATHS: Partial<Record<WorkspaceView, string>> = {
 const PATH_VIEWS = new Map(Object.entries(VIEW_PATHS).map(([view, path]) => [path, view as WorkspaceView]));
 
 export const PROJECT_TABS = ["board", "issues", "overview", "cycles", "activity", "list", "notes", "leaderboard"] as const;
-const SETTINGS_TABS: readonly SettingsTab[] = ["general", "profile", "security", "notifications", "game", "assistant", "integrations", "diagnostics", "developer"];
+const SETTINGS_TABS: readonly SettingsTab[] = ["general", "profile", "security", "notifications", "game", "assistant", "integrations", "import", "diagnostics", "developer"];
 
 /** Ids are UUIDs; anything else in a URL segment is ignored rather than trusted. */
 const ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;

@@ -197,9 +197,15 @@ func (s *Server) agentComplete(w http.ResponseWriter, r *http.Request) {
 
 // resolveCompletionRoute picks the upstream for a completion: the user's own
 // stored OpenRouter key when present (and not explicitly bypassed), otherwise
-// Prior AI when the server has it configured.
+// Prior AI when the server has it configured. The "import" purpose is always
+// Prior AI.
 func (s *Server) resolveCompletionRoute(r *http.Request, user store.User, purpose, model string, wantHosted bool) (completionRoute, int, error) {
 	hosted := s.cfg.HostedAI
+	// AI import is a paid-plan feature: it always runs on Prior AI, so a
+	// user's own OpenRouter key cannot unlock it.
+	if purpose == "import" {
+		wantHosted = true
+	}
 	if !wantHosted {
 		apiKey, err := s.storedOpenRouterKey(r, user.ID, purpose)
 		if err != nil {

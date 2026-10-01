@@ -88,6 +88,7 @@ type HostedAIConfig struct {
 	RecommendationsModel string
 	MailModel            string
 	CalendarModel        string
+	ImportModel          string
 	// Extra models OpenRouter tries in order when the primary one fails.
 	FallbackModels []string
 	// Decision model (TypeSafe Jev): picks and scores instead of writing
@@ -124,7 +125,7 @@ func (c HostedAIConfig) TranscriptionEnabled() bool {
 }
 
 // ModelFor returns the configured model for a purpose ("agent",
-// "recommendations", "mail", "calendar").
+// "recommendations", "mail", "calendar", "import").
 func (c HostedAIConfig) ModelFor(purpose string) string {
 	switch purpose {
 	case "recommendations":
@@ -133,6 +134,8 @@ func (c HostedAIConfig) ModelFor(purpose string) string {
 		return firstSet(c.MailModel, c.AgentModel)
 	case "calendar":
 		return firstSet(c.CalendarModel, c.AgentModel)
+	case "import":
+		return firstSet(c.ImportModel, c.MailModel, c.AgentModel)
 	default:
 		return c.AgentModel
 	}
@@ -211,6 +214,7 @@ func loadHostedAI() HostedAIConfig {
 		RecommendationsModel: getenv("AI_MODEL_RECOMMENDATIONS", "openai/gpt-6-luna"),
 		MailModel:            getenv("AI_MODEL_MAIL", "openai/gpt-6-luna"),
 		CalendarModel:        getenv("AI_MODEL_CALENDAR", "openai/gpt-6-luna"),
+		ImportModel:          os.Getenv("AI_MODEL_IMPORT"), // empty: the mail model
 		FallbackModels:       split(getenv("AI_MODEL_FALLBACKS", "deepseek/deepseek-v4.1-flash")),
 		DecisionsURL:         decisionsURL(baseURL),
 		DecisionsModel:       decisionsModel(),

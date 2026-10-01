@@ -15,7 +15,7 @@ import (
 )
 
 func TestNormalizeAgentPurpose(t *testing.T) {
-	for input, want := range map[string]string{"": "agent", "agent": "agent", " Mail ": "mail", "recommendations": "recommendations", "calendar": "calendar"} {
+	for input, want := range map[string]string{"": "agent", "agent": "agent", " Mail ": "mail", "recommendations": "recommendations", "calendar": "calendar", "import": "import"} {
 		got, ok := normalizeAgentPurpose(input)
 		if !ok || got != want {
 			t.Fatalf("normalizeAgentPurpose(%q) = %q, %v; want %q", input, got, ok, want)
@@ -36,6 +36,44 @@ func TestHostedModelForFallsBackToAgentModel(t *testing.T) {
 	}
 	if got := cfg.ModelFor("agent"); got != "agent/model" {
 		t.Fatalf("agent model = %q", got)
+	}
+}
+
+func TestImportModelFallsBackToMailThenAgent(t *testing.T) {
+	cfg := config.HostedAIConfig{AgentModel: "agent/model", MailModel: "mail/model"}
+	if got := cfg.ModelFor("import"); got != "mail/model" {
+		t.Fatalf("import model should default to the mail model, got %q", got)
+	}
+	cfg.ImportModel = "import/model"
+	if got := cfg.ModelFor("import"); got != "import/model" {
+		t.Fatalf("import model = %q", got)
+	}
+	if got := (config.HostedAIConfig{AgentModel: "agent/model"}).ModelFor("import"); got != "agent/model" {
+		t.Fatalf("import model should end at the agent model, got %q", got)
+	}
+}
+
+// AI import is Pro-only: it always runs on Prior AI, whatever the request
+// asks for, so neither a missing plan nor a personal OpenRouter key opens it.
+func TestImportPurposeIsHostedAndNeedsAPlan(t *testing.T) {
+	server := &Server{cfg: config.Config{HostedAI: config.HostedAIConfig{
+		APIKey: "operator-key", BaseURL: "https://ai.example.test", AgentModel: "agent/model", MailModel: "mail/model", ImportModel: "import/model",
+		AllowedEmails: []string{"pro@example.com"},
+	}}}
+	request := httptest.NewRequest(http.MethodPost, "/v1/agent/complete", nil)
+
+	for _, wantHosted := range []bool{false, true} {
+		route, status, err := server.resolveCompletionRoute(request, store.User{Email: "free@example.com"}, "import", "", wantHosted)
+		if err == nil || status != http.StatusPaymentRequired {
+			t.Fatalf("a free user must get 402 for import (wantHosted=%v), got status %d err %v", wantHosted, status, err)
+		}
+		if route.hosted {
+			t.Fatal("a refused request must not carry a route")
+		}
+		route, status, err = server.resolveCompletionRoute(request, store.User{Email: "pro@example.com"}, "import", "", wantHosted)
+		if err != nil || status != 0 || !route.hosted || route.model != "import/model" || route.apiKey != "operator-key" {
+			t.Fatalf("an entitled user gets Prior AI with the import model (wantHosted=%v), got %#v status %d err %v", wantHosted, route, status, err)
+		}
 	}
 }
 

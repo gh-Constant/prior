@@ -1,0 +1,7 @@
+ID,Team,Title,Description,Status,Estimate,Priority,Project,Project ID,Creator,Assignee,Labels,Cycle Number,Cycle Name,Cycle Start,Cycle End,Created,Updated,Started,Completed,Canceled,Archived,Due Date,Parent issue,Initiatives,Project Milestone,SLA Status,Roadmaps
+ENG-1,Engineering,Set up the CI pipeline,"Run lint, tests and build on every push.",In Progress,3,High,Platform,p1,Constant,Marie,"infra, ci",4,Cycle 4,2026-09-28,2026-10-12,2026-09-20T10:00:00.000Z,2026-09-30T09:00:00.000Z,2026-09-29T08:00:00.000Z,,,,2026-10-10,,,Beta,,
+ENG-2,Engineering,Cache the Docker layers,,Todo,,Medium,Platform,p1,Constant,,infra,,,,,2026-09-21T10:00:00.000Z,2026-09-21T10:00:00.000Z,,,,,,ENG-1,,,,
+ENG-3,Engineering,Remove the legacy endpoint,"Old v1 route, unused since March.",Done,1,Low,Platform,p1,Constant,Constant,cleanup,3,Cycle 3,2026-09-14,2026-09-27,2026-09-10T10:00:00.000Z,2026-09-25T10:00:00.000Z,2026-09-15T10:00:00.000Z,2026-09-25T10:00:00.000Z,,,,,,,,
+ENG-4,Engineering,Try the new editor,,Canceled,,No priority,Platform,p1,Constant,,,,,,,2026-09-11T10:00:00.000Z,2026-09-12T10:00:00.000Z,,,2026-09-12T10:00:00.000Z,,,,,,,
+ENG-5,Engineering,Investigate flaky test,,Triage,,Urgent,,,Constant,,bug,,,,,2026-09-30T10:00:00.000Z,2026-09-30T10:00:00.000Z,,,,,,,,,,
+DES-1,Design,Refresh the onboarding illustrations,,Backlog,,No priority,,,Marie,Marie,,,,,,2026-09-01T10:00:00.000Z,2026-09-01T10:00:00.000Z,,,,,,ENG-9,,,,
