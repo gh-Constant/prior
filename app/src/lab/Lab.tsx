@@ -3,6 +3,7 @@ import { EffectsProvider } from "../lib/gamification/effects";
 import type { EffectsIntensity } from "../lib/gamification/types";
 import { setThemePreference, useResolvedTheme } from "../lib/theme";
 import { LabSelect, type LabSurface } from "./LabKit";
+import { AgentSection } from "./sections/AgentSection";
 import { FxSection } from "./sections/FxSection";
 import { NameplateSection } from "./sections/NameplateSection";
 import { PetSection } from "./sections/PetSection";
@@ -15,6 +16,7 @@ const SECTIONS = [
   { id: "identity", title: "Names, borders & inventory", Component: NameplateSection },
   { id: "pet", title: "Pet", Component: PetSection },
   { id: "progress", title: "Progress page", Component: ProgressSection },
+  { id: "agent", title: "Assistant", Component: AgentSection },
   { id: "sidebar-widget", title: "Sidebar widget", Component: SidebarWidgetSection },
 ] as const;
 

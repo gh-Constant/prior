@@ -1,101 +1,270 @@
-/* Prior Agent mark — the cream Prior "P" on a dark tile, a coral focus dot
-   held in its bowl. Sizes come from --identity-size. */
+/* Prior's assistant mascot: a coral pebble with a sprouting spark.
+   Colors come from the theme's --accent, so it follows light, dark and any accent.
+   Sizes come from --identity-size; moods are `.mood-*` on the root (see AgentIdentity.tsx). */
 .agent-identity {
-  --identity-size: 26px;
-  --mark-ring: #f4ece2;
-  --mark-core: #f56a4d;
+  --identity-size: 28px;
+  --mascot-base: var(--accent, #f35f43);
+  --mascot-hi: color-mix(in oklab, var(--mascot-base) 70%, #fff);
+  --mascot-lo: color-mix(in oklab, var(--mascot-base) 78%, #4a0f06);
+  --mascot-stem: color-mix(in oklab, var(--mascot-base) 72%, #4a0f06);
+  --mascot-ink: #2b1511;
+  --mascot-spark: #ffc247;
+  --mascot-cheek: color-mix(in oklab, var(--mascot-base) 38%, #fff);
+  --look-x: 0;
+  --look-y: 0;
   position: relative;
   display: inline-grid;
   place-items: center;
   width: var(--identity-size);
   height: var(--identity-size);
   flex: 0 0 auto;
-  border-radius: calc(var(--identity-size) * 0.3);
-  background:
-    radial-gradient(120% 90% at 30% 0%, #3a3633 0%, transparent 60%),
-    linear-gradient(165deg, #2a2725 0%, #151413 100%);
-  box-shadow:
-    inset 0 1px 0 #ffffff1f,
-    inset 0 0 0 1px #ffffff0d,
-    0 0 0 1px #0000004d,
-    0 1px 2px #00000033;
   isolation: isolate;
 }
 
-.agent-identity-tiny { --identity-size: 20px; }
-.agent-identity-small { --identity-size: 26px; }
-.agent-identity-hero {
-  --identity-size: 60px;
-  box-shadow:
-    inset 0 1px 0 #ffffff24,
-    inset 0 0 0 1px #ffffff0d,
-    0 0 0 1px #00000059,
-    0 2px 4px #00000026,
-    0 14px 32px -10px #1d1c1a80;
-}
+.agent-identity-tiny { --identity-size: 22px; }
+.agent-identity-small { --identity-size: 28px; }
+.agent-identity-hero { --identity-size: 92px; }
 
-.agent-mark {
-  width: 70%;
-  height: 70%;
-  margin: 6% 0 0 4%;
+.agent-mascot {
+  width: 100%;
+  height: 100%;
   overflow: visible;
+  transition: filter 240ms ease;
 }
 
-.agent-mark-stroke,
-.agent-mark-trace {
+/* ── Parts ──────────────────────────────────────────────────────────────── */
+.mascot-stop-hi { stop-color: var(--mascot-hi); }
+.mascot-stop-mid { stop-color: var(--mascot-base); }
+.mascot-stop-lo { stop-color: var(--mascot-lo); }
+.mascot-skin { stroke: color-mix(in oklab, var(--mascot-lo) 80%, transparent); stroke-width: .6; }
+.mascot-shine { fill: none; stroke: #fff; stroke-width: 3.2; stroke-linecap: round; opacity: .3; }
+.mascot-shadow { fill: #000; opacity: .14; transform-box: fill-box; transform-origin: center; }
+.mascot-stem { fill: none; stroke: var(--mascot-stem); stroke-width: 2.4; stroke-linecap: round; }
+.mascot-leaf { fill: var(--mascot-spark); stroke: color-mix(in oklab, var(--mascot-spark) 65%, #8a4b00); stroke-width: .5; stroke-linejoin: round; }
+.mascot-star { fill: var(--mascot-spark); stroke: color-mix(in oklab, var(--mascot-spark) 70%, #8a4b00); stroke-width: .5; stroke-linejoin: round; transform-box: fill-box; transform-origin: center; }
+.mascot-cheek { fill: var(--mascot-cheek); opacity: .75; transition: opacity 240ms ease; }
+.mascot-pupil { fill: var(--mascot-ink); }
+.mascot-glint { fill: #fff; }
+.mascot-glint-small { opacity: .75; }
+.mascot-eyes-happy path, .mascot-brows path, .mascot-mouth-line {
   fill: none;
-  stroke-width: 34;
+  stroke: var(--mascot-ink);
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.agent-mark-stroke { stroke: var(--mark-ring); }
+.mascot-brows path { stroke-width: 2.1; }
+.mascot-mouth-line { stroke-width: 2.3; }
+.mascot-mouth-fill { fill: var(--mascot-ink); }
+.mascot-tongue { fill: #ff8f84; }
+.mascot-tear { fill: #8fc9ff; opacity: 0; }
+.mascot-arm { stroke: color-mix(in oklab, var(--mascot-lo) 80%, transparent); stroke-width: .6; }
+.mascot-arm-group { opacity: 0; }
 
-/* A coral segment that travels the bowl while the agent is thinking. */
-.agent-mark-trace {
-  stroke: var(--mark-core);
-  stroke-dasharray: 22 78;
-  opacity: 0;
-  transition: opacity 200ms ease;
+/* Everything animated gets a stable pivot in viewBox units. */
+.mascot-body,
+.mascot-sprout,
+.mascot-arm-group,
+.mascot-look,
+.mascot-glance,
+.mascot-orbit,
+.mascot-ring,
+.mascot-burst-dot {
+  transform-box: view-box;
+}
+.mascot-body { transform-origin: 50% 92%; }
+.mascot-sprout { transform-origin: 32px 15px; }
+.mascot-arm-group { transform-origin: 56px 46px; }
+.mascot-orbit, .mascot-ring, .mascot-burst-dot { transform-origin: 32px 37px; }
+.mascot-eye { transform-box: fill-box; transform-origin: center; }
+
+.mascot-look {
+  transform: translate(calc(var(--look-x) * 1px), calc(var(--look-y) * 1px));
+  transition: transform 260ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.agent-identity.is-tracking .mascot-look { transition-duration: 90ms; }
+.agent-identity.is-tracking .mascot-glance { animation: none; }
+.mascot-mouth { animation: mascot-face-pop 260ms cubic-bezier(0.23, 1, 0.32, 1) both; transform-box: fill-box; transform-origin: center; }
+.mascot-orbit, .mascot-ring-group, .mascot-burst { opacity: 0; transition: opacity 220ms ease; }
+
+/* Tiny sizes: drop details that would turn into noise. */
+.agent-identity-tiny .mascot-cheek,
+.agent-identity-tiny .mascot-shine,
+.agent-identity-tiny .mascot-shadow { display: none; }
+
+/* ── Idle: breathing, blinking, an occasional glance ───────────────────── */
+.mascot-body { animation: mascot-breathe 4.4s ease-in-out infinite var(--breathe-delay, 0s); }
+.mascot-eye { animation: mascot-blink var(--blink-dur, 5.6s) ease-in-out infinite var(--blink-delay, 0s); }
+.mascot-glance { animation: mascot-glance var(--glance-dur, 11s) ease-in-out infinite var(--glance-delay, 0s); }
+.mascot-sprout { animation: mascot-sway 5.2s ease-in-out infinite var(--breathe-delay, 0s); }
+.mascot-star { animation: mascot-twinkle 3.6s ease-in-out infinite var(--breathe-delay, 0s); }
+.mascot-shadow { animation: mascot-shadow 4.4s ease-in-out infinite var(--breathe-delay, 0s); }
+
+/* The hero waves once when it appears. */
+.agent-identity.is-waving .mascot-arm-group { animation: mascot-wave 1.7s 350ms cubic-bezier(0.37, 0, 0.63, 1) both; }
+.agent-identity.is-waving .mascot-body { animation: mascot-breathe 4.4s ease-in-out infinite var(--breathe-delay, 0s), mascot-hello 1.7s 350ms ease-in-out both; }
+
+/* ── Thinking: eyes up, three sparks orbit, the spark spins ────────────── */
+.mood-thinking { --look-x: 2.4; --look-y: -3; }
+.mood-thinking .mascot-glance { animation: mascot-ponder-eyes 3.2s ease-in-out infinite; }
+.mood-thinking .mascot-orbit { opacity: 1; animation: mascot-orbit 2.4s linear infinite; }
+.mood-thinking .mascot-spark-2 { opacity: .65; }
+.mood-thinking .mascot-spark-3 { opacity: .35; }
+.mood-thinking .mascot-body { animation: mascot-ponder 2.8s ease-in-out infinite; }
+.mood-thinking .mascot-star { animation: mascot-spin 1.5s ease-in-out infinite; }
+.mood-thinking .mascot-sprout { animation: none; }
+.mood-thinking .agent-mascot { filter: drop-shadow(0 0 5px color-mix(in oklab, var(--mascot-base) 55%, transparent)); }
+.mascot-spark { fill: var(--mascot-spark); }
+
+/* ── Working: reading the answer as it is written ──────────────────────── */
+.mood-working .mascot-glance { animation: mascot-read 2.6s ease-in-out infinite; }
+.mood-working .mascot-body { animation: mascot-bob 1.1s ease-in-out infinite; }
+.mood-working .mascot-star { animation: mascot-spin 4.2s linear infinite; }
+.mood-working .mascot-shadow { animation: mascot-shadow 1.1s ease-in-out infinite; }
+
+/* ── Happy: squint, hop, burst of sparks ───────────────────────────────── */
+.mood-happy .mascot-cheek { opacity: 1; }
+.mood-happy .mascot-eyes-happy { animation: mascot-face-pop 300ms cubic-bezier(0.23, 1, 0.32, 1) both; transform-box: fill-box; transform-origin: center; }
+.mood-happy .mascot-body { animation: mascot-hop 820ms cubic-bezier(0.34, 1.4, 0.64, 1) both, mascot-breathe 4.4s 820ms ease-in-out infinite; }
+.mood-happy .mascot-star { animation: mascot-spin 900ms ease-out 1, mascot-twinkle 2.2s 900ms ease-in-out infinite; }
+.mood-happy .mascot-burst { opacity: 1; }
+.mood-happy .mascot-burst-dot { fill: var(--mascot-spark); animation: mascot-burst 900ms ease-out both; }
+.mood-happy .mascot-burst-dot:nth-child(even) { fill: var(--mascot-hi); }
+.mood-happy .mascot-glance { animation: none; }
+
+/* ── Sad: eyes droop, a single tear ────────────────────────────────────── */
+.mood-sad { --look-y: 2.4; }
+.mood-sad .mascot-eye { animation: none; transform: scaleY(.82); }
+.mood-sad .mascot-glance { animation: none; }
+.mood-sad .mascot-cheek { opacity: .4; }
+.mood-sad .mascot-body { animation: mascot-droop 1.6s cubic-bezier(0.23, 1, 0.32, 1) both; }
+.mood-sad .mascot-tear { animation: mascot-tear 2.4s ease-in 400ms both; }
+.mood-sad .mascot-star, .mood-sad .mascot-sprout { animation: none; }
+.mood-sad .mascot-sprout { transform: rotate(-14deg); transition: transform 600ms ease; }
+
+/* ── Listening: wide eyes, a pulsing ring ──────────────────────────────── */
+.mood-listening { --look-y: -.6; }
+.mood-listening .mascot-eye { animation: none; transform: scale(1.1); }
+.mood-listening .mascot-glance { animation: none; }
+.mood-listening .mascot-ring-group { opacity: 1; }
+.mood-listening .mascot-ring { fill: none; stroke: var(--mascot-base); stroke-width: 1.6; animation: mascot-ring 1.8s ease-out infinite; }
+.mood-listening .mascot-ring-late { animation-delay: .9s; }
+.mood-listening .mascot-body { animation: mascot-tilt 2.6s ease-in-out infinite; }
+.mascot-ring { fill: none; opacity: 0; }
+
+/* ── Keyframes ──────────────────────────────────────────────────────────── */
+@keyframes mascot-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.018, 0.982); }
+}
+@keyframes mascot-shadow {
+  0%, 100% { transform: scaleX(1); opacity: .14; }
+  50% { transform: scaleX(.94); opacity: .1; }
+}
+@keyframes mascot-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  93% { transform: scaleY(.08); }
+  96% { transform: scaleY(1); }
+  97.5% { transform: scaleY(.1); }
+  99% { transform: scaleY(1); }
+}
+@keyframes mascot-glance {
+  0%, 26%, 60%, 100% { transform: translate(0, 0); }
+  30%, 40% { transform: translate(2.4px, -.6px); }
+  44% { transform: translate(0, 0); }
+  66%, 74% { transform: translate(-2.2px, .8px); }
+  80% { transform: translate(0, 0); }
+}
+@keyframes mascot-sway {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3.5deg); }
+}
+@keyframes mascot-twinkle {
+  0%, 100% { transform: scale(.82) rotate(0deg); opacity: .9; }
+  50% { transform: scale(1.12) rotate(45deg); opacity: 1; }
+}
+@keyframes mascot-spin {
+  0% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.35) rotate(180deg); }
+  100% { transform: scale(1) rotate(360deg); }
+}
+@keyframes mascot-orbit {
+  to { transform: rotate(360deg); }
+}
+@keyframes mascot-ponder {
+  0%, 100% { transform: rotate(-2.2deg) scale(1); }
+  50% { transform: rotate(2.2deg) scale(1.012, .99); }
+}
+@keyframes mascot-ponder-eyes {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-3.4px, .6px); }
+}
+@keyframes mascot-read {
+  0% { transform: translate(-2.6px, -1px); }
+  42% { transform: translate(2.8px, -1px); }
+  50% { transform: translate(-2.6px, .9px); }
+  92% { transform: translate(2.8px, .9px); }
+  100% { transform: translate(-2.6px, -1px); }
+}
+@keyframes mascot-bob {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(-1.6px) scale(.99, 1.012); }
+}
+@keyframes mascot-hop {
+  0% { transform: translateY(0) scale(1.08, .88); }
+  30% { transform: translateY(-9px) scale(.94, 1.08); }
+  60% { transform: translateY(0) scale(1.06, .92); }
+  80% { transform: translateY(-2px) scale(.99, 1.02); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes mascot-burst {
+  0% { transform: rotate(var(--angle)) translateY(-18px) scale(.4); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: rotate(var(--angle)) translateY(-31px) scale(1); opacity: 0; }
+}
+@keyframes mascot-droop {
+  0% { transform: scale(1, 1); }
+  35% { transform: translateY(1.5px) scale(1.04, .94); }
+  100% { transform: translateY(.8px) scale(1.015, .97); }
+}
+@keyframes mascot-tear {
+  0% { opacity: 0; transform: translateY(-2px); }
+  20% { opacity: .95; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(9px); }
+}
+@keyframes mascot-ring {
+  0% { transform: scale(.82); opacity: .65; }
+  100% { transform: scale(1.32); opacity: 0; }
+}
+@keyframes mascot-tilt {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg) scale(1.015); }
+}
+@keyframes mascot-wave {
+  0% { transform: rotate(0deg); opacity: 0; }
+  6% { opacity: 1; }
+  15% { transform: rotate(-38deg); }
+  30% { transform: rotate(-4deg); }
+  45% { transform: rotate(-38deg); }
+  60% { transform: rotate(-4deg); }
+  75% { transform: rotate(-30deg); opacity: 1; }
+  100% { transform: rotate(0deg); opacity: 0; }
+}
+@keyframes mascot-hello {
+  0%, 100% { transform: rotate(0deg); }
+  25%, 70% { transform: rotate(-3deg); }
+}
+@keyframes mascot-face-pop {
+  from { opacity: 0; transform: scale(.6); }
+  to { opacity: 1; transform: none; }
 }
 
-.agent-mark-core {
-  fill: var(--mark-core);
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: agent-core-breathe 3.6s ease-in-out infinite;
-}
-
-.agent-identity.is-thinking .agent-mark-trace {
-  opacity: 1;
-  animation: agent-trace-run 1.3s linear infinite;
-}
-.agent-identity.is-thinking .agent-mark-core {
-  animation: agent-core-pulse 1.3s ease-in-out infinite;
-}
-.agent-identity.is-thinking {
-  box-shadow:
-    inset 0 1px 0 #ffffff1f,
-    inset 0 0 0 1px #ffffff0d,
-    0 0 0 1px #0000004d,
-    0 0 0 3px #f35f4324,
-    0 1px 2px #00000033;
-}
-
-@keyframes agent-core-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(0.84); }
-}
-@keyframes agent-core-pulse {
-  0%, 100% { transform: scale(0.8); }
-  50% { transform: scale(1.08); }
-}
-@keyframes agent-trace-run {
-  from { stroke-dashoffset: 100; }
-  to { stroke-dashoffset: 0; }
-}
-
+/* A resting pose that still reads in each mood, with no motion at all. */
 @media (prefers-reduced-motion: reduce) {
-  .agent-mark-core,
-  .agent-identity.is-thinking .agent-mark-trace,
-  .agent-identity.is-thinking .agent-mark-core { animation: none; }
+  .agent-identity .agent-mascot *,
+  .agent-identity .mascot-mouth { animation: none !important; }
+  .mascot-look { transition: none; }
+  .mascot-burst, .mascot-ring-group { display: none; }
+  .mood-thinking .mascot-orbit { transform: rotate(-20deg); }
+  .mood-sad .mascot-tear { opacity: .9; }
 }

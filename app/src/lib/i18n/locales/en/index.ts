@@ -1,5 +1,6 @@
 import { account } from "./account";
 import { agent } from "./agent";
+import { agentui } from "./agentui";
 import { auth } from "./auth";
 import { billing } from "./billing";
 import { capture } from "./capture";
@@ -18,6 +19,6 @@ import { reminders } from "./reminders";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 
-export const en = { account, agent, auth, billing, capture, checklist, collab, comments, common, game, habits, mail, notes, onboarding, palette, progress, reminders, settings, tasks };
+export const en = { account, agent, agentui, auth, billing, capture, checklist, collab, comments, common, game, habits, mail, notes, onboarding, palette, progress, reminders, settings, tasks };
 
 export type AppDictionary = typeof en;

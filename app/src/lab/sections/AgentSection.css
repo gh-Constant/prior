@@ -1,0 +1,11 @@
+/* Lab-only layout for the Assistant section. */
+.agent-lab .lab-demo:nth-child(4) { grid-column: 1 / -1; }
+.agent-lab-row { display: flex; align-items: flex-end; justify-content: center; gap: 36px; padding: 24px; }
+.agent-lab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 20px; width: 100%; padding: 20px; }
+.agent-lab-grid figure { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 0; }
+.agent-lab-grid figcaption { color: var(--muted); font-size: var(--fs-xs); }
+.agent-lab-chat { --agent-pad: 18px; display: flex; flex-direction: column; gap: 12px; width: 100%; padding: 20px var(--agent-pad); color: var(--ink); text-align: left; }
+.agent-lab-narrow { max-width: 420px; }
+.agent-lab-wide { max-width: 460px; margin: 0 auto; }
+.agent-lab-mascot { position: absolute; top: 10px; right: 12px; }
+.agent-lab-reset { display: flex; justify-content: flex-end; }

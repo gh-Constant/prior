@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type {
   AgentChatSummary,
   AgentMessage,
@@ -31,7 +31,9 @@ import { getAccountId } from "../lib/accountScope";
 import { generateUuid } from "../lib/uuid";
 import { useHostedAiAvailable } from "../hooks/useHostedAi";
 import "./AgentSidebar.css";
-import { AgentIdentity } from "./AgentIdentity";
+import { AgentIdentity, type AgentMood } from "./AgentIdentity";
+import { AgentThinking } from "./agent/AgentThinking";
+import type { ProposalContext } from "./agent/reviewModel";
 import {
   AssistantMessage,
   areaDraftOf,
@@ -142,15 +144,23 @@ type Props = {
 
 type StarterPrompt = { readonly icon: "sparkles" | "folder" | "bolt" | "user" | "inbox"; readonly title: string; readonly prompt: string };
 
+/** The four suggestion chips of the empty state, in the order they are shown. */
 function useStarterPrompts(): StarterPrompt[] {
   const { t } = useI18n();
   return useMemo(() => [
-    { icon: "sparkles" as const, title: t("agent.suggest.setup.title"), prompt: t("agent.suggest.setup.prompt") },
-    { icon: "folder" as const, title: t("agent.suggest.organize.title"), prompt: t("agent.suggest.organize.prompt") },
     { icon: "bolt" as const, title: t("agent.suggest.today.title"), prompt: t("agent.suggest.today.prompt") },
-    { icon: "user" as const, title: t("agent.suggest.delegate.title"), prompt: t("agent.suggest.delegate.prompt") },
     { icon: "inbox" as const, title: t("agent.suggest.inbox.title"), prompt: t("agent.suggest.inbox.prompt") },
+    { icon: "folder" as const, title: t("agent.suggest.organize.title"), prompt: t("agent.suggest.organize.prompt") },
+    { icon: "sparkles" as const, title: t("agent.suggest.setup.title"), prompt: t("agent.suggest.setup.prompt") },
   ], [t]);
+}
+
+function dayPart(date = new Date()): "morning" | "afternoon" | "evening" | "night" {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 18) return "afternoon";
+  if (hour >= 18 && hour < 23) return "evening";
+  return "night";
 }
 
 function useOverlayMode(): boolean {
@@ -228,6 +238,37 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       }, 0);
     },
   });
+
+  // The mascot's mood follows what is happening; "happy" and "sad" are short flashes.
+  const [flash, setFlash] = useState<"happy" | "sad" | null>(null);
+  const flashTimerRef = useRef<number | undefined>(undefined);
+  const freshIdsRef = useRef<Set<string>>(new Set());
+  const greetingPart = useMemo(() => dayPart(), []);
+  const firstName = user?.displayName?.trim().split(/\s+/)[0] ?? "";
+
+  function flashMood(next: "happy" | "sad"): void {
+    window.clearTimeout(flashTimerRef.current);
+    setFlash(next);
+    flashTimerRef.current = window.setTimeout(() => setFlash(null), next === "happy" ? 2800 : 3400);
+  }
+
+  useEffect(() => () => window.clearTimeout(flashTimerRef.current), []);
+  useEffect(() => {
+    if (!error) return;
+    window.clearTimeout(flashTimerRef.current);
+    setFlash("sad");
+    flashTimerRef.current = window.setTimeout(() => setFlash(null), 3400);
+  }, [error]);
+
+  // The composer grows with its text (CSS `field-sizing` where supported, this fallback elsewhere).
+  useEffect(() => {
+    const field = textareaRef.current;
+    if (!field || (typeof CSS !== "undefined" && CSS.supports?.("field-sizing", "content"))) return;
+    field.style.height = "auto";
+    field.style.height = `${Math.min(field.scrollHeight, 200)}px`;
+  }, [input, open]);
+
+  const mood: AgentMood = dictation.status === "listening" ? "listening" : loading ? (streamingMessageId ? "working" : "thinking") : flash ?? "idle";
 
   useEffect(() => {
     void fetchAvailableModels().then((list) => {
@@ -426,9 +467,19 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     };
   }, [dictation, open, onClose, isOverlay]);
 
+  // Follow the conversation, not the edits inside it: only a new message or a request starting scrolls.
+  // A fresh answer lands at its first line, so a long list of proposals never hides the reply above it.
   useEffect(() => {
+    const last = messages.at(-1);
+    if (!loading && last?.role === "assistant" && freshIdsRef.current.has(last.id)) {
+      const row = Array.from(panelRef.current?.querySelectorAll<HTMLElement>("[data-message-id]") ?? []).find((element) => element.dataset.messageId === last.id);
+      if (row) {
+        row.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages.length, loading]);
 
   useEffect(() => () => {
     // Abort any in-flight Codex stream on unmount so turnId refs never leak.
@@ -664,6 +715,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           actualModel: response.actualModel,
           createdAt: new Date().toISOString(),
         };
+        freshIdsRef.current.add(assistantMsg.id);
         setMessages([...nextMessages, assistantMsg]);
         if (chatId && token) await persistMessage(chatId, assistantMsg, token);
         return;
@@ -674,6 +726,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       // is not markdown — so deltas stay silent and the single placeholder
       // bubble shows a working indicator until the parsed answer swaps in.
       const assistantId = crypto.randomUUID();
+      freshIdsRef.current.add(assistantId);
       const controller = new AbortController();
       abortRef.current = controller;
       setStreamingMessageId(assistantId);
@@ -969,38 +1022,60 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
     }
   }
 
+  function editProposedTask(messageId: string, taskId: string, patch: Partial<Pick<ProposedTask, "title" | "dueDate" | "priority">>) {
+    setMessages((prev) => updateTaskProposal(prev, messageId, taskId, (task) => ({ ...task, ...patch })));
+  }
+
+  /** Reports a failed apply once, then rethrows so "Apply all" stops before the next step. */
+  function reported<Args extends unknown[]>(run: (...args: Args) => Promise<void>): (...args: Args) => Promise<void> {
+    return async (...args: Args) => {
+      try {
+        await run(...args);
+      } catch (applyError) {
+        setError(applyError instanceof Error ? applyError.message : t("agent.updates.failed"));
+        throw applyError;
+      }
+    };
+  }
+
+  // What the review cards show as "before": the user's current data.
+  const proposalContext = useMemo<ProposalContext>(() => ({ tasks, projects, areas, habits, notes: notesStore.list() }), [tasks, projects, areas, habits, messages.length]);
+
   const messageHandlers: AssistantMessageHandlers = {
     addingIds,
+    context: proposalContext,
+    onApplied: () => flashMood("happy"),
+    onEditTask: editProposedTask,
     onUpdateArea: updateProposedArea,
-    onAddSingleArea: (messageId, area) => void handleAddSingleArea(messageId, area),
-    onAddAllAreas: (messageId, areas) => void handleAddAllAreas(messageId, areas),
+    onAddSingleArea: reported(handleAddSingleArea),
+    onAddAllAreas: reported(handleAddAllAreas),
     onUpdateProject: updateProposedProject,
-    onAddSingleProject: (messageId, project) => void handleAddSingleProject(messageId, project),
-    onAddAllProjects: (messageId, projects) => void handleAddAllProjects(messageId, projects),
+    onAddSingleProject: reported(handleAddSingleProject),
+    onAddAllProjects: reported(handleAddAllProjects),
     onToggleTaskSelect: handleToggleSelect,
     onToggleTaskImportant: handleToggleImportant,
     onToggleTaskUrgent: handleToggleUrgent,
-    onAddSingleTask: (messageId, task) => void handleAddSingle(messageId, task),
-    onAddAllTasks: (messageId, tasks) => void handleAddAll(messageId, tasks),
+    onAddSingleTask: reported(handleAddSingle),
+    onAddAllTasks: reported(handleAddAll),
     ...(onApplyTaskUpdates ? {
       onUpdateTaskUpdate: updateProposedTaskUpdate,
-      onApplyTaskUpdate: (messageId: string, update: ProposedTaskUpdate) => void handleApplyTaskUpdates(messageId, [update]),
-      onApplyAllTaskUpdates: (messageId: string, updates: ProposedTaskUpdate[]) => void handleApplyTaskUpdates(messageId, updates.filter((item) => item.selected)),
+      onApplyTaskUpdate: (messageId: string, update: ProposedTaskUpdate) => handleApplyTaskUpdates(messageId, [update]),
+      onApplyAllTaskUpdates: (messageId: string, updates: ProposedTaskUpdate[]) => handleApplyTaskUpdates(messageId, updates.filter((item) => item.selected)),
     } : {}),
     ...(onApplyEntityUpdates ? {
       onUpdateEntityUpdate: updateProposedEntityUpdate,
-      onApplyEntityUpdate: (messageId: string, update: ProposedEntityUpdate) => void handleApplyEntityUpdates(messageId, [update]),
-      onApplyAllEntityUpdates: (messageId: string, updates: ProposedEntityUpdate[]) => void handleApplyEntityUpdates(messageId, updates),
+      onApplyEntityUpdate: (messageId: string, update: ProposedEntityUpdate) => handleApplyEntityUpdates(messageId, [update]),
+      onApplyAllEntityUpdates: (messageId: string, updates: ProposedEntityUpdate[]) => handleApplyEntityUpdates(messageId, updates),
     } : {}),
     onUpdateHabit: updateProposedHabit,
-    onAddSingleHabit: (messageId, habit) => void handleAddSingleHabit(messageId, habit),
-    onAddAllHabits: (messageId, habits) => void handleAddAllHabits(messageId, habits),
+    onAddSingleHabit: reported(handleAddSingleHabit),
+    onAddAllHabits: reported(handleAddAllHabits),
     onUpdateNote: updateProposedNote,
-    onAddSingleNote: (messageId, note) => void handleAddSingleNote(messageId, note),
-    onAddAllNotes: (messageId, notes) => void handleAddAllNotes(messageId, notes),
+    onAddSingleNote: reported(handleAddSingleNote),
+    onAddAllNotes: reported(handleAddAllNotes),
     onUpdateFolder: updateProposedFolder,
-    onAddSingleFolder: (messageId, folder) => void handleAddSingleFolder(messageId, folder),
-    onAddAllFolders: (messageId, folders) => void handleAddAllFolders(messageId, folders),
+    onAddSingleFolder: reported(handleAddSingleFolder),
+    onAddAllFolders: reported(handleAddAllFolders),
   };
 
   if (!open) return null;
@@ -1011,7 +1086,7 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
       <dialog ref={panelRef} id="prior-ai-assistant" open inert={inert} className={`agent-sidebar ${isOverlay ? "overlay" : "docked"}`} aria-labelledby="prior-ai-assistant-title" tabIndex={-1}>
       <header className="agent-header">
         <div className="agent-title-row">
-          <AgentIdentity size="small" thinking={loading} />
+          <AgentIdentity size="small" mood={mood} />
           <h3 id="prior-ai-assistant-title">{t("agent.header.title")}</h3>
         </div>
         <div className="agent-header-actions">
@@ -1067,17 +1142,19 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           <div className="agent-welcome">
             <div className="agent-welcome-visual" aria-hidden="true">
               <span className="agent-welcome-halo" />
-              <AgentIdentity size="hero" />
+              <AgentIdentity size="hero" mood={mood === "listening" ? "listening" : "idle"} />
             </div>
-            <h4>{t("agent.welcome.title")}</h4>
-            <p>{t("agent.welcome.subtitle")}</p>
+            <h4>{firstName ? t("agentui.welcome.hello", { name: firstName }) : t("agentui.welcome.helloAnon")}</h4>
+            <p className="agent-welcome-lead">{t(`agentui.welcome.${greetingPart}`)}</p>
+            <p className="agent-welcome-hint">{t("agentui.welcome.hint")}</p>
 
             <div className="starter-prompts-grid">
-              {starterPrompts.map((item) => (
+              {starterPrompts.map((item, index) => (
                 <button
                   key={item.title}
                   type="button"
                   className="starter-chip"
+                  style={{ "--chip-index": index } as CSSProperties}
                   disabled={dictation.isActive}
                   onClick={() => {
                     if (dictation.isActive) return;
@@ -1091,7 +1168,6 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
                 >
                   <span className="starter-chip-icon"><Icon name={item.icon} /></span>
                   <span className="starter-chip-label">{item.title}</span>
-                  <Icon name="arrow" className="starter-chip-arrow" />
                 </button>
               ))}
             </div>
@@ -1100,29 +1176,11 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
           <div className="agent-messages">
             {messages.map((msg) => (
               msg.id === streamingMessageId
-                ? (
-                  <div className="agent-message-row assistant" key={msg.id}>
-                    <div className="agent-message-avatar">
-                      <AgentIdentity size="tiny" thinking />
-                    </div>
-                    <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
-                      <span className="loading-text">{t("agent.streaming.codex")}</span>
-                    </div>
-                  </div>
-                )
-                : <AssistantMessage key={msg.id} message={msg} handlers={messageHandlers} />
+                ? <AgentThinking key={msg.id} mode="working" />
+                : <AssistantMessage key={msg.id} message={msg} handlers={messageHandlers} fresh={freshIdsRef.current.has(msg.id)} />
             ))}
 
-            {loading && !streamingMessageId && (
-              <div className="agent-message-row assistant">
-                <div className="agent-message-avatar">
-                  <AgentIdentity size="tiny" thinking />
-                </div>
-                <div className="agent-message-bubble loading-bubble" role="status" aria-live="polite">
-                  <span className="loading-text">{t("agent.streaming.thinking")}</span>
-                </div>
-              </div>
-            )}
+            {loading && !streamingMessageId && <AgentThinking />}
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -1313,23 +1371,16 @@ export function AgentSidebar({ open, inert, onClose, tasks, habits, areas, proje
               disabled={!user}
               disabledTitle={t("agent.input.signInVoice")}
             />
-            {loading ? (
-              <button
-                type="button"
-                className="secondary-button agent-stop-btn"
-                onClick={handleStop}
-                aria-label={t("agent.input.stopLabel")}
-              >
-                {t("agent.input.stop")}
-              </button>
-            ) : null}
             <button
-              type="submit"
-              className="primary-button agent-send-btn"
-              disabled={!input.trim() || loading || dictation.isActive}
-              aria-label={t("agent.input.send")}
+              type={loading ? "button" : "submit"}
+              className={`primary-button agent-send-btn${loading ? " is-stop" : ""}`}
+              disabled={loading ? false : !input.trim() || dictation.isActive}
+              aria-label={loading ? t("agent.input.stopLabel") : t("agent.input.send")}
+              title={loading ? t("agent.input.stop") : undefined}
+              onClick={loading ? handleStop : undefined}
             >
-              <Icon name="arrow" />
+              <Icon name="arrow" className="send-arrow" />
+              <Icon name="stop" className="send-stop" />
             </button>
           </div>
         </form>

@@ -9,3 +9,26 @@ The interface uses system typography, 100–220ms transitions, visible focus rin
 Both themes share one set of CSS tokens in `app/src/index.css`; dark overrides them under `:root[data-theme="dark"]` (warm near-black canvas, surfaces that step up in lightness: well `--surface-2` < `--canvas` < `--panel` < `--raised`, lifted tones for text, deeper shadows with a faint light rim). The dark sidebar rail stays a step below the canvas in both themes. Components use tokens (`--raised` for menus, popovers, modals and toasts; `--on-ink`/`--on-tone` for text on inverted or tone fills; `--seg-active` for selected segments) instead of literal colors; content that is authored for white pages (email HTML) keeps a light `--paper` sheet.
 
 The preference (System, Light, Dark) lives in Settings → General, is stored as `prior.theme` and syncs with the account UI preferences. `public/theme-init.js` sets `<html data-theme>` before the first paint (an external script, so it passes the Tauri CSP), and `lib/theme.ts` keeps the document, `<meta name="theme-color">` and the desktop window theme in step afterwards.
+
+## Assistant identity
+
+The assistant (product name "Prior AI") is a small character, not a letter: a coral pebble with two glossy eyes, blush cheeks and a gold sprout on top, with a gold four-point spark floating beside it. `components/AgentIdentity.tsx` draws it in pure SVG + CSS (no images, no libraries), crisp from 16px to 160px. Its body is a radial gradient built from `--accent` (`color-mix` toward white and a dark coral), so it follows light, dark and any accent; eyes and mouth use a fixed warm ink so the face reads on every surface, including the always-dark sidebar rail. Sizes: `tiny` (22px, message avatar and rail), `small` (28px, headers and entry points), `hero` (92px, the empty state; it waves once and its eyes follow the pointer while idle). `AgentIdentity` keeps its original props (`thinking`, `size`) and adds `mood` and `wave`; an explicit `mood` wins over `thinking`. Each instance gets its own blink and glance rhythm, so several mascots never blink in unison.
+
+| Mood | When | What it does |
+|---|---|---|
+| `idle` | Default | Slow breathing, natural blinks, an occasional glance, the sprout sways and the spark twinkles |
+| `thinking` | A request is waiting for the model (also `thinking`) | Eyes look up and aside, three sparks orbit the head, the spark spins, a soft coral glow |
+| `working` | A stream is writing the answer (Codex) | Eyes sweep as if reading, a gentle bob |
+| `happy` | Proposals were applied (about 3 seconds) | Squinting smile, a hop, a burst of sparks |
+| `sad` | The assistant reported an error (about 3 seconds) | Drooping eyes, worried brows, one tear |
+| `listening` | Dictation is recording | Wide eyes, a pulsing ring |
+
+All motion stops under `prefers-reduced-motion`; each mood still reads from its pose alone (eyes, brows, mouth, orbit position). The sidebar derives the mood (`AgentSidebar.tsx`); other entry points (Today, Mail, the rail, the phone top bar) use the same component.
+
+In the conversation, the empty state greets the user by first name and time of day with four suggestion pills; the "thinking" row (`components/agent/AgentThinking.tsx`) shows the mascot beside a shimmering status line that moves through phases on a timer (the request has no real progress events) and a sketch of the answer to come; a fresh answer eases in block by block. The send button turns into a stop button while a request runs.
+
+### Review panel
+
+What the assistant proposes appears as one "Proposed changes" panel per message (`components/agent/ReviewPanel.tsx`, cards in `ReviewCards.tsx`, diff data in `reviewModel.ts`). Create cards read like Prior task rows (round include check, priority glyph, due chip, project, checklist, assignee, reminder, quadrant, the reasoning as a muted line); edit cards show only the fields that really change as `old → new` rows, the old value struck through and muted, the new one highlighted, using the user's current data for the "before" values. Tasks can be edited in place (title, due date, priority) before they are added. A floating bar at the bottom of the message applies everything ticked ("Apply all" runs areas, projects and folders first, then tasks, habits, notes and finally the edits, one after the other) or dismisses the panel (remembered locally, with "Show again"). An applied card collapses to one line with a check; when everything is applied the panel folds into a green "All applied" summary and the mascot is happy. There is no undo: nothing the assistant proposes can delete data, and applying goes through the same confirm paths as before. On phones the cards are full-width, every target is at least 44px and the apply bar keeps its place above the composer.
+
+`lab.html#agent` (dev only) shows every mood, the thinking row and a review panel with fake handlers.
