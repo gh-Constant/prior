@@ -26,6 +26,10 @@ import { generateUuid } from "./lib/uuid";
 import { dateKey as habitDateKey } from "./lib/habits";
 import { Icon } from "./components/Icon";
 import { EisenhowerMatrix } from "./components/EisenhowerMatrix";
+import { FocusView } from "./components/focus/FocusView";
+import { PomodoroRunner } from "./components/focus/PomodoroRunner";
+import { ProductTour } from "./components/tour/ProductTour";
+import { DEFAULT_ENABLED_VIEWS, OPTIONAL_VIEWS, REPLAY_TOUR_EVENT, isTourDone, isViewShown, markTourDone, useHiddenViews, writeEnabledViews, type OptionalView } from "./lib/navigation";
 import { TaskComposer, type TaskComposerContext } from "./components/TaskComposer";
 import { CompletionExitProvider } from "./components/TaskRow";
 import { TasksKanban } from "./components/kanban/TasksKanban";
@@ -128,6 +132,7 @@ const WEB_APP_URL = "https://app.prior.constantsuchet.fr/";
 
 function viewTitle(view: WorkspaceView, t: (key: string) => string): string {
   if (view === "today") return t("common.views.today");
+  if (view === "focus") return t("focus.title");
   if (view === "inbox") return t("common.views.inbox");
   if (view === "calendar") return t("common.views.calendar");
   if (view === "projects") return t("common.views.projects");
@@ -159,7 +164,7 @@ type WorkspaceHeaderProps = {
 
 function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcutKey, onNewTask, subtitle, extraActions }: WorkspaceHeaderProps) {
   const { t } = useI18n();
-  if (["today", "inbox", "projects", "project", "waiting", "notes", "settings", "plans", "admin", "progress"].includes(activeView)) return null;
+  if (["today", "focus", "inbox", "projects", "project", "waiting", "notes", "settings", "plans", "admin", "progress"].includes(activeView)) return null;
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
@@ -245,6 +250,7 @@ function PlannedCalendar({ habits, tasks, collaborationByProject, currentUserId,
 }
 
 function WorkspaceContent({ activeView, user, onUserUpdated, layout, groupBy, onGroupByChange, grouped, tasks, visibleTasks, myTasks, myVisibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onSettingsTabChange, onOpenGameSettings, onImportTasks, projectTab, onProjectTabChange }: WorkspaceContentProps) {
+  const showFocus = isViewShown("focus", useHiddenViews());
   if (activeView === "plans") return <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={billing.checkoutReturn} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "admin") return billing.billing?.isAdmin ? <AdminView /> : <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={null} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "progress") return <ProgressView onOpenGameSettings={onOpenGameSettings} />;
@@ -252,7 +258,8 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, groupBy, on
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
   if (activeView === "calendar") return <PlannedCalendar habits={habits} tasks={tasks} collaborationByProject={collaborationByProject} currentUserId={user?.id ?? null} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
-  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} habits={habits} onHabitComplete={onHabitComplete} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={() => onViewChange("calendar")} onOpenHabits={() => onViewChange("habits")} projectTab={projectTab} onProjectTabChange={onProjectTabChange} currentUserId={user?.id ?? null} />;
+  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} habits={habits} onHabitComplete={onHabitComplete} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={() => onViewChange("calendar")} onOpenFocus={showFocus ? () => onViewChange("focus") : undefined} onOpenHabits={() => onViewChange("habits")} projectTab={projectTab} onProjectTabChange={onProjectTabChange} currentUserId={user?.id ?? null} />;
+  if (activeView === "focus") return <FocusView tasks={tasks} projects={projects} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
   }
@@ -324,6 +331,9 @@ export function App() {
   const game = useGame();
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingPutOff, setOnboardingPutOff] = useState(false);
+  // The product tour (spaces to show, then a walkthrough) follows the onboarding.
+  const [tourOpen, setTourOpen] = useState(false);
+  const hiddenViews = useHiddenViews();
   const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(initialRoute.settingsTab ?? undefined);
   const [settingsKey, bumpSettingsKey] = useReducer((value: number) => value + 1, 0);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -2040,6 +2050,18 @@ export function App() {
     window.addEventListener(REPLAY_ONBOARDING_EVENT, replay);
     return () => window.removeEventListener(REPLAY_ONBOARDING_EVENT, replay);
   }, []);
+  useEffect(() => {
+    const replay = () => { setMobileMoreOpen(false); setTourOpen(true); };
+    window.addEventListener(REPLAY_TOUR_EVENT, replay);
+    return () => window.removeEventListener(REPLAY_TOUR_EVENT, replay);
+  }, []);
+
+  function finishTour(enabled: readonly OptionalView[] | null, destination: WorkspaceView = "today"): void {
+    if (enabled) writeEnabledViews(enabled);
+    markTourDone();
+    setTourOpen(false);
+    changeView(destination);
+  }
 
   /** The onboarding's "first win": things on the user's mind, as Focus tasks. */
   async function createOnboardingTasks(titles: string[]): Promise<Task[]> {
@@ -2172,7 +2194,8 @@ export function App() {
     { id: "new-habit", label: t("palette.commands.newHabit"), keywords: "add create", icon: "refresh", run: () => setHabitComposerOpen(true) },
     { id: "import", label: t("import.palette"), keywords: "import todoist linear notion csv importer exporter", icon: "download", run: () => openSettingsTab("import") },
     { id: "planning", label: t("palette.commands.settings", { tab: t("planning.settings.tab") }), keywords: "time blocking planning schedule planifier planification agenda", icon: "calendar-check", run: () => openSettingsTab("planning") },
-    ...(["today", "inbox", "calendar", "projects", ...(user ? ["mine" as const] : []), "all", "waiting", "eisenhower", "habits", "notes", ...(game.enabled ? ["progress" as const] : [])] as WorkspaceView[]).map((view) => ({
+    { id: "tour", label: t("tour.palette"), keywords: "tutorial tour guide onboarding help aide visite tutoriel", icon: "compass", run: () => setTourOpen(true) },
+    ...(["today", "focus", "inbox", "calendar", "projects", ...(user ? ["mine" as const] : []), "all", "waiting", "eisenhower", "habits", "notes", ...(game.enabled ? ["progress" as const] : [])] as WorkspaceView[]).filter((view) => isViewShown(view, hiddenViews)).map((view) => ({
       id: `view-${view}`, label: t("palette.commands.goTo", { view: viewTitle(view, t) }), keywords: "go open view", icon: "arrow" as const, run: () => changeView(view),
     })),
     ...(["general", "profile", "security", "notifications", "game", "assistant", "integrations"] as SettingsTab[]).map((tab) => ({
@@ -2218,15 +2241,28 @@ export function App() {
           onUserUpdated={handleUserUpdated}
           onCreateTasks={createOnboardingTasks}
           onCompleteTask={(task) => changeTask({ ...task, completed: true, status: "done" })}
-          onFinish={() => { setOnboardingOpen(false); setOnboardingPutOff(true); changeView("today"); }}
+          onFinish={() => { setOnboardingOpen(false); setOnboardingPutOff(true); changeView("today"); if (!isTourDone()) setTourOpen(true); }}
           onLater={() => { setOnboardingOpen(false); setOnboardingPutOff(true); }}
         />
       </EffectsProvider>
     );
   }
 
+  if (tourOpen) {
+    return (
+      <ProductTour
+        user={user}
+        initialEnabled={isTourDone() ? OPTIONAL_VIEWS.filter((view) => !hiddenViews.includes(view)) : DEFAULT_ENABLED_VIEWS}
+        shortcut={{ newTask: shortcut, assistant: aiShortcut, palette: isApplePlatform ? "⌘ K" : "Ctrl K" }}
+        onFinish={(enabled, destination) => finishTour(enabled, destination)}
+        onSkip={(enabled) => finishTour(enabled)}
+      />
+    );
+  }
+
   return (
     <EffectsProvider intensity={effectsIntensity}>
+    <PomodoroRunner onNotice={setToast} />
     <div className={`app-shell ${agentOpen ? "agent-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${isDesktop() ? "tauri-desktop" : ""} ${isMac() ? "platform-mac" : ""}`}>
       <DesktopTitleBar />
       <AppSidebar

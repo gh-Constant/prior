@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { SessionUser } from "../lib/auth";
 import { useI18n } from "../lib/i18n";
+import { isViewShown, useHiddenViews } from "../lib/navigation";
 import { formatSyncedAgo, useLastSyncedAt, useNow } from "../lib/syncStatus";
 import { AgentIdentity } from "./AgentIdentity";
 import type { WorkspaceView } from "./AppSidebar";
@@ -13,6 +14,7 @@ type Destination = { readonly view: WorkspaceView; readonly labelKey: string; re
 /** Everything the tab bar does not reach directly (Calendar first), as large tiles. */
 export const MORE_DESTINATIONS: readonly Destination[] = [
   { view: "calendar", labelKey: "common.nav.items.calendar", icon: "calendar-check", tone: "red" },
+  { view: "focus", labelKey: "focus.nav", icon: "target", tone: "accent" },
   { view: "inbox", labelKey: "common.nav.items.inbox", icon: "inbox", tone: "blue" },
   { view: "mine", labelKey: "common.nav.items.myTasks", icon: "user", tone: "green" },
   { view: "waiting", labelKey: "common.nav.items.waiting", icon: "clock", tone: "violet" },
@@ -55,6 +57,7 @@ function initials(user: SessionUser): string {
  */
 export function MobileMoreScreen({ activeView, user, badges, agentOpen, syncing, syncIssue, onSync, onNavigate, showAdmin, showProgress, onAgent, onAccount, onImport, onClose }: Props) {
   const { t, lang } = useI18n();
+  const hiddenViews = useHiddenViews();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const lastSyncedAt = useLastSyncedAt();
   const now = useNow();
@@ -93,7 +96,7 @@ export function MobileMoreScreen({ activeView, user, badges, agentOpen, syncing,
 
       <nav className="mobile-more-grid" aria-label={t("common.shell.more.destinations")}>
         <ul>
-          {MORE_DESTINATIONS.filter((item) => (item.view !== "admin" || showAdmin) && (item.view !== "progress" || showProgress) && (item.view !== "mine" || user)).map((item) => {
+          {MORE_DESTINATIONS.filter((item) => (item.view !== "admin" || showAdmin) && (item.view !== "progress" || showProgress) && (item.view !== "mine" || user) && (isViewShown(item.view, hiddenViews) || activeView === item.view)).map((item) => {
             const current = activeView === item.view;
             const badge = badges?.[item.view];
             return (

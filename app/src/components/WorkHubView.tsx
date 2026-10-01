@@ -52,6 +52,7 @@ type Props = {
   readonly onQuickAddTask?: (draft: TaskDraft) => Promise<void>;
   readonly onOpenAgent?: () => void;
   readonly onOpenCalendar?: () => void;
+  readonly onOpenFocus?: () => void;
   readonly onOpenHabits?: () => void;
   /** The open project's tab, mirrored in the URL (lib/router). */
   readonly projectTab?: string | null;
@@ -248,7 +249,7 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
   </section>;
 }
 
-export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, collaborationByProject, currentUserId = null, habits, onHabitComplete, onQuickAddTask, onOpenAgent, onOpenCalendar, onOpenHabits, projectTab, onProjectTabChange }: Props) {
+export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, collaborationByProject, currentUserId = null, habits, onHabitComplete, onQuickAddTask, onOpenAgent, onOpenCalendar, onOpenFocus, onOpenHabits, projectTab, onProjectTabChange }: Props) {
   const { t } = useI18n();
   const phone = useIsPhone();
   const [projectQuery, setProjectQuery] = useState("");
@@ -302,5 +303,5 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} members={collaboration?.sharing.members} sharing={collaboration?.sharing} sharingLocked={collaboration?.readOnly} tab={projectTab} onTabChange={onProjectTabChange} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>{t("common.workhub.notFound")}</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>{t("common.workhub.backToProjects")}</button></div>;
   if (view === "waiting") return <WaitingView tasks={waitingTasks} projects={projects} onAdd={() => onNewTask({ status: "waiting" })} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
   // Today is about my next actions: shared tasks someone else owns stay out.
-  return <TodayView tasks={mergedTasks.filter((task) => !isAssignedToSomeoneElse(task, currentUserId))} waitingTasks={waitingTasks} projects={projects} areas={areas} habits={habits} onHabitComplete={onHabitComplete} onNewTask={onNewTask} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={onOpenCalendar} onOpenHabits={onOpenHabits} onOpenWaiting={onOpenWaiting} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
+  return <TodayView tasks={mergedTasks.filter((task) => !isAssignedToSomeoneElse(task, currentUserId))} waitingTasks={waitingTasks} projects={projects} areas={areas} habits={habits} onHabitComplete={onHabitComplete} onNewTask={onNewTask} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={onOpenCalendar} onOpenFocus={onOpenFocus} onOpenHabits={onOpenHabits} onOpenWaiting={onOpenWaiting} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;
 }

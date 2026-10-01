@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEven
 import type { Area, Habit, Project, Task, TaskDraft, TaskPriority, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { rankFocusTasks } from "../lib/taskFocus";
-import { pomodoroTaskOptions } from "../lib/pomodoro";
-import { PomodoroCard } from "./PomodoroCard";
+import { FocusMiniCard } from "./focus/FocusMiniCard";
 import { normalizeRecurrence } from "../lib/recurrence";
 import { parseTaskTitle, type TaskTitleToken } from "../lib/taskTitleParser";
 import { eventsInRange, loadCalendarState, type CalendarEvent, type CalendarState } from "../lib/calendar";
@@ -54,6 +53,8 @@ export type TodayViewProps = {
   readonly onOpenAgent?: () => void;
   readonly onOpenCalendar?: () => void;
   readonly onOpenHabits?: () => void;
+  /** Opens the Focus page; the Today shortcut card is hidden without it. */
+  readonly onOpenFocus?: () => void;
   readonly onOpenWaiting: () => void;
   readonly onTaskChange: (task: Task) => Promise<void>;
   readonly onTaskDelete: (task: Task) => Promise<void>;
@@ -183,7 +184,7 @@ function percent(minutes: number): number {
   return ((Math.min(DAY_END_MINUTES, Math.max(DAY_START_MINUTES, minutes)) - DAY_START_MINUTES) / DAY_SPAN) * 100;
 }
 
-export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], onHabitComplete, onNewTask, onQuickAddTask, onOpenAgent, onOpenCalendar, onOpenHabits, onOpenWaiting, onTaskChange, onTaskDelete, onTaskEdit }: TodayViewProps) {
+export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], onHabitComplete, onNewTask, onQuickAddTask, onOpenAgent, onOpenCalendar, onOpenHabits, onOpenFocus, onOpenWaiting, onTaskChange, onTaskDelete, onTaskEdit }: TodayViewProps) {
   const { t, tp, lang } = useI18n();
   const now = useMinuteClock();
   const calendar = useCalendarState();
@@ -218,7 +219,6 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
   const recommendationEvents = useMemo(() => [...todayEvents, ...tomorrowEvents], [todayEvents, tomorrowEvents]);
   const aiPlan = useTodayRecommendations(recommendationTasks, recommendationEvents, now, lang);
   const recommendationTaskById = useMemo(() => new Map(recommendationTasks.map((task) => [task.id, task])), [recommendationTasks]);
-  const pomodoroTasks = useMemo(() => pomodoroTaskOptions(tasks, [...(aiPlan.recommendations?.focus.map((item) => item.taskId) ?? []), ...priorities.map((task) => task.id)], ranked), [tasks, aiPlan.recommendations, priorities, ranked]);
 
   const todaysHabits = useMemo(() => habits
     .filter((habit) => !habit.deletedAt && habitScheduledOn(habit, now))
@@ -508,7 +508,7 @@ export function TodayView({ tasks, waitingTasks, projects, areas, habits = [], o
         </div>
 
         <aside className="today-dash-side" aria-label={t("tasks.today.agendaTitle")}>
-          <PomodoroCard recommended={pomodoroTasks.recommended} others={pomodoroTasks.others} />
+          {onOpenFocus && <FocusMiniCard tasks={tasks} onOpen={onOpenFocus} />}
           <section className="today-card today-agenda" aria-labelledby="today-agenda-title">
             <div className="today-card-head is-compact">
               <div className="today-card-heading">

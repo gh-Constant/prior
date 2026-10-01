@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
 import type { SessionUser } from "../lib/auth";
 import { useI18n } from "../lib/i18n";
+import { isViewShown, useHiddenViews } from "../lib/navigation";
 import { formatSyncedAgo, useLastSyncedAt, useNow } from "../lib/syncStatus";
 import { AgentIdentity } from "./AgentIdentity";
 import { BrandMark } from "./BrandMark";
 import { Icon, type IconName } from "./Icon";
 import "./AppSidebar.css";
 
-export type WorkspaceView = "today" | "inbox" | "calendar" | "projects" | "project" | "mine" | "all" | "waiting" | "eisenhower" | "habits" | "notes" | "progress" | "settings" | "plans" | "admin";
+export type WorkspaceView = "today" | "focus" | "inbox" | "calendar" | "projects" | "project" | "mine" | "all" | "waiting" | "eisenhower" | "habits" | "notes" | "progress" | "settings" | "plans" | "admin";
 
 type AppSidebarProps = {
   readonly activeView: WorkspaceView;
@@ -37,7 +38,7 @@ type AppSidebarProps = {
 };
 
 const NAV_GROUPS: Array<{ labelKey: string; items: Array<{ view: WorkspaceView; labelKey: string; icon: IconName }> }> = [
-  { labelKey: "common.nav.groups.focus", items: [{ view: "today", labelKey: "common.nav.items.today", icon: "focus" }, { view: "inbox", labelKey: "common.nav.items.inbox", icon: "inbox" }, { view: "calendar", labelKey: "common.nav.items.calendar", icon: "calendar-check" }] },
+  { labelKey: "common.nav.groups.focus", items: [{ view: "today", labelKey: "common.nav.items.today", icon: "focus" }, { view: "focus", labelKey: "focus.nav", icon: "target" }, { view: "inbox", labelKey: "common.nav.items.inbox", icon: "inbox" }, { view: "calendar", labelKey: "common.nav.items.calendar", icon: "calendar-check" }] },
   { labelKey: "common.nav.groups.organize", items: [{ view: "projects", labelKey: "common.nav.items.projects", icon: "folder" }, { view: "mine", labelKey: "common.nav.items.myTasks", icon: "user" }, { view: "all", labelKey: "common.nav.items.allTasks", icon: "list" }] },
   { labelKey: "common.nav.groups.review", items: [{ view: "waiting", labelKey: "common.nav.items.waiting", icon: "clock" }, { view: "eisenhower", labelKey: "common.nav.items.priorityLens", icon: "grid" }, { view: "habits", labelKey: "common.nav.items.habits", icon: "sun" }, { view: "notes", labelKey: "common.nav.items.notes", icon: "file-text" }] },
   { labelKey: "common.nav.groups.account", items: [{ view: "progress", labelKey: "game.nav.progress", icon: "trending-up" }, { view: "plans", labelKey: "common.nav.items.plans", icon: "award" }, { view: "admin", labelKey: "common.nav.items.admin", icon: "bar-chart" }] },
@@ -67,6 +68,7 @@ export function AppSidebar({
   onToggleAgent,
 }: AppSidebarProps) {
   const { t, lang } = useI18n();
+  const hiddenViews = useHiddenViews();
   const lastSyncedAt = useLastSyncedAt();
   const now = useNow();
   const syncedAgo = lastSyncedAt !== null ? formatSyncedAgo(lastSyncedAt, now, lang, t("common.shell.justNow")) : null;
@@ -92,7 +94,7 @@ export function AppSidebar({
       </div>
 
       <nav className="sidebar-nav" aria-label={t("common.sidebar.workspaceViews")}>
-        {NAV_GROUPS.map((group) => <div className="sidebar-nav-group" key={group.labelKey}><span className="sidebar-nav-label">{t(group.labelKey)}</span>{group.items.filter((item) => (item.view !== "admin" || showAdmin) && (item.view !== "progress" || showProgress) && (item.view !== "mine" || user)).map((item) => {
+        {NAV_GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => (item.view !== "admin" || showAdmin) && (item.view !== "progress" || showProgress) && (item.view !== "mine" || user) && (isViewShown(item.view, hiddenViews) || activeView === item.view)) })).filter((group) => group.items.length > 0).map((group) => <div className="sidebar-nav-group" key={group.labelKey}><span className="sidebar-nav-label">{t(group.labelKey)}</span>{group.items.map((item) => {
           const count = counts?.[item.view] ?? 0;
           const active = activeView === item.view || (item.view === "projects" && activeView === "project");
           return (

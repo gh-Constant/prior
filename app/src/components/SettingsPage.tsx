@@ -21,6 +21,7 @@ import { AccountSettings } from "./account/AccountSettings";
 import { SecuritySettings } from "./account/SecuritySettings";
 import { NotificationSettings } from "./tasks/NotificationSettings";
 import { QuickAddSettings } from "./tasks/QuickAddSettings";
+import { NavigationSettings } from "./tour/NavigationSettings";
 import { isDesktop } from "../lib/platform";
 import { GameSettingsPanel } from "./game/GameSettingsPanel";
 import type { ImportWizardProps } from "./import/ImportWizard";
@@ -107,6 +108,7 @@ function GeneralSettings() {
           </div>
         </SettingsRow>
       </SettingsSection>
+      <NavigationSettings />
       {isDesktop() && <QuickAddSettings />}
       <SettingsSection title={t("settings.layout.application")}>
         <SettingsRow label={t("settings.general.version")} description={versionDescription}>

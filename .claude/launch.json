@@ -41,6 +41,22 @@
       ],
       "port": 1420,
       "url": "http://127.0.0.1:1420"
+    },
+    {
+      "name": "app-alt",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "app",
+        "dev",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "1431",
+        "--strictPort"
+      ],
+      "port": 1431,
+      "url": "http://127.0.0.1:1431"
     }
   ]
 }

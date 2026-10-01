@@ -5,7 +5,7 @@ import type { SettingsTab } from "../components/SettingsPage";
  * Where the user is, mirrored in the address bar so a reload or a shared
  * link opens the same page (Linear-style URLs):
  *
- *   /today · /inbox · /calendar · /my-tasks · /tasks · /waiting · /matrix · /habits
+ *   /today · /focus · /inbox · /calendar · /my-tasks · /tasks · /waiting · /matrix · /habits
  *   /projects · /projects/<id> · /projects/<id>/<tab>
  *   /notes · /notes/<projectId> · /progress · /plans · /admin
  *   /settings · /settings/<tab>
@@ -26,6 +26,7 @@ export type AppRoute = {
 
 const VIEW_PATHS: Partial<Record<WorkspaceView, string>> = {
   today: "today",
+  focus: "focus",
   inbox: "inbox",
   calendar: "calendar",
   projects: "projects",

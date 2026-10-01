@@ -76,6 +76,15 @@ async function showNow(item: Shown): Promise<void> {
   };
 }
 
+/** Shows a notification right away, outside the reminder schedule (the Focus timer). */
+export async function notifyNow(key: string, title: string, body: string): Promise<void> {
+  try {
+    await showNow({ id: 2_000_000_001, key, title, body, target: "" });
+  } catch {
+    // Notifications are optional.
+  }
+}
+
 function readScheduled(): number[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(SCHEDULED_KEY) ?? "[]") as unknown;

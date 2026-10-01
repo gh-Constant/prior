@@ -8,6 +8,7 @@ import { capture } from "./capture";
 import { checklist } from "./checklist";
 import { collab } from "./collab";
 import { comments } from "./comments";
+import { focus } from "./focus";
 import { common } from "./common";
 import { game } from "./game";
 import { habits } from "./habits";
@@ -23,5 +24,6 @@ import { recurrence } from "./recurrence";
 import { reminders } from "./reminders";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
+import { tour } from "./tour";
 
-export const es: AppDictionary = { account, agent, agentui, auth, billing, capture, checklist, collab, comments, common, game, habits, import: importer, kanban, mail, notes, onboarding, palette, planning, progress, recurrence, reminders, settings, tasks };
+export const es: AppDictionary = { account, agent, agentui, auth, billing, capture, checklist, collab, comments, common, focus, game, habits, import: importer, kanban, mail, notes, onboarding, palette, planning, progress, recurrence, reminders, settings, tasks, tour };

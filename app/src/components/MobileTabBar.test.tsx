@@ -97,11 +97,22 @@ describe("MobileMoreScreen", () => {
     const props = renderMore({ badges: { waiting: "2", habits: "1/3" } });
     const list = screen.getByRole("navigation", { name: "Other views" });
     const rows = within(list).getAllByRole("button");
-    expect(rows.map((row) => row.dataset.view)).toEqual(["calendar", "inbox", "mine", "waiting", "eisenhower", "habits", "notes", "plans"]);
+    expect(rows.map((row) => row.dataset.view)).toEqual(["calendar", "focus", "inbox", "mine", "waiting", "eisenhower", "habits", "notes", "plans"]);
     expect(within(list).getByRole("button", { name: /Waiting/ })).toHaveTextContent("2");
     expect(within(list).getByRole("button", { name: /Habits/ })).toHaveTextContent("1/3");
     fireEvent.click(within(list).getByRole("button", { name: /Notes/ }));
     expect(props.onNavigate).toHaveBeenCalledWith("notes");
+  });
+
+  it("leaves out the spaces hidden in the navigation settings", () => {
+    localStorage.setItem("prior.nav.hidden", JSON.stringify(["inbox", "waiting"]));
+    renderMore();
+    const list = screen.getByRole("navigation", { name: "Other views" });
+    const views = within(list).getAllByRole("button").map((row) => row.dataset.view);
+    expect(views).not.toContain("inbox");
+    expect(views).not.toContain("waiting");
+    expect(views).toContain("calendar");
+    localStorage.removeItem("prior.nav.hidden");
   });
 
   it("shows the admin dashboard only to admins", () => {
