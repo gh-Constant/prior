@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EffectsProvider } from "../../../lib/gamification/effects";
@@ -216,7 +216,8 @@ describe("ChestDialog", () => {
     expect(screen.getByRole("dialog", { name: "Epic chest" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Getting your chest ready");
     const button = await screen.findByRole("button", { name: "Open the Epic chest" });
-    expect(button).toHaveFocus();
+    // Focus moves in an effect after the chest appears; slow CI runners can observe the gap.
+    await waitFor(() => expect(button).toHaveFocus());
     expect(openChest).toHaveBeenCalledTimes(1);
     fireEvent.click(button);
     expect(await screen.findByText("Heart shades")).toBeInTheDocument();
