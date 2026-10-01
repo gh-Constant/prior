@@ -9,6 +9,8 @@ import { QuickAddWindow } from "./components/QuickAddWindow";
 import { isQuickAddWindow } from "./lib/quickCapture";
 import { capturePendingLink } from "./lib/pendingLink";
 import { initTheme } from "./lib/theme";
+// Phone layout overrides load last so they win over the component styles.
+import "./phone.css";
 
 // Theme first: public/theme-init.js already painted the right one; this keeps
 // it in sync with system changes, synced preferences and the native window.

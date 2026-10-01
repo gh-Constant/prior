@@ -12,6 +12,7 @@ import { common } from "./common";
 import { game } from "./game";
 import { habits } from "./habits";
 import { importer } from "./import";
+import { kanban } from "./kanban";
 import { mail } from "./mail";
 import { notes } from "./notes";
 import { onboarding } from "./onboarding";
@@ -22,4 +23,4 @@ import { reminders } from "./reminders";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 
-export const pt: AppDictionary = { account, agent, agentui, auth, billing, capture, checklist, collab, comments, common, game, habits, import: importer, mail, notes, onboarding, palette, progress, recurrence, reminders, settings, tasks };
+export const pt: AppDictionary = { account, agent, agentui, auth, billing, capture, checklist, collab, comments, common, game, habits, import: importer, kanban, mail, notes, onboarding, palette, progress, recurrence, reminders, settings, tasks };

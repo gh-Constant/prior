@@ -1,5 +1,7 @@
 /* Phone tab bar: 60px of targets on top of the home-indicator inset
-   (at least 24px, so the bar is 84px on devices without one). */
+   (at least 24px, so the bar is 84px on devices without one). Translucent,
+   blurred, with a hairline top border; the active tab gets a pill behind
+   its icon. */
 .mobile-tabbar { display: none; }
 
 @media (max-width: 760px) {
@@ -14,21 +16,21 @@
     align-items: start;
     height: var(--mobile-tabbar-h);
     padding: 6px max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
-    border-top: 1px solid var(--line);
-    background: color-mix(in oklab, var(--panel) 94%, transparent);
-    -webkit-backdrop-filter: blur(12px) saturate(1.4);
-    backdrop-filter: blur(12px) saturate(1.4);
+    border-top: 0.5px solid var(--line-strong);
+    background: color-mix(in oklab, var(--panel) 78%, transparent);
+    -webkit-backdrop-filter: blur(22px) saturate(1.8);
+    backdrop-filter: blur(22px) saturate(1.8);
   }
 
   .mobile-tab {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 3px;
+    justify-content: flex-start;
+    gap: 2px;
     min-width: 0;
     min-height: 48px;
-    padding: 4px 2px;
+    padding: 2px 2px 4px;
     border: 0;
     border-radius: var(--r-md);
     background: transparent;
@@ -39,10 +41,21 @@
     line-height: 1.2;
   }
 
+  .mobile-tab-icon {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 30px;
+    border-radius: 999px;
+    transition: background-color 180ms var(--ease), color 180ms var(--ease);
+  }
+
   .mobile-tab svg { width: 22px; height: 22px; }
-  .mobile-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mobile-tab.active { color: var(--ink); font-weight: 600; }
-  .mobile-tab:active { scale: 1; background: var(--hover); }
+  .mobile-tab-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-tab.active { color: var(--ink); font-weight: 650; }
+  .mobile-tab.active .mobile-tab-icon { background: var(--accent-soft); color: var(--accent-dark); }
+  .mobile-tab:active { scale: 1; }
+  .mobile-tab:active .mobile-tab-icon { background: var(--hover); }
   .mobile-tab:focus-visible { outline-offset: -2px; }
 
   .mobile-tab-fab-slot { display: grid; place-items: start center; }
@@ -55,16 +68,19 @@
     margin-top: -16px;
     padding: 0;
     border: 0;
-    border-radius: 16px;
+    border-radius: 18px;
     background: var(--accent);
     color: var(--accent-ink);
     box-shadow: 0 8px 20px -6px oklch(0.68 0.19 33 / 0.6), inset 0 1px 0 #ffffff33;
+    transition: scale var(--t-press) var(--ease);
   }
 
+  .mobile-tab-fab:active { scale: 0.94; }
   .mobile-tab-fab svg { width: 24px; height: 24px; stroke-width: 2; }
   .mobile-tab-fab:hover { background: var(--accent-hover); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .mobile-tab-fab:active { scale: 1; }
+  .mobile-tab-icon { transition: none; }
 }

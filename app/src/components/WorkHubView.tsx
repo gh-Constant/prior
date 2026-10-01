@@ -211,6 +211,7 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
         <button type="button" className="primary-button" onClick={() => newTask()}><Icon name="plus" /><span>{t("common.header.newTask")}</span></button>
       </>}
       headerProps={{ onContextMenu: (event) => openMenu(event, headerMenu()), ...longPress(headerMenu) }}
+      moreItems={headerMenu()}
     />
     {shareOpen && sharing && <ProjectShareDialog {...sharing} canManage={!sharingLocked && sharing.canManage} projectName={project.name} onClose={() => setShareOpen(false)} />}
     <ProjectStatsStrip progress={progress} targetDate={project.targetDate} cycle={cycle} health={project.health} completed={project.status === "completed"} />

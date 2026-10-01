@@ -2,7 +2,9 @@ import { useState } from "react";
 import type { TaskFilterState } from "../lib/taskFilters";
 import { defaultTaskFilters } from "../lib/taskFilters";
 import { useI18n } from "../lib/i18n";
+import { useIsPhone } from "../lib/useMediaQuery";
 import { Icon } from "./Icon";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { CustomSelect } from "./CustomSelect";
 
 type Vars = Record<string, string | number>;
@@ -153,12 +155,19 @@ function ActivePills({ pills, onClearAll }: { readonly pills: readonly Pill[]; r
 export function TaskFilters({ value, onChange, taskCount }: Props) {
   const { t, tp } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const phone = useIsPhone();
+  const [sortAnchor, setSortAnchor] = useState<{ x: number; y: number } | null>(null);
   const activeCount = activeFilterCount(value);
+  const sortItems: ContextMenuItem[] = (["recent", "oldest", "dueSoonest", "dueLatest"] as const).map((option) => ({
+    icon: value.sort === option ? "check" : "sort",
+    label: t(SORT_KEYS[option]),
+    run: () => onChange({ ...value, sort: option }),
+  }));
   const pills = collectPills(value, onChange, t);
 
   return (
     <div className="task-filters" aria-label={t("tasks.filters.label")}>
-      <div className="filters-toolbar">
+      <div className={`filters-toolbar${phone ? " is-phone" : ""}`}>
         <label className="filter-search">
           <Icon name="search" />
           <input
@@ -192,7 +201,18 @@ export function TaskFilters({ value, onChange, taskCount }: Props) {
             <span>{t("tasks.filters.toggle")}</span>
             {activeCount > 0 && <span className="filter-count" aria-label={tp("tasks.filters.active", activeCount)}>{activeCount}</span>}
           </button>
-          <div className="filter-sort">
+          {phone ? (
+            <button
+              type="button"
+              className={`filter-sort-button${value.sort !== defaultTaskFilters.sort ? " has-active" : ""}`}
+              aria-label={t("tasks.filters.sortAria")}
+              aria-haspopup="menu"
+              aria-expanded={sortAnchor !== null}
+              onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setSortAnchor({ x: rect.right - 220, y: rect.bottom + 6 }); }}
+            >
+              <Icon name="sort" />
+            </button>
+          ) : <div className="filter-sort">
             <span className="filter-sort-label">{t("tasks.filters.sortLabel")}</span>
             <CustomSelect
               className="filter-sort-custom-select"
@@ -206,9 +226,10 @@ export function TaskFilters({ value, onChange, taskCount }: Props) {
                 { value: "dueLatest", label: t("tasks.filters.sortDueLatest") },
               ]}
             />
-          </div>
+          </div>}
         </div>
       </div>
+      {sortAnchor && <ContextMenu x={sortAnchor.x} y={sortAnchor.y} items={sortItems} onClose={() => setSortAnchor(null)} />}
 
       {expanded && <FiltersPanel value={value} onChange={onChange} />}
     </div>

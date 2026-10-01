@@ -29,7 +29,9 @@ describe("mobileTabFor", () => {
   it("maps views to their tab and files everything else under More", () => {
     expect(mobileTabFor("today", false)).toBe("today");
     expect(mobileTabFor("all", false)).toBe("tasks");
-    expect(mobileTabFor("calendar", false)).toBe("calendar");
+    expect(mobileTabFor("projects", false)).toBe("projects");
+    expect(mobileTabFor("project", false)).toBe("projects");
+    expect(mobileTabFor("calendar", false)).toBe("more");
     expect(mobileTabFor("habits", false)).toBe("more");
     expect(mobileTabFor("settings", false)).toBe("more");
     expect(mobileTabFor("today", true)).toBe("more");
@@ -44,12 +46,18 @@ describe("MobileTabBar", () => {
     expect(within(nav).getByRole("button", { name: "Today" })).not.toHaveAttribute("aria-current");
   });
 
-  it("navigates to Today, all tasks and the calendar", () => {
+  it("navigates to Today, all tasks and the projects", () => {
     const props = renderTabBar();
     fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
-    fireEvent.click(screen.getByRole("button", { name: "Calendar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Projects" }));
     fireEvent.click(screen.getByRole("button", { name: "Today" }));
-    expect(vi.mocked(props.onNavigate).mock.calls.map(([view]) => view)).toEqual(["all", "calendar", "today"]);
+    expect(vi.mocked(props.onNavigate).mock.calls.map(([view]) => view)).toEqual(["all", "projects", "today"]);
+  });
+
+  it("keeps the Projects tab active inside a project and sends the calendar to More", () => {
+    renderTabBar({ activeView: "project" });
+    expect(screen.getByRole("button", { name: "Projects" })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("button", { name: "Calendar" })).not.toBeInTheDocument();
   });
 
   it("creates in context from the central button", () => {
@@ -89,7 +97,7 @@ describe("MobileMoreScreen", () => {
     const props = renderMore({ badges: { waiting: "2", habits: "1/3" } });
     const list = screen.getByRole("navigation", { name: "Other views" });
     const rows = within(list).getAllByRole("button");
-    expect(rows.map((row) => row.dataset.view)).toEqual(["inbox", "projects", "mine", "waiting", "eisenhower", "habits", "notes", "plans"]);
+    expect(rows.map((row) => row.dataset.view)).toEqual(["calendar", "inbox", "mine", "waiting", "eisenhower", "habits", "notes", "plans"]);
     expect(within(list).getByRole("button", { name: /Waiting/ })).toHaveTextContent("2");
     expect(within(list).getByRole("button", { name: /Habits/ })).toHaveTextContent("1/3");
     fireEvent.click(within(list).getByRole("button", { name: /Notes/ }));
@@ -119,8 +127,8 @@ describe("MobileMoreScreen", () => {
   });
 
   it("marks the current destination", () => {
-    renderMore({ activeView: "project" });
-    expect(screen.getByRole("button", { name: /Projects/ })).toHaveAttribute("aria-current", "page");
+    renderMore({ activeView: "calendar" });
+    expect(screen.getByRole("button", { name: /Calendar/ })).toHaveAttribute("aria-current", "page");
   });
 });
 

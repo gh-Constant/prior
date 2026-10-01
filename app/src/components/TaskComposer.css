@@ -612,20 +612,21 @@
   font-weight: 600;
 }
 
-/* Mobile bottom sheet (< 640px) */
-@media (max-width: 640px) {
+/* Phone bottom sheet (<= 760px): full height, grab handle, sticky header and footer. */
+@media (max-width: 760px) {
   dialog.task-composer-modal.modal,
   .task-composer-modal.modal {
     position: fixed !important;
     top: auto !important;
-    bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
     margin: auto auto 0 auto !important;
     width: 100% !important;
     max-width: 100% !important;
-    max-height: 90dvh !important;
-    border-radius: 18px 18px 0 0 !important;
+    height: calc(100dvh - max(env(safe-area-inset-top), 14px) - 10px - var(--keyboard-inset, 0px)) !important;
+    max-height: calc(100dvh - max(env(safe-area-inset-top), 14px) - 10px - var(--keyboard-inset, 0px)) !important;
+    bottom: var(--keyboard-inset, 0px) !important;
+    border-radius: 22px 22px 0 0 !important;
     border-bottom: 0 !important;
     border-left: 0 !important;
     border-right: 0 !important;
@@ -633,15 +634,32 @@
     animation: modal-sheet-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  /* A 28px-tall grab area (swipe down to close) around a 36x5 bar. */
   .task-composer-grab-handle {
-    display: block;
-    width: 36px;
-    height: 4px;
-    border-radius: 4px;
-    background: var(--line-strong);
-    margin: 8px auto 0;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    height: 28px;
+    margin: 0;
     flex-shrink: 0;
+    background: var(--panel);
+    cursor: grab;
+    touch-action: none;
   }
+
+  .task-composer-grab-handle::after {
+    width: 38px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--line-strong);
+    content: "";
+  }
+
+  .task-composer-modal form { min-height: calc(100% - 28px); }
+  .task-composer-modal .task-composer-body { flex: 1 1 auto; }
+  .task-composer-modal .modal-header { top: 28px; padding-top: 0; }
 
   .task-composer-modal .modal-header {
     padding: 4px 6px 0 18px;
@@ -765,7 +783,7 @@
 }
 
 /* Dark theme: the phone sheet keeps a faint light edge against the dimmed page. */
-@media (max-width: 640px) {
+@media (max-width: 760px) {
   :root[data-theme="dark"] dialog.task-composer-modal.modal,
   :root[data-theme="dark"] .task-composer-modal.modal { box-shadow: 0 0 0 1px oklch(1 0 0 / 0.07), 0 -12px 40px -8px oklch(0 0 0 / 0.6) !important; }
 }
