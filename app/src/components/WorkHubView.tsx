@@ -8,7 +8,7 @@ import { workspaceStore } from "../lib/workspaceStore";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { TaskRow } from "./TaskRow";
-import { ProjectTaskBoard } from "./ProjectTaskBoard";
+import { ProjectTaskBoard, projectStatusGroups } from "./ProjectTaskBoard";
 import { Modal } from "./Modal";
 import { ProjectCollaboration } from "./collaboration/ProjectCollaboration";
 import type { Person, ProjectCollaborationProps, ProjectSharingProps } from "./collaboration/types";
@@ -18,12 +18,13 @@ import { IconPicker, IconUpload } from "./IconPicker";
 import { CustomSelect } from "./CustomSelect";
 import { ProjectsOverview } from "./ProjectsOverview";
 import { AvatarStack, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, ProjectTile, UsersGlyph, currentCycle, projectProgress } from "./ProjectVisuals";
-import { ProjectBreadcrumb, ProjectDetailHeader, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "./ProjectDetailParts";
+import { ProjectBreadcrumb, ProjectDetailHeader, ProjectPhoneGroups, ProjectPhoneHeader, ProjectPhoneSummary, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "./ProjectDetailParts";
 import { TodayView } from "./TodayView";
 import { WaitingView } from "./WaitingView";
 import "./WorkHubView.css";
 import { ProjectLeaderboardPanel } from "./game/progress";
 import { useGame } from "../lib/gamification/gameStore";
+import { useIsPhone } from "../lib/useMediaQuery";
 
 export type WorkHubViewKind = "today" | "projects" | "project" | "waiting";
 
@@ -161,9 +162,12 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
   const { t } = useI18n();
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
   const { enabled: gameEnabled } = useGame();
-  const [localTab, setLocalTab] = useState<ProjectDetailTab>("board");
+  const phone = useIsPhone();
+  // Phones open on the list grouped by status: the whole project at a glance.
+  const defaultTab: ProjectDetailTab = phone ? "list" : "board";
+  const [localTab, setLocalTab] = useState<ProjectDetailTab | null>(null);
   const controlled = PROJECT_DETAIL_TABS.find((candidate) => candidate === requestedTab);
-  const tab: ProjectDetailTab = onTabChange ? controlled ?? "board" : localTab;
+  const tab: ProjectDetailTab = onTabChange ? controlled ?? defaultTab : localTab ?? defaultTab;
   const setTab = (next: ProjectDetailTab) => { setLocalTab(next); onTabChange?.(next); };
   const [shareOpen, setShareOpen] = useState(false);
   const panelId = useId();
@@ -184,41 +188,59 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
   const headerMenu = (): ContextMenuItem[] => [
     { icon: "pencil", label: t("common.workhub.menuEdit", { name: project.name }), run: () => onEditProject(project) },
     { icon: "plus", label: t("common.workhub.menuNewTask"), run: () => newTask() },
+    ...(phone && sharing ? [{ icon: "user" as const, label: t("collab.header.shareManage"), run: () => setShareOpen(true) }] : []),
+    ...(phone ? [{ icon: "file-plus" as const, label: t("common.workhub.newNote"), run: createNote }] : []),
     { icon: "trash", label: t("common.workhub.menuDelete", { name: project.name }), danger: true, run: () => onDeleteProject(project) },
   ];
+  const boardTab: ProjectTabItem<ProjectDetailTab> = { id: "board", label: t("common.workhub.boardTab"), icon: "columns" };
+  const listTab: ProjectTabItem<ProjectDetailTab> = { id: "list", label: t("common.projectHub.listTab"), icon: "list", count: openCount };
   const tabs: ProjectTabItem<ProjectDetailTab>[] = [
-    { id: "board", label: t("common.workhub.boardTab"), icon: "columns" },
-    { id: "list", label: t("common.projectHub.listTab"), icon: "list", count: openCount },
+    ...(phone ? [listTab, boardTab] : [boardTab, listTab]),
     { id: "notes", label: t("common.workhub.notesTab"), icon: "file-text", count: notes.length },
     // Shared projects can have a leaderboard (specs/GAMIFICATION.md §7).
     ...(sharing && (gameEnabled || sharing.canManage) ? [{ id: "leaderboard" as const, label: t("progress.project.title"), icon: "trending-up" as const }] : []),
   ];
+  const statusChip = <CustomSelect ariaLabel={t("common.workhub.detailStatusLabel")} className={`project-status-select is-${project.status}`} value={project.status} onChange={(next) => changeStatus(next as ProjectStatus)} options={(["planned", "active", "paused", "completed"] as const).map((value) => ({ value, label: t(PROJECT_STATUS_LABELS[value]), color: PROJECT_STATUS_COLORS[value] }))} />;
   const noTasks = <div className="workhub-empty-state compact project-empty-state"><Icon name="check-circle" /><h3>{t("common.workhub.noTasksTitle")}</h3><p>{t("common.workhub.noTasksHint")}</p><button type="button" className="primary-button" onClick={() => newTask()}><Icon name="plus" />{t("common.workhub.addNextTask")}</button></div>;
   return <section className="workhub-project-detail project-page" aria-label={project.name}>
-    <ProjectBreadcrumb areaName={area?.name} projectName={project.name} onBack={onBack} />
-    <ProjectDetailHeader
+    {phone ? <ProjectPhoneHeader
       icon={<ProjectTile project={project} size="lg" />}
       title={project.name}
-      chips={<>
-        <CustomSelect ariaLabel={t("common.workhub.detailStatusLabel")} className={`project-status-select is-${project.status}`} value={project.status} onChange={(next) => changeStatus(next as ProjectStatus)} options={(["planned", "active", "paused", "completed"] as const).map((value) => ({ value, label: t(PROJECT_STATUS_LABELS[value]), color: PROJECT_STATUS_COLORS[value] }))} />
-        <ProjectTypeChip software={project.projectType === "software"} cycleName={cycle?.name} />
-      </>}
+      areaName={area?.name}
+      chips={<>{statusChip}<ProjectTypeChip software={project.projectType === "software"} cycleName={cycle?.name} /></>}
       description={project.description}
-      aside={<AvatarStack people={members} size="md" label={t("common.projectHub.members")} />}
-      actions={<>
-        {sharing && <button type="button" className="secondary-button" onClick={() => setShareOpen(true)}><UsersGlyph />{t("collab.header.share")}</button>}
-        <button type="button" className="secondary-button project-edit-button" aria-label={t("common.workhub.editProject")} title={t("common.workhub.editProject")} onClick={() => onEditProject(project)}><Icon name="pencil" /><span>{t("common.workhub.editProject")}</span></button>
-        <button type="button" className="primary-button" onClick={() => newTask()}><Icon name="plus" /><span>{t("common.header.newTask")}</span></button>
-      </>}
-      headerProps={{ onContextMenu: (event) => openMenu(event, headerMenu()), ...longPress(headerMenu) }}
-      moreItems={headerMenu()}
-    />
+      members={sharing && members.length > 0 ? <button type="button" className="project-phone-members" aria-label={t("collab.header.shareManage")} onClick={() => setShareOpen(true)}><AvatarStack people={members} max={3} size="md" label={t("common.projectHub.members")} /></button> : undefined}
+      menuItems={headerMenu()}
+      onBack={onBack}
+    >
+      <ProjectPhoneSummary progress={progress} targetDate={project.targetDate} cycle={cycle} health={project.health} completed={project.status === "completed"} />
+    </ProjectPhoneHeader> : <>
+      <ProjectBreadcrumb areaName={area?.name} projectName={project.name} onBack={onBack} />
+      <ProjectDetailHeader
+        icon={<ProjectTile project={project} size="lg" />}
+        title={project.name}
+        chips={<>
+          {statusChip}
+          <ProjectTypeChip software={project.projectType === "software"} cycleName={cycle?.name} />
+        </>}
+        description={project.description}
+        aside={<AvatarStack people={members} size="md" label={t("common.projectHub.members")} />}
+        actions={<>
+          {sharing && <button type="button" className="secondary-button" onClick={() => setShareOpen(true)}><UsersGlyph />{t("collab.header.share")}</button>}
+          <button type="button" className="secondary-button project-edit-button" aria-label={t("common.workhub.editProject")} title={t("common.workhub.editProject")} onClick={() => onEditProject(project)}><Icon name="pencil" /><span>{t("common.workhub.editProject")}</span></button>
+          <button type="button" className="primary-button" onClick={() => newTask()}><Icon name="plus" /><span>{t("common.header.newTask")}</span></button>
+        </>}
+        headerProps={{ onContextMenu: (event) => openMenu(event, headerMenu()), ...longPress(headerMenu) }}
+        moreItems={headerMenu()}
+      />
+      <ProjectStatsStrip progress={progress} targetDate={project.targetDate} cycle={cycle} health={project.health} completed={project.status === "completed"} />
+    </>}
     {shareOpen && sharing && <ProjectShareDialog {...sharing} canManage={!sharingLocked && sharing.canManage} projectName={project.name} onClose={() => setShareOpen(false)} />}
-    <ProjectStatsStrip progress={progress} targetDate={project.targetDate} cycle={cycle} health={project.health} completed={project.status === "completed"} />
     <ProjectTabs tabs={tabs} active={tab} onChange={setTab} label={t("common.projectHub.viewsLabel")} panelId={panelId} />
     <div id={panelId} className="project-tab-panel" role="tabpanel" aria-label={tabs.find((item) => item.id === tab)?.label}>
       {tab === "board" ? (tasks.length ? <ProjectTaskBoard project={project} tasks={tasks} people={members} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onAddTask={newTask} /> : noTasks)
         : tab === "leaderboard" ? <ProjectLeaderboardPanel projectId={project.id} />
+        : tab === "list" && phone ? (tasks.length ? <ProjectPhoneGroups groups={projectStatusGroups(project.projectType, tasks, t)} label={t("common.projectHub.listTab")} renderItem={(task) => <TaskRow task={task} variant="compact" onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />} /> : noTasks)
         : tab === "list" ? (tasks.length ? <div className="project-task-list">{tasks.map((task) => <TaskRow key={task.id} task={task} project={project} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} />)}</div> : noTasks)
         : <div className="project-notes-panel"><div className="project-notes-heading"><h3>{t("common.workhub.notesTitle")}</h3><div className="project-notes-actions"><button type="button" className="secondary-button" onClick={() => onOpenNotes(project.id)}>{t("common.workhub.openNotes")}</button><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.newNote")}</button></div></div>{notes.length ? <div className="project-note-list">{notes.map((note) => <button type="button" className="project-note-card" key={note.id} onClick={() => onOpenNotes(project.id)}><Icon name="file-text" /><span><strong>{note.title}</strong><small>{note.body.replace(/\s+/g, " ").trim().slice(0, 120) || t("common.workhub.emptyNote")}</small></span><Icon name="chevron-right" /></button>)}</div> : <div className="workhub-empty-state compact"><Icon name="file-text" /><h3>{t("common.workhub.noNotesTitle")}</h3><p>{t("common.workhub.noNotesHint")}</p><button type="button" className="primary-button" onClick={createNote}><Icon name="file-plus" />{t("common.workhub.createNote")}</button></div>}</div>}
     </div>
@@ -228,6 +250,7 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
 
 export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, collaborationByProject, currentUserId = null, habits, onHabitComplete, onQuickAddTask, onOpenAgent, onOpenCalendar, onOpenHabits, projectTab, onProjectTabChange }: Props) {
   const { t } = useI18n();
+  const phone = useIsPhone();
   const [projectQuery, setProjectQuery] = useState("");
   const [modal, setModal] = useState<WorkspaceModal>(null);
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
@@ -244,9 +267,10 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   // The project type decides the page for everyone, owner and members alike.
   const isSoftwareCollaboration = selectedProject?.projectType === "software";
   if (view === "project" && selectedProject && collaboration && isSoftwareCollaboration) return <div className="workhub-project-detail project-page">
-    <ProjectBreadcrumb areaName={areaForProject(selectedProject)?.name} projectName={selectedProject.name} onBack={() => onOpenProject("")} />
-    <ProjectCollaboration key={selectedProject.id} {...collaboration} project={selectedProject} tab={projectTab} onTabChange={onProjectTabChange} />
-    <ProjectLeaderboardPanel key={`${selectedProject.id}-leaderboard`} projectId={selectedProject.id} className="project-leaderboard-section" />
+    {!phone && <ProjectBreadcrumb areaName={areaForProject(selectedProject)?.name} projectName={selectedProject.name} onBack={() => onOpenProject("")} />}
+    <ProjectCollaboration key={selectedProject.id} {...collaboration} project={selectedProject} tab={projectTab} onTabChange={onProjectTabChange} areaName={areaForProject(selectedProject)?.name} onBack={() => onOpenProject("")} />
+    {/* Phones keep the leaderboard with the project overview instead of under every tab. */}
+    {(!phone || projectTab === "overview") && <ProjectLeaderboardPanel key={`${selectedProject.id}-leaderboard`} projectId={selectedProject.id} className="project-leaderboard-section" />}
   </div>;
 
   function saveModal(name: string, areaId: string | null, icon: string, projectType?: import("../types").ProjectType): void {

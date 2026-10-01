@@ -13,7 +13,8 @@ import { ProjectActivity } from "./ProjectActivity";
 import { useI18n } from "../../lib/i18n";
 import { AvatarStack, PROJECT_STATUS_LABELS, PriorityGlyph, ProjectStatusChip, UsersGlyph, glyphStatus, projectTintStyle } from "../ProjectVisuals";
 import { StatusGlyph } from "../TaskGlyphs";
-import { ProjectDetailHeader, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "../ProjectDetailParts";
+import { ProjectDetailHeader, ProjectPhoneGroups, ProjectPhoneHeader, ProjectPhoneSummary, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "../ProjectDetailParts";
+import { useIsPhone } from "../../lib/useMediaQuery";
 import type { Person, ProjectCollaborationProps, ProjectIssue, WorkflowState } from "./types";
 import "./Collaboration.css";
 
@@ -68,6 +69,34 @@ function IssueCard({ issue, stateName, state, onOpen, onDelete, assign }: {
       <IssueAssignee issue={issue} assign={assign} />
     </div>
     {!assign && <PeopleChips people={issue.people} />}
+    {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
+  </article>;
+}
+
+/** Phone row of the Issues list: priority, title, a few facts and the assignee. */
+function PhoneIssueRow({ issue, done, onOpen, onDelete, assign }: {
+  issue: ProjectIssue; done: boolean; onOpen?: (id: string) => void; onDelete?: (id: string) => void; assign?: Assign;
+}) {
+  const { menu, openMenu, closeMenu, longPress } = useContextMenu();
+  const { t } = useI18n();
+  const menuItems = issueMenuItems(issue, t, onOpen, onDelete, assign);
+  const facts = (issue.properties ?? []).filter((property) => property.key === "milestone" || property.key === "labels");
+  const body = <>
+    <span className="phone-issue-title">{issue.title}</span>
+    <span className="phone-issue-meta">
+      {issue.identifier && <small>{issue.identifier}</small>}
+      {issue.blocked && <span className="project-chip is-blocked"><Icon name="lock" />{t("collab.issue.blocked")}</span>}
+      {issue.subtasks && <span className="project-chip" title={t("collab.issue.subtasks")}><Icon name="list-todo" />{issue.subtasks.done}/{issue.subtasks.total}</span>}
+      {facts.map((property, index) => <span className="project-chip" key={`${property.key}-${index}`}><Icon name={property.key === "milestone" ? "flag" : "tag"} /><span className="project-chip-label">{property.label}</span></span>)}
+    </span>
+  </>;
+  return <article className={`phone-issue-row${done ? " is-done" : ""}`}
+    onContextMenu={menuItems.length ? (event) => openMenu(event, menuItems) : undefined}
+    {...(menuItems.length ? longPress(() => menuItems) : {})}
+  >
+    {issue.priority !== undefined ? <PriorityGlyph priority={issue.priority} /> : <span className="phone-issue-glyph-spacer" aria-hidden="true" />}
+    {onOpen ? <button type="button" className="phone-issue-open" onClick={() => onOpen(issue.id)}>{body}</button> : <div className="phone-issue-open">{body}</div>}
+    <IssueAssignee issue={issue} assign={assign} />
     {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
   </article>;
 }
@@ -127,16 +156,20 @@ function Overview({ project, issues, states, sharing, overview = {}, onOpenNotes
 }
 
 export function ProjectCollaboration(props: ProjectCollaborationProps) {
-  const { project, issues, states, cycles, sharing, overview, loading = false, readOnly = true, offline = false, onCreateIssue, onOpenIssue, onDeleteIssue, onEditProject, onMoveIssue, onCreateCycle, onEditCycle, onTabChange, assignablePeople, currentUserId, onAssignIssue, loadActivity } = props;
+  const { project, issues, states, cycles, sharing, overview, loading = false, readOnly = true, offline = false, onCreateIssue, onOpenIssue, onDeleteIssue, onEditProject, onMoveIssue, onCreateCycle, onEditCycle, onTabChange, assignablePeople, currentUserId, onAssignIssue, loadActivity, areaName, onBack } = props;
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
-  const [localTab, setLocalTab] = useState<Tab>("Board");
+  const phone = useIsPhone();
+  // Phones open on the issues grouped by state: the whole project at a glance.
+  const defaultTab: Tab = phone ? "Issues" : "Board";
+  const [localTab, setLocalTab] = useState<Tab | null>(null);
   const controlledTab = tabs.find((candidate) => candidate.toLowerCase() === props.tab);
-  const tab: Tab = onTabChange ? controlledTab ?? "Board" : localTab;
+  const tab: Tab = onTabChange ? controlledTab ?? defaultTab : localTab ?? defaultTab;
   const setTab = (next: Tab) => { setLocalTab(next); onTabChange?.(next.toLowerCase()); };
   const { t, tp } = useI18n();
+  const boardTab: ProjectTabItem<Tab> = { id: "Board", label: t("collab.tabs.board"), icon: "columns" };
+  const issuesTab: ProjectTabItem<Tab> = { id: "Issues", label: t("collab.tabs.issues"), icon: "list" };
   const tabItems: ProjectTabItem<Tab>[] = [
-    { id: "Board", label: t("collab.tabs.board"), icon: "columns" },
-    { id: "Issues", label: t("collab.tabs.issues"), icon: "list" },
+    ...(phone ? [issuesTab, boardTab] : [boardTab, issuesTab]),
     { id: "Overview", label: t("collab.tabs.overview"), icon: "eye" },
     { id: "Cycles", label: t("collab.tabs.cycles"), icon: "refresh" },
     { id: "Activity", label: t("collab.tabs.activity"), icon: "activity" },
@@ -184,6 +217,8 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
     finally { pendingMove.current = false; setMoving(false); }
   }
 
+  const summary = { progress, targetDate: project.targetDate ?? overview?.targetDate, cycle: activeCycle?.endsOn ? { name: activeCycle.name, endsOn: activeCycle.endsOn } : null, health: project.health ?? overview?.health, completed: project.status === "completed" };
+  const projectIcon = <span className="project-tile-host" style={projectTintStyle(project.id)}><EditableIcon icon={project.icon} fallback={project.projectType === "software" ? "code" : DEFAULT_PROJECT_ICON} canEdit={!readOnly && Boolean(onEditProject)} readOnly={readOnly} onOpen={onEditProject} label={t("collab.header.editIconFor", { name: project.name })} className="project-tile size-lg" /></span>;
   const headerMenuItems: ContextMenuItem[] = [
     ...(!readOnly && onEditProject ? [{ icon: "pencil" as const, label: t("collab.header.editProjectFor", { name: project.name }), run: onEditProject }] : []),
     { icon: "user" as const, label: t("collab.header.shareManage"), run: () => setShareOpen(true) },
@@ -193,8 +228,19 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
   ];
 
   return <section className="collab-project" aria-label={t("collab.section.label", { name: project.name })}>
-    <ProjectDetailHeader
-      icon={<span className="project-tile-host" style={projectTintStyle(project.id)}><EditableIcon icon={project.icon} fallback={project.projectType === "software" ? "code" : DEFAULT_PROJECT_ICON} canEdit={!readOnly && Boolean(onEditProject)} readOnly={readOnly} onOpen={onEditProject} label={t("collab.header.editIconFor", { name: project.name })} className="project-tile size-lg" /></span>}
+    {phone ? <ProjectPhoneHeader
+      icon={projectIcon}
+      title={project.name}
+      areaName={areaName}
+      chips={<><ProjectStatusChip status={project.status} /><ProjectTypeChip software cycleName={activeCycle?.name} /></>}
+      description={project.description}
+      members={sharing.members.length > 0 ? <button type="button" className="project-phone-members" aria-label={t("collab.header.shareManage")} onClick={() => setShareOpen(true)}><AvatarStack people={sharing.members} max={3} size="md" label={t("collab.header.people")} /></button> : undefined}
+      menuItems={headerMenuItems}
+      onBack={onBack ?? (() => window.history.back())}
+    >
+      <ProjectPhoneSummary {...summary} />
+    </ProjectPhoneHeader> : <ProjectDetailHeader
+      icon={projectIcon}
       title={project.name}
       chips={<><ProjectStatusChip status={project.status} /><ProjectTypeChip software cycleName={activeCycle?.name} /></>}
       description={project.description}
@@ -207,10 +253,10 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
       </>}
       headerProps={{ onContextMenu: (event) => openMenu(event, headerMenuItems), ...longPress(() => headerMenuItems) }}
       moreItems={headerMenuItems}
-    />
+    />}
     {offline ? <p className="collab-notice" role="status"><Icon name="lock" aria-hidden="true" />{t("collab.offline.notice")}</p> : readOnly && <ReadOnlyNotice />}
     {moveError && <p className="collab-error" role="alert">{moveError}</p>}
-    <ProjectStatsStrip progress={progress} targetDate={project.targetDate ?? overview?.targetDate} cycle={activeCycle?.endsOn ? { name: activeCycle.name, endsOn: activeCycle.endsOn } : null} health={project.health ?? overview?.health} completed={project.status === "completed"} />
+    {!phone && <ProjectStatsStrip {...summary} />}
     <ProjectTabs tabs={tabItems} active={tab} onChange={setTab} label={t("collab.views.label")} panelId={panelId} />
     <div id={panelId} className="project-tab-panel" role="tabpanel" aria-label={tabItems.find((item) => item.id === tab)?.label} tabIndex={0} aria-busy={loading}>
       {loading ? <CollaborationState title={t("collab.loading.title")} description={t("collab.loading.hint")} loading /> : <>
@@ -229,7 +275,11 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
             <span className="collab-muted">{tp("collab.issue.count", visibleIssues.length)}</span></div>
           {tab === "Issues" ? <>
             {!visibleIssues.length && <CollaborationState title={query ? t("collab.issue.noMatchTitle") : t("collab.issue.emptyTitle")} description={query ? t("collab.issue.noMatchHint") : t("collab.issue.emptyHint")} />}
-            <div className="collab-issue-list">{visibleIssues.map((issue) => <IssueCard key={issue.id} issue={issue} stateName={stateName(issue)} state={states.find((state) => state.id === issue.stateId)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} assign={assign} />)}</div>
+            {phone ? <ProjectPhoneGroups
+              label={t("collab.tabs.issues")}
+              groups={columns.map((column) => ({ id: column.id, label: column.name, glyph: <StatusGlyph status={glyphStatus(column.state?.id, column.state?.category)} />, items: column.issues, folded: column.state?.category === "completed" || column.state?.category === "canceled" }))}
+              renderItem={(issue) => <PhoneIssueRow issue={issue} done={isDone(issue)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} assign={assign} />}
+            /> : <div className="collab-issue-list">{visibleIssues.map((issue) => <IssueCard key={issue.id} issue={issue} stateName={stateName(issue)} state={states.find((state) => state.id === issue.stateId)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} assign={assign} />)}</div>}
           </> : <KanbanBoard<ProjectIssue>
             className="collab-board"
             label={t("collab.tabs.board")}

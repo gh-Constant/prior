@@ -3,6 +3,7 @@ import type { Project, ProjectType, Task, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { isTaskBlocked } from "../lib/kanban";
 import type { ContextMenuItem } from "./ContextMenu";
+import type { ProjectGroup } from "./ProjectDetailParts";
 import type { Person } from "./collaboration/types";
 import { KanbanBoard, type KanbanColumn } from "./kanban/KanbanBoard";
 import { KanbanTaskCard } from "./kanban/TaskCard";
@@ -44,6 +45,28 @@ function softwareBoardStatus(task: Task): TaskStatus {
   return SOFTWARE_BOARD_STATUSES.includes(task.status as TaskStatus) ? task.status as TaskStatus : "inbox";
 }
 
+function boardStatusesFor(projectType: ProjectType | undefined): readonly TaskStatus[] {
+  return projectType === "software" ? SOFTWARE_BOARD_STATUSES : STANDARD_BOARD_STATUSES;
+}
+
+function boardStatusOf(task: Task, projectType: ProjectType | undefined): TaskStatus {
+  return projectType === "software" ? softwareBoardStatus(task) : standardBoardStatus(task);
+}
+
+/** The board's columns as list sections (phone list), finished work folded. */
+export function projectStatusGroups(projectType: ProjectType | undefined, tasks: readonly Task[], t: (key: string) => string): ProjectGroup<Task>[] {
+  return boardStatusesFor(projectType).map((status) => {
+    const items = tasks.filter((task) => boardStatusOf(task, projectType) === status);
+    return {
+      id: status,
+      label: boardStatusLabel(status, t),
+      glyph: <StatusGlyph status={glyphStatus(status)} />,
+      items: status === "done" ? [...items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) : items,
+      folded: status === "done",
+    };
+  });
+}
+
 /** Status board of one project, rendered by the shared KanbanBoard. */
 export function ProjectTaskBoard({ project, tasks, onChange, onDelete, onEdit, people = [], onAddTask }: {
   readonly project: Pick<Project, "name" | "icon" | "projectType">;
@@ -60,8 +83,8 @@ export function ProjectTaskBoard({ project, tasks, onChange, onDelete, onEdit, p
   const today = localDateKey();
   const projectType: ProjectType = project.projectType ?? "standard";
   const isStandard = projectType !== "software";
-  const boardStatuses = isStandard ? STANDARD_BOARD_STATUSES : SOFTWARE_BOARD_STATUSES;
-  const taskBoardStatus = (task: Task): TaskStatus => isStandard ? standardBoardStatus(task) : softwareBoardStatus(task);
+  const boardStatuses = boardStatusesFor(projectType);
+  const taskBoardStatus = (task: Task): TaskStatus => boardStatusOf(task, projectType);
   const byId = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
 
   async function moveTask(taskId: string, status: string): Promise<void> {

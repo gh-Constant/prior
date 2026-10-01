@@ -382,14 +382,23 @@ export function KanbanBoard<T extends { readonly id: string }>({ columns, label,
     strip.scrollTo({ left: pill.offsetLeft - (strip.clientWidth - pill.offsetWidth) / 2, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   }, [activeColumn]);
 
-  function scrollToColumn(columnId: string): void {
+  function scrollToColumn(columnId: string, instant = false): void {
     const scroller = scrollerRef.current;
     const column = scroller ? Array.from(scroller.querySelectorAll<HTMLElement>("[data-kanban-column]")).find((element) => element.dataset.kanbanColumn === columnId) : undefined;
     if (!scroller || !column) return;
     const padding = Number.parseFloat(getComputedStyle(scroller).paddingLeft) || 0;
     setActiveColumn(columnId);
-    scroller.scrollTo?.({ left: column.offsetLeft - padding, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    scroller.scrollTo?.({ left: column.offsetLeft - padding, behavior: instant || prefersReducedMotion() ? "auto" : "smooth" });
   }
+
+  // Phones show one column at a time: open on the first one with cards
+  // rather than on an empty "Inbox" or "Todo".
+  useEffect(() => {
+    if (!(window.matchMedia?.(PHONE_QUERY).matches ?? false)) return;
+    const first = latest.current.columns.find((column) => column.items.length > 0);
+    if (first && first.id !== latest.current.columns[0]?.id) scrollToColumn(first.id, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ── Render ────────────────────────────────────────────────────────── */
 

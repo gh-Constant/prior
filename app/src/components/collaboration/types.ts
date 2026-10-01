@@ -123,6 +123,9 @@ export type ProjectCollaborationProps = {
   /** Deletes the backing task; omitted for read-only projects. */
   onDeleteIssue?: (issueId: string) => void;
   onOpenNotes?: () => void;
+  /** Area name and back action, shown by the phone navigation bar. */
+  areaName?: string | null;
+  onBack?: () => void;
   /** Controlled tab ("board", "issues", "overview", "cycles"), mirrored in the URL. */
   tab?: string | null;
   onTabChange?: (tab: string) => void;

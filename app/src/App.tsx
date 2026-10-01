@@ -1247,6 +1247,16 @@ export function App() {
     setComposerOpen(true);
   }
 
+  /** The phone "+" button: a habit on Habits, a task in the open project, else a plain task. */
+  function createFromTabBar(): void {
+    if (activeView === "habits") { setHabitComposerOpen(true); return; }
+    const project = activeView === "project" ? projects.find((item) => item.id === selectedProjectId) : undefined;
+    const shared = project ? collaborationByProject[project.id] : undefined;
+    if (project && shared?.onCreateIssue && project.projectType === "software") { shared.onCreateIssue(); return; }
+    if (project && !shared?.readOnly) { openNewTask({ areaId: project.areaId, projectId: project.id, status: project.projectType === "software" ? "backlog" : "next" }); return; }
+    openNewTask();
+  }
+
   async function saveTask(input: TaskDraft, options?: { keepOpen?: boolean }) {
     assertProjectWritable(input.projectId);
     await localStore.saveTask({ ...newTaskContext, ...input, completed: input.status === "done", peopleIds: input.peopleIds ?? (user ? [user.id] : []) });
@@ -2335,7 +2345,7 @@ export function App() {
         createLabel={activeView === "habits" ? t("common.header.newHabit") : t("common.header.newTask")}
         inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || milestoneEditor !== null}
         onNavigate={changeView}
-        onCreate={() => activeView === "habits" ? setHabitComposerOpen(true) : openNewTask()}
+        onCreate={createFromTabBar}
         onToggleMore={() => setMobileMoreOpen((value) => !value)}
       />
 

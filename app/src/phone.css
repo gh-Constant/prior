@@ -49,34 +49,133 @@
   .task-swipe:not([data-swipe="left"]) .task-swipe-action.is-left { visibility: hidden; }
   .task-swipe[data-armed="true"] .task-swipe-action svg { scale: 1.25; }
 
-  /* ── Project page ── */
-  .project-breadcrumb { margin-bottom: 8px; }
-  .project-page-header { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 12px; }
-  .project-page-identity { align-items: center; gap: 12px; }
-  .project-page-header .editable-icon.project-tile, .project-page-header .project-tile.size-lg { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
-  .project-page-title-row { flex-direction: column; align-items: flex-start; gap: 6px; }
-  .project-page-title-row h2 { font-size: 22px; }
-  .project-page-description { display: none; }
-  .project-page-actions { flex: 0 0 auto; flex-wrap: nowrap; justify-content: stretch; gap: 8px; }
-  .project-page-actions .project-avatar-stack, .project-page-actions .project-edit-button { display: none; }
-  .project-page-actions .primary-button { order: -1; flex: 1 1 auto; justify-content: center; }
-  .project-page-actions .secondary-button { flex: 0 0 auto; }
-  .project-page-actions .project-more-button { display: grid; place-items: center; width: 44px; padding: 0; }
-  .project-page-actions .project-more-button svg { width: 20px; height: 20px; }
+  /* ── Project page ──────────────────────────────────────────────────────
+     A sticky navigation bar (back · compact title · members · •••), a compact
+     hero with one summary card, sticky underline tabs, then the content. The
+     desktop breadcrumb, header and stats strip are not rendered on phones. */
+  .workspace:has(.project-phone-bar) { padding-top: 0; }
+  .workspace:has(.project-phone-bar) > .verify-email-banner { margin-top: calc(env(safe-area-inset-top) + 8px); }
+  .app-shell:has(.project-phone-bar) { --mobile-sticky-top: calc(var(--mobile-bar-h) + 44px); }
 
-  /* Stats: a strip of small cards you can swipe */
-  .project-stats { display: flex; gap: 8px; margin: 0 -16px 12px; padding: 0 16px 2px; overflow-x: auto; border: 0; border-radius: 0; background: transparent; box-shadow: none; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 16px; }
-  .project-stats::-webkit-scrollbar { display: none; }
-  .project-stat { flex: 0 0 auto; min-width: 132px; max-width: 220px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow-card); scroll-snap-align: start; }
-  .project-stat:first-child, .project-stat:nth-child(n) { border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
-  .project-stat-progress { min-width: 190px; grid-column: auto; }
-  .project-stat-value { font-size: 14px; }
+  .project-phone-bar {
+    position: sticky; top: 0; z-index: 15;
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px;
+    height: var(--mobile-bar-h); margin-inline: -16px; padding: env(safe-area-inset-top) max(8px, env(safe-area-inset-right)) 0 max(4px, env(safe-area-inset-left));
+    border-bottom: 1px solid transparent; background: var(--canvas);
+    transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  }
+  .project-phone-back {
+    justify-self: start; display: inline-flex; align-items: center; gap: 0; min-width: 44px; max-width: 100%; height: 44px; padding: 0 10px 0 4px;
+    border: 0; border-radius: 12px; background: transparent; color: var(--accent-dark, var(--accent)); font-size: 16px; font-weight: 550;
+  }
+  .project-phone-back svg { width: 26px; height: 26px; flex: 0 0 auto; }
+  .project-phone-back span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .project-phone-back:active { scale: 1; background: var(--hover); }
+  .project-phone-bar-title {
+    min-width: 0; overflow: hidden; color: var(--ink); font-size: 16px; font-weight: 650; letter-spacing: -.015em; text-align: center; text-overflow: ellipsis; white-space: nowrap;
+    opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+  }
+  .project-phone-bar[data-collapsed="true"] { border-bottom-color: var(--line); background: color-mix(in oklab, var(--canvas) 82%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.6); backdrop-filter: blur(18px) saturate(1.6); }
+  .project-phone-bar[data-collapsed="true"] .project-phone-bar-title { opacity: 1; transform: none; }
+  .project-phone-bar-actions { justify-self: end; display: flex; align-items: center; gap: 2px; }
+  .project-phone-bar .project-more-button { display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 12px; background: transparent; box-shadow: none; color: var(--ink); }
+  .project-phone-bar .project-more-button svg { width: 22px; height: 22px; }
+  .project-phone-bar .project-more-button:active, .project-phone-members:active { scale: 1; background: var(--hover); }
+  .project-phone-members { display: inline-flex; align-items: center; height: 44px; padding: 0 6px 0 4px; border: 0; border-radius: 12px; background: transparent; }
+  .project-phone-members .project-avatar-stack.size-md .project-avatar { width: 26px; height: 26px; }
+  .project-phone-members .project-avatar-stack.size-md .project-avatar-item { box-shadow: 0 0 0 2px var(--canvas); }
 
-  /* Tabs: a sticky, horizontally scrollable segmented control */
-  .app-shell:has(.project-tabs) { --mobile-sticky-top: calc(env(safe-area-inset-top) + 52px); }
-  .project-tabs { position: sticky; top: 0; z-index: 8; gap: 6px; margin: 0 -16px 8px; padding: calc(env(safe-area-inset-top) + 6px) 16px 6px; overflow-x: auto; border-bottom: 1px solid var(--line-soft); background: color-mix(in oklab, var(--canvas) 86%, transparent); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); }
-  .project-tabs button { height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink-2); }
-  .project-tabs button::after { display: none; }
-  .project-tabs button[aria-selected="true"] { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
-  .project-tabs button[aria-selected="true"] .project-tab-count { color: color-mix(in oklab, var(--on-ink) 70%, transparent); }
+  .project-phone-hero { display: flex; flex-direction: column; gap: 12px; padding: 6px 0 16px; }
+  .project-phone-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .project-phone-identity .project-tile.size-lg, .project-phone-identity .editable-icon.project-tile { width: 52px; height: 52px; min-width: 52px; min-height: 52px; flex: 0 0 auto; border-radius: 14px; }
+  .project-phone-identity .project-tile { background: color-mix(in oklab, var(--project-tint, var(--muted)) 14%, var(--panel)); color: var(--project-tint, var(--muted)); }
+  .project-phone-identity .project-tile svg { width: 24px; height: 24px; }
+  .project-phone-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .project-phone-area { overflow: hidden; color: var(--muted); font-size: 13px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+  .project-phone-copy h2 { margin: 0; color: var(--ink); font-size: 26px; font-weight: 700; letter-spacing: -.035em; line-height: 1.15; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .project-phone-description { margin: -2px 0 0; color: var(--muted); font-size: 14px; line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .project-phone-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .project-phone-chips .project-chip, .project-phone-chips .project-status-chip { min-height: 30px; padding: 0 10px; border-radius: 999px; font-size: 13px; }
+  .project-phone-chips .project-chip svg { width: 13px; height: 13px; }
+  .project-phone-chips .project-status-select .custom-select-trigger { min-height: 30px; padding: 0 8px 0 10px; border-radius: 999px; font-size: 13px; }
+
+  .project-phone-summary { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-card); }
+  .project-phone-progress { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--ink-2); font-size: 14px; font-weight: 550; }
+  .project-phone-progress strong { color: var(--ink); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .project-phone-summary .project-progress-bar { height: 6px; }
+  .project-phone-facts { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; margin: 4px -16px -14px; padding: 0; border-top: 1px solid var(--line-soft); }
+  .project-phone-facts > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px 12px 16px; border-left: 1px solid var(--line-soft); }
+  .project-phone-facts > div:first-child { border-left: 0; }
+  .project-phone-facts dt { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .project-phone-facts dt svg { width: 13px; height: 13px; flex: 0 0 auto; color: var(--faint); }
+  .project-phone-facts dd { min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+  .project-phone-facts dd.project-phone-fact-sub { color: var(--muted); font-size: 12px; font-weight: 500; }
+  .project-phone-facts dd.is-danger { color: var(--red); }
+  .project-phone-facts dd.is-warning { color: var(--amber); }
+  .project-phone-facts dd.is-good { color: var(--green); }
+  @media (max-width: 360px) { .project-phone-facts dt svg { display: none; } .project-phone-facts > div { padding-inline: 12px 8px; } }
+
+  /* Tabs: sticky underline tabs under the bar (the Kanban keeps the pills). */
+  .project-page .project-tabs {
+    position: sticky; top: var(--mobile-bar-h); z-index: 12;
+    gap: 22px; height: 44px; margin: 0 -16px 12px; padding: 0 16px; overflow-x: auto;
+    border-bottom: 1px solid var(--line); background: color-mix(in oklab, var(--canvas) 86%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
+  }
+  .project-page .project-tabs button { height: 43px; padding: 0 2px; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: 15px; font-weight: 550; }
+  .project-page .project-tabs button svg { display: none; }
+  .project-page .project-tabs button::after { display: block; height: 2.5px; }
+  .project-page .project-tabs button[aria-selected="true"] { border: 0; background: transparent; color: var(--ink); font-weight: 650; }
+  .project-page .project-tabs button[aria-selected="true"]::after { background: var(--accent); }
+  .project-page .project-tabs button[aria-selected="true"] .project-tab-count { color: var(--muted); }
+  .project-page .kanban { margin-top: -12px; }
+
+  /* Grouped list: one foldable section per status, rows edge to edge. */
+  .project-phone-groups { display: flex; flex-direction: column; gap: 14px; margin-inline: -16px; }
+  .project-phone-group { background: var(--panel); border-block: 1px solid var(--line); }
+  .project-phone-group-heading { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 16px; border: 0; border-radius: 0; background: transparent; color: var(--ink); text-align: left; }
+  .project-phone-group-heading:active { scale: 1; background: var(--hover); }
+  .project-phone-group-heading .status-glyph, .project-phone-group-heading > svg:first-child { flex: 0 0 auto; }
+  .project-phone-group-label { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  .project-phone-group-count { color: var(--faint); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .project-phone-group-chevron { width: 18px; height: 18px; margin-left: auto; color: var(--faint); transition: rotate var(--t-fast) var(--ease); }
+  .project-phone-group.is-folded .project-phone-group-chevron { rotate: -90deg; }
+  .project-phone-group-items { border-top: 1px solid var(--line-soft); }
+  .project-phone-group-item + .project-phone-group-item { border-top: 1px solid var(--line-soft); }
+  .project-phone-group-item .task-row { border-bottom: 0; }
+
+  .phone-issue-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 12px 0 16px; background: var(--panel); }
+  .phone-issue-row > .priority-glyph, .phone-issue-glyph-spacer { width: 16px; height: 16px; flex: 0 0 16px; }
+  .phone-issue-open { display: flex; flex: 1 1 auto; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; padding: 10px 0; border: 0; border-radius: 0; background: transparent; color: var(--ink); text-align: left; }
+  button.phone-issue-open:active { scale: 1; opacity: .7; }
+  .phone-issue-title { color: var(--ink); font-size: 15px; font-weight: 550; line-height: 1.35; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .phone-issue-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .phone-issue-meta:empty { display: none; }
+  .phone-issue-meta small { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .phone-issue-meta .project-chip { min-height: 22px; font-size: 12px; }
+  .phone-issue-row.is-done .phone-issue-title { color: var(--faint); text-decoration: line-through; }
+  .phone-issue-row .collab-assignee-select, .phone-issue-row .collab-avatar { flex: 0 0 auto; }
+
+  /* Issue search and assignee filter: one search row, then a scrollable chip row. */
+  .project-page .collab-issue-toolbar { flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .project-page .collab-issue-toolbar > .collab-muted { display: none; }
+  .project-page .collab-search { width: 100%; min-height: 44px; border-radius: 12px; }
+  .project-page .collab-search input { font-size: 16px; }
+  .project-page .collab-assignee-filter { display: flex; flex-wrap: nowrap; gap: 6px; width: calc(100% + 32px); margin-inline: -16px; padding: 0 16px 2px; overflow-x: auto; scrollbar-width: none; }
+  .project-page .collab-assignee-filter::-webkit-scrollbar { display: none; }
+  .project-page .collab-chip-btn { flex: 0 0 auto; min-height: 36px; padding: 0 14px; border-radius: 999px; font-size: 14px; }
+  .project-page .collab-chip-btn.selected { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
+  .project-page .collab-avatar-btn { flex: 0 0 auto; }
+
+  /* Overview, cycles, notes and the leaderboard: cards with phone spacing. */
+  .project-page .collab-overview { gap: 12px; }
+  .project-page .collab-panel { padding: 16px; border-radius: 16px; }
+  .project-page .collab-panel .secondary-button, .project-page .project-notes-actions button, .project-page .collab-cycle-edit { min-height: 44px; }
+  .project-page .project-notes-panel { padding: 16px; border-radius: 16px; }
+  .project-page .project-notes-actions { width: 100%; }
+  .project-page .project-notes-actions button { flex: 1 1 0; justify-content: center; }
+  .project-page .project-note-card { min-height: 56px; }
+  .project-page .project-empty-state { min-height: 220px; border-radius: 16px; }
+  .project-page .project-empty-state .primary-button { min-height: 44px; }
+  .project-leaderboard-section { margin-top: 16px; }
 }
