@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "../ContextMenu";
+import { KanbanBoard, type KanbanColumn } from "../kanban/KanbanBoard";
 import { Icon } from "../Icon";
 import { DEFAULT_PROJECT_ICON } from "../WorkspaceIcon";
 import { EditableIcon } from "../IconPicker";
@@ -71,14 +72,9 @@ function IssueCard({ issue, stateName, state, onOpen, onDelete, assign }: {
   </article>;
 }
 
-/** Compact board card: title, priority, cycle/labels and the lead person. */
-function BoardIssueCard({ issue, completed, onOpen, onDelete, busy, onDrag, onDragEnd, assign }: {
-  issue: ProjectIssue; completed: boolean; onOpen?: (id: string) => void; onDelete?: (id: string) => void;
-  busy: boolean; onDrag?: (id: string) => void; onDragEnd: () => void; assign?: Assign;
-}) {
-  const { menu, openMenu, closeMenu, longPress } = useContextMenu();
+/** Content of a board card: title, priority, cycle/labels and the lead person. */
+function BoardIssueContent({ issue, onOpen, busy, assign }: { issue: ProjectIssue; onOpen?: (id: string) => void; busy: boolean; assign?: Assign }) {
   const { t } = useI18n();
-  const menuItems = issueMenuItems(issue, t, onOpen, onDelete, assign);
   // Without assignment data (local projects), show the lead person as before.
   const lead = assign ? undefined : issue.people.find((person) => person.role === "owner") ?? issue.people[0];
   const chips = (issue.properties ?? []).filter((property) => property.key === "cycle" || property.key === "labels" || property.key === "milestone" || property.key === "parent");
@@ -92,19 +88,10 @@ function BoardIssueCard({ issue, completed, onOpen, onDelete, busy, onDrag, onDr
       {lead && <PersonAvatar person={lead} className="project-avatar board-card-avatar" showPresence={false} />}
     </span>
   </>;
-  return <article className={`board-card collab-issue-card${completed ? " is-done" : ""}`} draggable={Boolean(onDrag) && !busy} onDragStart={(event) => {
-    if (!onDrag || busy) { event.preventDefault(); return; }
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", issue.id);
-    onDrag(issue.id);
-  }} onDragEnd={onDragEnd}
-    onContextMenu={menuItems.length ? (event) => openMenu(event, menuItems) : undefined}
-    {...(menuItems.length ? longPress(() => menuItems) : {})}
-  >
+  return <>
     {onOpen ? <button type="button" className="board-card-open" onClick={() => onOpen(issue.id)}>{body}</button> : <div className="board-card-open">{body}</div>}
-    {assign && <span className="board-card-assignee"><IssueAssignee issue={issue} assign={assign} busy={busy} /></span>}
-    {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
-  </article>;
+    {assign && <span className="board-card-assignee" data-kanban-nodrag><IssueAssignee issue={issue} assign={assign} busy={busy} /></span>}
+  </>;
 }
 
 function Overview({ project, issues, states, sharing, overview = {}, onOpenNotes, readOnly, onCreateMilestone, onEditMilestone }: ProjectCollaborationProps) {
@@ -158,8 +145,6 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
   const [query, setQuery] = useState("");
   const [moving, setMoving] = useState(false);
   const pendingMove = useRef(false);
-  const draggedIssue = useRef<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [moveError, setMoveError] = useState("");
   const panelId = useId();
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
@@ -173,6 +158,15 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
   const isCompleted = (issue: ProjectIssue) => states.some((state) => state.id === issue.stateId && state.category === "completed");
   const unassigned = visibleIssues.filter((issue) => !states.some((state) => state.id === issue.stateId));
   const columns = [...states.map((state) => ({ id: state.id, name: state.name, state, issues: visibleIssues.filter((issue) => issue.stateId === state.id) })), ...(unassigned.length ? [{ id: "__unassigned", name: t("collab.issue.unassigned"), state: undefined, issues: unassigned }] : [])];
+  const isDone = (issue: ProjectIssue) => states.some((state) => state.id === issue.stateId && (state.category === "completed" || state.category === "canceled"));
+  const boardColumns: KanbanColumn<ProjectIssue>[] = columns.map((column) => ({
+    id: column.id,
+    label: column.name,
+    glyph: <StatusGlyph status={glyphStatus(column.state?.id, column.state?.category)} />,
+    items: column.issues,
+    canAdd: Boolean(column.state),
+    canDrop: Boolean(column.state),
+  }));
   const canMove = !readOnly && !loading && Boolean(onMoveIssue);
   const completedCount = issues.filter(isCompleted).length;
   const progress = { completed: completedCount, total: issues.length, percent: issues.length ? Math.round((completedCount / issues.length) * 100) : 0 };
@@ -189,8 +183,6 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
     catch (cause) { setMoveError(cause instanceof Error ? cause.message : t("collab.issue.moveError")); }
     finally { pendingMove.current = false; setMoving(false); }
   }
-
-  function endDrag() { draggedIssue.current = null; setDropTarget(null); }
 
   const headerMenuItems: ContextMenuItem[] = [
     ...(!readOnly && onEditProject ? [{ icon: "pencil" as const, label: t("collab.header.editProjectFor", { name: project.name }), run: onEditProject }] : []),
@@ -214,6 +206,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
         {!readOnly && tab === "Cycles" && onCreateCycle && <button type="button" className="primary-button" disabled={loading} onClick={onCreateCycle}><Icon name="plus" /><span>{t("collab.header.newCycle")}</span></button>}
       </>}
       headerProps={{ onContextMenu: (event) => openMenu(event, headerMenuItems), ...longPress(() => headerMenuItems) }}
+      moreItems={headerMenuItems}
     />
     {offline ? <p className="collab-notice" role="status"><Icon name="lock" aria-hidden="true" />{t("collab.offline.notice")}</p> : readOnly && <ReadOnlyNotice />}
     {moveError && <p className="collab-error" role="alert">{moveError}</p>}
@@ -237,21 +230,19 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
           {tab === "Issues" ? <>
             {!visibleIssues.length && <CollaborationState title={query ? t("collab.issue.noMatchTitle") : t("collab.issue.emptyTitle")} description={query ? t("collab.issue.noMatchHint") : t("collab.issue.emptyHint")} />}
             <div className="collab-issue-list">{visibleIssues.map((issue) => <IssueCard key={issue.id} issue={issue} stateName={stateName(issue)} state={states.find((state) => state.id === issue.stateId)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} assign={assign} />)}</div>
-          </> : <div className="project-board collab-board" aria-busy={moving}>{columns.map((column) => <section key={column.id} className={`project-board-column${dropTarget === column.id ? " is-drop-target collab-drop-target" : ""}`} aria-label={column.name}
-            onDragOver={(event) => { if (canMove && !moving && draggedIssue.current && states.some((state) => state.id === column.id)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTarget(column.id); } }}
-            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
-            onDrop={(event) => { event.preventDefault(); const issueId = draggedIssue.current; endDrag(); if (issueId) void moveIssue(issueId, column.id); }}>
-            <header className="project-board-column-heading">
-              <StatusGlyph status={glyphStatus(column.state?.id, column.state?.category)} />
-              <h3>{column.name}</h3>
-              <span className="project-board-count">{column.issues.length}</span>
-              {!readOnly && onCreateIssue && column.state && <button type="button" className="project-board-add" disabled={loading} aria-label={t("common.projectHub.addTaskIn", { status: column.name })} title={t("common.projectHub.addTaskIn", { status: column.name })} onClick={() => onCreateIssue(column.id)}><Icon name="plus" /></button>}
-            </header>
-            <div className="project-board-cards">
-              {column.issues.map((issue) => <BoardIssueCard key={issue.id} issue={issue} completed={column.state?.category === "completed" || column.state?.category === "canceled"} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} busy={moving} onDrag={canMove ? (issueId) => { draggedIssue.current = issueId; } : undefined} onDragEnd={endDrag} assign={assign} />)}
-              {!column.issues.length && <div className="project-board-empty">{t("collab.issue.emptyTitle")}</div>}
-            </div>
-          </section>)}</div>}
+          </> : <KanbanBoard<ProjectIssue>
+            className="collab-board"
+            label={t("collab.tabs.board")}
+            emptyLabel={t("collab.issue.emptyTitle")}
+            dropTargetClassName="collab-drop-target"
+            columns={boardColumns}
+            canDrag={() => canMove && !moving}
+            onMove={moveIssue}
+            onAdd={!readOnly && onCreateIssue ? (stateId) => { if (!loading) onCreateIssue(stateId); } : undefined}
+            menuItems={(issue) => issueMenuItems(issue, t, onOpenIssue, !readOnly ? onDeleteIssue : undefined, assign)}
+            itemClassName={(issue) => `collab-issue-card${isDone(issue) ? " is-done" : ""}`}
+            renderCard={(issue) => <BoardIssueContent issue={issue} onOpen={onOpenIssue} busy={moving} assign={assign} />}
+          />}
         </>}
         {tab === "Activity" && <ProjectActivity loadActivity={loadActivity} people={assignablePeople?.length ? assignablePeople : sharing.members} currentUserId={currentUserId} />}
         {tab === "Cycles" && (cycles.length ? <div className="collab-cycle-list">{cycles.map((cycle) => {

@@ -3,6 +3,7 @@ import type { Project, Task, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { filterTasks, type TaskFilterState } from "../lib/taskFilters";
 import { groupTasksByStatus, taskGroupStatus } from "../lib/taskGroups";
+import { useIsPhone } from "../lib/useMediaQuery";
 import { Icon } from "./Icon";
 import { StatusGlyph } from "./TaskGlyphs";
 import { TaskDetailPanel } from "./TaskDetailPanel";
@@ -25,21 +26,6 @@ type Props = {
 
 /** Container width from which the inspector sits beside the list (≈ a 1280px window). */
 const PANEL_MIN_WIDTH = 940;
-const MOBILE_QUERY = "(max-width: 760px)";
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return undefined;
-    const list = window.matchMedia(query);
-    const update = () => setMatches(list.matches);
-    update();
-    list.addEventListener?.("change", update);
-    return () => list.removeEventListener?.("change", update);
-  }, [query]);
-  return matches;
-}
-
 /** True when the view is wide enough for a side inspector. Falls back to the window width. */
 function useWideLayout(ref: React.RefObject<HTMLElement | null>): boolean {
   const [wide, setWide] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1280);
@@ -65,7 +51,7 @@ export function AllTasksView({ tasks, visibleTasks, filters, projects, onChange,
   const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
   const wide = useWideLayout(rootRef);
-  const mobile = useMediaQuery(MOBILE_QUERY);
+  const mobile = useIsPhone();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [doneOpen, setDoneOpen] = useState(filters.status === "completed");
   const [mobileStatus, setMobileStatus] = useState<TaskStatus | "all">("all");

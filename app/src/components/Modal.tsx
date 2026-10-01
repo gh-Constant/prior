@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useI18n } from "../lib/i18n";
+import { useSheetDrag } from "../lib/useSheetDrag";
 import { Icon } from "./Icon";
 import "./Modal.css";
 
@@ -14,6 +15,8 @@ export type ModalProps = {
 
 export function Modal({ title, onClose, children, className = "", ariaLabelledBy, maxWidth }: ModalProps) {
   const { t } = useI18n();
+  // Phones show the modal as a bottom sheet: swipe the handle down to close.
+  const { sheetRef, handleProps } = useSheetDrag<HTMLDivElement>(onClose);
   const openerRef = useRef<HTMLElement | null>(
     typeof document !== "undefined" && document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -59,6 +62,7 @@ export function Modal({ title, onClose, children, className = "", ariaLabelledBy
       }}
     >
       <div
+        ref={sheetRef}
         className={`prior-modal-card ${className}`.trim()}
         role="dialog"
         aria-modal="true"
@@ -66,6 +70,7 @@ export function Modal({ title, onClose, children, className = "", ariaLabelledBy
         aria-labelledby={ariaLabelledBy}
         style={maxWidth ? { maxWidth } : undefined}
       >
+        <div className="prior-modal-handle" aria-hidden="true" {...handleProps} />
         <div className="prior-modal-header">
           <h2 id={ariaLabelledBy}>{title}</h2>
           <button

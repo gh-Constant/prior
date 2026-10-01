@@ -3,6 +3,8 @@ import type { Project, Task } from "../types";
 import type { CompletionExitDeadlines } from "../lib/completionExit";
 import { useI18n } from "../lib/i18n";
 import { formatEstimate } from "../lib/taskEstimate";
+import { useIsPhone } from "../lib/useMediaQuery";
+import { useRowSwipe } from "../lib/useRowSwipe";
 import { dueTone, initialsFor, taskGroupStatus } from "../lib/taskGroups";
 import { CompletionBurst } from "./CompletionBurst";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -15,9 +17,8 @@ import { checklistProgress } from "./tasks/ChecklistEditor";
 /**
  * - `default`: the original two-line row used by Today, projects and waiting.
  * - `compact`: single-line, Linear-like row (all tasks list, matrix).
- * - `card`: compact board card (title, then one meta line).
  */
-export type TaskRowVariant = "default" | "compact" | "card";
+export type TaskRowVariant = "default" | "compact";
 
 type Props = {
   readonly task: Task;
@@ -28,9 +29,9 @@ type Props = {
   readonly hideNextStatus?: boolean;
   readonly project?: Pick<Project, "name" | "icon"> | null;
   readonly variant?: TaskRowVariant;
-  /** Compact/card only: clicking the title opens a detail view instead of the editor. */
+  /** Compact only: clicking the title opens a detail view instead of the editor. */
   readonly onOpen?: (task: Task) => void;
-  /** Compact/card only: the row is the one shown in the detail panel. */
+  /** Compact only: the row is the one shown in the detail panel. */
   readonly selected?: boolean;
   /** Compact only: lead with the workflow glyph (list) or a plain check (matrix). */
   readonly leading?: "status" | "check";
@@ -81,6 +82,13 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
   const completionExitDeadlines = useContext(CompletionExitContext);
   const isExiting = task.completed && task.id in completionExitDeadlines;
   const { menu, openMenu, openMenuAt, closeMenu, longPress } = useContextMenu();
+  // Phones: swipe right completes, swipe left opens the row menu as a sheet.
+  const phone = useIsPhone();
+  const swipe = useRowSwipe({
+    enabled: phone && variant === "compact",
+    onRight: () => void toggleCompletion(),
+    onLeft: () => { openMenuAt(window.innerWidth / 2, window.innerHeight, menuItems); },
+  });
 
   useEffect(() => {
     const transitionedToCompleted = !previousCompleted.current && task.completed;
@@ -155,12 +163,12 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
   };
   const menuElement = menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />;
 
-  if (variant === "compact" || variant === "card") {
+  if (variant === "compact") {
     const status = taskGroupStatus(task);
     const due = dueLabel(task, lang, t);
-    const showStatusChip = variant === "compact" && leading === "check" && !task.completed && (status === "in_progress" || status === "waiting");
+    const showStatusChip = leading === "check" && !task.completed && (status === "in_progress" || status === "waiting");
     const initials = task.assigneeName ? initialsFor(task.assigneeName) : "";
-    const useStatusGlyph = variant === "card" || leading === "status";
+    const useStatusGlyph = leading === "status";
     const completeControl = (
       <span className="complete-control">
         <button className={`complete-button ${task.completed ? "checked" : ""} ${useStatusGlyph ? "status-toggle" : ""}`} type="button" aria-label={completeLabel} title={completeLabel} onClick={() => void toggleCompletion()} disabled={completionPending}>
@@ -190,33 +198,10 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
     const estimateChip = estimate && <span className="task-chip task-estimate-chip" title={t("tasks.composer.estimate")}><Icon name="clock" />{estimate}</span>;
     const checklistChip = <ChecklistProgressChip task={task} />;
     const avatar = initials && task.assigneeName ? <InitialsAvatar initials={initials} name={task.assigneeName} /> : null;
-    const className = `task-row task-row-${variant} ${task.completed ? "completed" : ""} ${isExiting ? "completion-exiting" : ""} ${selected ? "selected" : ""}`;
+    const className = `task-row task-row-compact ${task.completed ? "completed" : ""} ${isExiting ? "completion-exiting" : ""} ${selected ? "selected" : ""}`;
 
-    if (variant === "card") {
-      return (
-        <div className={className} {...rowProps}>
-          <div className="task-card-main">
-            {completeControl}
-            <div className="task-content">{titleControl}</div>
-            <div className="task-actions">{moreButton}</div>
-          </div>
-          <div className="task-meta" aria-label={t("tasks.row.details")}>
-            <PriorityGlyph priority={task.priority ?? 4} label={priorityLabel(task.priority ?? 4, t)} />
-            {task.important && <span className="task-flag-mark important" role="img" aria-label={t("tasks.composer.important")} title={t("tasks.composer.important")}><Icon name="star" /></span>}
-            {task.urgent && <span className="task-flag-mark urgent" role="img" aria-label={t("tasks.composer.urgent")} title={t("tasks.composer.urgent")}><Icon name="bolt" /></span>}
-            {dueChip}
-            {estimateChip}
-            {checklistChip}
-            {projectChip}
-            {avatar && <span className="task-meta-end">{avatar}</span>}
-          </div>
-          {menuElement}
-        </div>
-      );
-    }
-
-    return (
-      <div className={className} {...rowProps}>
+    const row = (
+      <div ref={swipe.rowRef} className={className} {...rowProps} {...(phone ? swipe.rowProps : {})}>
         {showPriority && <PriorityGlyph priority={task.priority ?? 4} label={priorityLabel(task.priority ?? 4, t)} />}
         {completeControl}
         <div className="task-content">{titleControl}</div>
@@ -232,6 +217,17 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
           {checklistChip}
           {avatar}
         </div>
+        {!phone && menuElement}
+      </div>
+    );
+    if (!phone) return row;
+    // The sheet menu is rendered outside the translated row: a transform would
+    // become the containing block of its fixed positioning.
+    return (
+      <div ref={swipe.wrapRef} className="task-swipe">
+        <div className="task-swipe-action is-right" aria-hidden="true"><Icon name="check" /><span>{task.completed ? t("kanban.phone.swipeReopen") : t("kanban.phone.swipeComplete")}</span></div>
+        <div className="task-swipe-action is-left" aria-hidden="true"><span>{t("kanban.phone.swipeMore")}</span><Icon name="more" /></div>
+        {row}
         {menuElement}
       </div>
     );

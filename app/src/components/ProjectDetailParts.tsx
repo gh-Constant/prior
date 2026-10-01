@@ -1,6 +1,7 @@
-import { useId, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import type { ProjectHealth } from "../types";
 import { useI18n } from "../lib/i18n";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { Icon, type IconName } from "./Icon";
 import { ProgressBar, daysBetween, formatPercent, formatRelativeDays, formatShortDate, localDateKey, type ProjectProgress } from "./ProjectVisuals";
 import "./ProjectDetail.css";
@@ -24,10 +25,24 @@ export function ProjectTypeChip({ software, cycleName }: { software: boolean; cy
   return <span className="project-chip project-type-chip"><Icon name={software ? "refresh" : "list-todo"} />{cycleName ? `${type} · ${cycleName}` : type}</span>;
 }
 
-export function ProjectDetailHeader({ icon, title, chips, description, aside, actions, headerProps }: {
+/** Phone-only "•••" button of the project header: the secondary actions as a sheet. */
+function ProjectMoreButton({ items }: { items: readonly ContextMenuItem[] }) {
+  const { t } = useI18n();
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+  if (!items.length) return null;
+  return <>
+    <button type="button" className="secondary-button project-more-button" aria-label={t("kanban.phone.moreActions")} aria-haspopup="menu" aria-expanded={anchor !== null}
+      onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setAnchor({ x: rect.right - 220, y: rect.bottom + 6 }); }}><Icon name="more" /></button>
+    {anchor && <ContextMenu x={anchor.x} y={anchor.y} items={items} onClose={() => setAnchor(null)} />}
+  </>;
+}
+
+export function ProjectDetailHeader({ icon, title, chips, description, aside, actions, headerProps, moreItems }: {
   icon: ReactNode; title: string; chips: ReactNode; description?: string; aside?: ReactNode; actions: ReactNode;
   /** Context-menu and long-press handlers for the header. */
   headerProps?: HTMLAttributes<HTMLElement>;
+  /** Secondary actions, shown as a "•••" sheet button on phones. */
+  moreItems?: readonly ContextMenuItem[];
 }) {
   return <header className="project-page-header" {...headerProps}>
     <div className="project-page-identity">
@@ -40,7 +55,7 @@ export function ProjectDetailHeader({ icon, title, chips, description, aside, ac
         {description && <p className="project-page-description">{description}</p>}
       </div>
     </div>
-    <div className="project-page-actions">{aside}{actions}</div>
+    <div className="project-page-actions">{aside}{actions}{moreItems && <ProjectMoreButton items={moreItems} />}</div>
   </header>;
 }
 

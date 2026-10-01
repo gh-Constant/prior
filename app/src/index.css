@@ -536,14 +536,15 @@ dialog.modal::backdrop { background: oklch(0.18 0.005 60 / 0.32); backdrop-filte
   .new-task-button kbd { display: none; }
 }
 @media (max-width: 760px) {
-  body { height: auto; min-height: 100dvh; overflow: visible; }
-  .app-shell { display: block; height: auto; min-height: 100dvh; overflow: visible; }
+  html, body { overscroll-behavior-y: contain; -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body { height: auto; min-height: 100dvh; overflow: visible; overflow-x: clip; }
+  .app-shell { display: block; height: auto; min-height: 100dvh; overflow: visible; overflow-x: clip; max-width: 100vw; }
   /* Phones navigate with the bottom tab bar (MobileTabBar) and the "More"
      screen; the sidebar is desktop/tablet only. Content keeps clear of the
      tab bar through the workspace's bottom padding. */
   :root { --mobile-tabbar-h: calc(60px + max(24px, env(safe-area-inset-bottom))); }
   .sidebar { display: none; }
-  .workspace { height: auto; min-height: 100dvh; overflow: visible; padding: max(20px, calc(env(safe-area-inset-top) + 12px)) max(16px, env(safe-area-inset-right)) calc(var(--mobile-tabbar-h) + 32px) max(16px, env(safe-area-inset-left)); }
+  .workspace { height: auto; min-height: 100dvh; max-height: none; overflow: visible; padding: max(20px, calc(env(safe-area-inset-top) + 12px)) max(16px, env(safe-area-inset-right)) calc(var(--mobile-tabbar-h) + 32px) max(16px, env(safe-area-inset-left)); }
   .workspace-header { flex-wrap: wrap; gap: 12px; min-height: 0; margin-bottom: 14px; }
   .workspace-header h1 { display: none; }
   .workspace-actions { width: 100%; justify-content: stretch; gap: 8px; }
@@ -616,17 +617,52 @@ dialog.modal::backdrop { background: oklch(0.18 0.005 60 / 0.32); backdrop-filte
   .completion-celebration, .modal { animation: fade-in 200ms ease both; }
 }
 
-/* Mobile page header (MobileTopBar): large view title, round-rect actions on
-   the right. Only rendered for views without their own phone heading. */
+/* Mobile page header (MobileTopBar): a sticky bar holding the actions, with the
+   large view title below it. Once the title scrolls under the bar, the bar
+   turns translucent and shows the title compactly, centred (iOS style).
+   Only rendered for views without their own phone heading. */
 .mobile-topbar { display: none; }
 @media (max-width: 760px) {
-  .mobile-topbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-height: 44px; margin: 0 0 16px; }
-  .mobile-topbar-title { min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-size: 28px; font-weight: 650; letter-spacing: -.035em; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
-  .mobile-topbar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
-  .mobile-icon-button { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow-control); }
-  .mobile-icon-button svg { width: 20px; height: 20px; }
-  .mobile-icon-button[aria-expanded="true"] { border-color: var(--accent-line); box-shadow: var(--ring); }
+  :root { --mobile-bar-h: calc(52px + env(safe-area-inset-top)); }
+  .app-shell:has(.mobile-topbar) { --mobile-sticky-top: var(--mobile-bar-h); }
+  .workspace:has(> .mobile-topbar) { padding-top: 0; }
+  /* Contents: the sticky bar must stick within the whole page, not within its header. */
+  .mobile-topbar { display: contents; }
+  .mobile-topbar-bar {
+    position: sticky; top: 0; z-index: 15;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    height: var(--mobile-bar-h); margin-inline: -16px; padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+    border-bottom: 1px solid transparent;
+    transition: background-color 180ms var(--ease), border-color 180ms var(--ease), backdrop-filter 180ms var(--ease);
+  }
+  .mobile-topbar[data-collapsed="true"] .mobile-topbar-bar {
+    border-bottom-color: var(--line);
+    background: color-mix(in oklab, var(--canvas) 82%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.6);
+    backdrop-filter: blur(18px) saturate(1.6);
+  }
+  .mobile-topbar-compact {
+    flex: 1 1 auto; min-width: 0; padding-inline: 4px; overflow: hidden; pointer-events: none;
+    color: var(--ink); font-size: 17px; font-weight: 650; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap;
+    opacity: 0; transform: translateY(4px);
+    transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+  }
+  .mobile-topbar[data-collapsed="true"] .mobile-topbar-compact { opacity: 1; transform: none; }
+  .mobile-topbar-heading { display: flex; align-items: baseline; gap: 10px; min-width: 0; padding: 2px 0 10px; }
+  .mobile-topbar-title { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; color: var(--ink); font-size: 32px; font-weight: 700; letter-spacing: -.04em; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-topbar-subtitle { flex: 0 0 auto; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mobile-topbar-actions { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+  .mobile-icon-button { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; padding: 0; border: 0; border-radius: 14px; background: transparent; color: var(--ink); }
+  .mobile-icon-button:active { scale: 1; background: var(--hover); }
+  .mobile-icon-button svg { width: 21px; height: 21px; }
+  .mobile-icon-button[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent-dark); }
   .mobile-agent-button .agent-identity { --identity-size: 28px; }
+  /* List | Kanban toggle of the task views */
+  .mobile-segmented { display: inline-flex; gap: 2px; height: 40px; padding: 3px; border-radius: 12px; background: var(--surface-3); }
+  .mobile-segmented button { display: grid; place-items: center; width: 40px; height: 34px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--muted); }
+  .mobile-segmented button:active { scale: 1; }
+  .mobile-segmented button svg { width: 18px; height: 18px; }
+  .mobile-segmented button[aria-pressed="true"] { background: var(--seg-active); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 3px oklch(0 0 0 / 0.08); }
   .calendar-workspace-page .workspace-header { display: none; }
   /* Full-height pages stop above the tab bar instead of running under it. */
   .app-shell > .workspace.mail-workspace-page,

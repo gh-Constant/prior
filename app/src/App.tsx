@@ -26,7 +26,9 @@ import { Icon } from "./components/Icon";
 import { EisenhowerMatrix } from "./components/EisenhowerMatrix";
 import { TaskComposer, type TaskComposerContext } from "./components/TaskComposer";
 import { CompletionExitProvider } from "./components/TaskRow";
-import { TaskColumns } from "./components/TaskColumns";
+import { TasksKanban } from "./components/kanban/TasksKanban";
+import { TasksTopBarControls } from "./components/kanban/TasksTopBarControls";
+import { loadKanbanGroupBy, loadTaskLayout, saveKanbanGroupBy, saveTaskLayout, type KanbanGroupBy } from "./lib/kanban";
 import { AllTasksView } from "./components/AllTasksView";
 import { AccountDialog } from "./components/AccountDialog";
 import { AuthGate } from "./components/AuthGate";
@@ -157,12 +159,12 @@ function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcu
   const creatingHabit = activeView === "habits";
   const newTaskLabel = creatingHabit ? t("common.header.newHabit") : t("common.header.newTask");
   return (
-    <header className={`workspace-header ${activeView === "all" || activeView === "mine" || activeView === "eisenhower" ? "tasks-header" : ""}`}>
+    <header className={`workspace-header ${activeView === "all" || activeView === "mine" || activeView === "eisenhower" ? "tasks-header" : ""} ${activeView === "all" || activeView === "mine" ? "phone-hidden" : ""}`}>
       {subtitle ? <div className="workspace-heading"><h1>{viewTitle(activeView, t)}</h1><span className="workspace-subtitle">{subtitle}</span></div> : <h1>{viewTitle(activeView, t)}</h1>}
       {activeView !== "calendar" && <div className="workspace-actions">
         {(activeView === "all" || activeView === "mine") && <div className="layout-switch layout-switch-labeled" role="toolbar" aria-label={t("common.header.layout")}>
           <button type="button" className={layout === "list" ? "active" : ""} aria-label={t("tasks.list.layoutList")} aria-pressed={layout === "list"} onClick={() => onLayoutChange("list")}><Icon name="list" /><span>{t("tasks.list.layoutList")}</span></button>
-          <button type="button" className={layout === "board" ? "active" : ""} aria-label={t("tasks.list.layoutBoard")} aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /><span>{t("tasks.list.layoutBoard")}</span></button>
+          <button type="button" className={layout === "board" ? "active" : ""} aria-label={t("kanban.layout.board")} aria-pressed={layout === "board"} onClick={() => onLayoutChange("board")}><Icon name="columns" /><span>{t("kanban.layout.board")}</span></button>
         </div>}
         {extraActions}
         <button className="primary-button new-task-button" type="button" aria-label={newTaskLabel} title={t("common.header.newActionTitle", { label: newTaskLabel, shortcut })} aria-keyshortcuts={shortcutKey} onClick={onNewTask}><Icon name="plus" /><span>{newTaskLabel}</span><kbd>{shortcut}</kbd></button>
@@ -176,6 +178,8 @@ type WorkspaceContentProps = {
   readonly user: SessionUser | null;
   readonly onUserUpdated: (user: SessionUser) => void;
   readonly layout: Layout;
+  readonly groupBy: KanbanGroupBy;
+  readonly onGroupByChange: (groupBy: KanbanGroupBy) => void;
   readonly grouped: Record<string, Task[]>;
   readonly tasks: Task[];
   readonly visibleTasks: Task[];
@@ -218,7 +222,7 @@ type WorkspaceContentProps = {
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, myTasks, myVisibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onSettingsTabChange, onOpenGameSettings, projectTab, onProjectTabChange }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, groupBy, onGroupByChange, grouped, tasks, visibleTasks, myTasks, myVisibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onSettingsTabChange, onOpenGameSettings, projectTab, onProjectTabChange }: WorkspaceContentProps) {
   if (activeView === "plans") return <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={billing.checkoutReturn} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "admin") return billing.billing?.isAdmin ? <AdminView /> : <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={null} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "progress") return <ProgressView onOpenGameSettings={onOpenGameSettings} />;
@@ -234,11 +238,11 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, ta
     return <EisenhowerMatrix grouped={grouped} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
   }
   if (activeView === "mine") {
-    if (layout === "board") return <TaskColumns tasks={myVisibleTasks} projects={projects} showDone={taskFilters.status !== "open"} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
+    if (layout === "board") return <TasksKanban tasks={myTasks} visibleTasks={myVisibleTasks} filters={taskFilters} projects={projects} groupBy={groupBy} onGroupByChange={onGroupByChange} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
     return <AllTasksView tasks={myTasks} visibleTasks={myVisibleTasks} filters={taskFilters} projects={projects} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
   }
   if (layout === "board") {
-    return <TaskColumns tasks={visibleTasks} projects={projects} showDone={taskFilters.status !== "open"} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
+    return <TasksKanban tasks={tasks} visibleTasks={visibleTasks} filters={taskFilters} projects={projects} groupBy={groupBy} onGroupByChange={onGroupByChange} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
   }
   return <AllTasksView tasks={tasks} visibleTasks={visibleTasks} filters={taskFilters} projects={projects} onChange={onTaskChange} onDelete={onTaskDelete} onEdit={onTaskEdit} onNewTask={onNewTask} />;
 }
@@ -287,7 +291,10 @@ export function App() {
   });
   const [taskFilters, setTaskFilters] = useState<TaskFilterState>(defaultTaskFilters);
   const [, bumpRelativeDateTick] = useReducer((value: number) => value + 1, 0);
-  const [layout, setLayout] = useState<Layout>("list");
+  const [layout, setLayoutState] = useState<Layout>(loadTaskLayout);
+  const [kanbanGroupBy, setKanbanGroupByState] = useState<KanbanGroupBy>(loadKanbanGroupBy);
+  const setLayout = (next: Layout) => { setLayoutState(next); saveTaskLayout(next); };
+  const setKanbanGroupBy = (next: KanbanGroupBy) => { setKanbanGroupByState(next); saveKanbanGroupBy(next); };
   const [completionCelebration, setCompletionCelebration] = useState<{ title: string; key: number } | null>(null);
   const celebrationKey = useRef(0);
   // The gamified mode (specs/GAMIFICATION.md): onboarding stays open once
@@ -2158,7 +2165,7 @@ export function App() {
       />
 
       <main className={`workspace ${activeView === "notes" ? "notes-workspace-page" : ""} ${activeView === "inbox" ? "mail-workspace-page" : ""} ${activeView === "calendar" ? "calendar-workspace-page" : ""}`} inert={composerOpen || editingTask !== null || mailComposerOpen || habitComposerOpen || authOpen || projectEditor !== null || cycleEditor !== null || milestoneEditor !== null || mobileMoreOpen}>
-        <MobileTopBar view={activeView} title={viewTitle(activeView, t)} agentOpen={agentOpen} onAgent={() => setAgentOpen((value) => !value)} onSearch={() => setPaletteOpen(true)} />
+        <MobileTopBar view={activeView} title={viewTitle(activeView, t)} agentOpen={agentOpen} onAgent={() => setAgentOpen((value) => !value)} onSearch={() => setPaletteOpen(true)} actions={activeView === "all" || activeView === "mine" ? <TasksTopBarControls layout={layout} onLayoutChange={setLayout} groupBy={kanbanGroupBy} onGroupByChange={setKanbanGroupBy} /> : undefined} subtitle={activeView === "all" ? tp("tasks.list.activeCount", openTaskCount) : activeView === "mine" ? tp("tasks.list.activeCount", myOpenCount) : undefined} />
         <VerifyEmailBanner key={user?.id ?? "anonymous"} user={user} />
         <WorkspaceHeader
           activeView={activeView}
@@ -2189,6 +2196,8 @@ export function App() {
             user={user}
             onUserUpdated={handleUserUpdated}
             layout={layout}
+            groupBy={kanbanGroupBy}
+            onGroupByChange={setKanbanGroupBy}
             grouped={grouped}
             tasks={tasks}
             visibleTasks={visibleTasks}

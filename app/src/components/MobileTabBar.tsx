@@ -3,14 +3,14 @@ import type { WorkspaceView } from "./AppSidebar";
 import { Icon } from "./Icon";
 import "./MobileTabBar.css";
 
-export type MobileTab = "today" | "tasks" | "calendar" | "more";
+export type MobileTab = "today" | "tasks" | "projects" | "more";
 
-/** Tab that owns a view on phones: the three direct tabs, everything else lives under "More". */
+/** Tab that owns a view on phones: the three direct tabs, everything else (Calendar included) lives under "More". */
 export function mobileTabFor(view: WorkspaceView, moreOpen: boolean): MobileTab {
   if (moreOpen) return "more";
   if (view === "today") return "today";
   if (view === "all") return "tasks";
-  if (view === "calendar") return "calendar";
+  if (view === "projects" || view === "project") return "projects";
   return "more";
 }
 
@@ -40,7 +40,7 @@ function MoreGlyph() {
 export function MobileTabBar({ activeView, moreOpen, createLabel, inert, onNavigate, onCreate, onToggleMore }: Props) {
   const { t } = useI18n();
   const active = mobileTabFor(activeView, moreOpen);
-  const tab = (id: Exclude<MobileTab, "more">, view: WorkspaceView, icon: "home" | "list" | "calendar-check") => (
+  const tab = (id: Exclude<MobileTab, "more">, view: WorkspaceView, icon: "home" | "list" | "folder") => (
     <button
       type="button"
       className={`mobile-tab ${active === id ? "active" : ""}`}
@@ -48,8 +48,8 @@ export function MobileTabBar({ activeView, moreOpen, createLabel, inert, onNavig
       data-tab={id}
       onClick={() => onNavigate(view)}
     >
-      <Icon name={icon} aria-hidden="true" />
-      <span>{t(`common.shell.tabs.${id}`)}</span>
+      <span className="mobile-tab-icon"><Icon name={icon} aria-hidden="true" /></span>
+      <span className="mobile-tab-label">{t(`common.shell.tabs.${id}`)}</span>
     </button>
   );
 
@@ -62,7 +62,7 @@ export function MobileTabBar({ activeView, moreOpen, createLabel, inert, onNavig
           <Icon name="plus" aria-hidden="true" />
         </button>
       </div>
-      {tab("calendar", "calendar", "calendar-check")}
+      {tab("projects", "projects", "folder")}
       <button
         type="button"
         className={`mobile-tab ${active === "more" ? "active" : ""}`}
@@ -72,8 +72,8 @@ export function MobileTabBar({ activeView, moreOpen, createLabel, inert, onNavig
         data-tab="more"
         onClick={onToggleMore}
       >
-        <MoreGlyph />
-        <span>{t("common.shell.tabs.more")}</span>
+        <span className="mobile-tab-icon"><MoreGlyph /></span>
+        <span className="mobile-tab-label">{t("common.shell.tabs.more")}</span>
       </button>
     </nav>
   );

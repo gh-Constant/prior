@@ -77,6 +77,7 @@ export const common = {
       today: "Aujourd’hui",
       tasks: "Tâches",
       calendar: "Agenda",
+      projects: "Projets",
       more: "Plus",
     },
     more: {

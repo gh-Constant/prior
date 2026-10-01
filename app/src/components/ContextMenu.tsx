@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useI18n } from "../lib/i18n";
+import { useIsPhone } from "../lib/useMediaQuery";
+import { useSheetDrag } from "../lib/useSheetDrag";
 import { Icon, type IconName } from "./Icon";
 import "./ContextMenu.css";
 
@@ -52,8 +56,16 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export function ContextMenu({ x, y, items, onClose }: { readonly x: number; readonly y: number; readonly items: readonly ContextMenuItem[]; readonly onClose: () => void }) {
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState(() => clampEstimate(x, y, items.length));
+  const { t } = useI18n();
+  // Phones get a bottom action sheet instead of a floating menu.
+  const sheet = useIsPhone();
+  const { sheetRef, handleProps } = useSheetDrag<HTMLDivElement>(onClose);
+  const setMenuRef = useCallback((node: HTMLDivElement | null) => {
+    menuRef.current = node;
+    sheetRef.current = node;
+  }, [sheetRef]);
 
   // Clamp against the measured menu size so the menu never overflows the
   // viewport on desktop or mobile, even near the edges.
@@ -100,23 +112,31 @@ export function ContextMenu({ x, y, items, onClose }: { readonly x: number; read
     buttons[next]?.focus();
   }
 
-  return (
+  // Rendered on <body>: a stacking context above it (sticky bars, transforms)
+  // must not trap the menu under the tab bar or clip its fixed positioning.
+  // Pointer and touch events are kept from bubbling (through the portal) into
+  // the row or card that opened the menu.
+  return createPortal(
     <div
-      className="context-menu-overlay"
+      className={`context-menu-overlay${sheet ? " is-sheet" : ""}`}
       onClick={onClose}
+      onPointerDown={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
+      onTouchMove={(event) => event.stopPropagation()}
       onContextMenu={(event) => {
         event.preventDefault();
         onClose();
       }}
     >
       <div
-        ref={menuRef}
-        className="context-menu"
+        ref={setMenuRef}
+        className={`context-menu${sheet ? " is-sheet" : ""}`}
         role="menu"
-        style={{ top: position.y, left: position.x }}
+        style={sheet ? undefined : { top: position.y, left: position.x }}
         onClick={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.stopPropagation()}
       >
+        {sheet && <div className="context-menu-handle" aria-hidden="true" {...handleProps}><span /></div>}
         {items.map((item, index) => (
           <button
             key={item.label}
@@ -135,8 +155,10 @@ export function ContextMenu({ x, y, items, onClose }: { readonly x: number; read
             <span>{item.label}</span>
           </button>
         ))}
+        {sheet && <button type="button" className="context-menu-cancel" onClick={onClose}>{t("common.actions.cancel")}</button>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

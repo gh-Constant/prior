@@ -3,6 +3,9 @@ import type { Area, ChecklistItem, Project, Task, TaskDraft, TaskPriority, TaskS
 import { useModalDialog } from "../hooks/useModalDialog";
 import { useI18n } from "../lib/i18n";
 import { normalizeEstimate } from "../lib/taskEstimate";
+import { useKeyboardInset } from "../lib/useKeyboardInset";
+import { useIsPhone } from "../lib/useMediaQuery";
+import { useSheetDrag } from "../lib/useSheetDrag";
 import { ChecklistEditor } from "./tasks/ChecklistEditor";
 import { ReminderPicker } from "./tasks/ReminderPicker";
 import { SharedTaskComments } from "./collaboration/TaskComments";
@@ -28,7 +31,7 @@ const PRIORITY_COLORS: Record<number, string> = {
 };
 
 /** Preset fields for a new task (project, status group, matrix quadrant). */
-export type TaskComposerContext = Pick<TaskDraft, "areaId" | "projectId" | "status"> & Partial<Pick<TaskDraft, "important" | "urgent">>;
+export type TaskComposerContext = Pick<TaskDraft, "areaId" | "projectId" | "status"> & Partial<Pick<TaskDraft, "important" | "urgent" | "priority" | "dueDate">>;
 
 export type TaskComposerSaveOptions = { readonly keepOpen: boolean };
 
@@ -56,9 +59,9 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const { t, lang } = useI18n();
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
-  const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
+  const [dueDate, setDueDate] = useState(task?.dueDate ?? initialContext?.dueDate ?? "");
   const [dueTime, setDueTime] = useState(task?.dueTime ?? null);
-  const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 4);
+  const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? initialContext?.priority ?? 4);
   const [important, setImportant] = useState(task?.important ?? initialContext?.important ?? false);
   const [urgent, setUrgent] = useState(task?.urgent ?? initialContext?.urgent ?? false);
   const [areaId, setAreaId] = useState(task?.areaId ?? initialContext?.areaId ?? null);
@@ -120,8 +123,11 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const submitting = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const autoTitleValues = useRef<Partial<Record<TaskTitleField, string | number | boolean>>>({});
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
   useModalDialog(dialogRef);
+  // Phone sheet: lifts above the keyboard, swipe down on the handle to close.
+  useKeyboardInset(useIsPhone());
+  const { sheetRef, handleProps } = useSheetDrag<HTMLDialogElement>(() => { if (!saving) onCancel(); });
   const planningDisabled = Boolean(planning?.readOnly || planning?.loading);
   const extraFields = planning?.fields.filter((field) => field.key !== "state" && field.key !== "project") ?? [];
   const projectOptions = [...projects.filter((project) => !areaId || project.areaId === areaId)];
@@ -326,8 +332,8 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   return (
     <>
       <button type="button" className="modal-backdrop" aria-label={t("tasks.composer.closeDialog")} disabled={saving} onClick={onCancel} />
-      <dialog ref={dialogRef} tabIndex={-1} className="modal composer-modal task-composer-modal" aria-labelledby="new-task-title" onCancel={handleCancel}>
-        <div className="task-composer-grab-handle" aria-hidden="true" />
+      <dialog ref={(node) => { dialogRef.current = node; sheetRef.current = node; }} tabIndex={-1} className="modal composer-modal task-composer-modal" aria-labelledby="new-task-title" onCancel={handleCancel}>
+        <div className="task-composer-grab-handle" aria-hidden="true" {...handleProps} />
         <form aria-busy={saving} onKeyDown={handleFormKeyDown} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <div className="modal-header">
             <nav className="task-composer-breadcrumb" aria-label={t("tasks.composerPills.breadcrumb")}>
