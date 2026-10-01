@@ -33,14 +33,16 @@ type Task struct {
 	// MilestoneID names a milestone of the task's project.
 	MilestoneID *string `json:"milestoneId"`
 	// Relations link the task to others ("blocked_by", "related").
-	Relations      []TaskRelation `json:"relations"`
-	Completed      bool           `json:"completed"`
-	Important      bool           `json:"important"`
-	Urgent         bool           `json:"urgent"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"updatedAt"`
-	DeletedAt      *time.Time     `json:"deletedAt"`
-	ServerRevision int64          `json:"serverRevision,omitempty"`
+	Relations []TaskRelation `json:"relations"`
+	// Recurrence repeats the task: completing it creates the next occurrence.
+	Recurrence     *TaskRecurrence `json:"recurrence"`
+	Completed      bool            `json:"completed"`
+	Important      bool            `json:"important"`
+	Urgent         bool            `json:"urgent"`
+	CreatedAt      time.Time       `json:"createdAt"`
+	UpdatedAt      time.Time       `json:"updatedAt"`
+	DeletedAt      *time.Time      `json:"deletedAt"`
+	ServerRevision int64           `json:"serverRevision,omitempty"`
 
 	present map[string]bool
 }
@@ -60,7 +62,7 @@ const (
 
 // optionalTaskFields are the fields older clients do not send. When a
 // mutation omits one, the server keeps the stored value instead of clearing it.
-var optionalTaskFields = []string{"assigneeId", "parentId", "milestoneId", "relations"}
+var optionalTaskFields = []string{"assigneeId", "parentId", "milestoneId", "relations", "recurrence"}
 
 // UnmarshalJSON records which optional fields the payload carried.
 func (task *Task) UnmarshalJSON(data []byte) error {

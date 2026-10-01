@@ -71,4 +71,37 @@ describe("assistant changes to existing items", () => {
     // A parent from another project is refused; the rest applies.
     expect(result.taskUpdates[0].changes).toEqual({ assigneeId: "u-lea", relations: [{ type: "blocked_by", taskId: "t-parent" }] });
   });
+
+  it("proposes and changes repeat rules, dropping invalid ones", () => {
+    const raw = JSON.stringify({
+      reply: "ok",
+      tasks: [
+        { title: "Water plants", recurrence: { interval: 2, unit: "week", days_of_week: [4, 1], fromCompletion: true, until: "2027-01-31" } },
+        { title: "Bad rule", recurrence: { interval: 0, unit: "fortnight" } },
+        { title: "Plain" },
+      ],
+      taskUpdates: [
+        { taskId: "t-parent", changes: { recurrence: { unit: "day" } } },
+        { taskId: "t-child", changes: { recurrence: "every day" } },
+        { taskId: "t-other", changes: { recurrence: null } },
+      ],
+    });
+    const repeating: Task = { ...other, dueDate: "2026-10-01", recurrence: { interval: 1, unit: "week" } };
+    const result = parseAiResponse(raw, [parent, child, repeating], { projects: [project] });
+    expect(result.tasks[0].recurrence).toEqual({ interval: 2, unit: "week", daysOfWeek: [1, 4], basis: "completion", until: "2027-01-31" });
+    // A repeating task needs a date to repeat from.
+    expect(result.tasks[0].dueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(result.tasks[1].recurrence).toBeNull();
+    expect(result.tasks[2].recurrence).toBeNull();
+    expect(result.taskUpdates).toHaveLength(2);
+    expect(result.taskUpdates[0].changes).toMatchObject({ recurrence: { interval: 1, unit: "day" } });
+    expect(result.taskUpdates[0].changes.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(result.taskUpdates[1].changes).toEqual({ recurrence: null });
+  });
+
+  it("tells the model about repeating tasks", () => {
+    const prompt = buildSystemPrompt([{ ...other, dueDate: "2026-10-01", recurrence: { interval: 2, unit: "week", daysOfWeek: [1, 4] } }], [], false, [], [], [], []);
+    expect(prompt).toContain("repeats every 2 weeks on weekdays 1,4");
+    expect(prompt).toContain('"recurrence": null');
+  });
 });

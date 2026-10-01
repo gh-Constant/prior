@@ -20,6 +20,7 @@ import type {
 import { quadrantFor } from "../lib/priority";
 import { renderChatMarkdown } from "../lib/chatMarkdown";
 import { habitScheduleLabel } from "../lib/habits";
+import { describeRecurrence } from "../lib/recurrence";
 import { useI18n } from "../lib/i18n";
 import { AgentIdentity } from "./AgentIdentity";
 import { Icon } from "./Icon";
@@ -213,6 +214,7 @@ export function taskDraftOf(task: ProposedTask): TaskDraft & { areaName?: string
     ...(task.parentTitle ? { parentTitle: task.parentTitle } : {}),
     ...(task.blockedByTaskIds?.length ? { relations: task.blockedByTaskIds.map((taskId) => ({ type: "blocked_by" as const, taskId })) } : {}),
     ...(task.reminderAt ? { reminderAt: task.reminderAt } : {}),
+    ...(task.recurrence ? { recurrence: task.recurrence } : {}),
     ...(task.checklist?.length ? { checklist: task.checklist.map((title, position) => ({ id: generateUuid(), title, done: false, position })) } : {}),
   };
 }
@@ -559,6 +561,7 @@ export function ProposedTaskCard({ messageId, task, adding, onToggleSelect, onTo
         {task.blockedByTaskIds?.length ? <span className="proposed-area-badge">{t("agent.cards.blockedBy", { count: task.blockedByTaskIds.length })}</span> : null}
         {task.followUpDate && <span className="proposed-followup-date">{t("agent.cards.followUp", { date: formatDueDate(task.followUpDate) })}</span>}
         {task.reminderAt && <span className="proposed-scheduled-date">{t("reminders.picker.set", { when: formatReminder(task.reminderAt, lang) })}</span>}
+        {task.recurrence && <span className="proposed-scheduled-date"><Icon name="repeat" />{describeRecurrence(task.recurrence, t, lang, { dueDate: task.dueDate })}</span>}
         <FlagToggles
           important={task.important}
           urgent={task.urgent}
@@ -642,6 +645,7 @@ function taskChangeChips(t: (key: string, params?: Record<string, string | numbe
   if (changes.followUpDate !== undefined) chips.push({ key: "followUp", className: "proposed-followup-date", label: changes.followUpDate ? t("agent.cards.followUp", { date: formatDueDate(changes.followUpDate) }) : t("agent.updates.clearFollowUp") });
   if (changes.description !== undefined) chips.push({ key: "description", className: "proposed-area-badge", label: t("agent.updates.newDescription") });
   if (changes.reminderAt !== undefined) chips.push({ key: "reminder", className: "proposed-scheduled-date", label: changes.reminderAt ? t("reminders.picker.set", { when: formatReminder(changes.reminderAt, lang) }) : t("reminders.picker.clear") });
+  if (changes.recurrence !== undefined) chips.push({ key: "recurrence", className: "proposed-scheduled-date", label: changes.recurrence ? describeRecurrence(changes.recurrence, t, lang, { dueDate: changes.dueDate ?? undefined }) : t("recurrence.none") });
   if (changes.checklist !== undefined) {
     const done = changes.checklist.filter((item) => item.done).length;
     chips.push({ key: "checklist", className: "proposed-area-badge", label: t("checklist.change", { done, total: changes.checklist.length }) });

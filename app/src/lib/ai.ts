@@ -6,6 +6,7 @@ import type {
   ProjectHealth,
   ProjectType,
   ProposedEntityUpdate,
+  TaskRecurrence,
   TaskRelation,
   AgentProvider,
   AgentSettings,
@@ -35,6 +36,7 @@ import type { Note, NoteFolder } from "./notes";
 import { setAccountPreference } from "./accountDocuments";
 import { generateUuid } from "./uuid";
 import { dateKey } from "./habits";
+import { normalizeRecurrence } from "./recurrence";
 import { getUser } from "./auth";
 import { describeProjectPeople, describeTaskPeople, projectPeople, recentlyCompleted, resolveMilestone, resolvePerson, upcomingEventsForPrompt } from "./aiContext";
 
@@ -194,9 +196,10 @@ function describeTaskForPrompt(task: Task, areas: Area[] = [], projects: Project
   const assignee = task.assigneeName ? `, assigned to: ${task.assigneeName}` : "";
   const followUp = task.followUpDate ? `, follow-up: ${task.followUpDate}` : "";
   const reminder = task.reminderAt ? `, reminder ${task.reminderAt}` : "";
+  const repeats = task.recurrence ? `, repeats ${recurrencePromptText(task.recurrence)}` : "";
   const checklist = task.checklist?.length ? `, checklist ${task.checklist.filter((item) => item.done).length}/${task.checklist.length}: ${task.checklist.slice(0, 12).map((item) => `[${item.done ? "x" : " "}] ${item.title.slice(0, 60)}`).join("; ")}` : "";
   const details = task.description ? `, details: ${task.description.slice(0, 120)}` : "";
-  return `- [id: ${task.id}] "${task.title}" (P${task.priority ?? 4}, ${importance}, ${urgency}${status}${projectLabel}${areaLabel}${due}${scheduled}${assignee}${followUp}${reminder}${checklist}${describeTaskPeople(task, projects)}${details})`;
+  return `- [id: ${task.id}] "${task.title}" (P${task.priority ?? 4}, ${importance}, ${urgency}${status}${projectLabel}${areaLabel}${due}${scheduled}${assignee}${followUp}${reminder}${repeats}${checklist}${describeTaskPeople(task, projects)}${details})`;
 }
 
 const PROMPT_WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -345,8 +348,8 @@ PRIOR CAPABILITIES (use these exact names when the user asks what tools you have
 - list_projects: inspect the projects already provided in this prompt.
 - create_area: prepare one or more high-level Areas (e.g. Work, Personal, Health, Finance) with optional icon (e.g. "briefcase", "heart", "home", "dollar-sign", "user") and color. The app shows them as an approval card; they are saved when the user clicks Add.
 - create_project: prepare one or more outcome-oriented Projects optionally tied to an Area, with optional status ("planned", "active", "paused", "completed"), optional targetDate (YYYY-MM-DD), and optional icon (e.g. "folder", "rocket", "target", "star", "check-circle"). The app shows them as an approval card; they are saved when the user clicks Add.
-- create_task: prepare one or more one-off tasks with optional area, project, status, scheduled date, assignee, follow-up date, a checklist of subtasks, and a reminder time (reminderAt, ISO 8601 with the user's UTC offset). The app shows them as an approval card; they are saved when the user clicks Add.
-- update_task: prepare changes to one or more EXISTING tasks from the active task list (rename, reword the description, reschedule, change priority, importance or urgency, change status, delegate, assign to a project member, move under a parent task, set a milestone, mark it blocked by other tasks, set or clear a reminder, edit or check checklist items, or mark done). A checklist change replaces the whole checklist: send every item as {"title", "done"} in order. Reference each task by its exact [id: ...] from the list below and include only the fields that change. The app shows the changes as a review card; they are applied when the user clicks Apply.
+- create_task: prepare one or more one-off tasks with optional area, project, status, scheduled date, assignee, follow-up date, a checklist of subtasks, and a reminder time (reminderAt, ISO 8601 with the user's UTC offset), and a repeat rule (recurrence, see the JSON format). The app shows them as an approval card; they are saved when the user clicks Add.
+- update_task: prepare changes to one or more EXISTING tasks from the active task list (rename, reword the description, reschedule, change priority, importance or urgency, change status, delegate, assign to a project member, move under a parent task, set a milestone, mark it blocked by other tasks, set or clear a reminder, make it repeat or stop it repeating (recurrence), edit or check checklist items, or mark done). A checklist change replaces the whole checklist: send every item as {"title", "done"} in order. Reference each task by its exact [id: ...] from the list below and include only the fields that change. The app shows the changes as a review card; they are applied when the user clicks Apply.
 - update_project: prepare changes to an EXISTING project (rename, description, status, health "On track"/"At risk"/"Off track", start and target dates, type "standard" or "software" for the agile board, icon) or add milestones to it. Reference it by its [id: ...].
 - update_habit: prepare changes to an EXISTING habit (title, schedule, end date, importance, urgency) or check it in for today ("checkInToday": true; false undoes today's check-in). Reference it by its [id: ...].
 - update_note: prepare changes to an EXISTING note: rename it, replace its Markdown body, or append Markdown at the end ("appendMarkdown", preferred for adding to meeting notes). Reference it by its [id: ...].
@@ -526,6 +529,7 @@ OUTPUT CONTRACT:
       "followUpDate": null,
       "checklist": ["Optional subtask", "Another subtask"],
       "reminderAt": null,
+      "recurrence": null,
       "assignee": null,
       "parentTaskId": null,
       "parentTitle": null,
@@ -977,6 +981,28 @@ function reminderValue(value: unknown): string | null {
   return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
+/** Short English wording of a repeat rule for the model's task list. */
+function recurrencePromptText(rule: TaskRecurrence): string {
+  const days = rule.daysOfWeek?.length ? ` on weekdays ${rule.daysOfWeek.join(",")} (0=Sunday)` : "";
+  return `every ${rule.interval} ${rule.unit}${rule.interval > 1 ? "s" : ""}${days}${rule.basis === "completion" ? " from completion" : ""}${rule.until ? ` until ${rule.until}` : ""}`;
+}
+
+/**
+ * A repeat rule proposed by the model: {interval, unit, daysOfWeek, basis,
+ * until}. Anything that is not a valid rule is dropped.
+ */
+function recurrenceValue(value: unknown): TaskRecurrence | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const rule = value as Record<string, unknown>;
+  return normalizeRecurrence({
+    interval: rule.interval ?? 1,
+    unit: rule.unit,
+    daysOfWeek: rule.daysOfWeek ?? rule.days_of_week,
+    basis: rule.basis === "completion" || rule.fromCompletion === true ? "completion" : undefined,
+    until: rule.until,
+  });
+}
+
 function checklistTitles(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -1048,12 +1074,14 @@ function buildProposedTask(item: Record<string, unknown>, lookup: AgentLookup = 
   // outside Prior, kept as the free-text delegate.
   const freeAssignee = typeof item.assigneeName === "string" ? item.assigneeName.trim() : (!issueFields.assigneeId && typeof item.assignee === "string" ? item.assignee.trim() : undefined);
   const assigneeName = freeAssignee;
+  const recurrence = recurrenceValue(item.recurrence);
   return {
     ...issueFields,
     id: crypto.randomUUID(),
     title: (item.title as string).trim(),
     description: typeof item.description === "string" ? item.description.trim() : "",
-    dueDate: taskDueDate(item.dueDate ?? item.due_date),
+    dueDate: taskDueDate(item.dueDate ?? item.due_date) ?? (recurrence ? dateKey() : null),
+    recurrence,
     priority: taskPriority(item.priority),
     important: booleanValue(item.important),
     urgent: booleanValue(item.urgent),
@@ -1129,6 +1157,14 @@ export function buildProposedTaskUpdate(item: Record<string, unknown>, tasksById
     const input = "reminderAt" in raw ? raw.reminderAt : raw.reminder_at;
     const value = input === null || input === "" ? null : reminderValue(input);
     if ((value !== null || input === null || input === "") && value !== (task.reminderAt ?? null)) changes.reminderAt = value;
+  }
+  if ("recurrence" in raw) {
+    const rule = raw.recurrence === null ? null : recurrenceValue(raw.recurrence);
+    if ((rule !== null || raw.recurrence === null) && JSON.stringify(rule) !== JSON.stringify(normalizeRecurrence(task.recurrence))) {
+      changes.recurrence = rule;
+      // A repeating task needs a date to repeat from.
+      if (rule && !task.dueDate && changes.dueDate === undefined) changes.dueDate = dateKey();
+    }
   }
   if ("checklist" in raw) {
     const checklist = checklistChange(raw.checklist, task.checklist ?? []);

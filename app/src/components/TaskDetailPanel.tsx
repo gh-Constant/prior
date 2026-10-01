@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { Project, Task, TaskPriority, TaskStatus } from "../types";
 import { useI18n } from "../lib/i18n";
 import { quadrantFor } from "../lib/priority";
+import { localDateKey } from "../lib/recurrence";
 import { dueTone, initialsFor, taskGroupStatus, TASK_GROUP_ORDER } from "../lib/taskGroups";
 import { CustomSelect } from "./CustomSelect";
 import { Icon } from "./Icon";
@@ -11,6 +12,7 @@ import { DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import "./TaskDetailPanel.css";
 import { KudosButton } from "./game/KudosButton";
 import { ChecklistEditor } from "./tasks/ChecklistEditor";
+import { RecurrencePicker } from "./tasks/RecurrencePicker";
 import { ReminderPicker } from "./tasks/ReminderPicker";
 import { SharedTaskComments } from "./collaboration/TaskComments";
 
@@ -141,6 +143,12 @@ export function TaskDetailPanel({ task, project, onChange, onEdit, onClose }: Pr
           <dt>{t("tasks.detail.due")}</dt>
           <dd className={`task-detail-value ${dueText ? `due-${due}` : "muted"}`}>
             {dueText ? <><CalendarGlyph /><span>{dueText}{task.dueTime ? ` · ${task.dueTime}` : ""}</span>{due === "overdue" && <span className="task-detail-overdue">{t("tasks.list.dueOverdue")}</span>}</> : t("tasks.detail.noDue")}
+          </dd>
+        </div>
+        <div className="task-detail-property">
+          <dt>{t("recurrence.label")}</dt>
+          <dd>
+            <RecurrencePicker value={task.recurrence} dueDate={task.dueDate} onChange={(recurrence) => void onChange({ ...task, recurrence, ...(recurrence && !task.dueDate ? { dueDate: localDateKey(new Date()) } : {}) })} />
           </dd>
         </div>
         <div className="task-detail-property">

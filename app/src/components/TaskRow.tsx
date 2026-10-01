@@ -11,6 +11,7 @@ import { CalendarGlyph, InitialsAvatar, MoreGlyph, PriorityGlyph, StatusGlyph } 
 import { TaskStatusBadge } from "./TaskStatusBadge";
 import { DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import { checklistProgress } from "./tasks/ChecklistEditor";
+import { RecurrenceChip } from "./tasks/RecurrenceChip";
 
 /**
  * - `default`: the original two-line row used by Today, projects and waiting.
@@ -205,6 +206,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
             {task.important && <span className="task-flag-mark important" role="img" aria-label={t("tasks.composer.important")} title={t("tasks.composer.important")}><Icon name="star" /></span>}
             {task.urgent && <span className="task-flag-mark urgent" role="img" aria-label={t("tasks.composer.urgent")} title={t("tasks.composer.urgent")}><Icon name="bolt" /></span>}
             {dueChip}
+            <RecurrenceChip task={task} />
             {estimateChip}
             {checklistChip}
             {projectChip}
@@ -228,6 +230,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
           {showStatusChip && <TaskStatusBadge status={status} label={statusLabel(status, t)} />}
           {projectChip}
           {dueChip}
+          <RecurrenceChip task={task} />
           {estimateChip}
           {checklistChip}
           {avatar}
@@ -255,6 +258,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
           <span className={`task-priority priority-${task.priority ?? 4}`}><Icon name="flag" /> P{task.priority ?? 4}</span>
           {task.projectId && project?.name ? <span className="task-project-meta" title={project.name}><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /><span className="task-project-name">{project.name}</span></span> : null}
           {task.dueDate && <span className="task-due-date"><Icon name="calendar-check" /> {formatDueDate(task.dueDate, lang)}{task.dueTime ? ` · ${task.dueTime}` : ""}</span>}
+          <RecurrenceChip task={task} />
           {task.estimatedMinutes ? <span className="task-due-date"><Icon name="clock" /> {formatEstimate(task.estimatedMinutes)}</span> : null}
           <ChecklistProgressChip task={task} />
           {!(hideNextStatus && !task.completed && task.status === "next") && <TaskStatusBadge status={task.completed ? "done" : task.status ?? "inbox"} label={statusLabel(task.completed ? "done" : task.status, t)} />}

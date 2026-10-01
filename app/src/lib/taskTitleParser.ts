@@ -1,6 +1,10 @@
-import type { Area, Project, TaskDraft, TaskStatus } from "../types";
+import type { Area, Project, TaskDraft, TaskRecurrence, TaskStatus } from "../types";
+import { createTranslator } from "./i18n/translate";
+import { dictionaries } from "./i18n/locales";
+import type { Language } from "./i18n/language";
+import { describeRecurrence, normalizeRecurrence } from "./recurrence";
 
-export type TaskTitleField = "dueDate" | "dueTime" | "priority" | "status" | "projectId" | "areaId" | "assigneeName" | "important" | "urgent";
+export type TaskTitleField = "recurrence" | "dueDate" | "dueTime" | "priority" | "status" | "projectId" | "areaId" | "assigneeName" | "important" | "urgent";
 
 export type TaskTitleToken = {
   key: string;
@@ -41,7 +45,7 @@ const MONTHS: Record<string, number> = {
 };
 
 const FIELD_LABELS: Record<TaskTitleField, string> = {
-  dueDate: "Due date", dueTime: "Time", priority: "Priority", status: "Status", projectId: "Project",
+  recurrence: "Repeat", dueDate: "Due date", dueTime: "Time", priority: "Priority", status: "Status", projectId: "Project",
   areaId: "Area", assigneeName: "Responsible", important: "Important", urgent: "Urgent",
 };
 
@@ -84,7 +88,16 @@ function localizedTimeLabel(value: string): string {
   return value;
 }
 
+function recurrenceLabel(value: string, lang: string): string {
+  const rule = normalizeRecurrence(value);
+  const code = lang.split("-")[0].toLowerCase() as Language;
+  const dictionary = dictionaries[code] ?? dictionaries.en;
+  const { t } = createTranslator(code in dictionaries ? code : "en", dictionary, dictionaries.en);
+  return `${FIELD_LABELS.recurrence} · ${rule ? describeRecurrence(rule, t, lang) : value}`;
+}
+
 function fieldLabel(field: TaskTitleField, value: string | number | boolean, lang: string): string {
+  if (field === "recurrence") return recurrenceLabel(String(value), lang);
   if (field === "dueDate") return `${FIELD_LABELS[field]} · ${localizedDateLabel(String(value), lang)}`;
   if (field === "dueTime") return `${FIELD_LABELS[field]} · ${localizedTimeLabel(String(value))}`;
   if (field === "priority") return `${FIELD_LABELS[field]} · P${value}`;
@@ -144,6 +157,71 @@ function parseDateWords(title: string, now: Date, lang: string): TaskTitleToken[
     if (month && parsed.getMonth() === month - 1 && parsed.getDate() === day) result.push(makeCandidate("dueDate", match[0], match.index ?? 0, dateKey(parsed), lang));
   }
   return result;
+}
+
+const WEEKDAY_NAMES = Object.keys(WEEKDAYS).sort((left, right) => right.length - left.length).join("|");
+const WEEKDAY_LIST = `(?:${WEEKDAY_NAMES})s?(?:\\s*(?:,|&|and|et)\\s*(?:${WEEKDAY_NAMES})s?)*`;
+const UNIT_OF: Record<string, TaskRecurrence["unit"]> = {
+  day: "day", days: "day", week: "week", weeks: "week", month: "month", months: "month", year: "year", years: "year",
+  jour: "day", jours: "day", semaine: "week", semaines: "week", mois: "month", an: "year", ans: "year", année: "year", années: "year", annee: "year", annees: "year",
+};
+
+function weekdaysIn(list: string): number[] {
+  const days = [...list.toLowerCase().matchAll(new RegExp(`(?<![\\p{L}])(${WEEKDAY_NAMES})s?(?![\\p{L}])`, "gu"))]
+    .map((match) => WEEKDAYS[match[1]])
+    .filter((day): day is number => day !== undefined);
+  return [...new Set(days)].sort((left, right) => left - right);
+}
+
+/** "every day", "every 2 weeks", "every! monday", "tous les jours", "chaque lundi"… */
+function parseRecurrencePhrases(title: string, lang: string): TaskTitleToken[] {
+  const result: TaskTitleToken[] = [];
+  const add = (match: RegExpMatchArray, rule: TaskRecurrence) => {
+    const normalized = normalizeRecurrence(rule);
+    if (normalized) result.push(makeCandidate("recurrence", match[0], match.index ?? 0, JSON.stringify(normalized), lang));
+  };
+  const english = /(?<![\p{L}\d])every(!)?\s+(?:(other)\s+|(\d{1,3})\s+)?(days?|weekdays?|weeks?|months?|years?)(?![\p{L}\d])/giu;
+  for (const match of title.matchAll(english)) {
+    const unitWord = match[4].toLowerCase();
+    const basis = match[1] ? { basis: "completion" as const } : {};
+    if (unitWord.startsWith("weekday")) {
+      if (!match[2] && !match[3]) add(match, { interval: 1, unit: "week", daysOfWeek: [1, 2, 3, 4, 5], ...basis });
+      continue;
+    }
+    add(match, { interval: match[2] ? 2 : Number(match[3] ?? 1), unit: UNIT_OF[unitWord], ...basis });
+  }
+  const englishDays = new RegExp(`(?<![\\p{L}\\d])every(!)?\\s+(?:(other)\\s+)?(${WEEKDAY_LIST})(?![\\p{L}\\d])`, "giu");
+  for (const match of title.matchAll(englishDays)) {
+    const days = weekdaysIn(match[3]);
+    if (days.length > 0) add(match, { interval: match[2] ? 2 : 1, unit: "week", daysOfWeek: days, ...(match[1] ? { basis: "completion" as const } : {}) });
+  }
+  const french = /(?<![\p{L}\d])(?:tous|toutes|chaque)(!)?\s+(?:les\s+)?(?:(\d{1,3})\s+)?(jours?|semaines?|mois|ans?|années?|annees?)(\s+(?:en\s+semaine|ouvrés|ouvres|ouvrables))?(?![\p{L}\d])/giu;
+  for (const match of title.matchAll(french)) {
+    const unit = UNIT_OF[match[3].toLowerCase()];
+    const basis = match[1] ? { basis: "completion" as const } : {};
+    if (match[4]) {
+      if (unit === "day" && !match[2]) add(match, { interval: 1, unit: "week", daysOfWeek: [1, 2, 3, 4, 5], ...basis });
+      continue;
+    }
+    if (unit) add(match, { interval: Number(match[2] ?? 1), unit, ...basis });
+  }
+  const frenchDays = new RegExp(`(?<![\\p{L}\\d])(?:tous|chaque)(!)?\\s+(?:les\\s+)?(${WEEKDAY_LIST})(?![\\p{L}\\d])`, "giu");
+  for (const match of title.matchAll(frenchDays)) {
+    const days = weekdaysIn(match[2]);
+    if (days.length > 0) add(match, { interval: 1, unit: "week", daysOfWeek: days, ...(match[1] ? { basis: "completion" as const } : {}) });
+  }
+  return result;
+}
+
+/** First occurrence of a rule typed in a title: today, or the next listed weekday. */
+function firstRecurrenceDate(rule: TaskRecurrence, now: Date): string {
+  const days = rule.daysOfWeek ?? [];
+  if (rule.unit !== "week" || days.length === 0) return dateKey(now);
+  for (let offset = 0; offset < 7; offset += 1) {
+    const candidate = addDays(now, offset);
+    if (days.includes(candidate.getDay())) return dateKey(candidate);
+  }
+  return dateKey(now);
 }
 
 function parseTimes(title: string, lang: string): TaskTitleToken[] {
@@ -209,7 +287,7 @@ function parseExplicitFields(title: string, context: TaskTitleParserContext, lan
 export function parseTaskTitle(title: string, context: TaskTitleParserContext = {}, ignoredKeys: readonly string[] = []): ParsedTaskTitle {
   const lang = context.lang ?? "en-US";
   const now = context.now ?? new Date();
-  const candidates = [...parseDateWords(title, now, lang), ...parseTimes(title, lang), ...parseExplicitFields(title, context, lang)]
+  const candidates = [...parseRecurrencePhrases(title, lang), ...parseDateWords(title, now, lang), ...parseTimes(title, lang), ...parseExplicitFields(title, context, lang)]
     .filter((token, index, all) => !ignoredKeys.includes(token.key) && all.findIndex((other) => other.key === token.key) === index)
     .sort((left, right) => left.start - right.start || right.end - left.end);
   const tokens: TaskTitleToken[] = [];
@@ -220,6 +298,9 @@ export function parseTaskTitle(title: string, context: TaskTitleParserContext = 
   tokens.sort((left, right) => left.start - right.start);
   const fields: Partial<Record<TaskTitleField, string | number | boolean>> = {};
   for (const token of tokens) fields[token.field] = token.value;
+  // A repeating task needs a first date: today, or the next listed weekday.
+  const rule = fields.recurrence ? normalizeRecurrence(String(fields.recurrence)) : null;
+  if (rule && fields.dueDate === undefined) fields.dueDate = firstRecurrenceDate(rule, now);
   let cursor = 0;
   const parts: string[] = [];
   for (const token of tokens) {
@@ -232,6 +313,7 @@ export function parseTaskTitle(title: string, context: TaskTitleParserContext = 
 }
 
 export function taskTitleTokenFieldValue(token: TaskTitleToken): Partial<TaskDraft> {
+  if (token.field === "recurrence") return { recurrence: normalizeRecurrence(String(token.value)) };
   return { [token.field]: token.value } as Partial<TaskDraft>;
 }
 

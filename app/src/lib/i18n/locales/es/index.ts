@@ -15,8 +15,9 @@ import { notes } from "./notes";
 import { onboarding } from "./onboarding";
 import { palette } from "./palette";
 import { progress } from "./progress";
+import { recurrence } from "./recurrence";
 import { reminders } from "./reminders";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 
-export const es: AppDictionary = { account, agent, auth, billing, capture, checklist, collab, comments, common, game, habits, mail, notes, onboarding, palette, progress, reminders, settings, tasks };
+export const es: AppDictionary = { account, agent, auth, billing, capture, checklist, collab, comments, common, game, habits, mail, notes, onboarding, palette, progress, recurrence, reminders, settings, tasks };
