@@ -214,7 +214,7 @@ function parseRecurrencePhrases(title: string, lang: string): TaskTitleToken[] {
 }
 
 /** First occurrence of a rule typed in a title: today, or the next listed weekday. */
-function firstRecurrenceDate(rule: TaskRecurrence, now: Date): string {
+export function firstRecurrenceDate(rule: TaskRecurrence, now: Date = new Date()): string {
   const days = rule.daysOfWeek ?? [];
   if (rule.unit !== "week" || days.length === 0) return dateKey(now);
   for (let offset = 0; offset < 7; offset += 1) {

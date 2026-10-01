@@ -488,7 +488,7 @@ export const api = {
   agentComplete(
     input: {
       model: string; prompt: string; system: string; history: Array<{ role: string; content: string }>; webSearch: boolean; reasoningEffort?: string;
-      purpose?: "agent" | "recommendations" | "mail" | "calendar";
+      purpose?: "agent" | "recommendations" | "mail" | "calendar" | "import";
       /** "hosted" forces Prior AI; omitted uses the stored key, then Prior AI. */
       provider?: "hosted";
       /** Ask the model for a JSON object (response_format). */
@@ -582,8 +582,12 @@ export const api = {
 
 export type HostedAiStatus = {
   available: boolean;
+  /** The API has a Prior AI provider key, whatever the user's plan. */
+  configured?: boolean;
+  /** Whether this account may use Prior AI (paid plan or staff). */
+  entitlement?: { allowed: boolean; plan?: string; agentTokensPerMonth?: number };
   transcription: boolean;
   dailyLimit: number;
   usedToday: number;
-  models?: Record<"agent" | "recommendations" | "mail" | "calendar", string>;
+  models?: Record<"agent" | "recommendations" | "mail" | "calendar" | "import", string>;
 };

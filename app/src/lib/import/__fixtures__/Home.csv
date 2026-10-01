@@ -1,0 +1,16 @@
+TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE,DURATION,DURATION_UNIT,DEADLINE,DEADLINE_LANG
+section,Planning,,,,,,,,,,,,
+task,Plan the launch,"Outline the key steps, owners and dates",4,1,Constant (1234),,2026-10-12,en,Europe/Paris,,,,
+task,Write the announcement,,3,2,Constant (1234),,Oct 9 2026,en,Europe/Paris,90,minute,,
+task,Review with the team,,2,2,Constant (1234),Marie (88),,,,,,2026-10-14,en
+note,"Marie suggested a dry run
+before Friday, ""no surprises"" she said",,,,,,,,,,,,
+task,Draft the FAQ,,4,3,Constant (1234),,,,,,,,
+task,Water the plants,,1,1,Constant (1234),,every monday,en,Europe/Paris,,,,
+section,Doing,,,,,,,,,,,,
+task,Ship the beta,,4,1,Constant (1234),,tomorrow at 14:30,en,Europe/Paris,,,,
+task,Fix the login bug,,3,2,Constant (1234),,,,,,,,
+task,Back up the laptop,,2,1,Constant (1234),,every! 2 weeks,en,Europe/Paris,,,,
+task,Pay the rent,,3,1,Constant (1234),,15 oct,fr,Europe/Paris,,,,
+task,Call the plumber,,4,1,Constant (1234),,someday maybe,en,Europe/Paris,,,,
+meta,view_style=list,,,,,,,,,,,,

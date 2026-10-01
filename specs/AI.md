@@ -20,6 +20,7 @@ Each completion declares a `purpose`, and the API maps it to its own model so th
 | `recommendations` | Today recommendations | `AI_MODEL_DECISIONS`, then `AI_MODEL_RECOMMENDATIONS` if it fails | `typesafe/jev-1.13`, then `openai/gpt-6-luna` |
 | `mail` | Mail to task | `AI_MODEL_MAIL` | `openai/gpt-6-luna` |
 | `calendar` | Calendar event drafts | `AI_MODEL_CALENDAR` | `openai/gpt-6-luna` |
+| `import` | AI mode of Settings → Import (`IMPORT.md`), Pro only | `AI_MODEL_IMPORT`, then `AI_MODEL_MAIL` | the mail model |
 
 `AI_MODEL_FALLBACKS` is sent as OpenRouter's `models` list. `AI_REASONING_EFFORT_DRAFTS` (default `low`) applies to the three draft purposes; `AI_REASONING_EFFORT_AGENT` to chat. Dictation falls back to `AI_TRANSCRIPTION_*`, which default to the same key and `AI_BASE_URL/audio/transcriptions` when the user has no OpenAI key. `AI_BASE_URL` accepts any OpenAI-compatible endpoint.
 
@@ -36,9 +37,11 @@ Jev (TypeSafe, `typesafe/jev-1.13` on OpenRouter) does not write text: it reads 
 
 Prior AI is for paying users. Every hosted completion and transcription goes through one function, `hostedAIEntitlement` in `server/internal/httpapi/entitlement.go`, which returns whether the user is allowed and their plan quotas (`AgentTokensPerMonth`, 0 = unlimited). Paid plans plug in there. Until they exist, only the emails in `AI_HOSTED_ALLOWED_EMAILS` have access. Refusals return `402` with code `HOSTED_AI_REQUIRES_PLAN`, and quota refusals `429` with `HOSTED_AI_QUOTA`. Users without access can still pick their own OpenRouter key or Codex.
 
+The `import` purpose is the exception: it is Pro-only by design. `resolveCompletionRoute` always routes it to Prior AI, even when the request does not say `provider: "hosted"` and the user has stored an OpenRouter key, so only `hostedAIEntitlement.Allowed` accounts (Pro, Team, Enterprise, staff) can use AI import and everyone else gets `402 HOSTED_AI_REQUIRES_PLAN`. It is not token-capped, counts toward the daily request backstop and is recorded under its own purpose in `hosted_ai_usage`. See `IMPORT.md`.
+
 ## Cost guard
 
-- Recommendations, mail, calendar and dictation are not token-capped; assistant chat is capped per month by the plan, from the tokens OpenRouter reports.
+- Recommendations, mail, calendar, import and dictation are not token-capped; assistant chat is capped per month by the plan, from the tokens OpenRouter reports.
 - Usage is persisted per user, day and purpose in `hosted_ai_usage` (requests and tokens).
 - `AI_DAILY_REQUESTS_PER_USER` (default 300, in memory) is an abuse backstop on all hosted requests.
 - Hosted requests never enable paid web search.

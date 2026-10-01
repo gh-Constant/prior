@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { DEFAULT_MODEL, getAgentSettings, notifyAgentSettingsChanged, saveAgentSettings } from "../lib/ai";
 import { clearCachedCodexAccount, codexBinaryAvailable, getCachedCodexAccount, logoutCodex, setCachedCodexAccount, startCodexLogin, supportsCodexDesktop, waitForCodexLogin, type CodexAccount } from "../lib/codex";
 import type { AgentProvider } from "../types";
@@ -22,12 +22,21 @@ import { NotificationSettings } from "./tasks/NotificationSettings";
 import { QuickAddSettings } from "./tasks/QuickAddSettings";
 import { isDesktop } from "../lib/platform";
 import { GameSettingsPanel } from "./game/GameSettingsPanel";
+import type { ImportWizardProps } from "./import/ImportWizard";
+import type { WorkspaceView } from "./AppSidebar";
 
-export type SettingsTab = "general" | "profile" | "security" | "notifications" | "game" | "assistant" | "integrations" | "diagnostics" | "developer";
+// Loaded on demand: the import wizard brings its own parsers and the zip reader.
+const ImportWizard = lazy(() => import("./import/ImportWizard").then((module) => ({ default: module.ImportWizard })));
+
+export type SettingsTab ="general" | "profile" | "security" | "notifications" | "game" | "assistant" | "integrations" | "import" | "diagnostics" | "developer";
 
 type SettingsPageProps = {
   readonly user: SessionUser | null;
   readonly onUserUpdated: (user: SessionUser) => void;
+  /** Writes a confirmed import plan. The Import tab is shown only when this is given. */
+  readonly onImportTasks?: ImportWizardProps["onImport"];
+  /** Where the Import tab sends people afterwards (Tasks, Plans). */
+  readonly onNavigate?: (view: WorkspaceView) => void;
   readonly initialTab?: SettingsTab;
   /** Controlled tab (the app mirrors it in the URL); falls back to local state. */
   readonly tab?: SettingsTab;
@@ -810,11 +819,12 @@ const TABS: ReadonlyArray<{ readonly id: SettingsTab; readonly icon: IconName; r
   { id: "game", icon: "award" },
   { id: "assistant", icon: "sparkles" },
   { id: "integrations", icon: "code" },
+  { id: "import", icon: "download" },
   { id: "diagnostics", icon: "terminal" },
   { id: "developer", icon: "database", devOnly: true },
 ];
 
-export function SettingsPage({ user, onUserUpdated, initialTab, tab: controlledTab, onTabChange }: SettingsPageProps) {
+export function SettingsPage({ user, onUserUpdated, onImportTasks, onNavigate, initialTab, tab: controlledTab, onTabChange }: SettingsPageProps) {
   const { t } = useI18n();
   const [localTab, setLocalTab] = useState<SettingsTab>(initialTab ?? controlledTab ?? "general");
   const setTab = (next: SettingsTab) => {
@@ -822,7 +832,7 @@ export function SettingsPage({ user, onUserUpdated, initialTab, tab: controlledT
     onTabChange?.(next);
   };
   const tabRefs = useRef(new Map<SettingsTab, HTMLButtonElement>());
-  const tabs = TABS.filter((entry) => !entry.devOnly || import.meta.env.DEV);
+  const tabs = TABS.filter((entry) => (!entry.devOnly || import.meta.env.DEV) && (entry.id !== "import" || onImportTasks));
   const requestedTab = controlledTab ?? localTab;
   const tab = tabs.some((entry) => entry.id === requestedTab) ? requestedTab : "general";
 
@@ -862,7 +872,7 @@ export function SettingsPage({ user, onUserUpdated, initialTab, tab: controlledT
               onKeyDown={handleTabKeyDown}
             >
               <Icon name={entry.icon} />
-              <span>{t(`settings.tabs.${entry.id}`)}</span>
+              <span>{entry.id === "import" ? t("import.tabTitle") : t(`settings.tabs.${entry.id}`)}</span>
             </button>
           ))}
         </div>
@@ -877,6 +887,7 @@ export function SettingsPage({ user, onUserUpdated, initialTab, tab: controlledT
           {tab === "game" && <GameSettingsPanel />}
           {tab === "assistant" && <AssistantSettings />}
           {tab === "integrations" && <IntegrationsSettings />}
+          {tab === "import" && onImportTasks && <Suspense fallback={null}><ImportWizard onImport={onImportTasks} onNavigate={onNavigate} /></Suspense>}
           {tab === "diagnostics" && <DiagnosticsSettings />}
           {tab === "developer" && <DeveloperSettings />}
         </div>

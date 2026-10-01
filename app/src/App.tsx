@@ -79,6 +79,7 @@ import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEdito
 import { ProjectMilestoneEditor } from "./components/collaboration/ProjectMilestoneEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
 import { generateTaskFromMail } from "./lib/mailTask";
+import type { ImportPlan } from "./lib/import/planImport";
 import { emitMailAccountChange, saveMailAccount } from "./lib/mailAuth";
 import { emitCalendarAccountChange, parseCalendarConnectedUrl, startGoogleCalendarConnect } from "./lib/calendarAuth";
 import { parseWidgetUrl, refreshWidgetSnapshot } from "./lib/widgetSnapshot";
@@ -173,6 +174,17 @@ function WorkspaceHeader({ activeView, layout, onLayoutChange, shortcut, shortcu
   );
 }
 
+/** A task that names its area, project and parent (assistant cards, importers). */
+type NamedTaskInput = TaskDraft & {
+  areaName?: string | null;
+  projectName?: string | null;
+  parentTitle?: string | null;
+  /** Importers: this task's key in its batch, and its parent's. */
+  key?: string;
+  parentKey?: string | null;
+  completed?: boolean;
+};
+
 type WorkspaceContentProps = {
   readonly activeView: WorkspaceView;
   readonly user: SessionUser | null;
@@ -215,16 +227,17 @@ type WorkspaceContentProps = {
   readonly settingsKey?: number;
   readonly onSettingsTabChange: (tab: SettingsTab) => void;
   readonly onOpenGameSettings: () => void;
+  readonly onImportTasks: (plan: ImportPlan, onProgress?: (done: number, total: number) => void) => Promise<{ tasks: number; projects: number }>;
   readonly projectTab: string | null;
   readonly onProjectTabChange: (tab: string) => void;
 };
 type CollaborationByProject = WorkspaceContentProps["collaborationByProject"];
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, myTasks, myVisibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onSettingsTabChange, onOpenGameSettings, projectTab, onProjectTabChange }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, grouped, tasks, visibleTasks, myTasks, myVisibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onSettingsTabChange, onOpenGameSettings, onImportTasks, projectTab, onProjectTabChange }: WorkspaceContentProps) {
   if (activeView === "plans") return <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={billing.checkoutReturn} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "admin") return billing.billing?.isAdmin ? <AdminView /> : <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={null} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "progress") return <ProgressView onOpenGameSettings={onOpenGameSettings} />;
-  if (activeView === "settings") return <SettingsPage key={settingsKey ?? 0} user={user} onUserUpdated={onUserUpdated} tab={settingsTab ?? "general"} onTabChange={onSettingsTabChange} />;
+  if (activeView === "settings") return <SettingsPage key={settingsKey ?? 0} user={user} onUserUpdated={onUserUpdated} tab={settingsTab ?? "general"} onTabChange={onSettingsTabChange} onImportTasks={onImportTasks} onNavigate={onViewChange} />;
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
   if (activeView === "calendar") return <CalendarView habits={habits} />;
@@ -1362,12 +1375,17 @@ export function App() {
     refreshWorkspace();
   }
 
-  async function addAgentTasks(batch: Array<TaskDraft & { areaName?: string | null; projectName?: string | null; parentTitle?: string | null }>) {
-    // Parents first, so sub-tasks of the same batch can point at them.
-    const ordered = [...batch].sort((left, right) => Number(Boolean(left.parentTitle)) - Number(Boolean(right.parentTitle)));
+  /* Saves tasks that name their area, project and parent instead of pointing
+     at ids: the assistant's create_task cards and the importers. Missing areas
+     and projects are created. A parent is found by `parentKey` (a task saved
+     earlier in this batch) or by `parentTitle`, and only counts in the same
+     project, so parents must come first. The caller refreshes and syncs. */
+  async function saveNamedTasks(batch: NamedTaskInput[], onSaved?: (count: number) => Promise<void> | void): Promise<void> {
+    const createdByKey = new Map<string, Task>();
     const createdByTitle = new Map<string, Task>();
     const existing = await localStore.listTasks();
-    for (const item of ordered) {
+    let count = 0;
+    for (const item of batch) {
       let areaId = item.areaId ?? null;
       if (!areaId && item.areaName) {
         areaId = resolveAgentAreaId(item.areaName);
@@ -1376,11 +1394,12 @@ export function App() {
       if (!projectId && item.projectName) {
         projectId = resolveAgentProjectId(item.projectName, areaId);
       }
-      const { parentTitle, areaName: _areaName, projectName: _projectName, ...draft } = item;
+      const { parentTitle, parentKey, key, areaName: _areaName, projectName: _projectName, ...draft } = item;
       let parentId = draft.parentId ?? null;
-      if (!parentId && parentTitle) {
-        const wanted = parentTitle.trim().toLowerCase();
-        const parent = createdByTitle.get(wanted) ?? existing.find((task) => !task.deletedAt && task.title.trim().toLowerCase() === wanted && (task.projectId ?? null) === projectId);
+      if (!parentId && (parentKey || parentTitle)) {
+        const wanted = parentTitle?.trim().toLowerCase();
+        const parent = (parentKey ? createdByKey.get(parentKey) : undefined)
+          ?? (wanted ? createdByTitle.get(wanted) ?? existing.find((task) => !task.deletedAt && task.title.trim().toLowerCase() === wanted && (task.projectId ?? null) === projectId) : undefined);
         if (parent && (parent.projectId ?? null) === projectId) parentId = parent.id;
       }
       const people = draft.peopleIds ?? (user ? [user.id] : []);
@@ -1392,9 +1411,55 @@ export function App() {
         peopleIds: draft.assigneeId && !people.includes(draft.assigneeId) ? [...people, draft.assigneeId] : people,
       });
       createdByTitle.set(saved.title.trim().toLowerCase(), saved);
+      if (key) createdByKey.set(key, saved);
+      count += 1;
+      await onSaved?.(count);
     }
+  }
+
+  async function addAgentTasks(batch: Array<TaskDraft & { areaName?: string | null; projectName?: string | null; parentTitle?: string | null }>) {
+    // Parents first, so sub-tasks of the same batch can point at them.
+    const ordered = [...batch].sort((left, right) => Number(Boolean(left.parentTitle)) - Number(Boolean(right.parentTitle)));
+    await saveNamedTasks(ordered);
     await refresh();
     void syncNow("tasks");
+  }
+
+  /* Settings → Import: writes a confirmed plan (see lib/import/planImport.ts).
+     Projects are created first, with their type, then the tasks parents
+     first. Tasks are saved directly, never through changeTask, so imported
+     completed tasks earn no XP and trigger no celebration. */
+  async function importTasks(plan: ImportPlan, onProgress?: (done: number, total: number) => void): Promise<{ tasks: number; projects: number }> {
+    const known = new Set(workspaceStore.listProjects().map((project) => project.name.trim().toLowerCase()));
+    const created = plan.projects.filter((project) => !known.has(project.name.trim().toLowerCase())).length;
+    await addAgentProjects(plan.projects.map((project) => ({ name: project.name, areaName: project.areaName, projectType: project.projectType })));
+    const items: NamedTaskInput[] = plan.tasks.map((task) => ({
+      key: task.key,
+      parentKey: task.parentKey,
+      title: task.title,
+      description: task.description,
+      dueDate: task.dueDate,
+      dueTime: task.dueTime,
+      priority: task.priority,
+      important: task.important,
+      urgent: task.urgent,
+      status: task.status,
+      completed: task.completed,
+      estimatedMinutes: task.estimatedMinutes,
+      areaName: task.areaName,
+      projectName: task.projectName,
+      // Recurring tasks: once Task has `recurrence`, importers fill it through
+      // lib/import/recurrence.ts (toRecurrence) and it is saved here.
+      ...(task.recurrence ? { recurrence: task.recurrence } : {}),
+    }));
+    await saveNamedTasks(items, async (count) => {
+      onProgress?.(count, items.length);
+      // Let the progress bar paint during a big import.
+      if (count % 20 === 0) await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+    });
+    await refresh();
+    void syncNow();
+    return { tasks: items.length, projects: created };
   }
 
   /* Applies confirmed changes to existing projects, habits, notes and areas
@@ -2081,6 +2146,7 @@ export function App() {
   const paletteCommands: PaletteCommand[] = [
     { id: "new-task", label: t("palette.commands.newTask"), keywords: "add create", icon: "plus", run: () => openNewTask() },
     { id: "new-habit", label: t("palette.commands.newHabit"), keywords: "add create", icon: "refresh", run: () => setHabitComposerOpen(true) },
+    { id: "import", label: t("import.palette"), keywords: "import todoist linear notion csv importer exporter", icon: "download", run: () => openSettingsTab("import") },
     ...(["today", "inbox", "calendar", "projects", ...(user ? ["mine" as const] : []), "all", "waiting", "eisenhower", "habits", "notes", ...(game.enabled ? ["progress" as const] : [])] as WorkspaceView[]).map((view) => ({
       id: `view-${view}`, label: t("palette.commands.goTo", { view: viewTitle(view, t) }), keywords: "go open view", icon: "arrow" as const, run: () => changeView(view),
     })),
@@ -2187,6 +2253,7 @@ export function App() {
             settingsKey={settingsKey}
             onSettingsTabChange={setSettingsTab}
             onOpenGameSettings={openGameSettings}
+            onImportTasks={importTasks}
             projectTab={projectTab}
             onProjectTabChange={setProjectTab}
             activeView={activeView}

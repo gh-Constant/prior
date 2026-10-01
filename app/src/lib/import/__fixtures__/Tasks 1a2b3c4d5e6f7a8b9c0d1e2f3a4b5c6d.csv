@@ -1,0 +1,5 @@
+Nom,Statut,Priorité,Échéance,Projet,Étiquettes,Terminé,Created time,Élément parent
+Préparer la réunion,En cours,Haute,"3 octobre 2026 → 10 octobre 2026",Site web (https://www.notion.so/Site-web-0123456789abcdef0123456789abcdef),"client, urgent",No,"September 30, 2026 9:41 AM",
+Envoyer le devis,À faire,Moyenne,03/10/2026,Site web (https://www.notion.so/Site-web-0123456789abcdef0123456789abcdef),,No,"September 30, 2026 9:42 AM",Préparer la réunion
+Réserver le train,Terminé,Basse,"1 octobre 2026",,voyage,Yes,"September 30, 2026 9:43 AM",
+Appeler la banque,Not started,P1,,,,,"September 30, 2026 9:44 AM",

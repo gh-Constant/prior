@@ -27,6 +27,9 @@ var agentPurposes = map[string]struct{}{
 	"recommendations": {},
 	"mail":            {},
 	"calendar":        {},
+	// "import" organises files exported from Todoist, Linear or Notion. It
+	// is Prior AI only (see resolveCompletionRoute), so it is a Pro feature.
+	"import": {},
 }
 
 func normalizeAgentPurpose(value string) (string, bool) {
@@ -233,6 +236,7 @@ func (s *Server) hostedAIStatus(w http.ResponseWriter, r *http.Request) {
 			"recommendations": recommendations,
 			"mail":            hosted.ModelFor("mail"),
 			"calendar":        hosted.ModelFor("calendar"),
+			"import":          hosted.ModelFor("import"),
 		}
 	}
 	writeJSON(w, http.StatusOK, response)

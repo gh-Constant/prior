@@ -17,6 +17,7 @@ describe("app routes", () => {
       { view: "project" as const, projectId: "7f1c2d3e-aaaa-bbbb-cccc-123456789abc", projectTab: "issues" },
       { view: "notes" as const, notesProjectId: "p1" },
       { view: "settings" as const, settingsTab: "security" as const },
+      { view: "settings" as const, settingsTab: "import" as const },
       { view: "project" as const, projectId: "p2", projectTab: null, taskId: "t-9" },
     ];
     for (const route of routes) {
