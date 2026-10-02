@@ -104,6 +104,14 @@ func TestDeleteAccountTransfersAndLeavesNoRowsPostgres(t *testing.T) {
 	exec(`INSERT INTO task_comments (id, task_id, project_id, author_id, body, mentions) VALUES ($1, $2, $3, $4, 'mine', '[]')`, uuid.New(), bobTask.ID, shared, alice.id)
 	exec(`INSERT INTO task_comments (id, task_id, project_id, author_id, body, mentions) VALUES ($1, $2, $3, $4, 'hey', $5)`, uuid.New(), bobTask.ID, shared, bob.id, `["`+alice.id.String()+`"]`)
 
+	// Planning poker: Alice runs a session on the shared project, decides a
+	// task and both vote. Bob's vote and the session itself must survive.
+	pokerSession := uuid.New()
+	exec(`INSERT INTO poker_sessions (id, project_id, facilitator_id, deck) VALUES ($1, $2, $3, 'fibonacci')`, pokerSession, shared, alice.id)
+	exec(`INSERT INTO poker_items (session_id, task_id, position, final_points, decided_by, decided_at) VALUES ($1, $2, 0, 5, $3, now())`, pokerSession, inShared.ID, alice.id)
+	exec(`INSERT INTO poker_items (session_id, task_id, position) VALUES ($1, $2, 1)`, pokerSession, bobTask.ID)
+	exec(`INSERT INTO poker_votes (session_id, task_id, round, user_id, value) VALUES ($1, $2, 1, $3, '5'), ($1, $2, 1, $4, '8')`, pokerSession, inShared.ID, alice.id, bob.id)
+
 	deleted, err := s.DeleteAccount(ctx, alice.id)
 	if err != nil {
 		t.Fatal(err)
@@ -172,6 +180,17 @@ func TestDeleteAccountTransfersAndLeavesNoRowsPostgres(t *testing.T) {
 	var anonymous int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM task_comments WHERE body = 'mine' AND author_id IS NULL`).Scan(&anonymous); err != nil || anonymous != 1 {
 		t.Fatalf("the deleted user's comment should stay anonymized: %d %v", anonymous, err)
+	}
+	var facilitator *uuid.UUID
+	var pokerVotes, decided int
+	if err := pool.QueryRow(ctx, `SELECT facilitator_id FROM poker_sessions WHERE id = $1`, pokerSession).Scan(&facilitator); err != nil || facilitator != nil {
+		t.Fatalf("poker session should survive without its facilitator: %v %v", facilitator, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM poker_votes WHERE session_id = $1`, pokerSession).Scan(&pokerVotes); err != nil || pokerVotes != 1 {
+		t.Fatalf("only the deleted user's poker vote goes: %d %v", pokerVotes, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM poker_items WHERE session_id = $1 AND final_points = 5 AND decided_by IS NULL`, pokerSession).Scan(&decided); err != nil || decided != 1 {
+		t.Fatalf("the decision stays, anonymously: %d %v", decided, err)
 	}
 	var payments int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM billing_payments WHERE stripe_invoice_id = 'in_1' AND user_id IS NULL`).Scan(&payments); err != nil || payments != 1 {

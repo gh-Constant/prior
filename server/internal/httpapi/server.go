@@ -126,6 +126,11 @@ func (s *Server) CleanupLoop(ctx context.Context) {
 			} else if closed > 0 {
 				slog.Info("league weeks closed", "cohorts", closed)
 			}
+			if closed, deleted, err := s.store.ExpirePokerSessions(ctx); err != nil {
+				slog.Warn("expiring poker sessions failed", "error", err)
+			} else if closed > 0 || deleted > 0 {
+				slog.Info("poker sessions expired", "closed", closed, "deleted", deleted)
+			}
 			if time.Since(lastRetention) >= 24*time.Hour {
 				retentionCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				if err := s.store.CleanupAuthArtifacts(retentionCtx); err != nil {
@@ -236,6 +241,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/tasks/{taskID}/comments", s.createTaskComment)
 	mux.HandleFunc("PATCH /v1/collaboration/projects/{projectID}/tasks/{taskID}/comments/{commentID}", s.updateTaskComment)
 	mux.HandleFunc("DELETE /v1/collaboration/projects/{projectID}/tasks/{taskID}/comments/{commentID}", s.deleteTaskComment)
+	mux.HandleFunc("GET /v1/collaboration/projects/{projectID}/poker", s.activePokerSession)
+	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/poker", s.startPokerSession)
+	mux.HandleFunc("GET /v1/collaboration/projects/{projectID}/poker/{sessionID}", s.getPokerSession)
+	mux.HandleFunc("PUT /v1/collaboration/projects/{projectID}/poker/{sessionID}/vote", s.votePoker)
+	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/poker/{sessionID}/reveal", s.revealPoker())
+	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/poker/{sessionID}/revote", s.revotePoker())
+	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/poker/{sessionID}/close", s.closePoker())
+	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/poker/{sessionID}/current", s.setPokerCurrent)
+	mux.HandleFunc("POST /v1/collaboration/projects/{projectID}/poker/{sessionID}/estimate", s.estimatePoker)
 	mux.HandleFunc("GET /v1/collaboration/mentions", s.listMentions)
 	mux.HandleFunc("POST /v1/collaboration/mentions/read", s.readMentions)
 	mux.HandleFunc("GET /v1/game", s.gameState)
