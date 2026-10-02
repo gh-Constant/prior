@@ -1,6 +1,7 @@
 import { useI18n } from "../../lib/i18n";
 import { cardPoints, type PokerSummary } from "../../lib/poker";
 import type { PokerDeckId, PokerParticipant, PokerSession } from "../../lib/api";
+import { presenceFromApi } from "../../lib/presence";
 import { PersonAvatar } from "../collaboration/PersonAvatar";
 import { PokerCard, cardName, type CardState } from "./PokerCard";
 
@@ -33,6 +34,7 @@ export function PokerTable({ session, meId, summary }: {
         <ul className="poker-seats" aria-label={t("poker.table.seats")}>
           {voters.map((participant, index) => {
             const mine = participant.userId === meId;
+            const presence = mine ? "online" as const : presenceFromApi(participant);
             const { state, value } = seatState(participant, session.revealed, mine, session.myVote);
             const points = value ? cardPoints(value, deck) : null;
             const tone = state !== "up" || !summary ? undefined
@@ -44,10 +46,9 @@ export function PokerTable({ session, meId, summary }: {
             const tag = tone === "low" ? t("poker.table.lowest") : tone === "high" ? t("poker.table.highest") : participant.userId === facilitator ? t("poker.table.host") : "";
             const status = state === "up" ? cardName(value ?? "", t) : state === "down" ? t("poker.table.voted") : t("poker.table.thinking");
             return (
-              <li key={participant.userId} className="poker-seat" data-mine={mine ? "true" : undefined} data-away={participant.online || mine ? undefined : "true"}>
+              <li key={participant.userId} className="poker-seat" data-mine={mine ? "true" : undefined} data-away={presence === "offline" ? "true" : undefined}>
                 <span className="poker-seat-avatar">
-                  <PersonAvatar person={{ id: participant.userId, name: participant.displayName, avatarUrl: participant.avatarUrl ?? undefined }} className="collab-avatar poker-avatar" showPresence={false} />
-                  <i className={`poker-dot${participant.online || mine ? " is-online" : ""}`} aria-hidden="true" />
+                  <PersonAvatar person={{ id: participant.userId, name: participant.displayName, avatarUrl: participant.avatarUrl ?? undefined, presence, lastSeenAt: mine ? undefined : participant.lastSeenAt }} className="collab-avatar poker-avatar" />
                 </span>
                 <PokerCard state={state} value={value} tone={tone} delay={Math.min(index, 6) * 80} label={`${name}: ${status}`} />
                 <span className="poker-seat-name" title={participant.displayName}>{name}</span>
@@ -66,7 +67,7 @@ export function PokerTable({ session, meId, summary }: {
       {watchers.length > 0 && (
         <p className="poker-watchers">
           <span>{t("poker.table.watching")}</span>
-          {watchers.map((participant) => <PersonAvatar key={participant.userId} person={{ id: participant.userId, name: participant.displayName, avatarUrl: participant.avatarUrl ?? undefined }} className="collab-avatar collab-avatar-xs" showPresence={false} />)}
+          {watchers.map((participant) => <PersonAvatar key={participant.userId} person={{ id: participant.userId, name: participant.displayName, avatarUrl: participant.avatarUrl ?? undefined, presence: participant.userId === meId ? "online" : presenceFromApi(participant), lastSeenAt: participant.userId === meId ? undefined : participant.lastSeenAt }} className="collab-avatar collab-avatar-xs" />)}
         </p>
       )}
     </div>

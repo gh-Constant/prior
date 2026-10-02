@@ -205,7 +205,7 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
       areaName={area?.name}
       chips={<>{statusChip}<ProjectTypeChip software={project.projectType === "software"} methodology={project.methodology} cycleName={cycle?.name} /></>}
       description={project.description}
-      members={sharing && members.length > 0 ? <button type="button" className="project-phone-members" aria-label={t("collab.header.shareManage")} onClick={() => setShareOpen(true)}><AvatarStack people={members} max={3} size="md" label={t("common.projectHub.members")} /></button> : undefined}
+      members={sharing && members.length > 0 ? <button type="button" className="project-phone-members" aria-label={t("collab.header.shareManage")} onClick={() => setShareOpen(true)}><AvatarStack people={members} max={3} size="md" showPresence label={t("common.projectHub.members")} /></button> : undefined}
       menuItems={headerMenu()}
       onBack={onBack}
     >
@@ -220,7 +220,7 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
           <ProjectTypeChip software={project.projectType === "software"} methodology={project.methodology} cycleName={cycle?.name} />
         </>}
         description={project.description}
-        aside={<AvatarStack people={members} size="md" label={t("common.projectHub.members")} />}
+        aside={<AvatarStack people={members} size="md" showPresence label={t("common.projectHub.members")} />}
         actions={<>
           {sharing && <button type="button" className="secondary-button" onClick={() => setShareOpen(true)}><UsersGlyph />{t("collab.header.share")}</button>}
           <button type="button" className="secondary-button project-edit-button" aria-label={t("common.workhub.editProject")} title={t("common.workhub.editProject")} onClick={() => onEditProject(project)}><Icon name="pencil" /><span>{t("common.workhub.editProject")}</span></button>

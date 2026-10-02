@@ -93,7 +93,7 @@ export function AssigneeSelect({ people, value, onChange, currentUserId, disable
       return <button key={id} type="button" role="option" aria-selected={selected} disabled={!selected && full}
         className={`custom-select-item assignee-menu-item ${selected ? "selected" : ""}`} onClick={() => toggle(id)}>
         <span className="assignee-option">
-          {person ? <PersonAvatar person={person} className="collab-avatar collab-avatar-xs" showPresence={false} /> : <Icon name="user" className="assignee-none-icon" />}
+          {person ? <PersonAvatar person={person} className="collab-avatar collab-avatar-xs" /> : <Icon name="user" className="assignee-none-icon" />}
           <span>{person ? `${person.name}${person.id === currentUserId ? ` ${t("collab.share.you")}` : ""}` : t("collab.assign.formerMember")}</span>
         </span>
         {selected && <Icon name="check" className="custom-select-check" />}

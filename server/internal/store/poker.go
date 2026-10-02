@@ -70,9 +70,11 @@ type PokerParticipant struct {
 	DisplayName string `json:"displayName"`
 	AvatarURL   string `json:"avatarUrl"`
 	Role        string `json:"role"`
-	// Online is filled by the API from live realtime connections.
-	Online bool `json:"online"`
-	Voted  bool `json:"voted"`
+	// Online and Presence are filled by the API from live realtime connections.
+	Online     bool       `json:"online"`
+	Presence   string     `json:"presence"`
+	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
+	Voted      bool       `json:"voted"`
 	// Vote is null until the votes are revealed.
 	Vote *string `json:"vote"`
 }

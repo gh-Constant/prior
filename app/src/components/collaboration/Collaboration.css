@@ -30,20 +30,6 @@
 .collab-chip svg { width: 12px; height: 12px; flex-shrink: 0; color: var(--muted); }
 .collab-avatar { position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: var(--surface-3); color: var(--ink-2); font-size: var(--fs-2xs); font-weight: 600; }
 .collab-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
-.collab-presence-dot {
-  position: absolute;
-  bottom: -1px;
-  right: -1px;
-  width: 7.5px;
-  height: 7.5px;
-  border-radius: 50%;
-  border: 1.5px solid var(--panel);
-  box-sizing: border-box;
-}
-.collab-presence-dot.presence-online { background: var(--green); }
-.collab-presence-dot.presence-away { background: var(--amber); }
-.collab-presence-dot.presence-offline,
-.collab-presence-dot.presence-inactive { background: var(--faint); }
 .collab-cycle-edit { margin-top: 14px; }
 .collab-editor { display: grid; gap: 14px; padding: 0 20px 20px; }
 .collab-editor fieldset { display: grid; min-width: 0; gap: 14px; margin: 0; padding: 0; border: 0; }
@@ -176,7 +162,6 @@ details[open] > .collab-disclosure-summary .collab-disclosure-chevron { transfor
 .collab-confirm, .collab-invite-actions, .collab-share-footer-start { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .collab-share-body .danger-button { width: auto; margin: 0; }
 .collab-icon-button { display: inline-flex; align-items: center; justify-content: center; width: var(--control-h); padding: 0; }
-.collab-presence-dot.presence-online { background: var(--green, #2f8f5b); }
 
 /* Assignee (Linear-style): pill in the composer, avatar on cards. */
 .assignee-option { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }

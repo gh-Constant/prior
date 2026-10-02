@@ -180,7 +180,7 @@ export function ProjectActivity({ loadActivity, people, currentUserId }: Props) 
         const selected = personId === row.id;
         return <li key={row.id || "none"}>
           <button type="button" className={selected ? "is-selected" : ""} aria-pressed={selected} disabled={!row.id} onClick={() => setPersonId(selected ? null : row.id)}>
-            <PersonAvatar person={person} className="collab-avatar collab-avatar-sm" showPresence={false} />
+            <PersonAvatar person={person} className="collab-avatar collab-avatar-sm" />
             <span className="project-activity-name">{name}{row.id === currentUserId ? ` ${t("collab.share.you")}` : ""}</span>
             <span className="project-activity-bar" aria-hidden="true"><span style={{ width: `${topCount ? Math.max(6, (row[metric] / topCount) * 100) : 0}%` }} /></span>
             <span className="project-activity-count">{metricLabel(row[metric])}</span>

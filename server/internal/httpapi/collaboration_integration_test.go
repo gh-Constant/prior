@@ -219,6 +219,13 @@ func TestProjectSharingPostgres(t *testing.T) {
 	if err != nil || len(peers) != 1 { // dave; bob left
 		t.Fatalf("alice peers = %v %v", peers, err)
 	}
+	// Presence goes to co-members only: carol declined, so she is no peer.
+	carolID := mustUserID(t, srv, carol)
+	for _, peer := range peers {
+		if peer == carolID {
+			t.Fatal("a non-member must never be in the presence audience")
+		}
+	}
 }
 
 // The project type survives workspace sync, and a client that does not send

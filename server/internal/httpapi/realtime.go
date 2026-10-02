@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -90,6 +91,10 @@ func (h *hub) closeUser(userID uuid.UUID) {
 	h.mu.Lock()
 	connections := h.clients[userID]
 	delete(h.clients, userID)
+	for _, connection := range connections {
+		delete(h.idle, connection)
+	}
+	h.lastSeen[userID] = time.Now()
 	h.mu.Unlock()
 	for _, connection := range connections {
 		connection.Close(4401, "session revoked")

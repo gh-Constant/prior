@@ -22,8 +22,12 @@ type ProjectMember struct {
 	Role        string    `json:"role"`
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"createdAt"`
-	// Online is filled by the API from live realtime connections.
-	Online bool `json:"online"`
+	// Online is filled by the API from live realtime connections; Presence
+	// refines it into online (active), away (idle) or offline, and LastSeenAt
+	// is when an offline member last disconnected, when this instance knows.
+	Online     bool       `json:"online"`
+	Presence   string     `json:"presence"`
+	LastSeenAt *time.Time `json:"lastSeenAt,omitempty"`
 }
 
 type ProjectInvite struct {

@@ -125,6 +125,41 @@ confirming. It sits in the share dialog, under the email form ("Invitation link"
   onboarding or tour open, onboarding status known). Expired, disabled or unknown
   links explain themselves in the dialog and are forgotten.
 
+### Presence (who is online)
+
+Co-members of a shared project see each other's state as a dot on the avatar:
+green = online (active), orange = away, grey hollow ring = offline (the ring
+shape means the state never rests on color alone).
+
+- **Client**: `app/src/lib/presence.ts` runs an activity tracker for the app
+  (pointer, keyboard, wheel, touch, focus, return to the foreground). After
+  5 minutes without any of these (a hidden tab or a backgrounded app produces
+  none) it reports `idle`, and `active` on the next interaction. `lib/realtime.ts`
+  sends `{"type":"presence","state":"active"|"idle"}` over the realtime
+  socket, and again on every (re)connect.
+- **Server** (`httpapi/presence.go`): every connection is active unless it
+  reported `idle`. A user is `online` when at least one connection is active
+  (so an idle phone does not hide an active laptop), `away` when all are idle,
+  `offline` without a connection. Member lists (`GET /v1/collaboration/projects`)
+  and Planning Poker participants carry `presence` (`online`|`away`|`offline`),
+  the legacy `online` flag (connected, whatever the activity) and, for an
+  offline user, `lastSeenAt` (when their last connection closed here; absent
+  after an API restart).
+- **Push**: connect, disconnect and idle/active reports schedule one
+  `presence_required` event, debounced by 2 s and sent only when the state
+  differs from what co-members were last told (a page reload does not
+  flicker). The audience is `ProjectPeerIDs`: owners and active members of the
+  user's projects, never anyone else. Clients refetch the member lists
+  (`presence` sync scope). State is per API instance (memory), like `online`.
+- **UI**: the single `PresenceDot` (`components/collaboration/PresenceDot.tsx`,
+  tooltip and accessible name "Online", "Away" or "Offline, last seen 5
+  minutes ago") sits on `PersonAvatar` when the person has a state. It shows
+  in the project header avatar stack (desktop and phone), the share dialog,
+  assignee pickers and filter, the activity contributors and the Planning
+  Poker seats. Task cards and comment authors do not show it. Your own avatar
+  is always online. Tests: `presence.test.ts`, `PresenceDot.test.tsx`,
+  `presence_test.go`, `presence_integration_test.go`.
+
 ## What Linear's model contributes
 
 The research used the following first-party documentation:
