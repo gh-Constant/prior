@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Project, TaskPriority } from "../../types";
 
 // Presentation contracts only. These are not persisted Task/Project fields.
@@ -136,6 +137,12 @@ export type ProjectCollaborationProps = {
   onAssignIssue?: (issueId: string, personId: string | null) => Promise<void>;
   /** Loads the activity grid (tasks completed per day and person). */
   loadActivity?: () => Promise<ProjectActivityEntry[]>;
+  /**
+   * Content of the Planning Poker tab. Shown only for projects whose methodology
+   * has poker (Scrum, Scrumban). Declared here as a stand-in until the agile
+   * surfaces land; the same prop is declared there.
+   */
+  renderPoker?: () => ReactNode;
 };
 export type ProjectActivityEntry = { date: string; userId: string | null; completed: number; created: number };
 export type TaskPlanningProps = {

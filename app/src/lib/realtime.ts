@@ -170,8 +170,8 @@ export async function connectRealtime(
   const onEvent = (event: SyncEvent) => {
     if (event.type === "pong") return;
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(REALTIME_EVENT, { detail: { type: event.type ?? "", revision: event.revision } }));
-    // Comments and mentions are re-fetched by their own views, not by a sync.
-    if (event.type === "comments_required" || event.type === "mentions_required") return;
+    // Comments, mentions and poker tables are re-fetched by their own views, not by a sync.
+    if (event.type === "comments_required" || event.type === "mentions_required" || event.type === "poker_required") return;
     // Server emits legacy "sync_required"/"sync" plus unified
     // "tasks_required"/"workspace_required"/"collaboration_required"/
     // "presence_required"/"profile_required"/"settings_required"/"workspace".
