@@ -18,6 +18,8 @@ export const onboarding: AppDictionary["onboarding"] = {
     signIn: "Inicie sessão ou crie uma conta para entrar.",
     expired: "Este convite expirou. Peça um novo a {name}.",
     accepted: "Este convite já foi usado.",
+    revoked: "Este link de convite foi desativado. Pede um novo a {name}.",
+    confirm: "Vais confirmar antes de entrar, quando a tua conta estiver pronta.",
   },
   welcome: {
     title: "Bem-vindo ao Prior, {name}",

@@ -137,11 +137,17 @@ export type ProjectLeaderboard = {
 };
 
 export type InvitePreview = {
+  /** An invitation to one email, or a reusable share link. */
+  readonly kind: "invite" | "link";
   readonly projectName: string;
   readonly projectIcon: string;
   readonly inviterName: string;
   readonly inviterAvatarUrl: string;
   readonly memberCount: number;
   readonly role: "editor" | "viewer";
-  readonly status: "pending" | "accepted" | "expired";
+  readonly status: "pending" | "accepted" | "expired" | "revoked";
+  /** Only for a signed-in caller: they already belong to the project. */
+  readonly alreadyMember?: boolean;
+  readonly currentRole?: "owner" | "editor" | "viewer";
+  readonly projectId?: string;
 };

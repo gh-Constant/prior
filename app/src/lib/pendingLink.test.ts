@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryStorage } from "../test/memoryStorage";
-import { capturePendingLink, clearPendingLink, pendingLink } from "./pendingLink";
+import { capturePendingLink, clearPendingLink, inviteTokenFromPath, pendingLink } from "./pendingLink";
 
 describe("pending shared links", () => {
   beforeEach(() => vi.stubGlobal("localStorage", memoryStorage()));
@@ -24,6 +24,31 @@ describe("pending shared links", () => {
     window.history.replaceState(null, "", `/invite/${token}`);
     expect(capturePendingLink()).toEqual({ invite: token, project: undefined });
     expect(window.location.pathname).toBe("/projects");
+  });
+
+  it("keeps a share link through sign-up, Google round trips and the onboarding", () => {
+    // Share links use the same /invite/<token> address as emailed invitations.
+    const token = "c0".repeat(32);
+    window.history.replaceState(null, "", `/invite/${token}`);
+    capturePendingLink();
+    expect(window.location.pathname).toBe("/projects");
+    // Several reloads (OAuth return, app restart) keep the token until it is settled.
+    for (const path of ["/auth/callback?code=x", "/", "/today"]) {
+      window.history.replaceState(null, "", path);
+      expect(capturePendingLink()).toEqual({ invite: token });
+    }
+    expect(pendingLink()).toEqual({ invite: token });
+    // "Decline" (or a successful join) forgets it for good.
+    clearPendingLink();
+    expect(capturePendingLink()).toBeNull();
+  });
+
+  it("recognises the invitation page address", () => {
+    const token = "9f".repeat(32);
+    expect(inviteTokenFromPath(`/invite/${token}`)).toBe(token);
+    expect(inviteTokenFromPath(`/invite/${token}/`)).toBe(token);
+    expect(inviteTokenFromPath("/invite/short")).toBeUndefined();
+    expect(inviteTokenFromPath(`/projects/${token}`)).toBeUndefined();
   });
 
   it("keeps a shared project link too", () => {

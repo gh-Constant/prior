@@ -16,6 +16,8 @@ export const onboarding = {
     signIn: "Sign in or create an account to join.",
     expired: "This invitation has expired. Ask {name} for a new one.",
     accepted: "This invitation was already used.",
+    revoked: "This invitation link was turned off. Ask {name} for a new one.",
+    confirm: "You'll be asked to confirm before joining, once you're set up.",
   },
   welcome: {
     title: "Welcome to Prior, {name}",

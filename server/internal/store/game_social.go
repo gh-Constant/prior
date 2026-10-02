@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -489,54 +487,4 @@ func (s *Store) GiveKudos(ctx context.Context, fromUserID, taskID uuid.UUID) err
 		}
 	}
 	return tx.Commit(ctx)
-}
-
-// InvitePreview describes a pending invite to someone who may not have an
-// account yet. The token is the capability: nothing personal beyond the
-// inviter's display name is returned.
-type InvitePreview struct {
-	ProjectName string `json:"projectName"`
-	ProjectIcon string `json:"projectIcon"`
-	InviterName string `json:"inviterName"`
-	AvatarURL   string `json:"inviterAvatarUrl"`
-	MemberCount int    `json:"memberCount"`
-	Role        string `json:"role"`
-	Status      string `json:"status"` // pending, accepted or expired
-}
-
-func (s *Store) InvitePreview(ctx context.Context, token string) (InvitePreview, error) {
-	rawToken, err := hex.DecodeString(strings.TrimSpace(token))
-	if err != nil || len(rawToken) != 32 {
-		return InvitePreview{}, ErrNotFound
-	}
-	hash := sha256.Sum256(rawToken)
-	var preview InvitePreview
-	var icon *string
-	var expiresAt time.Time
-	var acceptedAt *time.Time
-	err = s.pool.QueryRow(ctx, `
-		SELECT p.name, p.icon, COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)), u.avatar_url, i.role, i.expires_at, i.accepted_at,
-			1 + (SELECT count(*) FROM project_members pm WHERE pm.project_id = p.id AND pm.status = 'active' AND pm.user_id <> p.user_id)
-		FROM project_invites i
-		JOIN projects p ON p.id = i.project_id AND p.deleted_at IS NULL
-		JOIN users u ON u.id = i.inviter_user_id
-		WHERE i.token_hash = $1`, hash[:]).Scan(&preview.ProjectName, &icon, &preview.InviterName, &preview.AvatarURL, &preview.Role, &expiresAt, &acceptedAt, &preview.MemberCount)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return InvitePreview{}, ErrNotFound
-	}
-	if err != nil {
-		return InvitePreview{}, err
-	}
-	if icon != nil {
-		preview.ProjectIcon = *icon
-	}
-	switch {
-	case acceptedAt != nil:
-		preview.Status = "accepted"
-	case time.Now().After(expiresAt):
-		preview.Status = "expired"
-	default:
-		preview.Status = "pending"
-	}
-	return preview, nil
 }

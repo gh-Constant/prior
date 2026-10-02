@@ -69,6 +69,62 @@ only JSON or treated as complete in this change.
   `?task=<id>`…, see `app/src/lib/router.ts`); reloads and shared links
   reopen it, Back/Forward move between pages.
 
+### Share links (invitation links)
+
+The owner can also create a **reusable link** for a role, not tied to an email:
+anyone with a Prior account who opens it can join as an editor or a viewer, after
+confirming. It sits in the share dialog, under the email form ("Invitation link").
+
+- **Storage.** A separate table, `project_share_links` (migration `036`), instead
+  of extending `project_invites`: an email invitation is addressed to one person,
+  single-use and accepted exactly once (`invitee_email NOT NULL`, `accepted_at`),
+  while a link is anonymous, reusable and counted (`use_count`, optional
+  `max_uses`), can be disabled (`revoked_at`) and may never expire (`expires_at`
+  is nullable). Mixing the two would have loosened the email-match rule that
+  protects invitations. Only `token_hash` (SHA-256) is stored; the 256-bit token
+  has the same `/invite/<token>` shape as an emailed invitation, so
+  `lib/pendingLink.ts` and `GET /v1/collaboration/invites/preview` handle both.
+  A partial unique index keeps **one active link per role**: creating again
+  rotates it (the previous link stops working). `created_by` and the project are
+  `ON DELETE CASCADE`; the account deletion test walks the foreign key.
+- **Who.** Only the project owner creates, lists, rotates and disables links
+  (`GET`/`POST /v1/collaboration/projects/{id}/share-links`,
+  `DELETE …/share-links/{linkId}`); editors and viewers get 403, strangers 404.
+  Creating is rate-limited like invitations. The token is returned **once** at
+  creation (hashes cannot be shown again): the creating device remembers the URL
+  (`lib/shareLinkCache.ts`, local storage) so the owner can copy it again; on
+  another device the owner regenerates. The dialog offers "never / 7 / 30 days"
+  for new links.
+- **Joining.** `POST /v1/collaboration/invites/accept` takes any invitation token:
+  an email invitation (must match the account, as before) or a share link. A
+  share link adds the account with the link's role; **nobody is downgraded** (an
+  existing editor or the owner opening a viewer link changes nothing; a viewer
+  opening an editor link becomes an editor). Already-covered visitors do not use
+  up the link. Plan limits are the owner's: a link does not reserve a seat, so
+  the member and shared-project limits are checked at join time (`402
+  PLAN_LIMIT`, same shape as invitations). Errors carry codes: `LINK_REVOKED`,
+  `LINK_EXPIRED`, `LINK_EXHAUSTED` (410), `INVITE_NOT_FOUND` (404). Members of the
+  project (the owner's use count included) get `collaboration_required`.
+  People the owner removed can rejoin while the link is active; disabling or
+  rotating a link does not remove members.
+- **Preview.** The preview is public (the token is the capability) and now
+  returns `kind` (`invite` or `link`), `status` (`pending`, `accepted`,
+  `expired`, `revoked`) and, for a signed-in caller, `alreadyMember`,
+  `currentRole` and the project id.
+- **Confirmation, never silent.** Opening any invitation link (email or share)
+  stores its token (`pendingLink`) and, once the account has synced, shows
+  `JoinInviteDialog`: "Join <project>? invited by X, as editor/viewer" with
+  **Join**, **Later** (kept; offered again next launch) and **Decline** (forgets
+  it). Nothing is joined before the person presses Join. Email invitations used
+  to be accepted automatically on arrival; they now follow the same dialog (their
+  in-app notification card still works, and is still shown while they are
+  pending). People who arrive signed out see the invitation context on the
+  sign-in/sign-up screen (`InvitePreviewCard`), sign up or in with a password or
+  Google, go through the onboarding and the product tour (`PRODUCT_TOUR.md`), and
+  only then get the dialog: it is gated by `canPromptToJoin` (signed in, no
+  onboarding or tour open, onboarding status known). Expired, disabled or unknown
+  links explain themselves in the dialog and are forgotten.
+
 ## What Linear's model contributes
 
 The research used the following first-party documentation:

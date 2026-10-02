@@ -6,6 +6,7 @@ import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
 import { useI18n } from "../../lib/i18n";
 import { copyText } from "../../lib/clipboard";
 import { CustomSelect } from "../CustomSelect";
+import { ShareLinkSection } from "./ShareLinkSection";
 import type { InviteOutcome, Person, ProjectInvite, ProjectMember, ProjectSharingProps } from "./types";
 import "./Collaboration.css";
 
@@ -57,7 +58,7 @@ function useRowStates<T extends RowState>() {
   return { states, patch, flash };
 }
 
-export function ProjectShareDialog({ projectName, onClose, members, invites, canManage = false, loading = false, currentUserId = null, suggestions = [], onInvite, onRoleChange, onRemoveMember, onLeave, onRevokeInvite, onResendInvite, projectLink, onCopyLink }: ProjectSharingProps & { projectName: string; onClose: () => void }) {
+export function ProjectShareDialog({ projectName, onClose, members, invites, canManage = false, loading = false, currentUserId = null, suggestions = [], onInvite, onRoleChange, onRemoveMember, onLeave, onRevokeInvite, onResendInvite, shareLinks, projectLink, onCopyLink }: ProjectSharingProps & { projectName: string; onClose: () => void }) {
   const { t, tp } = useI18n();
   const [emails, setEmails] = useState("");
   const [role, setRole] = useState<Role>("editor");
@@ -267,6 +268,8 @@ export function ProjectShareDialog({ projectName, onClose, members, invites, can
               </div>
             </div>)}
       </div>}
+
+      {canManage && shareLinks && !loading && <ShareLinkSection actions={shareLinks} disabled={!editable} />}
 
       {loading ? <CollaborationState title={t("collab.share.loading")} loading /> : <>
         <section aria-label={t("collab.share.membersGroup")}><h3>{t("collab.share.members")} <span className="collab-muted">{members.length}</span></h3>

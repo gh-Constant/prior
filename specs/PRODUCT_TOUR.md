@@ -9,3 +9,5 @@ After the onboarding (`OnboardingFlow`) finishes, App opens the product tour (`c
 Skipping before confirming the spaces leaves the navigation unchanged; skipping later saves the spaces chosen so far.
 
 The choice is stored as the hidden spaces in `prior.nav.hidden` and the tour version in `prior.tour.done`; both are UI preferences synced with the account (`preferences/ui`). Accounts that never chose keep every space. Hidden spaces disappear from the sidebar, the phone "More" screen and the palette's "Go to" commands, but their URLs still work, and the current page stays in the sidebar while it is open. Settings → General → Navigation turns each space on or off.
+
+A project invitation link opened before signing up is kept (`lib/pendingLink.ts`) and offered, with a Join / Later / Decline confirmation, only after the onboarding and this tour are over (`specs/AGILE_COLLABORATION.md`, "Share links").

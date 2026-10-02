@@ -12,6 +12,15 @@ export type InviteOutcome =
   | { kind: "invited"; email: string; link: string; emailSent: boolean }
   | { kind: "member"; email: string; role: ProjectInvite["role"] }
   | { kind: "error"; email: string; message: string };
+/** A reusable invitation link of a role, as the share dialog shows it. */
+export type ShareLinkItem = { id: string; role: ProjectInvite["role"]; expiresAt?: string; useCount: number };
+/** Reusable editor/viewer links (specs/AGILE_COLLABORATION.md, "Share links"). */
+export type ShareLinkActions = {
+  list: () => Promise<ShareLinkItem[]>;
+  /** Creates the link of a role, replacing the previous one; `url` is shown once. */
+  create: (role: ProjectInvite["role"], expiresInDays?: number) => Promise<{ link: ShareLinkItem; url: string }>;
+  revoke: (linkId: string) => Promise<void>;
+};
 export type TaskPerson = Person & { role: "owner" | "assignee" | "collaborator" };
 export type PlanningKey = "team" | "project" | "state" | "cycle" | "milestone" | "labels" | "parent";
 export type PlanningOption = { id: string; name: string };
@@ -102,6 +111,8 @@ export type ProjectSharingProps = {
   onRevokeInvite?: (inviteId: string) => Promise<void> | void;
   /** Gives a pending invite a fresh link; `sendEmail` also emails it again. */
   onResendInvite?: (inviteId: string, sendEmail: boolean) => Promise<{ link: string; emailSent: boolean }>;
+  /** Reusable invitation links; without it the dialog only offers email invitations. */
+  shareLinks?: ShareLinkActions;
   /** The project's own address (only works for members). */
   projectLink?: string;
   onCopyLink?: () => Promise<void> | void;
