@@ -1,0 +1,31 @@
+/* One presence indicator everywhere: green online, orange away, grey ring offline. */
+.presence-dot {
+  --presence-ring: var(--panel);
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  border: 1.5px solid var(--presence-ring);
+  border-radius: 50%;
+  background: var(--faint);
+}
+.presence-dot.is-online { background: var(--green); }
+.presence-dot.is-away { background: var(--amber); }
+/* Offline is a hollow ring, so the state does not rest on color alone. */
+.presence-dot.is-offline { background: var(--presence-ring); box-shadow: inset 0 0 0 1.5px var(--faint); }
+
+/* Inside an avatar: bottom-right corner. */
+.collab-avatar > .presence-dot,
+.project-avatar > .presence-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  z-index: 1;
+}
+.project-avatar-stack.size-md .project-avatar > .presence-dot { width: 10px; height: 10px; }
+
+/* Small touch screens: keep the dot readable under a thumb-sized avatar. */
+@media (pointer: coarse) {
+  .collab-avatar > .presence-dot, .project-avatar > .presence-dot { width: 10px; height: 10px; }
+}

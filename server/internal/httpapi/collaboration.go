@@ -33,7 +33,8 @@ func collaborationStatus(err error) int {
 func (s *Server) annotatePresence(members []store.ProjectMember) {
 	for index := range members {
 		if id, err := uuid.Parse(members[index].UserID); err == nil {
-			members[index].Online = s.hub.isOnline(id)
+			members[index].Presence, members[index].LastSeenAt = s.presenceOf(id)
+			members[index].Online = members[index].Presence != presenceOffline
 		}
 	}
 }

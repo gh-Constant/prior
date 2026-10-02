@@ -1,5 +1,6 @@
 import { API_URL, FALLBACK_API_URL, api } from "./api";
 import { supportsRealtime } from "./platform";
+import { startActivityTracker, type Activity } from "./presence";
 
 type SyncEvent = { type?: string; revision?: number };
 
@@ -167,6 +168,17 @@ export async function connectRealtime(
   let connection: Connection | undefined;
   let lastRevision: number | undefined;
 
+  // Tell the server whether the user is active so co-members see green/orange.
+  let activity: Activity = "active";
+  const sendActivity = () => {
+    try {
+      void Promise.resolve(connection?.sendText?.(JSON.stringify({ type: "presence", state: activity }))).catch(() => undefined);
+    } catch {
+      // A dead socket is handled by the ping and the reconnect.
+    }
+  };
+  const tracker = typeof window !== "undefined" ? startActivityTracker({ onChange: (next) => { activity = next; sendActivity(); } }) : undefined;
+
   const onEvent = (event: SyncEvent) => {
     if (event.type === "pong") return;
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(REALTIME_EVENT, { detail: { type: event.type ?? "", revision: event.revision } }));
@@ -214,6 +226,7 @@ export async function connectRealtime(
         return;
       }
       attempt = 0;
+      sendActivity();
       // Resume: a fresh socket may have missed broadcasts while offline.
       // Trigger a sync so pull(since) catches up from the stored revision.
       try {
@@ -304,6 +317,7 @@ export async function connectRealtime(
 
   const dispose = async (): Promise<void> => {
     disposed = true;
+    tracker?.stop();
     clearTimers();
     window.removeEventListener("online", handleOnline);
     document.removeEventListener("visibilitychange", handleVisibility);

@@ -70,7 +70,8 @@ func (s *Server) pokerScope(w http.ResponseWriter, r *http.Request, withSession 
 func (s *Server) annotatePokerPresence(session *store.PokerSession) {
 	for index := range session.Participants {
 		if id, err := uuid.Parse(session.Participants[index].UserID); err == nil {
-			session.Participants[index].Online = s.hub.isOnline(id)
+			session.Participants[index].Presence, session.Participants[index].LastSeenAt = s.presenceOf(id)
+			session.Participants[index].Online = session.Participants[index].Presence != presenceOffline
 		}
 	}
 }

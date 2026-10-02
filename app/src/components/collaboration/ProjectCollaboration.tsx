@@ -276,7 +276,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
       areaName={areaName}
       chips={<><ProjectStatusChip status={project.status} /><ProjectTypeChip software methodology={project.methodology} cycleName={activeCycle?.name} /></>}
       description={project.description}
-      members={sharing.members.length > 0 ? <button type="button" className="project-phone-members" aria-label={t("collab.header.shareManage")} onClick={() => setShareOpen(true)}><AvatarStack people={sharing.members} max={3} size="md" label={t("collab.header.people")} /></button> : undefined}
+      members={sharing.members.length > 0 ? <button type="button" className="project-phone-members" aria-label={t("collab.header.shareManage")} onClick={() => setShareOpen(true)}><AvatarStack people={sharing.members} max={3} size="md" showPresence label={t("collab.header.people")} /></button> : undefined}
       menuItems={headerMenuItems}
       onBack={onBack ?? (() => window.history.back())}
     >
@@ -286,7 +286,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
       title={project.name}
       chips={<><ProjectStatusChip status={project.status} /><ProjectTypeChip software methodology={project.methodology} cycleName={activeCycle?.name} /></>}
       description={project.description}
-      aside={<AvatarStack people={sharing.members} max={5} size="md" label={t("collab.header.people")} />}
+      aside={<AvatarStack people={sharing.members} max={5} size="md" showPresence label={t("collab.header.people")} />}
       actions={<>
         <button type="button" className="secondary-button" onClick={() => setShareOpen(true)}><UsersGlyph />{t("collab.header.share")}</button>
         {!readOnly && onEditProject && <button type="button" className="secondary-button project-edit-button" disabled={loading} aria-label={t("collab.header.editProject")} title={t("collab.header.editProject")} onClick={onEditProject}><Icon name="pencil" /><span>{t("collab.header.editProject")}</span></button>}
@@ -314,7 +314,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
               <button type="button" className={`collab-chip-btn ${assigneeFilter === "unassigned" ? "selected" : ""}`} aria-pressed={assigneeFilter === "unassigned"} onClick={() => setAssigneeFilter("unassigned")}>{t("collab.assign.filterUnassigned")}</button>
               {assign.people.filter((person) => person.id !== currentUserId).slice(0, 6).map((person) => {
                 const pressed = typeof assigneeFilter === "object" && assigneeFilter.personId === person.id;
-                return <button type="button" key={person.id} className="collab-avatar-btn" aria-pressed={pressed} aria-label={t("collab.assign.filterPerson", { name: person.name })} title={person.name} onClick={() => setAssigneeFilter(pressed ? "all" : { personId: person.id })}><PersonAvatar person={person} className="collab-avatar collab-avatar-sm" showPresence={false} /></button>;
+                return <button type="button" key={person.id} className="collab-avatar-btn" aria-pressed={pressed} aria-label={t("collab.assign.filterPerson", { name: person.name })} title={person.name} onClick={() => setAssigneeFilter(pressed ? "all" : { personId: person.id })}><PersonAvatar person={person} className="collab-avatar collab-avatar-sm" /></button>;
               })}
             </div>}
             <span className="collab-muted">{tp("collab.issue.count", visibleIssues.length)}</span></div>

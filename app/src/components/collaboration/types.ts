@@ -3,8 +3,9 @@ import type { Project, TaskPriority } from "../../types";
 
 // Presentation contracts only. These are not persisted Task/Project fields.
 export type ProjectRole = "owner" | "editor" | "viewer";
-export type PersonPresence = "online" | "away" | "offline" | "inactive";
-export type Person = { id: string; name: string; email?: string; avatarUrl?: string | null; presence?: PersonPresence; status?: string };
+export type { PersonPresence } from "../../lib/presence";
+import type { PersonPresence } from "../../lib/presence";
+export type Person = { id: string; name: string; email?: string; avatarUrl?: string | null; presence?: PersonPresence; /** ISO time an offline person was last seen, when known. */ lastSeenAt?: string | null };
 export type ProjectMember = Person & { role: ProjectRole };
 export type ProjectInvite = { id: string; email: string; role: Exclude<ProjectRole, "owner">; expiresAt?: string };
 /** What happened to one invited address, shown in the share dialog. */

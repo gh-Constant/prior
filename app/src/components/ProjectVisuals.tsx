@@ -105,13 +105,13 @@ export function nextDueDate(tasks: readonly Pick<Task, "completed" | "dueDate">[
   return tasks.filter((task) => !task.completed && task.dueDate).map((task) => task.dueDate!.slice(0, 10)).sort()[0] ?? null;
 }
 
-export function AvatarStack({ people, max = 4, size = "sm", label }: { people: readonly Person[]; max?: number; size?: "sm" | "md"; label: string }) {
+export function AvatarStack({ people, max = 4, size = "sm", label, showPresence = false }: { people: readonly Person[]; max?: number; size?: "sm" | "md"; label: string; showPresence?: boolean }) {
   const { tp } = useI18n();
   if (!people.length) return null;
   const shown = people.slice(0, max);
   const extra = people.length - shown.length;
   return <span className={`project-avatar-stack size-${size}`} role="group" aria-label={label}>
-    {shown.map((person) => <span key={person.id} className="project-avatar-item" role="img" aria-label={person.name}><PersonAvatar person={person} className="project-avatar" showPresence={false} /></span>)}
+    {shown.map((person) => <span key={person.id} className="project-avatar-item" role="img" aria-label={person.name}><PersonAvatar person={person} className="project-avatar" showPresence={showPresence} /></span>)}
     {extra > 0 && <span className="project-avatar-item" role="img" aria-label={tp("collab.header.moreMembers", extra)}><span className="project-avatar project-avatar-more">+{extra}</span></span>}
   </span>;
 }

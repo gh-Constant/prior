@@ -29,7 +29,7 @@ export function AssigneeSelect({ people, value, onChange, currentUserId, disable
   const options = [
     ...ordered.map((person) => ({
       value: person.id,
-      label: <span className="assignee-option"><PersonAvatar person={person} className="collab-avatar collab-avatar-xs" showPresence={false} /><span>{person.name}{person.id === currentUserId ? ` ${t("collab.share.you")}` : ""}</span></span>,
+      label: <span className="assignee-option"><PersonAvatar person={person} className="collab-avatar collab-avatar-xs" /><span>{person.name}{person.id === currentUserId ? ` ${t("collab.share.you")}` : ""}</span></span>,
     })),
     { value: "", label: <span className="assignee-option"><Icon name="user" className="assignee-none-icon" /><span>{t("collab.assign.none")}</span></span> },
   ];
@@ -45,6 +45,6 @@ export function AssigneeSelect({ people, value, onChange, currentUserId, disable
     options={options}
     renderTriggerLabel={() => compact
       ? (assigned ? <PersonAvatar person={assigned} className="collab-avatar collab-avatar-sm" showPresence={false} /> : <span className="assignee-empty" title={t("collab.assign.none")}><Icon name="user" /></span>)
-      : <span className="assignee-option">{assigned ? <PersonAvatar person={assigned} className="collab-avatar collab-avatar-xs" showPresence={false} /> : <Icon name="user" className="assignee-none-icon" />}<span>{assigned ? assigned.name : t("collab.assign.placeholder")}</span></span>}
+      : <span className="assignee-option">{assigned ? <PersonAvatar person={assigned} className="collab-avatar collab-avatar-xs" /> : <Icon name="user" className="assignee-none-icon" />}<span>{assigned ? assigned.name : t("collab.assign.placeholder")}</span></span>}
   />;
 }

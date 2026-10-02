@@ -40,6 +40,8 @@ type Server struct {
 	store                  *store.Store
 	auth                   *auth.Manager
 	hub                    *hub
+	presenceMu             sync.Mutex
+	presenceTimers         map[uuid.UUID]*time.Timer
 	limiter                *rateLimiter
 	pushLimiter            *rateLimiter
 	pullLimiter            *rateLimiter
@@ -1405,14 +1407,13 @@ func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	if s.hub.add(user.ID, connection) {
-		// First device online: collaborators see the presence dot appear.
-		s.notifyProjectPeersEvent(context.Background(), user.ID, "presence_required")
-	}
+	s.hub.add(user.ID, connection)
+	// Any connection can change the best state (a second, active device turns
+	// an away user green); the debounce and takeChange drop non-changes.
+	s.schedulePresence(user.ID)
 	defer func() {
-		if s.hub.remove(user.ID, connection) {
-			s.notifyProjectPeersEvent(context.Background(), user.ID, "presence_required")
-		}
+		s.hub.remove(user.ID, connection)
+		s.schedulePresence(user.ID)
 	}()
 	expiry := time.NewTicker(time.Minute)
 	defer expiry.Stop()
@@ -1421,8 +1422,14 @@ func (s *Server) realtime(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer cancel()
 		for {
-			if _, _, err := connection.Read(ctx); err != nil {
+			_, payload, err := connection.Read(ctx)
+			if err != nil {
 				return
+			}
+			// Clients report whether the user is active or idle/hidden.
+			if active, ok := parsePresenceMessage(payload); ok {
+				s.hub.setActive(user.ID, connection, active)
+				s.schedulePresence(user.ID)
 			}
 		}
 	}()
@@ -1748,6 +1755,13 @@ type realtimeEvent struct {
 type hub struct {
 	mu      sync.Mutex
 	clients map[uuid.UUID][]*websocket.Conn
+	// idle lists the connections whose client reported it is idle or hidden;
+	// every other connection counts as active (presence.go).
+	idle map[*websocket.Conn]struct{}
+	// lastSeen is when the user's last connection closed (memory only).
+	lastSeen map[uuid.UUID]time.Time
+	// announced is the presence state co-members were last told about.
+	announced map[uuid.UUID]string
 }
 
 type rateBucket struct {
@@ -1794,7 +1808,14 @@ func (l *rateLimiter) sweep() {
 	}
 }
 
-func newHub() *hub { return &hub{clients: make(map[uuid.UUID][]*websocket.Conn)} }
+func newHub() *hub {
+	return &hub{
+		clients:   make(map[uuid.UUID][]*websocket.Conn),
+		idle:      make(map[*websocket.Conn]struct{}),
+		lastSeen:  make(map[uuid.UUID]time.Time),
+		announced: make(map[uuid.UUID]string),
+	}
+}
 
 // isOnline reports whether the user has a live realtime connection here.
 func (h *hub) isOnline(userID uuid.UUID) bool {
@@ -1820,6 +1841,13 @@ func (h *hub) add(userID uuid.UUID, connection *websocket.Conn) bool {
 
 // remove drops a connection and reports whether the user just went offline.
 func (h *hub) remove(userID uuid.UUID, connection *websocket.Conn) bool {
+	wentOffline := h.forget(userID, connection)
+	connection.Close(websocket.StatusNormalClosure, "bye")
+	return wentOffline
+}
+
+// forget is remove's bookkeeping, without closing the socket.
+func (h *hub) forget(userID uuid.UUID, connection *websocket.Conn) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	existing := h.clients[userID]
@@ -1833,12 +1861,15 @@ func (h *hub) remove(userID uuid.UUID, connection *websocket.Conn) bool {
 		}
 	}
 	wentOffline := found && len(kept) == 0
+	delete(h.idle, connection)
+	if found {
+		h.lastSeen[userID] = time.Now()
+	}
 	if len(kept) == 0 {
 		delete(h.clients, userID)
 	} else {
 		h.clients[userID] = kept
 	}
-	connection.Close(websocket.StatusNormalClosure, "bye")
 	return wentOffline
 }
 

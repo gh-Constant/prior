@@ -118,6 +118,8 @@ export type PokerParticipant = {
   avatarUrl?: string | null;
   role: "owner" | "editor" | "viewer";
   online: boolean;
+  presence?: "online" | "away" | "offline";
+  lastSeenAt?: string;
   voted: boolean;
   /** Other people's cards stay null until the cards are revealed. */
   vote: string | null;
@@ -150,7 +152,7 @@ type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "ha
 type PullResponse = { tasks: Task[]; habits?: Habit[]; revision: number; nextSince?: number; hasMore?: boolean; workspaceRevision?: number; profile?: { displayName: string; profileRevision: number; updatedAt: string } };
 export type ServerSettings = { openrouterApiKey: string; recommendationOpenrouterApiKey?: string; openaiApiKey: string; webSearch: boolean; initialized?: boolean };
 export type ProfileUser = AccountUser;
-export type CollaborationMember = { userId: string; email: string; displayName: string; avatarUrl?: string; role: "owner" | "editor" | "viewer"; status: "active" | "revoked"; createdAt: string; /** A live realtime connection right now. */ online?: boolean };
+export type CollaborationMember = { userId: string; email: string; displayName: string; avatarUrl?: string; role: "owner" | "editor" | "viewer"; status: "active" | "revoked"; createdAt: string; /** A live realtime connection right now. */ online?: boolean; /** online (active), away (idle or hidden) or offline; absent on older servers. */ presence?: "online" | "away" | "offline"; /** When an offline member last disconnected, if the API knows. */ lastSeenAt?: string };
 export type CollaborationInvite = { id: string; email: string; role: "editor" | "viewer"; expiresAt: string; inviteToken?: string; projectId: string };
 /** A pending invite addressed to the signed-in account. */
 export type IncomingProjectInvite = { id: string; projectId: string; projectName: string; inviterName: string; inviterId: string; role: "editor" | "viewer"; expiresAt: string; createdAt: string };

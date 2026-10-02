@@ -76,6 +76,7 @@ import { syncAgentOutbox } from "./lib/agentOutbox";
 import { workspaceStore } from "./lib/workspaceStore";
 import { collaborationStore } from "./lib/collaborationStore";
 import { isOnline, useOnline } from "./lib/connectivity";
+import { presenceFromApi } from "./lib/presence";
 import { WorkHubView, type WorkHubViewKind } from "./components/WorkHubView";
 import { MailView } from "./components/MailView";
 import { CalendarView } from "./components/CalendarView";
@@ -1756,12 +1757,12 @@ export function App() {
       // Presence is real: the API marks members with a live connection.
       const members = entry?.members.map((member) => {
         const isSelf = member.userId === user?.id;
-        const presence = isSelf || member.online ? "online" as const : undefined;
-        return { id: member.userId, name: member.displayName || member.email, email: member.email, avatarUrl: member.avatarUrl, role: member.role, presence };
-      }) ?? (user ? [{ id: user.id, name: user.displayName || user.email, email: user.email, avatarUrl: user.avatarUrl, role: "owner" as const, presence: "online" as const }] : []);
+        const presence = isSelf ? "online" as const : presenceFromApi(member);
+        return { id: member.userId, name: member.displayName || member.email, email: member.email, avatarUrl: member.avatarUrl, role: member.role, presence, lastSeenAt: isSelf ? undefined : member.lastSeenAt };
+      }) ?? (user ? [{ id: user.id, name: user.displayName || user.email, email: user.email, avatarUrl: user.avatarUrl, role: "owner" as const, presence: "online" as const, lastSeenAt: undefined }] : []);
       const memberById = new Map(members.map((member) => [member.id, member]));
       // Assignment makes sense once someone else can see the project.
-      const assignablePeople = entry && members.length > 1 ? members.map(({ id, name, email, avatarUrl, presence }) => ({ id, name, email, avatarUrl, presence })) : undefined;
+      const assignablePeople = entry && members.length > 1 ? members.map(({ id, name, email, avatarUrl, presence, lastSeenAt }) => ({ id, name, email, avatarUrl, presence, lastSeenAt })) : undefined;
       const projectTasks = tasks.filter((task) => task.projectId === project.id);
       const taskById = new Map(projectTasks.map((task) => [task.id, task]));
       // Linear-style links shown on cards: milestone, parent, blockers, sub-tasks.
@@ -1790,7 +1791,7 @@ export function App() {
         ...issueLinks(task),
         people: (task.peopleIds ?? []).map((personId): TaskPerson | null => {
           const person = memberById.get(personId);
-          return person ? { id: person.id, name: person.name, email: person.email, avatarUrl: person.avatarUrl, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator", presence: person.presence } : null;
+          return person ? { id: person.id, name: person.name, email: person.email, avatarUrl: person.avatarUrl, role: personId === task.peopleIds?.[0] ? "owner" : "collaborator", presence: person.presence, lastSeenAt: person.lastSeenAt } : null;
         }).filter((person): person is TaskPerson => Boolean(person)),
       };
       });

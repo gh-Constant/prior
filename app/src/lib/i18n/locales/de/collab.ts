@@ -78,7 +78,8 @@ export const collab = {
   presence: {
     online: "Online",
     away: "Abwesend",
-    inactive: "Inaktiv",
+    offline: "Offline",
+    lastSeen: "{status}, zuletzt gesehen {when}",
   },
   cycle: {
     progress: "{completed} von {total} Ticket abgeschlossen",
