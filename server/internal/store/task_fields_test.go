@@ -145,3 +145,75 @@ func TestRecurrenceKeptWhenOmittedPostgres(t *testing.T) {
 		t.Fatalf("null must clear the rule: %+v", current[0].Recurrence)
 	}
 }
+
+// Story points sync like the other optional task fields: omitted keeps the
+// stored value, an explicit null clears it, out-of-range values fail.
+func TestStoryPointsKeptWhenOmittedPostgres(t *testing.T) {
+	s, _ := newGameTestStore(t)
+	ctx := context.Background()
+	user := newGameTestUser(t, s, "points@game.test")
+	points := 5.5
+	task := user.task()
+	task.StoryPoints = &points
+	task = user.push(task)
+	current, err := s.CurrentTasks(ctx, user.id)
+	if err != nil || len(current) != 1 || current[0].StoryPoints == nil || *current[0].StoryPoints != 5.5 {
+		t.Fatalf("current = %+v %v", current, err)
+	}
+	one, err := s.CurrentTask(ctx, user.id, uuid.MustParse(task.ID))
+	if err != nil || one.ID != task.ID || one.StoryPoints == nil || *one.StoryPoints != 5.5 {
+		t.Fatalf("CurrentTask = %+v %v", one, err)
+	}
+	if _, err := s.CurrentTask(ctx, user.id, uuid.New()); err == nil {
+		t.Fatal("an unknown task must not be found")
+	}
+
+	// An older client sends the task without a "storyPoints" key.
+	encoded, _ := json.Marshal(task)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	delete(fields, "storyPoints")
+	fields["title"] = json.RawMessage(`"Renamed by an old client"`)
+	encoded, _ = json.Marshal(fields)
+	var old tasks.Task
+	if err := json.Unmarshal(encoded, &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.FieldPresent("storyPoints") {
+		t.Fatal("the decoded task must remember the field was omitted")
+	}
+	user.push(old)
+	current, _ = s.CurrentTasks(ctx, user.id)
+	if current[0].Title != "Renamed by an old client" || current[0].StoryPoints == nil || *current[0].StoryPoints != 5.5 {
+		t.Fatalf("omitted story points must keep the stored value: %+v", current[0])
+	}
+	pulled, err := s.Pull(ctx, user.id, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last := pulled.Tasks[len(pulled.Tasks)-1]; last.StoryPoints == nil || *last.StoryPoints != 5.5 {
+		t.Fatalf("pull carries the kept value (task_changes snapshot): %+v", last)
+	}
+
+	// Out-of-range and non-half values are refused.
+	for _, invalid := range []float64{-1, 1000, 2.25} {
+		bad := task
+		value := invalid
+		bad.StoryPoints = &value
+		bad.UpdatedAt = time.Now().UTC()
+		results, err := s.Push(ctx, user.id, []tasks.Mutation{{ID: uuid.NewString(), Kind: "upsert", Task: bad}})
+		if err != nil || len(results) != 1 || results[0].OK {
+			t.Fatalf("story points %v must be refused: %+v %v", invalid, results, err)
+		}
+	}
+
+	// An explicit null clears it.
+	task.StoryPoints = nil
+	user.push(task)
+	current, _ = s.CurrentTasks(ctx, user.id)
+	if current[0].StoryPoints != nil {
+		t.Fatalf("null must clear the points: %v", *current[0].StoryPoints)
+	}
+}

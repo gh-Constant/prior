@@ -283,6 +283,30 @@ func TestProjectTypeSyncPostgres(t *testing.T) {
 	if project := sync(`{"id":"` + id + `","areaId":null,"name":"App 2","description":"","icon":"code","status":"active","createdAt":"` + first + `","updatedAt":"` + later + `","deletedAt":null}`); project["projectType"] != "software" || project["name"] != "App 2" {
 		t.Fatalf("older client reset the type: %v", project)
 	}
+
+	// The methodology (kanban / scrum / scrumban) syncs the same way: an
+	// older client that omits it keeps it, an explicit null clears it, and
+	// an unknown value is refused.
+	scrumAt := time.Now().UTC().Add(time.Second).Format(time.RFC3339Nano)
+	if project := sync(`{"id":"` + id + `","areaId":null,"name":"App 2","description":"","icon":"code","status":"active","projectType":"software","methodology":"scrum","createdAt":"` + first + `","updatedAt":"` + scrumAt + `","deletedAt":null}`); project["methodology"] != "scrum" {
+		t.Fatalf("scrum project = %v", project)
+	}
+	oldAt := time.Now().UTC().Add(2 * time.Second).Format(time.RFC3339Nano)
+	if project := sync(`{"id":"` + id + `","areaId":null,"name":"App 3","description":"","icon":"code","status":"active","createdAt":"` + first + `","updatedAt":"` + oldAt + `","deletedAt":null}`); project["methodology"] != "scrum" || project["projectType"] != "software" || project["name"] != "App 3" {
+		t.Fatalf("older client reset the methodology: %v", project)
+	}
+	clearAt := time.Now().UTC().Add(3 * time.Second).Format(time.RFC3339Nano)
+	if project := sync(`{"id":"` + id + `","areaId":null,"name":"App 4","description":"","icon":"code","status":"active","methodology":null,"createdAt":"` + first + `","updatedAt":"` + clearAt + `","deletedAt":null}`); project["methodology"] != nil || project["name"] != "App 4" {
+		t.Fatalf("explicit null must clear the methodology: %v", project)
+	}
+	badAt := time.Now().UTC().Add(4 * time.Second).Format(time.RFC3339Nano)
+	request := httptest.NewRequest("POST", "/v1/workspace/sync", strings.NewReader(`{"areas":[],"folders":[],"notes":[],"projects":[{"id":"`+id+`","areaId":null,"name":"App 5","description":"","icon":"code","status":"active","methodology":"waterfall","createdAt":"`+first+`","updatedAt":"`+badAt+`","deletedAt":null}]}`))
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code == 200 {
+		t.Fatalf("an unknown methodology must be refused: %s", response.Body.String())
+	}
 }
 
 // Resending an unchanged snapshot must not move the workspace revision: a

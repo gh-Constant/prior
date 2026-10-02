@@ -124,13 +124,14 @@ func decodeRelations(task *tasks.Task, raw []byte) error {
 }
 
 // resolveIssueFieldsTx keeps the stored assignee, parent, milestone and
-// relations and recurrence when an older client omits them, then validates the result:
+// relations, recurrence and story points when an older client omits them, then validates the result:
 // the assignee must be able to see the task, a parent must be another task
 // of the same project (without cycles), relations must be well formed.
 func resolveIssueFieldsTx(ctx context.Context, tx pgx.Tx, taskID, ownerID uuid.UUID, task *tasks.Task) error {
 	var storedAssignee, storedParent, storedMilestone *string
 	var storedRelations, storedRecurrence []byte
-	err := tx.QueryRow(ctx, `SELECT assignee_id::text, parent_id::text, milestone_id, relations, recurrence FROM tasks WHERE id = $1`, taskID).Scan(&storedAssignee, &storedParent, &storedMilestone, &storedRelations, &storedRecurrence)
+	var storedStoryPoints *float64
+	err := tx.QueryRow(ctx, `SELECT assignee_id::text, parent_id::text, milestone_id, relations, recurrence, story_points FROM tasks WHERE id = $1`, taskID).Scan(&storedAssignee, &storedParent, &storedMilestone, &storedRelations, &storedRecurrence, &storedStoryPoints)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
@@ -156,6 +157,9 @@ func resolveIssueFieldsTx(ctx context.Context, tx pgx.Tx, taskID, ownerID uuid.U
 			return err
 		}
 		task.Recurrence = stored.Recurrence
+	}
+	if !task.FieldPresent("storyPoints") {
+		task.StoryPoints = storedStoryPoints
 	}
 	var projectID *uuid.UUID
 	if task.ProjectID != nil && *task.ProjectID != "" {

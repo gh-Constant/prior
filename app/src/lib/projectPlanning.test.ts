@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeProjectPlanning, withProjectPlanning } from "./projectPlanning";
+import { normalizeProjectPlanning, validProjectMethodology, withNormalizedMethodology, withProjectPlanning } from "./projectPlanning";
 import type { Project } from "../types";
 
 describe("projectPlanning", () => {
@@ -70,5 +70,16 @@ describe("projectPlanning", () => {
     expect(updated.health).toBe("At risk");
     expect(updated.startDate).toBe("2026-10-01");
     expect(updated.name).toBe("Project");
+  });
+
+  it("keeps a valid methodology and deletes the key otherwise", () => {
+    expect(withNormalizedMethodology({ id: "p", methodology: "scrum" })).toEqual({ id: "p", methodology: "scrum" });
+    for (const methodology of [undefined, null, "waterfall", 1, ""]) {
+      const result = withNormalizedMethodology({ id: "p", methodology });
+      expect(result).toEqual({ id: "p" });
+      expect("methodology" in result).toBe(false);
+    }
+    expect(validProjectMethodology("scrumban")).toBe("scrumban");
+    expect(validProjectMethodology("x")).toBeUndefined();
   });
 });

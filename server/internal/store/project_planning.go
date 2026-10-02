@@ -25,6 +25,7 @@ type ProjectPlanningPatch struct {
 	Status      json.RawMessage `json:"status"`
 	Icon        json.RawMessage `json:"icon"`
 	ProjectType json.RawMessage `json:"projectType"`
+	Methodology json.RawMessage `json:"methodology"`
 	Health      json.RawMessage `json:"health"`
 	StartDate   json.RawMessage `json:"startDate"`
 	TargetDate  json.RawMessage `json:"targetDate"`
@@ -37,6 +38,7 @@ const maxProjectIconLength = 700_000
 
 type projectMetadata struct {
 	ProjectType *string                      `json:"projectType,omitempty"`
+	Methodology *string                      `json:"methodology,omitempty"`
 	Health      *string                      `json:"health,omitempty"`
 	StartDate   *string                      `json:"startDate,omitempty"`
 	TargetDate  *string                      `json:"targetDate,omitempty"`
@@ -49,7 +51,7 @@ func metadataForProject(project workspace.Project) ([]byte, error) {
 		return nil, err
 	}
 	metadata, err := json.Marshal(projectMetadata{
-		ProjectType: project.ProjectType, Health: project.Health, StartDate: project.StartDate, TargetDate: project.TargetDate, Cycles: project.Cycles, Milestones: project.Milestones,
+		ProjectType: project.ProjectType, Methodology: project.Methodology, Health: project.Health, StartDate: project.StartDate, TargetDate: project.TargetDate, Cycles: project.Cycles, Milestones: project.Milestones,
 	})
 	if err != nil {
 		return nil, err
@@ -58,7 +60,7 @@ func metadataForProject(project workspace.Project) ([]byte, error) {
 }
 
 // syncedProjectMetadata merges an incoming workspace project into the stored
-// metadata: planning fields and the project type are only replaced when the
+// metadata: planning fields, the project type and the methodology are only replaced when the
 // client sent them, so an older client cannot wipe what a newer one saved.
 func syncedProjectMetadata(stored []byte, incoming workspace.Project) ([]byte, error) {
 	var current workspace.Project
@@ -74,6 +76,9 @@ func syncedProjectMetadata(stored []byte, incoming workspace.Project) ([]byte, e
 	if incoming.ProjectTypePresent() {
 		current.ProjectType = incoming.ProjectType
 	}
+	if incoming.MethodologyPresent() {
+		current.Methodology = incoming.Methodology
+	}
 	return metadataForProject(current)
 }
 
@@ -86,6 +91,7 @@ func applyProjectMetadata(project *workspace.Project, raw []byte) error {
 		return fmt.Errorf("invalid project metadata: %w", err)
 	}
 	project.ProjectType = metadata.ProjectType
+	project.Methodology = metadata.Methodology
 	project.Health = metadata.Health
 	project.StartDate = metadata.StartDate
 	project.TargetDate = metadata.TargetDate
@@ -153,6 +159,13 @@ func applyProjectPlanningPatch(project *workspace.Project, patch ProjectPlanning
 			return err
 		}
 		project.ProjectType = value
+	}
+	if len(patch.Methodology) > 0 {
+		value, err := nullableString(patch.Methodology, "project methodology")
+		if err != nil {
+			return err
+		}
+		project.Methodology = value
 	}
 	if len(patch.Health) > 0 {
 		value, err := nullableString(patch.Health, "project health")

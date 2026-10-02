@@ -128,3 +128,39 @@ func TestProjectPlanningUnmarshalJSON(t *testing.T) {
 		t.Fatalf("expected health %q, got %v", ProjectHealthAtRisk, withPlanning.Health)
 	}
 }
+
+func TestProjectMethodologyValidationAndPresence(t *testing.T) {
+	for _, value := range []string{"kanban", "scrum", "scrumban"} {
+		method := value
+		if err := (Project{Methodology: &method}).ValidatePlanning(); err != nil {
+			t.Fatalf("%s must be valid: %v", value, err)
+		}
+	}
+	if err := (Project{}).ValidatePlanning(); err != nil {
+		t.Fatalf("no methodology means kanban: %v", err)
+	}
+	bad := "waterfall"
+	if err := (Project{Methodology: &bad}).ValidatePlanning(); err == nil {
+		t.Fatal("an unknown methodology must be refused")
+	}
+
+	var omitted, cleared, set Project
+	if err := omitted.UnmarshalJSON([]byte(`{"id":"p1","name":"Old client","status":"active"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if omitted.MethodologyPresent() {
+		t.Fatal("an omitted methodology must not count as present")
+	}
+	if err := cleared.UnmarshalJSON([]byte(`{"id":"p1","name":"Cleared","status":"active","methodology":null}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !cleared.MethodologyPresent() || cleared.Methodology != nil {
+		t.Fatalf("an explicit null is present and clears: %+v", cleared)
+	}
+	if err := set.UnmarshalJSON([]byte(`{"id":"p1","name":"Scrum","status":"active","methodology":"scrum"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !set.MethodologyPresent() || set.Methodology == nil || *set.Methodology != MethodologyScrum {
+		t.Fatalf("methodology = %+v", set.Methodology)
+	}
+}

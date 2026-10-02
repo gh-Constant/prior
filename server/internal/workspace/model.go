@@ -47,13 +47,17 @@ type Project struct {
 	Milestones []ProjectMilestone `json:"milestones,omitempty"`
 	// ProjectType is "standard" or "software" (the agile workspace). Nil
 	// means "standard" for projects saved before the type was synced.
-	ProjectType *string    `json:"projectType"`
+	ProjectType *string `json:"projectType"`
+	// Methodology is "kanban", "scrum" or "scrumban"; only meaningful for
+	// "software" projects. Nil means "kanban" (specs/SCRUM.md).
+	Methodology *string    `json:"methodology,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 	DeletedAt   *time.Time `json:"deletedAt"`
 
 	planningFieldsPresent   bool
 	projectTypeFieldPresent bool
+	methodologyFieldPresent bool
 	milestonesFieldPresent  bool
 }
 
@@ -103,6 +107,7 @@ func (project *Project) UnmarshalJSON(data []byte) error {
 	project.planningFieldsPresent = healthPresent || startDatePresent || targetDatePresent || cyclesPresent
 	_, project.milestonesFieldPresent = fields["milestones"]
 	_, project.projectTypeFieldPresent = fields["projectType"]
+	_, project.methodologyFieldPresent = fields["methodology"]
 	return nil
 }
 
@@ -111,6 +116,10 @@ func (project Project) PlanningFieldsPresent() bool { return project.planningFie
 // ProjectTypePresent reports whether the payload carried projectType, so
 // older clients that never send it cannot reset the type to standard.
 func (project Project) ProjectTypePresent() bool { return project.projectTypeFieldPresent }
+
+// MethodologyPresent reports whether the payload carried methodology, so
+// older clients that never send it cannot reset it to kanban.
+func (project Project) MethodologyPresent() bool { return project.methodologyFieldPresent }
 
 // MilestonesPresent reports whether the payload carried milestones (clients
 // before 0.8 never send them and must not erase them).
@@ -126,9 +135,23 @@ func ValidProjectType(value *string) bool {
 	return value == nil || *value == ProjectTypeStandard || *value == ProjectTypeSoftware
 }
 
+const (
+	MethodologyKanban   = "kanban"
+	MethodologyScrum    = "scrum"
+	MethodologyScrumban = "scrumban"
+)
+
+// ValidMethodology accepts nil (kanban) or one of the three known methods.
+func ValidMethodology(value *string) bool {
+	return value == nil || *value == MethodologyKanban || *value == MethodologyScrum || *value == MethodologyScrumban
+}
+
 func (project Project) ValidatePlanning() error {
 	if !ValidProjectType(project.ProjectType) {
 		return errors.New("invalid project type")
+	}
+	if !ValidMethodology(project.Methodology) {
+		return errors.New("invalid project methodology")
 	}
 	if project.Health != nil && *project.Health != ProjectHealthOnTrack && *project.Health != ProjectHealthAtRisk && *project.Health != ProjectHealthOffTrack {
 		return errors.New("invalid project health")

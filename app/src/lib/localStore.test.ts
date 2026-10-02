@@ -25,6 +25,21 @@ describe("localStore browser fallback", () => {
     expect((await localStore.pendingMutations()).at(-1)?.kind).toBe("delete");
   });
 
+  it("keeps story points through edits, normalizes them, and sends them in the mutation", async () => {
+    const plain = await localStore.saveTask({ title: "Not sized", important: false, urgent: false });
+    expect(plain.storyPoints).toBeNull();
+    const sized = await localStore.saveTask({ title: "Sized", important: false, urgent: false, storyPoints: 2.3 });
+    expect(sized.storyPoints).toBe(2.5);
+    const renamed = await localStore.updateTask({ ...sized, title: "Renamed" });
+    expect(renamed.storyPoints).toBe(2.5);
+    const cleared = await localStore.updateTask({ ...renamed, storyPoints: null });
+    expect(cleared.storyPoints).toBeNull();
+    expect((await localStore.saveTask({ title: "Huge", important: false, urgent: false, storyPoints: 1e6 })).storyPoints).toBeNull();
+    const pending = (await localStore.pendingMutations()).filter((item) => item.entity !== "habit");
+    expect(pending.some((item) => item.task.id === sized.id && item.task.storyPoints === null)).toBe(true);
+    expect((await localStore.listTasks()).find((item) => item.id === plain.id)?.storyPoints).toBeNull();
+  });
+
   it("keeps an unsynced local edit ahead of an incoming remote snapshot", async () => {
     const local = await localStore.saveTask({ title: "Local wording", important: true, urgent: false });
     await localStore.applyRemoteTasks([{ ...local, title: "Remote wording", serverRevision: 42 }]);

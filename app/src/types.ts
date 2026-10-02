@@ -26,6 +26,9 @@ export type ProjectCycle = {
 
 export type ProjectType = "standard" | "software";
 
+/** How a software project is run (specs/SCRUM.md). Absent means "kanban". */
+export type ProjectMethodology = "kanban" | "scrum" | "scrumban";
+
 export type ProjectMilestone = {
   id: string;
   name: string;
@@ -44,6 +47,8 @@ export type Project = {
   startDate?: string | null;
   targetDate?: string | null;
   projectType?: ProjectType;
+  /** Only meaningful when projectType is "software"; absent means "kanban". */
+  methodology?: ProjectMethodology;
   cycles?: ProjectCycle[];
   /** Checkpoints of the project; tasks point at one with milestoneId. */
   milestones?: ProjectMilestone[];
@@ -83,6 +88,8 @@ export type Task = {
   relations?: TaskRelation[];
   /** Repeat rule: completing the task creates the next occurrence (specs/RECURRING_TASKS.md). */
   recurrence?: TaskRecurrence | null;
+  /** Size of the task for agile projects: 0-999 in steps of 0.5, or null when not estimated. */
+  storyPoints?: number | null;
   completed: boolean;
   important: boolean;
   urgent: boolean;
@@ -118,7 +125,7 @@ export type TaskRecurrence = {
   until?: string | null;
 };
 
-export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes" | "reminderAt" | "checklist" | "assigneeId" | "parentId" | "milestoneId" | "relations" | "recurrence">>;
+export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes" | "reminderAt" | "checklist" | "assigneeId" | "parentId" | "milestoneId" | "relations" | "recurrence" | "storyPoints">>;
 
 export type HabitUnit = "day" | "week" | "month" | "year";
 
@@ -231,7 +238,7 @@ export type ProposedTask = {
 };
 
 /** Fields the assistant may change on an existing task (update_task). */
-export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt" | "assigneeId" | "milestoneId" | "parentId" | "relations" | "recurrence">>;
+export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt" | "assigneeId" | "milestoneId" | "parentId" | "relations" | "recurrence" | "storyPoints">>;
 
 /** Kinds of existing items the assistant can change besides tasks. */
 export type EntityUpdateKind = "project" | "habit" | "note" | "area";

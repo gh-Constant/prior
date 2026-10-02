@@ -2,7 +2,7 @@ import type { CollaborationInvite, CollaborationMember, CollaborationProject } f
 import { api } from "./api";
 import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import type { Project } from "../types";
-import { normalizeProjectPlanning } from "./projectPlanning";
+import { normalizeProjectPlanning, withNormalizedMethodology } from "./projectPlanning";
 
 const KEY = "prior.collaboration.projects.v1";
 const CHANGE_EVENT = "prior-collaboration-change";
@@ -28,7 +28,7 @@ function normalizeProject(project: Project): Project {
   // Same rule as the personal workspace: the server sends null for projects
   // saved before the type was synced, which are standard projects.
   const projectType = project.projectType === "software" || (project.cycles?.length ?? 0) > 0 ? "software" as const : "standard" as const;
-  return { ...project, ...planning, projectType, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || "folder", status: project.status ?? "active", deletedAt: project.deletedAt ?? null };
+  return { ...withNormalizedMethodology(project), ...planning, projectType, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || "folder", status: project.status ?? "active", deletedAt: project.deletedAt ?? null };
 }
 
 function normalizeProjects(incoming: CachedCollaborationProject[]): CachedCollaborationProject[] {

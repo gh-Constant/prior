@@ -19,11 +19,13 @@ import { notes } from "./notes";
 import { onboarding } from "./onboarding";
 import { palette } from "./palette";
 import { planning } from "./planning";
+import { poker } from "./poker";
 import { progress } from "./progress";
 import { recurrence } from "./recurrence";
 import { reminders } from "./reminders";
+import { scrum } from "./scrum";
 import { settings } from "./settings";
 import { tasks } from "./tasks";
 import { tour } from "./tour";
 
-export const de: AppDictionary = { account, agent, agentui, auth, billing, capture, checklist, collab, comments, common, focus, game, habits, import: importer, kanban, mail, notes, onboarding, palette, planning, progress, recurrence, reminders, settings, tasks, tour };
+export const de: AppDictionary = { account, agent, agentui, auth, billing, capture, checklist, collab, comments, common, focus, game, habits, import: importer, kanban, mail, notes, onboarding, palette, planning, poker, progress, recurrence, reminders, scrum, settings, tasks, tour };

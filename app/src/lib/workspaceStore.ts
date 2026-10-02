@@ -2,7 +2,7 @@ import type { Area, Project, ProjectStatus } from "../types";
 import { readScopedStorage, writeScopedStorage } from "./accountScope";
 import { translateStored } from "./i18n";
 import { notesStore } from "./notes";
-import { normalizeProjectPlanning } from "./projectPlanning";
+import { normalizeProjectPlanning, withNormalizedMethodology } from "./projectPlanning";
 import { generateUuid } from "./uuid";
 
 const AREAS_KEY = "prior.areas.v1";
@@ -40,7 +40,7 @@ function normalizeProject(project: Project): Project {
   const status: ProjectStatus = ["planned", "active", "paused", "completed"].includes(project.status) ? project.status : "active";
   const planning = normalizeProjectPlanning(project);
   const projectType = project.projectType === "software" || (project.cycles && project.cycles.length > 0) ? "software" : (project.projectType || "standard");
-  return { ...project, ...planning, projectType, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || DEFAULT_PROJECT_ICON, status, deletedAt: project.deletedAt ?? null };
+  return { ...withNormalizedMethodology(project), ...planning, projectType, areaId: project.areaId ?? null, description: project.description ?? "", icon: project.icon || DEFAULT_PROJECT_ICON, status, deletedAt: project.deletedAt ?? null };
 }
 
 function mergeByUpdatedAt<T extends { id: string; updatedAt: string }>(local: T[], remote: T[]): T[] {

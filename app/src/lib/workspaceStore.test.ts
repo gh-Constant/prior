@@ -86,4 +86,31 @@ describe("workspaceStore", () => {
     expect(retrieved?.cycles).toHaveLength(1);
     expect(retrieved?.cycles?.[0]?.issueIds).toEqual(["task-1", "task-2"]);
   });
+
+  it("keeps a valid methodology and deletes the key for anything else", () => {
+    const project = workspaceStore.createProject("App", null, "", null, "software");
+    expect(project).not.toHaveProperty("methodology");
+    for (const methodology of ["kanban", "scrum", "scrumban"] as const) {
+      const saved = workspaceStore.updateProject({ ...project, methodology });
+      expect(saved.methodology).toBe(methodology);
+      expect(workspaceStore.listProjects()[0]?.methodology).toBe(methodology);
+    }
+    // An unknown value (a newer client, corrupt storage) is dropped, never coerced to null,
+    // so this device cannot wipe the value another device stored.
+    const invalid = workspaceStore.updateProject({ ...project, methodology: "waterfall" as never });
+    expect(invalid).not.toHaveProperty("methodology");
+    const nulled = workspaceStore.updateProject({ ...project, methodology: null as never });
+    expect(nulled).not.toHaveProperty("methodology");
+    expect(Object.keys(workspaceStore.listProjects()[0] ?? {})).not.toContain("methodology");
+  });
+
+  it("normalizes the methodology of remote projects", () => {
+    const project = workspaceStore.createProject("Remote app", null, "", null, "software");
+    const later = new Date(Date.now() + 60_000).toISOString();
+    workspaceStore.mergeRemote({ areas: [], projects: [{ ...project, methodology: "scrum", updatedAt: later }] });
+    expect(workspaceStore.listProjects().find((item) => item.id === project.id)?.methodology).toBe("scrum");
+    const evenLater = new Date(Date.now() + 120_000).toISOString();
+    workspaceStore.mergeRemote({ areas: [], projects: [{ ...project, methodology: "bogus" as never, updatedAt: evenLater }] });
+    expect(workspaceStore.listProjects().find((item) => item.id === project.id)).not.toHaveProperty("methodology");
+  });
 });

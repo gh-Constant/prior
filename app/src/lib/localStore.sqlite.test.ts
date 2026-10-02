@@ -63,6 +63,32 @@ describe("localStore SQLite statements validation", () => {
     expect(select?.query).toContain("recurrence");
   });
 
+  it("stores story points in their own column, and applyRemoteTasks binds them too", async () => {
+    const { localStore } = await import("./localStore");
+    await localStore.saveTask({ title: "Sized", important: false, urgent: false, storyPoints: 5 });
+    const insert = executedStatements.find((stmt) => /INSERT INTO tasks/.test(stmt.query));
+    expect(insert).toBeDefined();
+    const columns = /INSERT INTO tasks \(([^)]+)\)/.exec(insert!.query)![1].split(",").map((name) => name.trim());
+    expect(insert!.query).toContain("story_points=excluded.story_points");
+    expect(insert!.bindValues![columns.indexOf("story_points")]).toBe(5);
+    await localStore.saveTask({ title: "Unsized", important: false, urgent: false });
+    const plain = executedStatements.filter((stmt) => /INSERT INTO tasks/.test(stmt.query)).at(-1)!;
+    expect(plain.bindValues![columns.indexOf("story_points")]).toBeNull();
+    await localStore.saveTask({ title: "Out of range", important: false, urgent: false, storyPoints: 5000 });
+    const invalid = executedStatements.filter((stmt) => /INSERT INTO tasks/.test(stmt.query)).at(-1)!;
+    expect(invalid.bindValues![columns.indexOf("story_points")]).toBeNull();
+
+    await localStore.applyRemoteTasks([
+      { id: "remote-points", title: "Remote", description: "", dueDate: null, priority: 4, storyPoints: 0.5, completed: false, important: false, urgent: false, createdAt: "2026-01-01", updatedAt: "2026-01-01", deletedAt: null },
+    ]);
+    const remote = executedStatements.filter((stmt) => /INSERT INTO tasks/.test(stmt.query)).at(-1)!;
+    expect(remote.bindValues![columns.indexOf("story_points")]).toBe(0.5);
+
+    await localStore.listTasks();
+    const select = executedStatements.find((stmt) => /^SELECT id, title.*FROM tasks/.test(stmt.query));
+    expect(select?.query).toContain("story_points as storyPoints");
+  });
+
   it("validates SQL placeholder and column count on saveHabit", async () => {
     const { localStore } = await import("./localStore");
     await localStore.saveHabit({ title: "Test habit", important: false, urgent: true, interval: 1, unit: "day" });

@@ -1,6 +1,25 @@
-import type { Project, ProjectCycle, ProjectHealth, ProjectMilestone } from "../types";
+import type { Project, ProjectCycle, ProjectHealth, ProjectMethodology, ProjectMilestone } from "../types";
 
 export const PROJECT_HEALTH_VALUES: readonly ProjectHealth[] = ["On track", "At risk", "Off track"];
+
+export const PROJECT_METHODOLOGIES: readonly ProjectMethodology[] = ["kanban", "scrum", "scrumban"];
+
+/** The methodology when it is one of the known values, otherwise undefined. */
+export function validProjectMethodology(value: unknown): ProjectMethodology | undefined {
+  return PROJECT_METHODOLOGIES.includes(value as ProjectMethodology) ? value as ProjectMethodology : undefined;
+}
+
+/**
+ * Returns the project with a valid `methodology` kept and any other value
+ * REMOVED (the key is deleted, never set to null/undefined): an older device
+ * that does not know the field must not overwrite the stored value, and absent
+ * means "kanban" everywhere.
+ */
+export function withNormalizedMethodology<T extends { methodology?: unknown }>(project: T): Omit<T, "methodology"> & { methodology?: ProjectMethodology } {
+  const { methodology, ...rest } = project;
+  const valid = validProjectMethodology(methodology);
+  return valid ? { ...rest, methodology: valid } : rest;
+}
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 

@@ -299,6 +299,12 @@ pub fn run() {
             sql: include_str!("../migrations/013_task_recurrence.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 14,
+            description: "task story points",
+            sql: include_str!("../migrations/014_task_story_points.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();
