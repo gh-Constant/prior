@@ -83,6 +83,7 @@ import { ProjectEditor } from "./components/collaboration/ProjectEditor";
 import { ProjectInviteNotifications } from "./components/collaboration/ProjectInviteNotifications";
 import { agileFeatures } from "./lib/agile";
 import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
+import { PlanningPokerPanel } from "./components/poker/PlanningPokerPanel";
 import { ProjectMilestoneEditor } from "./components/collaboration/ProjectMilestoneEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
 import { generateTaskFromMail } from "./lib/mailTask";
@@ -1923,6 +1924,24 @@ export function App() {
             return { id: milestone.id, name: milestone.name, targetDate: milestone.targetDate ?? null, done, total: inMilestone.length, completed: inMilestone.length > 0 && done === inMilestone.length };
           }),
         },
+        // Planning Poker tab (Scrum and Scrumban projects). Read lazily, so it can reuse `sharing` above.
+        renderPoker: () => (
+          <PlanningPokerPanel
+            projectId={project.id}
+            projectName={project.name}
+            shared={collaborationStore.isShared(project.id)}
+            role={entry?.role ?? (user ? "owner" : undefined)}
+            currentUser={user ? { id: user.id, name: user.displayName || user.email, avatarUrl: user.avatarUrl } : null}
+            tasks={projectTasks}
+            cycles={project.cycles ?? []}
+            sharing={result[project.id]?.sharing}
+            onSetPoints={async (taskId, points) => {
+              const task = tasks.find((item) => item.id === taskId && item.projectId === project.id);
+              if (!task) throw new Error(t("poker.errors.save"));
+              await changeTask({ ...task, storyPoints: points });
+            }}
+          />
+        ),
       };
     }
     return result;

@@ -108,6 +108,42 @@ export function apiErrorCode(error: unknown): string | undefined {
 export type CommentAuthor = { id: string; displayName: string; avatarUrl?: string };
 export type TaskComment = { id: string; taskId: string; projectId: string; author: CommentAuthor | null; body: string; mentions: string[]; createdAt: string; editedAt?: string };
 export type MentionNotification = { commentId: string; taskId: string; taskTitle: string; projectId: string; projectName: string; authorName: string; excerpt: string; createdAt: string; readAt?: string };
+
+/** Planning Poker (specs/SCRUM.md): decks are fixed lists of card values (strings). */
+export type PokerDeckId = "fibonacci" | "modified" | "tshirt";
+export type PokerItem = { taskId: string; title: string; storyPoints: number | null; finalPoints: number | null };
+export type PokerParticipant = {
+  userId: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  role: "owner" | "editor" | "viewer";
+  online: boolean;
+  voted: boolean;
+  /** Other people's cards stay null until the cards are revealed. */
+  vote: string | null;
+};
+export type PokerSession = {
+  id: string;
+  projectId: string;
+  status: "active" | "closed";
+  deck: PokerDeckId;
+  facilitatorId: string | null;
+  /** The signed-in account may reveal, re-vote, accept and move on. */
+  canControl: boolean;
+  currentIndex: number;
+  round: number;
+  revealed: boolean;
+  items: PokerItem[];
+  participants: PokerParticipant[];
+  /** The viewer's own card, always visible to them. */
+  myVote: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function pokerBase(projectId: string): string {
+  return `/v1/collaboration/projects/${encodeURIComponent(projectId)}/poker`;
+}
 export type TwoFactorStatus = { enabled: boolean; available: boolean; recoveryCodesLeft: number };
 export type ReauthInput = { email?: string; password?: string; code?: string; recoveryCode?: string };
 type PushResponse = { applied: Array<{ mutationId: string; entity?: "task" | "habit"; task?: Task; habit?: Habit; revision: number }>; results?: Array<{ mutationId: string; ok: boolean; revision?: number; entity?: string; task?: Task; habit?: Habit; error?: { code: string; message: string } }> };
@@ -455,6 +491,33 @@ export const api = {
   },
   readMentions(commentIds: string[], token: string): Promise<void> {
     return request<void>("/v1/collaboration/mentions/read", { method: "POST", body: JSON.stringify({ commentIds }) }, token);
+  },
+  pokerActive(projectId: string, token: string): Promise<{ session: PokerSession | null }> {
+    return request(pokerBase(projectId), {}, token);
+  },
+  pokerStart(projectId: string, input: { taskIds: string[]; deck: PokerDeckId }, token: string): Promise<PokerSession> {
+    return request(pokerBase(projectId), { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  pokerGet(projectId: string, sessionId: string, token: string): Promise<PokerSession> {
+    return request(`${pokerBase(projectId)}/${encodeURIComponent(sessionId)}`, {}, token);
+  },
+  pokerVote(projectId: string, sessionId: string, taskId: string, value: string | null, token: string): Promise<PokerSession> {
+    return request(`${pokerBase(projectId)}/${encodeURIComponent(sessionId)}/vote`, { method: "PUT", body: JSON.stringify({ taskId, value }) }, token);
+  },
+  pokerReveal(projectId: string, sessionId: string, token: string): Promise<PokerSession> {
+    return request(`${pokerBase(projectId)}/${encodeURIComponent(sessionId)}/reveal`, { method: "POST" }, token);
+  },
+  pokerRevote(projectId: string, sessionId: string, token: string): Promise<PokerSession> {
+    return request(`${pokerBase(projectId)}/${encodeURIComponent(sessionId)}/revote`, { method: "POST" }, token);
+  },
+  pokerSetCurrent(projectId: string, sessionId: string, index: number, token: string): Promise<PokerSession> {
+    return request(`${pokerBase(projectId)}/${encodeURIComponent(sessionId)}/current`, { method: "POST", body: JSON.stringify({ index }) }, token);
+  },
+  pokerEstimate(projectId: string, sessionId: string, input: { taskId: string; storyPoints: number | null; advance: boolean }, token: string): Promise<{ session: PokerSession; task: Task }> {
+    return request(`${pokerBase(projectId)}/${encodeURIComponent(sessionId)}/estimate`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  pokerClose(projectId: string, sessionId: string, token: string): Promise<PokerSession> {
+    return request(`${pokerBase(projectId)}/${encodeURIComponent(sessionId)}/close`, { method: "POST" }, token);
   },
   listAgentChats(token: string): Promise<AgentChatSummary[]> {
     return request<AgentChatSummary[]>("/v1/agent/chats", {}, token);
