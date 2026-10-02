@@ -240,3 +240,41 @@ button.collab-milestone-row:hover { background: var(--hover); }
   .project-page .collab-sprint-filter button { flex: 1 1 0; min-height: 40px; padding: 0 8px; font-size: 14px; }
   .collab-velocity { padding: 12px; }
 }
+
+/* Share dialog: reusable invitation links (one per role). */
+.collab-sharelinks { display: grid; gap: 8px; }
+.collab-sharelinks-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.collab-sharelinks-head h3 { margin: 0; }
+.collab-sharelinks-expiry { display: inline-flex; align-items: center; gap: 8px; }
+.collab-sharelinks-hint { margin: 0; font-size: var(--fs-xs); }
+.collab-sharelink-list li.collab-sharelink { flex-wrap: wrap; }
+.collab-sharelink-wide { flex: 1 0 100%; margin: 0; padding-left: 40px; font-size: var(--fs-xs); }
+.collab-sharelink-wide svg { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: -1px; }
+.collab-sharelink .collab-link-row { margin-top: 0; }
+.collab-sharelink .collab-person-copy small { color: var(--muted); font-size: var(--fs-xs); }
+.collab-sharelink .collab-person-copy small.collab-error { color: var(--red); }
+.collab-linkish { padding: 0; border: 0; background: none; color: var(--accent-dark); font: inherit; text-decoration: underline; cursor: pointer; }
+@media (max-width: 640px) {
+  .collab-sharelink-wide { padding-left: 0; }
+  .collab-sharelink .collab-link-row { flex-wrap: wrap; }
+  .collab-sharelink .collab-link-row input { flex: 1 0 100%; min-height: 44px; font-size: 16px; }
+  .collab-sharelink .collab-invite-actions, .collab-sharelink > .secondary-button { margin-left: auto; }
+}
+
+/* Confirming an invitation (link or email) before joining. */
+.collab-join { display: grid; gap: 14px; padding: 6px 20px 20px; font-size: var(--fs-md); }
+.collab-join-summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--accent-line); border-radius: var(--r-lg); background: var(--accent-soft); }
+.collab-join-icon { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 40px; border-radius: 11px; background: var(--panel); color: var(--accent-dark); box-shadow: var(--shadow-xs); }
+.collab-join-icon svg, .collab-join-icon img { width: 20px; height: 20px; }
+.collab-join-text { display: grid; gap: 2px; min-width: 0; }
+.collab-join-text strong { overflow-wrap: anywhere; color: var(--ink); font-size: var(--fs-md); }
+.collab-join-text span { color: var(--muted); font-size: var(--fs-sm); line-height: 1.4; }
+.collab-join-body { margin: 0; color: var(--ink-2); font-size: var(--fs-sm); line-height: 1.55; }
+.collab-join-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.collab-join-actions .collab-join-secondary { display: inline-flex; gap: 8px; }
+.collab-join-actions .primary-button, .collab-join-actions .secondary-button, .collab-join-actions .danger-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; margin: 0; }
+@media (max-width: 640px) {
+  .collab-join-actions { flex-direction: column-reverse; align-items: stretch; }
+  .collab-join-actions .collab-join-secondary { display: grid; grid-template-columns: 1fr 1fr; }
+  .collab-join-actions button { min-height: 44px; }
+}

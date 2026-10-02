@@ -412,13 +412,60 @@ paths:
           description: hosted AI status
   /v1/collaboration/invites/preview:
     get:
-      summary: Public preview of a pending invite for the invite landing (query token)
-      description: Returns projectName, projectIcon, inviterName, inviterAvatarUrl, memberCount, role and status (pending, accepted, expired). A wrong token returns 404 and reveals nothing.
+      summary: Preview of an invitation or share link for the invite landing and the join confirmation (query token)
+      description: Public. Returns kind ("invite" for an email invitation, "link" for a share link), projectName, projectIcon, inviterName, inviterAvatarUrl, memberCount, role and status (pending, accepted, expired, revoked). With a valid bearer token it also returns alreadyMember, currentRole and, only then, projectId. A wrong token returns 404 and reveals nothing.
       responses:
         '200':
-          description: invite preview
+          description: invitation preview
         '404':
           description: unknown token
+  /v1/collaboration/invites/accept:
+    post:
+      summary: Join a project with an invitation token ({"token"}), email invitation or share link
+      description: Rate-limited per account. An email invitation must match the signed-in account. A share link adds the account with the link's role after the client asked for confirmation; a member keeps the higher of their role and the link's (a viewer opening an editor link becomes an editor, nobody is downgraded). Returns {projectId, result} with result "joined", "upgraded" or "already_member" and, for share links, role. Members of the project are notified in real time (collaboration_required).
+      responses:
+        '200':
+          description: joined or nothing to change
+        '402':
+          description: the project owner's plan has no room (PLAN_LIMIT)
+        '403':
+          description: the invitation was sent to another email address
+        '404':
+          description: unknown token (INVITE_NOT_FOUND)
+        '410':
+          description: the link was disabled (LINK_REVOKED), expired (LINK_EXPIRED) or has no uses left (LINK_EXHAUSTED)
+  /v1/collaboration/projects/{projectID}/share-links:
+    get:
+      summary: List the active share links of a project (owner only)
+      description: Returns {links} with id, role, createdAt, expiresAt, useCount and maxUses. Tokens are never returned, only a hash is stored.
+      responses:
+        '200':
+          description: active share links
+        '403':
+          description: not the owner
+        '404':
+          description: unknown project
+    post:
+      summary: Create or rotate the share link of a role ({"role", "expiresInDays"?, "maxUses"?})
+      description: Owner only, rate-limited per account. role is "editor" or "viewer"; expiresInDays is 1 to 365 (default none). The previous active link of the same role is disabled, so there is at most one per role. Returns {link, inviteLink}; the link is only shown here.
+      responses:
+        '200':
+          description: the new link
+        '400':
+          description: invalid role or limits
+        '403':
+          description: not the owner
+  /v1/collaboration/projects/{projectID}/share-links/{linkID}:
+    delete:
+      summary: Disable a share link (owner only)
+      description: People who already joined stay members.
+      responses:
+        '204':
+          description: disabled
+        '403':
+          description: not the owner
+        '404':
+          description: unknown or already disabled link
   /v1/collaboration/projects/{projectID}:
     patch:
       summary: Edit a shared project (owner and editors)
@@ -451,7 +498,7 @@ paths:
           description: the owner cannot be removed; others can only remove themselves
   /v1/collaboration/projects/{projectID}/invites/{inviteID}/resend:
     post:
-      summary: Give a pending invite a fresh link ({"email": false} to skip the email)
+      summary: 'Give a pending invite a fresh link ({"email": false} to skip the email)'
       description: Owner only. Only a hash of each link is stored, so the previous link stops working. Returns {invite, inviteLink, emailSent}.
       responses:
         '200':
@@ -461,7 +508,7 @@ paths:
   /v1/collaboration/projects/{projectID}/activity:
     get:
       summary: Tasks completed and created per day and person over the last year (query tz, an IANA time zone)
-      description: Any member. Returns {entries: [{date, userId, completed, created}], days, timeZone}; a completion is a change that marks a task done, credited to whoever pushed it.
+      description: 'Any member. Returns {entries: [{date, userId, completed, created}], days, timeZone}; a completion is a change that marks a task done, credited to whoever pushed it.'
       responses:
         '200':
           description: activity entries

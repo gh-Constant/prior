@@ -29,8 +29,9 @@ export function InvitePreviewCard() {
       <div className="invite-preview-text">
         <strong>{t("onboarding.invite.title", { name: preview.inviterName, project: preview.projectName })}</strong>
         {preview.status === "pending" && <span>{members} · {preview.role === "viewer" ? t("onboarding.invite.roleViewer") : t("onboarding.invite.roleEditor")}</span>}
-        {preview.status === "pending" && <span>{t("onboarding.invite.signIn")}</span>}
+        {preview.status === "pending" && <span>{t("onboarding.invite.signIn")} {t("onboarding.invite.confirm")}</span>}
         {preview.status === "expired" && <span className="invite-preview-warning">{t("onboarding.invite.expired", { name: preview.inviterName })}</span>}
+        {preview.status === "revoked" && <span className="invite-preview-warning">{t("onboarding.invite.revoked", { name: preview.inviterName })}</span>}
         {preview.status === "accepted" && <span className="invite-preview-warning">{t("onboarding.invite.accepted")}</span>}
       </div>
       {preview.inviterAvatarUrl && <img className="invite-preview-avatar" src={preview.inviterAvatarUrl} alt="" referrerPolicy="no-referrer" />}

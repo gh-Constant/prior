@@ -160,6 +160,10 @@ export type CollaborativeProjectUpdate = Pick<Project, "health" | "startDate" | 
   cycles?: ProjectCycle[];
 };
 /** What the share dialog needs to confirm an invitation. */
+/** A reusable invitation link of a project (the secret itself is shown once, at creation). */
+export type ShareLink = { id: string; projectId: string; role: "editor" | "viewer"; createdAt: string; expiresAt?: string; useCount: number; maxUses?: number };
+/** What joining with an invitation token did: new member, viewer made editor, or nothing to change. */
+export type JoinResult = { projectId: string; result?: "joined" | "upgraded" | "already_member"; role?: "owner" | "editor" | "viewer" };
 export type ProjectInviteResult = { invite: CollaborationInvite; inviteLink: string; emailSent: boolean };
 export type SessionInfo = {
   id: string;
@@ -465,8 +469,19 @@ export const api = {
   revokeProjectInvite(projectId: string, inviteId: string, token: string): Promise<void> {
     return request<void>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/invites/${encodeURIComponent(inviteId)}`, { method: "DELETE" }, token);
   },
-  acceptProjectInvite(tokenValue: string, token: string): Promise<{ projectId: string }> {
-    return request<{ projectId: string }>("/v1/collaboration/invites/accept", { method: "POST", body: JSON.stringify({ token: tokenValue }) }, token);
+  /** Joins with an invitation token: an email invitation or a share link. */
+  acceptProjectInvite(tokenValue: string, token: string): Promise<JoinResult> {
+    return request<JoinResult>("/v1/collaboration/invites/accept", { method: "POST", body: JSON.stringify({ token: tokenValue }) }, token);
+  },
+  listShareLinks(projectId: string, token: string): Promise<{ links: ShareLink[] }> {
+    return request<{ links: ShareLink[] }>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/share-links`, {}, token);
+  },
+  /** Creates the link of a role, replacing (disabling) the previous one of that role. */
+  createShareLink(projectId: string, input: { role: "editor" | "viewer"; expiresInDays?: number }, token: string): Promise<{ link: ShareLink; inviteLink: string }> {
+    return request<{ link: ShareLink; inviteLink: string }>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/share-links`, { method: "POST", body: JSON.stringify(input) }, token);
+  },
+  revokeShareLink(projectId: string, linkId: string, token: string): Promise<void> {
+    return request<void>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/share-links/${encodeURIComponent(linkId)}`, { method: "DELETE" }, token);
   },
   listIncomingInvites(token: string): Promise<{ invites: IncomingProjectInvite[] }> {
     return request<{ invites: IncomingProjectInvite[] }>("/v1/collaboration/invites", {}, token);
@@ -615,9 +630,9 @@ export const api = {
   giveKudos(taskId: string, token: string): Promise<void> {
     return request<void>("/v1/game/kudos", { method: "POST", body: JSON.stringify({ taskId }) }, token);
   },
-  /** Public: the invite landing shows it before sign-in. */
-  getInvitePreview(inviteToken: string): Promise<InvitePreview> {
-    return request<InvitePreview>(`/v1/collaboration/invites/preview?token=${encodeURIComponent(inviteToken)}`);
+  /** Public: the invite landing shows it before sign-in. With a session it also says whether the caller already belongs to the project. */
+  getInvitePreview(inviteToken: string, token?: string): Promise<InvitePreview> {
+    return request<InvitePreview>(`/v1/collaboration/invites/preview?token=${encodeURIComponent(inviteToken)}`, {}, token);
   },
   getBilling(token: string): Promise<BillingState> {
     return request<BillingState>("/v1/billing", {}, token);

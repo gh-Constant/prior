@@ -50,6 +50,7 @@ func TestDeleteAccountTransfersAndLeavesNoRowsPostgres(t *testing.T) {
 	member(bobs, alice.id, "editor", now)
 	exec(`INSERT INTO project_invites (project_id, inviter_user_id, invitee_email, token_hash, expires_at) VALUES ($1, $2, 'dave@delete.test', $3, $4)`, shared, alice.id, []byte("h1"), now.Add(time.Hour))
 	exec(`INSERT INTO project_invites (project_id, inviter_user_id, invitee_email, token_hash, expires_at) VALUES ($1, $2, 'alice@delete.test', $3, $4)`, bobs, bob.id, []byte("h2"), now.Add(time.Hour))
+	exec(`INSERT INTO project_share_links (project_id, created_by, role, token_hash) VALUES ($1, $2, 'viewer', $3)`, shared, alice.id, []byte("h3"))
 
 	withProject := func(task tasks.Task, projectID uuid.UUID) tasks.Task {
 		id := projectID.String()
@@ -162,6 +163,10 @@ func TestDeleteAccountTransfersAndLeavesNoRowsPostgres(t *testing.T) {
 	var invites int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM project_invites WHERE invitee_email = 'alice@delete.test'`).Scan(&invites); err != nil || invites != 0 {
 		t.Fatalf("invites to alice = %d %v", invites, err)
+	}
+	var shareLinks int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM project_share_links`).Scan(&shareLinks); err != nil || shareLinks != 0 {
+		t.Fatalf("share links of the deleted owner = %d %v", shareLinks, err)
 	}
 	// Bob still pulls his project's tasks.
 	pulled, err := s.Pull(ctx, bob.id, 0)

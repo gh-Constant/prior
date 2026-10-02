@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { api, ApiRequestError, PlanLimitError, type IncomingProjectInvite, type MentionNotification } from "./lib/api";
+import { api, PlanLimitError, type IncomingProjectInvite, type JoinResult, type MentionNotification } from "./lib/api";
+import type { InvitePreview } from "./lib/gamification/state";
 import { clearPendingLink, pendingLink } from "./lib/pendingLink";
 import { formatOccurrenceDate } from "./lib/recurrence";
 import { updateTaskAndRepeat } from "./lib/recurringTasks";
@@ -81,6 +82,7 @@ import { CalendarView } from "./components/CalendarView";
 import { CalendarConnectionSuccess } from "./components/CalendarConnectionSuccess";
 import { ProjectEditor } from "./components/collaboration/ProjectEditor";
 import { ProjectInviteNotifications } from "./components/collaboration/ProjectInviteNotifications";
+import { JoinInviteDialog, canPromptToJoin } from "./components/collaboration/JoinInviteDialog";
 import { agileFeatures } from "./lib/agile";
 import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
 import { PlanningPokerPanel } from "./components/poker/PlanningPokerPanel";
@@ -347,6 +349,10 @@ export function App() {
   const [syncIssue, setSyncIssue] = useState(false);
   const online = useOnline();
   const [incomingInvites, setIncomingInvites] = useState<IncomingProjectInvite[]>([]);
+  // An invitation link waiting for the person's confirmation (lib/pendingLink),
+  // and the one they chose to decide on later (offered again next launch).
+  const [joinToken, setJoinToken] = useState<string | null>(null);
+  const joinDeferred = useRef<string | null>(null);
   const [mentions, setMentions] = useState<MentionNotification[]>([]);
   const lastActiveSyncAt = useRef(0);
   const refreshInFlight = useRef<Promise<void> | null>(null);
@@ -908,19 +914,9 @@ export function App() {
         // A shared link opened before signing in (see lib/pendingLink).
         const link = shared ? pendingLink() : null;
         if (link?.invite) {
-          try {
-            const { projectId } = await api.acceptProjectInvite(link.invite, token);
-            clearPendingLink();
-            collaborationChanged = (await collaborationStore.sync(token)).changed || collaborationChanged;
-            if (generation === sessionGeneration.current) openProject(projectId);
-            setToast(t("common.toasts.inviteAccepted"));
-          } catch (inviteError) {
-            // Offline: try again on the next sync. Anything else (expired,
-            // already used, wrong account) will never succeed.
-            if (!(inviteError instanceof ApiRequestError && (inviteError.kind === "network" || inviteError.kind === "timeout"))) clearPendingLink();
-            logger.warn("sync", "Project invite could not be accepted", { error: String(inviteError) });
-            console.warn("Prior project invite could not be accepted:", inviteError);
-          }
+          // Joining always asks first (JoinInviteDialog), also for people who
+          // signed up through the link: the dialog waits for the onboarding.
+          if (generation === sessionGeneration.current && link.invite !== joinDeferred.current) setJoinToken(link.invite);
         } else if (link?.project) {
           clearPendingLink();
           const known = [...workspaceStore.listProjects(), ...collaborationStore.listProjects()].some((project) => project.id === link.project);
@@ -1876,6 +1872,31 @@ export function App() {
               throw error;
             }
           },
+          shareLinks: entry && entry.role !== "owner" ? undefined : {
+            list: async () => {
+              // A project that never reached the server has no links yet.
+              if (!entry) return [];
+              const token = await collaborationToken();
+              return (await api.listShareLinks(project.id, token)).links;
+            },
+            create: async (role, expiresInDays) => {
+              const token = await collaborationToken();
+              try {
+                await ensureProjectOnServer(project.id, token);
+                const { link, inviteLink } = await api.createShareLink(project.id, { role, ...(expiresInDays ? { expiresInDays } : {}) }, token);
+                // The web address of this app (production for native builds), like the project link.
+                const secret = inviteLink.slice(inviteLink.lastIndexOf("/") + 1);
+                return { link, url: `${webBase}/invite/${secret}` };
+              } catch (error) {
+                if (error instanceof PlanLimitError) throw new Error(planLimitMessage(error));
+                throw error;
+              }
+            },
+            revoke: async (linkId) => {
+              const token = await collaborationToken();
+              await api.revokeShareLink(project.id, linkId, token);
+            },
+          },
           onResendInvite: async (inviteId, sendEmail) => {
             const token = await collaborationToken();
             const result = await api.resendProjectInvite(project.id, inviteId, { email: sendEmail, language: lang }, token);
@@ -1983,6 +2004,7 @@ export function App() {
         realtimeClose.current = undefined;
         void close?.().catch(() => undefined);
         setIncomingInvites([]);
+        setJoinToken(null);
         await wipeAccountLocalData(accountId);
         await clearSession().catch((error) => console.warn("Prior could not clear the saved session:", error));
         setUser(null);
@@ -2013,6 +2035,7 @@ export function App() {
     const token = await getToken().catch(() => null);
     sessionGeneration.current += 1;
     setIncomingInvites([]);
+    setJoinToken(null);
     setMentions([]);
     realtimeGeneration.current += 1;
     const close = realtimeClose.current;
@@ -2052,6 +2075,7 @@ export function App() {
   function handleAuthenticated(nextUser: SessionUser) {
     sessionGeneration.current += 1;
     setIncomingInvites([]);
+    setJoinToken(null);
     setUser(nextUser);
     setAuthError("");
     setAuthOpen(false);
@@ -2118,6 +2142,28 @@ export function App() {
       setToast(error instanceof Error ? error.message : t("common.errors.shareFailed"));
       void syncNow();
     }
+  }
+
+  async function joinWithToken(inviteToken: string): Promise<JoinResult> {
+    const token = await getToken();
+    if (!token) { setAuthOpen(true); throw new Error(t("common.session.expired")); }
+    return api.acceptProjectInvite(inviteToken, token);
+  }
+
+  /** The invitation is settled (joined, or never needed): forget it for good. */
+  function settleJoin(): void {
+    clearPendingLink();
+    joinDeferred.current = null;
+    setJoinToken(null);
+  }
+
+  async function finishJoin(result: JoinResult, preview: InvitePreview): Promise<void> {
+    settleJoin();
+    await syncNow();
+    openProject(result.projectId);
+    if (result.result === "already_member") setToast(t("collab.join.toastAlready", { project: preview.projectName }));
+    else if (result.result === "upgraded") setToast(t("collab.join.toastUpgraded", { project: preview.projectName, role: t(`collab.join.role.${result.role === "editor" ? "editor" : "viewer"}`) }));
+    else setToast(t("common.toasts.inviteJoined", { project: preview.projectName }));
   }
 
   function openProject(projectId: string): void {
@@ -2253,6 +2299,16 @@ export function App() {
       onClose={() => setCalendarConnection(null)}
     />;
   }
+
+  // The invitation dialog waits until the onboarding and the tour are over,
+  // and until we know whether this account still has an onboarding to run.
+  const joinReady = canPromptToJoin({
+    signedIn: Boolean(user),
+    onboardingOpen,
+    tourOpen,
+    onboardingKnown: game.state !== null || (!syncing && !game.loading),
+    onboardingPending: game.needsOnboarding && !onboardingPutOff,
+  });
 
   if (user && onboardingOpen) {
     return (
@@ -2497,6 +2553,17 @@ export function App() {
       {authOpen && <AccountDialog user={user} authError={authError} onClose={() => { setAuthOpen(false); setAuthError(""); }} onAuthenticated={handleAuthenticated} onGoogle={() => { void googleLogin(); }} onLogout={logout} onSettings={() => { setAuthOpen(false); setAuthError(""); changeView("settings"); }} />}
       {completionCelebration && <div className="completion-celebration" role="status" aria-live="polite"><span className="completion-celebration-icon"><Icon name="check" /><CompletionBurst trigger={completionCelebration.key} /></span><span><strong>{t("common.celebration.completed")}</strong><small>{completionCelebration.title}</small></span></div>}
       {user && <ProjectInviteNotifications invites={incomingInvites} onRespond={respondToInvite} />}
+      {user && joinToken && <JoinInviteDialog
+        token={joinToken}
+        ready={joinReady}
+        loadPreview={async (inviteToken) => api.getInvitePreview(inviteToken, (await getToken()) ?? undefined)}
+        onJoin={joinWithToken}
+        onJoined={(result, preview) => { void finishJoin(result, preview); }}
+        onAlreadyMember={(preview) => { settleJoin(); if (preview.projectId) openProject(preview.projectId); setToast(t("collab.join.toastAlready", { project: preview.projectName })); }}
+        onInvalid={() => { clearPendingLink(); joinDeferred.current = null; }}
+        onLater={() => { joinDeferred.current = joinToken; setJoinToken(null); }}
+        onDecline={settleJoin}
+      />}
       {user && <MentionNotifications mentions={mentions} onRead={readMentions} onOpen={async (mention) => { await readMentions([mention.commentId]); openTargetUrl(`prior://task/${encodeURIComponent(mention.taskId)}`); }} />}
       {toast && <div className="completion-celebration" role="status" aria-live="polite"><span><strong>{t("common.celebration.notice")}</strong><small>{toast}</small></span><button type="button" aria-label={t("common.actions.dismiss")} onClick={() => setToast(null)}>✕</button></div>}
       {user && game.enabled && <GameCelebrations onOpenChest={setChestToOpen} />}

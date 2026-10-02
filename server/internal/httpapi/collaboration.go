@@ -349,29 +349,6 @@ func (s *Server) revokeProjectInvite(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) acceptProjectInvite(w http.ResponseWriter, r *http.Request) {
-	user, err := s.requireUser(r)
-	if err != nil {
-		writeUnauthorized(w, err)
-		return
-	}
-	var body struct {
-		Token string `json:"token"`
-	}
-	if err := decodeJSON(r, &body); err != nil || strings.TrimSpace(body.Token) == "" {
-		writeError(w, http.StatusBadRequest, errors.New("invite token is required"))
-		return
-	}
-	projectID, err := s.store.AcceptProjectInvite(r.Context(), user.ID, body.Token)
-	if err != nil {
-		writeError(w, collaborationStatus(err), err)
-		return
-	}
-	s.notifySync(r.Context(), user.ID, "invites_required", 0)
-	s.notifyProjectMembers(r.Context(), uuid.Nil, "collaboration_required", projectID)
-	writeJSON(w, http.StatusOK, map[string]string{"projectId": projectID.String()})
-}
-
 func (s *Server) incomingInvites(w http.ResponseWriter, r *http.Request) {
 	user, err := s.requireUser(r)
 	if err != nil {

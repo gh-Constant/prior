@@ -358,15 +358,3 @@ func (s *Server) gameKudos(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// invitePreview is public: the invite landing shows it before sign-in. The
-// token is the capability, and a wrong token reveals nothing.
-func (s *Server) invitePreview(w http.ResponseWriter, r *http.Request) {
-	preview, err := s.store.InvitePreview(r.Context(), r.URL.Query().Get("token"))
-	if err != nil {
-		writeGameError(w, err)
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, preview)
-}
