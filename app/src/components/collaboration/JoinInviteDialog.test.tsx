@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { JoinInviteDialog, alreadyCovered, canPromptToJoin, joinFailure, type JoinInviteDialogProps } from "./JoinInviteDialog";
@@ -37,6 +38,34 @@ describe("canPromptToJoin", () => {
     // The account's onboarding status is not loaded yet, or it is about to open.
     expect(canPromptToJoin({ ...base, onboardingKnown: false })).toBe(false);
     expect(canPromptToJoin({ ...base, onboardingPending: true })).toBe(false);
+  });
+});
+
+// Mirrors how App wires the dialog: the onboarding and the tour replace the
+// whole screen (so the dialog is not mounted), and their buttons flip the same
+// flags App keeps. The invitation is known (a sync already stored it) before
+// the onboarding even opens, as for an account that just signed up on a link.
+function SignupFlow({ finish }: { readonly finish: "skip" | "complete" }) {
+  const [onboardingOpen, setOnboardingOpen] = useState(true);
+  const [onboardingPutOff, setOnboardingPutOff] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const needsOnboarding = onboardingOpen; // the server marks it done when it is finished
+  const ready = canPromptToJoin({ signedIn: true, onboardingOpen, tourOpen, onboardingKnown: true, onboardingPending: needsOnboarding && !onboardingPutOff });
+  if (onboardingOpen) return <button type="button" onClick={() => { setOnboardingOpen(false); setOnboardingPutOff(true); setTourOpen(true); }}>Start using Prior</button>;
+  if (tourOpen) return finish === "skip"
+    ? <button type="button" onClick={() => setTourOpen(false)}>Skip</button>
+    : <button type="button" onClick={() => setTourOpen(false)}>Go to Today</button>;
+  return <JoinInviteDialog token={TOKEN} ready={ready} loadPreview={async () => preview} onJoin={vi.fn()} onJoined={vi.fn()} onAlreadyMember={vi.fn()} onInvalid={vi.fn()} onLater={vi.fn()} onDecline={vi.fn()} />;
+}
+
+describe("sign-up from a share link: the dialog follows the onboarding and the tour", () => {
+  it.each([["skip", "Skip"], ["complete", "Go to Today"]] as const)("appears right after the tour is %sd, without a reload", async (finish, label) => {
+    render(<SignupFlow finish={finish} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Start using Prior" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    expect(await screen.findByRole("dialog", { name: /Join “Launch”\?/ })).toBeInTheDocument();
   });
 });
 
