@@ -523,6 +523,140 @@ paths:
           description: not allowed
         '404':
           description: unknown comment
+  /v1/collaboration/projects/{projectID}/poker:
+    get:
+      summary: The project's running Planning Poker session, or null
+      description: 'Any active project member. Returns {session: PokerSession | null}. Other people''s votes are null until the reveal. Rate-limited per user.'
+      responses:
+        '200':
+          description: '{session}'
+        '404':
+          description: not a member
+    post:
+      summary: 'Start a session ({"taskIds": [1 to 50 task ids of the project], "deck": "fibonacci"|"modified"|"tshirt"})'
+      description: Owner and editors; the caller becomes the facilitator. Broadcasts poker_required to the members.
+      responses:
+        '201':
+          description: the session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokerSession' }
+        '400':
+          description: unknown deck, no or too many tasks, or tasks that are not live tasks of this project
+        '403':
+          description: viewers cannot start a session
+        '404':
+          description: not a member
+        '409':
+          description: the project already has an active session
+  /v1/collaboration/projects/{projectID}/poker/{sessionID}:
+    get:
+      summary: One session of the project (active or closed)
+      responses:
+        '200':
+          description: the session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokerSession' }
+        '404':
+          description: not a member, or unknown session
+  /v1/collaboration/projects/{projectID}/poker/{sessionID}/vote:
+    put:
+      summary: 'Cast or withdraw the caller''s card on the current task ({"taskId", "value": "5" | null})'
+      description: Owner and editors only, before the reveal. value must be a card of the session's deck. The response is the caller's view (myVote); other cards stay hidden.
+      responses:
+        '200':
+          description: the session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokerSession' }
+        '400':
+          description: card not in the deck
+        '403':
+          description: viewers cannot vote
+        '404':
+          description: not a member, or unknown session
+        '409':
+          description: session closed, votes already revealed, or taskId is not the current task
+  /v1/collaboration/projects/{projectID}/poker/{sessionID}/reveal:
+    post:
+      summary: Show everyone's cards on the current task
+      description: Controller only, i.e. the facilitator or the project owner, or any editor when there is no facilitator (account deleted, left the project or no longer an editor).
+      responses:
+        '200':
+          description: the session, revealed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokerSession' }
+        '403':
+          description: not the controller
+        '404':
+          description: not a member, or unknown session
+        '409':
+          description: session closed
+  /v1/collaboration/projects/{projectID}/poker/{sessionID}/revote:
+    post:
+      summary: Discard the current cards and start another round (round + 1, face down)
+      description: Controller only.
+      responses:
+        '200':
+          description: the session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokerSession' }
+        '403':
+          description: not the controller
+        '404':
+          description: not a member, or unknown session
+        '409':
+          description: session closed
+  /v1/collaboration/projects/{projectID}/poker/{sessionID}/close:
+    post:
+      summary: End the session (idempotent)
+      description: Controller only. Sessions idle for 12 hours are closed by the server; closed sessions are deleted after 30 days.
+      responses:
+        '200':
+          description: the closed session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokerSession' }
+        '403':
+          description: not the controller
+        '404':
+          description: not a member, or unknown session
+  /v1/collaboration/projects/{projectID}/poker/{sessionID}/current:
+    post:
+      summary: Put another task on the table ({"index"}, into items)
+      description: Controller only. The task starts with round 1, cards face down and no votes.
+      responses:
+        '200':
+          description: the session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokerSession' }
+        '400':
+          description: index outside items
+        '403':
+          description: not the controller
+        '404':
+          description: not a member, or unknown session
+        '409':
+          description: session closed
+  /v1/collaboration/projects/{projectID}/poker/{sessionID}/estimate:
+    post:
+      summary: 'Record the agreed story points on the current task ({"taskId", "storyPoints": 5 | null, "advance": true})'
+      description: 'Controller only. storyPoints is a number from 0 to 999 in steps of 0.5 (also for the t-shirt deck: XS=1, S=2, M=3, L=5, XL=8) or null to clear. The task is updated through the sync push path (so it lands in task_changes and reaches every member''s pull); with advance the session moves to the next task (fresh round, cards face down), on the last task the cards stay on the table. Broadcasts tasks_required and poker_required.'
+      responses:
+        '200':
+          description: '{session, task}'
+        '400':
+          description: invalid story points
+        '403':
+          description: not the controller
+        '404':
+          description: not a member, or unknown session or task
+        '409':
+          description: session closed, or taskId is not the current task
   /v1/collaboration/mentions:
     get:
       summary: The caller's newest 50 @mentions in projects they still belong to, and the unread count
@@ -679,6 +813,47 @@ components:
         mentions: { type: array, items: { type: string, format: uuid } }
         createdAt: { type: string, format: date-time }
         editedAt: { type: string, format: date-time }
+    PokerSession:
+      type: object
+      description: |
+        Planning Poker session as the caller sees it. Decks: fibonacci 0,1,2,3,5,8,13,21,?,coffee; modified 0,0.5,1,2,3,5,8,13,20,40,100,?,coffee; tshirt XS,S,M,L,XL,?,coffee.
+        Cards are strings. A participant's vote is null until revealed is true (voted only says whether they voted); myVote is always the caller's own card.
+        Realtime: poker_required (revision 0) to every member after each write.
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        status: { type: string, enum: [active, closed] }
+        deck: { type: string, enum: [fibonacci, modified, tshirt] }
+        facilitatorId: { type: string, format: uuid, nullable: true }
+        canControl: { type: boolean }
+        currentIndex: { type: integer, description: index into items }
+        round: { type: integer }
+        revealed: { type: boolean }
+        items:
+          type: array
+          description: tasks still live in the project, in order
+          items:
+            type: object
+            properties:
+              taskId: { type: string, format: uuid }
+              title: { type: string }
+              storyPoints: { type: number, nullable: true }
+              finalPoints: { type: number, nullable: true, description: points decided in this session }
+        participants:
+          type: array
+          items:
+            type: object
+            properties:
+              userId: { type: string, format: uuid }
+              displayName: { type: string }
+              avatarUrl: { type: string }
+              role: { type: string, enum: [owner, editor, viewer] }
+              online: { type: boolean }
+              voted: { type: boolean }
+              vote: { type: string, nullable: true }
+        myVote: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     CommentInput:
       type: object
       required: [body]
