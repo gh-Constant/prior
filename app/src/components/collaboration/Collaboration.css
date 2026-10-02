@@ -215,3 +215,28 @@ button.collab-milestone-row:hover { background: var(--hover); }
 .collab-milestones-panel .collab-milestones li { display: block; margin-bottom: 2px; }
 .collab-milestones-panel .collab-milestones li span { flex: none; }
 .collab-milestones-panel .collab-cycle-heading .secondary-button { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Scrum: sprint filter, velocity, sprint points (specs/SCRUM.md) ── */
+.collab-sprint-filter { flex: 0 0 auto; }
+.collab-velocity { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-card); }
+.collab-velocity > svg { flex: 0 0 auto; width: 18px; height: 18px; padding: 7px; box-sizing: content-box; border-radius: var(--r-md); background: var(--accent-soft); color: var(--accent-dark); }
+.collab-velocity-copy { display: grid; gap: 2px; min-width: 0; }
+.collab-velocity-copy strong { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; color: var(--ink); font-size: var(--fs-md); font-weight: 600; }
+.collab-velocity-copy strong span { color: var(--ink-2); font-variant-numeric: tabular-nums; font-weight: 550; }
+.collab-velocity-copy small { color: var(--muted); font-size: var(--fs-xs); }
+.collab-sprint-points { display: grid; gap: 6px; }
+.collab-sprint-points-line { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; margin: 0; font-size: var(--fs-sm); }
+.collab-sprint-points-line strong { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+.collab-sprint-points-line .collab-muted { font-size: var(--fs-xs); }
+.collab-cycle.is-sprint.is-current { border-color: var(--accent-line); }
+.collab-cycle-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; }
+.collab-cycle-total { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+.collab-cycle-issue-points { margin-left: auto; flex: 0 0 auto; }
+.collab-field-kind { grid-column: 1 / -1; }
+.collab-chip.story-points-chip { min-width: 30px; justify-content: center; }
+
+@media (max-width: 760px) {
+  .project-page .collab-sprint-filter { display: flex; width: 100%; }
+  .project-page .collab-sprint-filter button { flex: 1 1 0; min-height: 40px; padding: 0 8px; font-size: 14px; }
+  .collab-velocity { padding: 12px; }
+}

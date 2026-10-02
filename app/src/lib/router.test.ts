@@ -15,6 +15,7 @@ describe("app routes", () => {
       { view: "eisenhower" as const },
       { view: "projects" as const },
       { view: "project" as const, projectId: "7f1c2d3e-aaaa-bbbb-cccc-123456789abc", projectTab: "issues" },
+      { view: "project" as const, projectId: "7f1c2d3e-aaaa-bbbb-cccc-123456789abc", projectTab: "poker" },
       { view: "notes" as const, notesProjectId: "p1" },
       { view: "settings" as const, settingsTab: "security" as const },
       { view: "settings" as const, settingsTab: "import" as const },

@@ -81,6 +81,7 @@ import { CalendarView } from "./components/CalendarView";
 import { CalendarConnectionSuccess } from "./components/CalendarConnectionSuccess";
 import { ProjectEditor } from "./components/collaboration/ProjectEditor";
 import { ProjectInviteNotifications } from "./components/collaboration/ProjectInviteNotifications";
+import { agileFeatures } from "./lib/agile";
 import { ProjectCycleEditor } from "./components/collaboration/ProjectCycleEditor";
 import { ProjectMilestoneEditor } from "./components/collaboration/ProjectMilestoneEditor";
 import type { Person, ProjectCollaborationProps, TaskPerson, TaskPlanningProps } from "./components/collaboration/types";
@@ -1480,6 +1481,7 @@ export function App() {
       status: task.status,
       completed: task.completed,
       estimatedMinutes: task.estimatedMinutes,
+      ...(task.storyPoints !== null ? { storyPoints: task.storyPoints } : {}),
       areaName: task.areaName,
       projectName: task.projectName,
       // Recurring tasks: once Task has `recurrence`, importers fill it through
@@ -1786,6 +1788,7 @@ export function App() {
         title: task.title,
         stateId: rawState === "inbox" ? "backlog" : rawState,
         priority: task.priority,
+        storyPoints: task.storyPoints ?? null,
         assigneeId: task.assigneeId ?? null,
         ...issueLinks(task),
         people: (task.peopleIds ?? []).map((personId): TaskPerson | null => {
@@ -2424,6 +2427,8 @@ export function App() {
       )}
       {projectEditor && <ProjectEditor project={projectEditor} avatarUrl={user?.avatarUrl} onClose={() => setProjectEditor(null)} onSave={async (project) => { await saveProjectDetails(project); setProjectEditor(null); }} />}
       {cycleEditor && <ProjectCycleEditor
+        sprint={agileFeatures(projects.find((project) => project.id === cycleEditor.projectId)).sprints}
+        points={agileFeatures(projects.find((project) => project.id === cycleEditor.projectId)).points}
         cycle={projects.find((project) => project.id === cycleEditor.projectId)?.cycles?.find((cycle) => cycle.id === cycleEditor.cycleId)}
         issues={collaborationByProject[cycleEditor.projectId]?.issues ?? []}
         onClose={() => setCycleEditor(null)}

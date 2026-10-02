@@ -1,0 +1,7 @@
+/* Project type + methodology select (specs/SCRUM.md). The menu itself is the shared CustomSelect. */
+.project-kind-select { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.project-kind-hint { margin: 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.4; }
+
+@media (max-width: 760px) {
+  .project-kind-hint { font-size: 13px; }
+}

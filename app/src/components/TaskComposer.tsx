@@ -3,12 +3,15 @@ import type { Area, ChecklistItem, Project, Task, TaskDraft, TaskPriority, TaskR
 import { useModalDialog } from "../hooks/useModalDialog";
 import { useI18n } from "../lib/i18n";
 import { localDateKey, normalizeRecurrence } from "../lib/recurrence";
+import { taskBadgeKind } from "../lib/agile";
+import { normalizeStoryPoints } from "../lib/storyPoints";
 import { normalizeEstimate } from "../lib/taskEstimate";
 import { useKeyboardInset } from "../lib/useKeyboardInset";
 import { useIsPhone } from "../lib/useMediaQuery";
 import { useSheetDrag } from "../lib/useSheetDrag";
 import { ChecklistEditor } from "./tasks/ChecklistEditor";
 import { RecurrencePicker } from "./tasks/RecurrencePicker";
+import { StoryPointsSelect } from "./tasks/StoryPoints";
 import { ReminderPicker } from "./tasks/ReminderPicker";
 import { SharedTaskComments } from "./collaboration/TaskComments";
 import { Icon } from "./Icon";
@@ -71,6 +74,9 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
 
   const currentProject = projects.find((p) => p.id === (projectId ?? initialContext?.projectId));
   const isSoftwareProject = currentProject?.projectType === "software" || Boolean(planning);
+  // Scrum and Scrumban projects estimate with story points (specs/SCRUM.md).
+  const pointsMode = taskBadgeKind(currentProject) === "points";
+  const [storyPoints, setStoryPoints] = useState<number | null>(() => normalizeStoryPoints(task?.storyPoints));
 
   const workflowOptions = useMemo<{ id: TaskStatus; name: string }[]>(() => {
     if (isSoftwareProject) {
@@ -278,7 +284,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
         milestoneId: allTasks ? milestoneId : sameProject ? task?.milestoneId ?? null : null,
         relations: allTasks ? [...otherRelations, ...blockedBy.map((taskId) => ({ type: "blocked_by" as const, taskId }))] : sameProject ? task?.relations ?? [] : [],
       };
-      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), ...issueFields, followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate), reminderAt, checklist, recurrence };
+      const draft: TaskDraft = { title: clean, description: description.trim(), dueDate: dueDate || null, dueTime: dueDate ? dueTime : null, priority, important, urgent, areaId: effectiveAreaId, projectId, status, assigneeName: assigneeName.trim(), ...(planning || onProjectChange ? { peopleIds: planningPeople.map((person) => person.id) } : {}), ...issueFields, followUpDate: followUpDate || null, followUpTime: followUpDate ? followUpTime : null, estimatedMinutes: normalizeEstimate(estimate), reminderAt, checklist, recurrence, storyPoints };
       await (allowCreateMore ? onSave(draft, { keepOpen }) : onSave(draft));
       setNotice(task ? t("tasks.composer.saved") : t("tasks.composer.created"));
       if (!task) {
@@ -306,6 +312,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
         setFollowUpDate("");
         setFollowUpTime(null);
         setEstimate("");
+        setStoryPoints(null);
         setReminderAt(null);
         setRecurrence(null);
         setChecklist([]);
@@ -427,6 +434,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                   color: PRIORITY_COLORS[value],
                 }))}
               />
+              {pointsMode && <StoryPointsSelect value={storyPoints} onChange={setStoryPoints} disabled={planningDisabled || saving} />}
               {!isProjectLocked && (
                 <CustomSelect
                   ariaLabel={t("tasks.composer.project")}

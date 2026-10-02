@@ -9,6 +9,7 @@ import { CalendarGlyph } from "../TaskGlyphs";
 import { DEFAULT_PROJECT_ICON, WorkspaceIcon } from "../WorkspaceIcon";
 import { checklistProgress } from "../tasks/ChecklistEditor";
 import { RecurrenceChip } from "../tasks/RecurrenceChip";
+import { TaskSizeBadge } from "../tasks/StoryPoints";
 
 /** Resolves the person shown on a card: the assignee, else the free-text
  *  assignee (someone the task is waiting on). */
@@ -36,6 +37,8 @@ type Props = {
   readonly people?: readonly Person[];
   /** The task's project, shown as a chip (omit when columns already are projects). */
   readonly project?: Pick<Project, "name" | "icon"> | null;
+  /** The project the card belongs to when it decides the size badge (story points or priority), even if the chip above is hidden. */
+  readonly sizeProject?: Pick<Project, "projectType" | "methodology"> | null;
   readonly blocked?: boolean;
   readonly onOpen: (task: Task) => void;
   /** Saves the task after the completion circle was toggled. */
@@ -47,7 +50,7 @@ type Props = {
  * completion circle, title, priority, due date, project, checklist progress,
  * blocked badge and assignee.
  */
-export function KanbanTaskCard({ task, today, people = [], project = null, blocked = false, onOpen, onChange }: Props) {
+export function KanbanTaskCard({ task, today, people = [], project = null, sizeProject = null, blocked = false, onOpen, onChange }: Props) {
   const { t } = useI18n();
   const [pending, setPending] = useState(false);
   const assignee = taskAssignee(task, people);
@@ -71,7 +74,7 @@ export function KanbanTaskCard({ task, today, people = [], project = null, block
     <button type="button" className={`board-card-open${onChange ? " has-check" : ""}`} onClick={() => onOpen(task)}>
       <span className="board-card-title">{task.title}</span>
       <span className="board-card-meta">
-        <PriorityGlyph priority={task.priority ?? 4} />
+        <TaskSizeBadge task={task} project={task.projectId ? sizeProject : null} variant="project"><PriorityGlyph priority={task.priority ?? 4} /></TaskSizeBadge>
         <TaskDueChip task={task} today={today} />
         <RecurrenceChip task={task} variant="project" />
         {project && <span className="project-chip kanban-project-chip" title={project.name}><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /><span className="project-chip-label">{project.name}</span></span>}

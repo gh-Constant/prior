@@ -5,6 +5,8 @@ import { EditorDialog } from "./EditorDialog";
 import { CustomSelect } from "../CustomSelect";
 import { DateTimePicker } from "../DateTimePicker";
 import { useI18n } from "../../lib/i18n";
+import { applyProjectKind, projectKindOf } from "../../lib/agile";
+import { ProjectKindSelect } from "../ProjectKindSelect";
 import type { EditableProject, ProjectEditorProps } from "./types";
 
 export function ProjectEditor({ project, avatarUrl, onSave, onClose }: ProjectEditorProps) {
@@ -68,18 +70,10 @@ export function ProjectEditor({ project, avatarUrl, onSave, onClose }: ProjectEd
           ]}
         />
       </label>
-      <label className="collab-field">
+      <div className="collab-field collab-field-kind">
         <span>{t("common.workhub.formType")}</span>
-        <CustomSelect
-          ariaLabel={t("common.workhub.formType")}
-          value={draft.projectType || "standard"}
-          onChange={(val) => setDraft({ ...draft, projectType: val as import("../../types").ProjectType })}
-          options={[
-            { value: "standard", label: t("common.workhub.typeStandard") },
-            { value: "software", label: t("common.workhub.typeSoftware") },
-          ]}
-        />
-      </label>
+        <ProjectKindSelect ariaLabel={t("common.workhub.formType")} value={projectKindOf(draft)} onChange={(kind) => setDraft(applyProjectKind(draft, kind))} />
+      </div>
       <label className="collab-field">
         <span>{t("collab.editor.health")}</span>
         <CustomSelect

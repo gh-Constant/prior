@@ -35,6 +35,7 @@ export type PlanTask = {
   projectName: string | null;
   areaName: string | null;
   estimatedMinutes: number | null;
+  storyPoints: number | null;
   recurrence: ImportRecurrence | null;
 };
 
@@ -119,6 +120,7 @@ export function planImport(batch: ImportBatch, options: ImportOptions, existing:
     projectName: task.projectName,
     areaName: resolveAreaName(options.area, task.areaName),
     estimatedMinutes: task.estimatedMinutes,
+    storyPoints: task.storyPoints,
     recurrence: task.state === "open" ? task.recurrence : null,
   }));
 

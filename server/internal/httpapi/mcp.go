@@ -260,7 +260,7 @@ func (h *mcpHandler) dispatch(ctx context.Context, userID uuid.UUID, request mcp
 
 const mcpInstructions = "Prior is the user's task and habit manager. Use list_tasks before editing so you have task IDs. " +
 	"Dates are ISO YYYY-MM-DD and times are HH:MM (24h). Priority follows Todoist: 1 is highest, 4 is none. " +
-	"Status is one of inbox, backlog, next, in_progress, waiting, done. Changes sync to the user's apps immediately."
+	"Status is one of inbox, backlog, next, in_progress, waiting, done. Tasks of Scrum and Scrumban projects are sized with story_points (a multiple of 0.5, null when not estimated) instead of priority. Changes sync to the user's apps immediately."
 
 var errUnknownTool = errors.New("unknown tool")
 
@@ -286,6 +286,18 @@ var (
 	propStatus   = map[string]any{"type": "string", "enum": []string{"inbox", "backlog", "next", "in_progress", "waiting", "done"}}
 )
 
+// propStoryPoints describes the story_points argument: the size of the work in
+// agile projects, shown in place of the priority in Scrum and Scrumban ones.
+func propStoryPoints(nullable bool) map[string]any {
+	kind := any("number")
+	description := "Story points: the size of the work (not time), a multiple of 0.5 from 0 to 999 (usual cards: 0.5, 1, 2, 3, 5, 8, 13, 21)."
+	if nullable {
+		kind = []string{"number", "null"}
+		description += " Pass null to clear the estimate."
+	}
+	return map[string]any{"type": kind, "minimum": 0, "maximum": tasks.MaxStoryPoints, "multipleOf": 0.5, "description": description}
+}
+
 func taskFieldProperties(nullable bool) map[string]any {
 	optional := propString
 	if nullable {
@@ -305,6 +317,7 @@ func taskFieldProperties(nullable bool) map[string]any {
 		"project_id":     optional("Project ID from list_projects."),
 		"area_id":        optional("Area ID from list_projects."),
 		"reminder_at":    optional("When to remind the user, an RFC 3339 date-time with offset (e.g. 2026-10-01T09:00:00+02:00)."),
+		"story_points":   propStoryPoints(nullable),
 		"recurrence": map[string]any{
 			"type":        []string{"object", "null"},
 			"description": "Repeat rule. Completing the task then creates the next occurrence (the completed one stops repeating). Without a due date the first one is today. Pass null to stop repeating.",
@@ -341,7 +354,7 @@ var mcpTools = func() []map[string]any {
 	return []map[string]any{
 		{
 			"name":        "list_tasks",
-			"description": "List the user's tasks (own and shared projects). Open tasks by default, sorted by due date then priority.",
+			"description": "List the user's tasks (own and shared projects). Open tasks by default, sorted by due date then priority. Each task carries storyPoints (null when not estimated).",
 			"inputSchema": schema(map[string]any{
 				"filter":     map[string]any{"type": "string", "enum": []string{"open", "completed", "all"}, "description": "Default open."},
 				"query":      propString("Case-insensitive text to match in title or description."),
@@ -648,6 +661,15 @@ func applyTaskFields(task *tasks.Task, fields map[string]json.RawMessage) error 
 					trimmed := strings.TrimSpace(*value)
 					task.ReminderAt = &trimmed
 				}
+			}
+		case "story_points":
+			var value *float64
+			if err = json.Unmarshal(raw, &value); err == nil {
+				points, normalizeErr := tasks.NormalizeStoryPoints(value)
+				if normalizeErr != nil {
+					return fmt.Errorf("story_points must be null or a multiple of 0.5 from 0 to %d", tasks.MaxStoryPoints)
+				}
+				task.StoryPoints = points
 			}
 		case "recurrence":
 			rule, parseErr := parseMCPRecurrence(raw)

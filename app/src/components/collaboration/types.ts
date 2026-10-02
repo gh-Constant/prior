@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Project, TaskPriority } from "../../types";
 
 // Presentation contracts only. These are not persisted Task/Project fields.
@@ -27,6 +28,8 @@ export type ProjectIssue = {
   identifier?: string;
   stateId: string | null;
   priority?: TaskPriority;
+  /** Size of the issue in story points; null or absent when not estimated. */
+  storyPoints?: number | null;
   people: readonly TaskPerson[];
   /** The one person responsible (Linear's assignee). */
   assigneeId?: string | null;
@@ -61,6 +64,10 @@ export type ProjectEditorProps = {
 };
 export type ProjectCycleDraft = { name: string; startsOn: string; endsOn: string; issueIds: string[] };
 export type ProjectCycleEditorProps = {
+  /** Scrum: the dialog speaks of sprints. */
+  sprint?: boolean;
+  /** Shows the story points of the issues and the total committed to the sprint. */
+  points?: boolean;
   cycle?: { id?: string; name: string; startsOn?: string | null; endsOn?: string | null; issueIds?: string[] };
   issues: readonly ProjectIssue[];
   onSave: (draft: ProjectCycleDraft) => Promise<void>;
@@ -100,7 +107,7 @@ export type ProjectSharingProps = {
   onCopyLink?: () => Promise<void> | void;
 };
 export type ProjectCollaborationProps = {
-  project: Pick<Project, "id" | "name" | "description" | "status" | "icon"> & Partial<Pick<Project, "projectType" | "targetDate" | "health">>;
+  project: Pick<Project, "id" | "name" | "description" | "status" | "icon"> & Partial<Pick<Project, "projectType" | "methodology" | "targetDate" | "health">>;
   issues: readonly ProjectIssue[];
   states: readonly WorkflowState[];
   cycles: readonly ProjectCycle[];
@@ -136,6 +143,8 @@ export type ProjectCollaborationProps = {
   onAssignIssue?: (issueId: string, personId: string | null) => Promise<void>;
   /** Loads the activity grid (tasks completed per day and person). */
   loadActivity?: () => Promise<ProjectActivityEntry[]>;
+  /** Content of the Planning Poker tab (Scrum and Scrumban projects); without it the tab is not shown. */
+  renderPoker?: () => ReactNode;
 };
 export type ProjectActivityEntry = { date: string; userId: string | null; completed: number; created: number };
 export type TaskPlanningProps = {

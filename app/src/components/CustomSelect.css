@@ -238,6 +238,11 @@
   white-space: nowrap;
 }
 
+.custom-select-item.has-description { align-items: flex-start; padding-block: 7px; }
+.custom-select-item.has-description .custom-select-item-label { overflow: visible; white-space: normal; }
+.custom-select-item.has-description .custom-select-check { margin-top: 2px; }
+.custom-select-item-description { display: block; margin-top: 2px; color: var(--muted); font-size: var(--fs-xs); font-weight: 400; line-height: 1.35; }
+
 .custom-select-check {
   width: 14px;
   height: 14px;

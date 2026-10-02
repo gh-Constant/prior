@@ -35,10 +35,10 @@ MCP keys are confined to `/mcp`: `UserForToken` and `SessionUserForToken` reject
 
 | Tool | Effect |
 | --- | --- |
-| `list_tasks` | Open tasks by default (`filter`: open/completed/all), optional `query`, `project_id`, `due_before`, `limit`; sorted by due date then priority. Includes tasks of projects shared with the user. |
+| `list_tasks` | Open tasks by default (`filter`: open/completed/all), optional `query`, `project_id`, `due_before`, `limit`; sorted by due date then priority; each task carries `storyPoints` (null when not estimated). Includes tasks of projects shared with the user. |
 | `get_task` | One task with every field. |
-| `create_task` | Title required; description, due/scheduled date and time, priority 1–4, importance, urgency, status, project/area, `reminder_at` (RFC 3339), `recurrence` (`{interval?, unit, days_of_week?, basis?, until?}`, see RECURRING_TASKS.md) and `checklist` (`[{title, done?}]`, at most 100). |
-| `update_task` | Patch an existing task; omitted fields are kept, `null` clears optional dates, project/area, the reminder and the recurrence. `checklist` replaces the whole list (pass existing `id`s to keep items). |
+| `create_task` | Title required; description, due/scheduled date and time, priority 1–4, importance, urgency, status, project/area, `reminder_at` (RFC 3339), `story_points` (a multiple of 0.5 from 0 to 999, the size of the work in Scrum and Scrumban projects, see SCRUM.md), `recurrence` (`{interval?, unit, days_of_week?, basis?, until?}`, see RECURRING_TASKS.md) and `checklist` (`[{title, done?}]`, at most 100). |
+| `update_task` | Patch an existing task; omitted fields are kept, `null` clears optional dates, project/area, the reminder, the recurrence and `story_points`. `checklist` replaces the whole list (pass existing `id`s to keep items). |
 | `complete_task` | Mark done, or reopen with `completed: false`. Completing a repeating task also creates its next occurrence; the result is then `{task, nextOccurrence}`. |
 | `delete_task` | Soft-delete (same as deleting in the app). |
 | `list_habits`, `create_habit`, `complete_habit` | Read habits, create one, check/uncheck a day (default today, UTC). |

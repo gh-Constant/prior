@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
-import type { ProjectHealth } from "../types";
+import type { ProjectHealth, ProjectMethodology } from "../types";
+import { projectKindOf } from "../lib/agile";
+import { PROJECT_KIND_ICONS, projectKindBadge } from "./ProjectKindSelect";
 import { useI18n } from "../lib/i18n";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { Icon, type IconName } from "./Icon";
@@ -19,10 +21,12 @@ export function ProjectBreadcrumb({ areaName, projectName, onBack }: { areaName?
   </nav>;
 }
 
-export function ProjectTypeChip({ software, cycleName }: { software: boolean; cycleName?: string | null }) {
+/** Standard, Kanban, Scrum or Scrumban; the cycle name follows when a cycle is running. */
+export function ProjectTypeChip({ software, methodology, cycleName }: { software: boolean; methodology?: ProjectMethodology | null; cycleName?: string | null }) {
   const { t } = useI18n();
-  const type = t(software ? "common.workhub.badgeSoftware" : "common.workhub.badgeStandard");
-  return <span className="project-chip project-type-chip"><Icon name={software ? "refresh" : "list-todo"} />{cycleName ? `${type} · ${cycleName}` : type}</span>;
+  const kind = projectKindOf({ projectType: software ? "software" : "standard", methodology });
+  const type = projectKindBadge(kind, t);
+  return <span className="project-chip project-type-chip"><Icon name={PROJECT_KIND_ICONS[kind]} />{cycleName ? `${type} · ${cycleName}` : type}</span>;
 }
 
 /** Phone-only "•••" button of the project header: the secondary actions as a sheet. */

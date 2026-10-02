@@ -108,6 +108,11 @@ describe("Linear", () => {
     expect(status("Refresh the onboarding illustrations")).toEqual(["backlog", "open"]);
   });
 
+  it("keeps a numeric Estimate as story points", () => {
+    expect(byTitle(batch.tasks, "Set up the CI pipeline").storyPoints).toBe(3);
+    expect(byTitle(batch.tasks, "Cache the Docker layers").storyPoints).toBeNull();
+  });
+
   it("maps priority names", () => {
     expect(byTitle(batch.tasks, "Investigate flaky test").priority).toBe(1);
     expect(byTitle(batch.tasks, "Set up the CI pipeline").priority).toBe(2);

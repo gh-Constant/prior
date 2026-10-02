@@ -119,7 +119,7 @@ export type CollaborationInvite = { id: string; email: string; role: "editor" | 
 /** A pending invite addressed to the signed-in account. */
 export type IncomingProjectInvite = { id: string; projectId: string; projectName: string; inviterName: string; inviterId: string; role: "editor" | "viewer"; expiresAt: string; createdAt: string };
 export type CollaborationProject = { project: Project; role: "owner" | "editor" | "viewer"; members: CollaborationMember[]; pendingInvites?: CollaborationInvite[] };
-export type CollaborativeProjectUpdate = Pick<Project, "health" | "startDate" | "targetDate" | "cycles"> & Partial<Pick<Project, "name" | "description" | "status" | "icon" | "projectType" | "milestones">> & {
+export type CollaborativeProjectUpdate = Pick<Project, "health" | "startDate" | "targetDate" | "cycles"> & Partial<Pick<Project, "name" | "description" | "status" | "icon" | "projectType" | "methodology" | "milestones">> & {
   health?: ProjectHealth | null;
   cycles?: ProjectCycle[];
 };
@@ -396,6 +396,7 @@ export const api = {
       ...(project.status !== undefined ? { status: project.status } : {}),
       ...(project.icon !== undefined ? { icon: project.icon ?? null } : {}),
       ...(project.projectType !== undefined ? { projectType: project.projectType } : {}),
+      ...(project.methodology !== undefined ? { methodology: project.methodology } : {}),
       health: project.health ?? null,
       startDate: project.startDate ?? null,
       targetDate: project.targetDate ?? null,

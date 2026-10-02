@@ -35,7 +35,7 @@ export type KanbanColumnData = {
 };
 
 export type KanbanContext = {
-  readonly projects: readonly Pick<Project, "id" | "name" | "icon" | "projectType" | "status">[];
+  readonly projects: readonly Pick<Project, "id" | "name" | "icon" | "projectType" | "methodology" | "status">[];
   /** Local date key (YYYY-MM-DD) of today. */
   readonly today: string;
   /** Completed tasks to show in the status board's Done column when the list filter hides them. */

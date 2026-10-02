@@ -36,6 +36,8 @@ export type ImportedTask = {
   parentKey: string | null;
   recurrence: ImportRecurrence | null;
   estimatedMinutes: number | null;
+  /** Size in story points (Linear's Estimate column), when the export has one. */
+  storyPoints: number | null;
 };
 
 export type ImportedProject = {
@@ -107,6 +109,7 @@ export function makeTask(key: string, title: string, extra: Partial<ImportedTask
     parentKey: null,
     recurrence: null,
     estimatedMinutes: null,
+    storyPoints: null,
     ...extra,
   };
 }

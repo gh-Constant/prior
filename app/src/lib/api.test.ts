@@ -79,4 +79,14 @@ describe("OAuth code exchange", () => {
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer session-token");
     expect(JSON.parse(request.body as string)).toEqual(snapshot);
   });
+  it("sends the methodology of a shared project only when it has one", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const base = { id: "p", areaId: null, name: "App", description: "", status: "active" as const, projectType: "software" as const, createdAt: "", updatedAt: "", deletedAt: null };
+    await api.updateCollaborativeProject("p", { ...base, methodology: "scrum" }, "session-token");
+    await api.updateCollaborativeProject("p", base, "session-token");
+    const sent = fetchMock.mock.calls.map(([, request]) => JSON.parse((request as RequestInit).body as string));
+    expect(sent[0]).toMatchObject({ projectType: "software", methodology: "scrum" });
+    expect(sent[1]).not.toHaveProperty("methodology");
+  });
 });

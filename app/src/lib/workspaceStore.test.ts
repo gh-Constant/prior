@@ -104,6 +104,12 @@ describe("workspaceStore", () => {
     expect(Object.keys(workspaceStore.listProjects()[0] ?? {})).not.toContain("methodology");
   });
 
+  it("creates a project with its methodology only when it is agile", () => {
+    expect(workspaceStore.createProject("Sprints", null, "", null, "software", "scrum")).toMatchObject({ projectType: "software", methodology: "scrum" });
+    expect(workspaceStore.createProject("Home", null, "", null, "standard", "scrum")).not.toHaveProperty("methodology");
+    expect(workspaceStore.listProjects().find((item) => item.name === "Sprints")?.methodology).toBe("scrum");
+  });
+
   it("normalizes the methodology of remote projects", () => {
     const project = workspaceStore.createProject("Remote app", null, "", null, "software");
     const later = new Date(Date.now() + 60_000).toISOString();

@@ -16,6 +16,8 @@ import { ProjectShareDialog } from "./collaboration/ProjectShareDialog";
 import { AREA_ICON_OPTIONS, DEFAULT_AREA_ICON, DEFAULT_PROJECT_ICON, PROJECT_ICON_OPTIONS } from "./WorkspaceIcon";
 import { IconPicker, IconUpload } from "./IconPicker";
 import { CustomSelect } from "./CustomSelect";
+import { ProjectKindSelect } from "./ProjectKindSelect";
+import { applyProjectKind, projectKindOf, type ProjectKind } from "../lib/agile";
 import { ProjectsOverview } from "./ProjectsOverview";
 import { AvatarStack, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, ProjectTile, UsersGlyph, currentCycle, projectProgress } from "./ProjectVisuals";
 import { ProjectBreadcrumb, ProjectDetailHeader, ProjectPhoneGroups, ProjectPhoneHeader, ProjectPhoneSummary, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "./ProjectDetailParts";
@@ -67,12 +69,12 @@ type WorkspaceModal =
   | null;
 
 
-function WorkspaceItemModal({ modal, areas, onClose, onSave }: { modal: Exclude<WorkspaceModal, null> & ({ kind: "project" } | { kind: "area" }); areas: Area[]; onClose: () => void; onSave: (name: string, areaId: string | null, icon: string, projectType?: import("../types").ProjectType) => void }) {
+function WorkspaceItemModal({ modal, areas, onClose, onSave }: { modal: Exclude<WorkspaceModal, null> & ({ kind: "project" } | { kind: "area" }); areas: Area[]; onClose: () => void; onSave: (name: string, areaId: string | null, icon: string, kind?: ProjectKind) => void }) {
   const { t } = useI18n();
   const isProject = modal.kind === "project";
   const [name, setName] = useState(isProject ? modal.project?.name ?? "" : modal.area?.name ?? "");
   const [areaId, setAreaId] = useState(isProject ? modal.areaId ?? "" : "");
-  const [projectType, setProjectType] = useState<import("../types").ProjectType>(isProject ? modal.project?.projectType || "standard" : "standard");
+  const [kind, setKind] = useState<ProjectKind>(isProject ? projectKindOf(modal.project) : "standard");
   const [icon, setIcon] = useState(isProject ? modal.project?.icon || DEFAULT_PROJECT_ICON : modal.area?.icon || DEFAULT_AREA_ICON);
   const [uploading, setUploading] = useState(false);
   const iconOptions = isProject ? PROJECT_ICON_OPTIONS : AREA_ICON_OPTIONS;
@@ -81,7 +83,7 @@ function WorkspaceItemModal({ modal, areas, onClose, onSave }: { modal: Exclude<
 
   return (
     <Modal title={isProject ? (editing ? t("common.workhub.titleEditProject") : t("common.workhub.titleNewProject")) : (editing ? t("common.workhub.titleEditArea") : t("common.workhub.titleNewArea"))} onClose={onClose}>
-      <form className="prior-modal-form workspace-item-form" onSubmit={(event) => { event.preventDefault(); if (name.trim()) onSave(name.trim(), isProject ? areaId || null : null, icon, isProject ? projectType : undefined); }}>
+      <form className="prior-modal-form workspace-item-form" onSubmit={(event) => { event.preventDefault(); if (name.trim()) onSave(name.trim(), isProject ? areaId || null : null, icon, isProject ? kind : undefined); }}>
         <label className="prior-modal-field">
           <span>{t("common.workhub.formName")}</span>
           <input className="prior-modal-input" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={isProject ? t("common.workhub.projectNamePlaceholder") : t("common.workhub.areaNamePlaceholder")} maxLength={80} />
@@ -99,17 +101,10 @@ function WorkspaceItemModal({ modal, areas, onClose, onSave }: { modal: Exclude<
               ]}
             />
           </label>
-          <label className="prior-modal-field">
+          <div className="prior-modal-field">
             <span>{t("common.workhub.formType")}</span>
-            <CustomSelect
-              value={projectType}
-              onChange={(next) => setProjectType(next as import("../types").ProjectType)}
-              options={[
-                { value: "standard", label: t("common.workhub.typeStandard") },
-                { value: "software", label: t("common.workhub.typeSoftware") },
-              ]}
-            />
-          </label>
+            <ProjectKindSelect ariaLabel={t("common.workhub.formType")} value={kind} onChange={setKind} />
+          </div>
         </>
         )}
         <div className="prior-modal-field">
@@ -208,7 +203,7 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
       icon={<ProjectTile project={project} size="lg" />}
       title={project.name}
       areaName={area?.name}
-      chips={<>{statusChip}<ProjectTypeChip software={project.projectType === "software"} cycleName={cycle?.name} /></>}
+      chips={<>{statusChip}<ProjectTypeChip software={project.projectType === "software"} methodology={project.methodology} cycleName={cycle?.name} /></>}
       description={project.description}
       members={sharing && members.length > 0 ? <button type="button" className="project-phone-members" aria-label={t("collab.header.shareManage")} onClick={() => setShareOpen(true)}><AvatarStack people={members} max={3} size="md" label={t("common.projectHub.members")} /></button> : undefined}
       menuItems={headerMenu()}
@@ -222,7 +217,7 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
         title={project.name}
         chips={<>
           {statusChip}
-          <ProjectTypeChip software={project.projectType === "software"} cycleName={cycle?.name} />
+          <ProjectTypeChip software={project.projectType === "software"} methodology={project.methodology} cycleName={cycle?.name} />
         </>}
         description={project.description}
         aside={<AvatarStack people={members} size="md" label={t("common.projectHub.members")} />}
@@ -274,13 +269,18 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
     {(!phone || projectTab === "overview") && <ProjectLeaderboardPanel key={`${selectedProject.id}-leaderboard`} projectId={selectedProject.id} className="project-leaderboard-section" />}
   </div>;
 
-  function saveModal(name: string, areaId: string | null, icon: string, projectType?: import("../types").ProjectType): void {
+  function saveModal(name: string, areaId: string | null, icon: string, kind: ProjectKind = "standard"): void {
     if (modal?.kind === "area") {
       if (modal.area) workspaceStore.updateArea({ ...modal.area, name, icon });
       else workspaceStore.createArea(name, undefined, icon);
     } else if (modal?.kind === "project") {
-      if (modal.project) workspaceStore.updateProject({ ...modal.project, name, areaId, icon, projectType: projectType || modal.project.projectType || "standard" });
-      else workspaceStore.createProject(name, areaId, "", icon, projectType || "standard");
+      if (modal.project) {
+        const edited = { ...modal.project, name, areaId, icon };
+        // Only touch the type and methodology when the choice changed.
+        workspaceStore.updateProject(kind === projectKindOf(modal.project) ? edited : applyProjectKind(edited, kind));
+      } else {
+        workspaceStore.createProject(name, areaId, "", icon, kind === "standard" ? "standard" : "software", kind === "standard" ? undefined : kind);
+      }
     }
     setModal(null);
     onWorkspaceChange();

@@ -12,6 +12,8 @@ export type CustomSelectOption<T extends string | number = string | number> = {
   color?: string;
   tone?: StatusTone;
   disabled?: boolean;
+  /** A muted second line in the menu (the trigger only shows the label). */
+  description?: string;
 };
 
 export type CustomSelectProps<T extends string | number = string | number> = {
@@ -53,7 +55,7 @@ export function CustomSelect<T extends string | number = string | number>({
     onClose: () => setOpen(false),
     isPill,
     offset: 4,
-    estimatedHeight: Math.min(options.length * 36 + 10, 260),
+    estimatedHeight: Math.min(options.reduce((height, option) => height + (option.description ? 58 : 36), 10), 260),
   });
 
   function handleSelect(option: CustomSelectOption<T>) {
@@ -101,7 +103,7 @@ export function CustomSelect<T extends string | number = string | number>({
             role="option"
             aria-selected={isSelected}
             disabled={option.disabled}
-            className={`custom-select-item ${isSelected ? "selected" : ""} ${option.tone ? "has-tone" : ""}`}
+            className={`custom-select-item ${isSelected ? "selected" : ""} ${option.tone ? "has-tone" : ""} ${option.description ? "has-description" : ""}`}
             style={option.tone}
             onClick={() => handleSelect(option)}
           >
@@ -109,7 +111,7 @@ export function CustomSelect<T extends string | number = string | number>({
             {option.color && (
               <span className="custom-select-color-dot" style={{ backgroundColor: option.color }} />
             )}
-            <span className="custom-select-item-label">{option.label}</span>
+            <span className="custom-select-item-label">{option.label}{option.description && <small className="custom-select-item-description">{option.description}</small>}</span>
             {isSelected && <Icon name="check" className="custom-select-check" />}
           </button>
         );

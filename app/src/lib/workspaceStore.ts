@@ -99,9 +99,9 @@ export const workspaceStore = {
     detachedProjects.forEach((project) => ensureProjectNotes({ ...project, areaId: null, updatedAt: timestamp }, workspaceStore.listAreas()));
     notesStore.removeWorkspaceFolder("area", area.id);
   },
-  createProject(name: string, areaId: string | null = null, description = "", icon?: string | null, projectType?: import("../types").ProjectType): Project {
+  createProject(name: string, areaId: string | null = null, description = "", icon?: string | null, projectType?: import("../types").ProjectType, methodology?: import("../types").ProjectMethodology): Project {
     const timestamp = now();
-    const project: Project = { id: uid(), areaId, name: name.trim() || translateStored("collab.workspace.newProject"), description: description.trim(), icon: icon || DEFAULT_PROJECT_ICON, projectType: projectType || "standard", status: "active", createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
+    const project: Project = { id: uid(), areaId, name: name.trim() || translateStored("collab.workspace.newProject"), description: description.trim(), icon: icon || DEFAULT_PROJECT_ICON, projectType: projectType || "standard", ...(methodology && projectType === "software" ? { methodology } : {}), status: "active", createdAt: timestamp, updatedAt: timestamp, deletedAt: null };
     write(PROJECTS_KEY, [...read<Project[]>(PROJECTS_KEY, []), project]);
     ensureProjectNotes(project);
     return project;

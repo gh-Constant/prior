@@ -36,6 +36,8 @@
 .task-detail-property { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; min-height: 34px; }
 .task-detail-property dt { color: var(--muted); font-size: var(--fs-sm); }
 .task-detail-property dd { min-width: 0; margin: 0; }
+.task-detail-property.task-detail-points { align-items: start; padding-block: 3px; }
+.task-detail-property.task-detail-points dt { padding-top: 7px; }
 .task-detail-value { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 8px; color: var(--ink); font-size: 13px; }
 .task-detail-value > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-detail-value.muted { color: var(--faint); }

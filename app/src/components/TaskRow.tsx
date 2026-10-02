@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import type { Project, Task } from "../types";
+import { taskBadgeKind } from "../lib/agile";
 import type { CompletionExitDeadlines } from "../lib/completionExit";
 import { useI18n } from "../lib/i18n";
 import { formatEstimate } from "../lib/taskEstimate";
@@ -14,6 +15,7 @@ import { TaskStatusBadge } from "./TaskStatusBadge";
 import { DEFAULT_PROJECT_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import { checklistProgress } from "./tasks/ChecklistEditor";
 import { RecurrenceChip } from "./tasks/RecurrenceChip";
+import { StoryPointsChip } from "./tasks/StoryPoints";
 
 /**
  * - `default`: the original two-line row used by Today, projects and waiting.
@@ -28,7 +30,8 @@ type Props = {
   readonly onEdit?: (task: Task) => void;
   readonly hideFlags?: boolean;
   readonly hideNextStatus?: boolean;
-  readonly project?: Pick<Project, "name" | "icon"> | null;
+  /** Its type and methodology decide whether the size is story points or the priority. */
+  readonly project?: (Pick<Project, "name" | "icon"> & Partial<Pick<Project, "projectType" | "methodology">>) | null;
   readonly variant?: TaskRowVariant;
   /** Compact only: clicking the title opens a detail view instead of the editor. */
   readonly onOpen?: (task: Task) => void;
@@ -198,12 +201,14 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
     const estimate = formatEstimate(task.estimatedMinutes);
     const estimateChip = estimate && <span className="task-chip task-estimate-chip" title={t("tasks.composer.estimate")}><Icon name="clock" />{estimate}</span>;
     const checklistChip = <ChecklistProgressChip task={task} />;
+    // Scrum and Scrumban: the size is story points, in the meta line.
+    const pointsChip = showPriority && task.projectId && taskBadgeKind(project) === "points" ? <StoryPointsChip points={task.storyPoints} /> : null;
     const avatar = initials && task.assigneeName ? <InitialsAvatar initials={initials} name={task.assigneeName} /> : null;
     const className = `task-row task-row-compact ${task.completed ? "completed" : ""} ${isExiting ? "completion-exiting" : ""} ${selected ? "selected" : ""}`;
 
     const row = (
       <div ref={swipe.rowRef} className={className} {...rowProps} {...(phone ? swipe.rowProps : {})}>
-        {showPriority && <PriorityGlyph priority={task.priority ?? 4} label={priorityLabel(task.priority ?? 4, t)} />}
+        {showPriority && !pointsChip && <PriorityGlyph priority={task.priority ?? 4} label={priorityLabel(task.priority ?? 4, t)} />}
         {completeControl}
         <div className="task-content">{titleControl}</div>
         <div className="task-actions">
@@ -211,6 +216,7 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
           {moreButton}
         </div>
         <div className="task-meta" aria-label={t("tasks.row.details")}>
+          {pointsChip}
           {showStatusChip && <TaskStatusBadge status={status} label={statusLabel(status, t)} />}
           {projectChip}
           {dueChip}
@@ -250,7 +256,9 @@ export function TaskRow({ task, onChange, onDelete, onEdit, hideFlags = false, h
         {titleControl}
         {task.description && <p className="task-description">{task.description}</p>}
         <div className="task-meta" aria-label={t("tasks.row.details")}>
-          <span className={`task-priority priority-${task.priority ?? 4}`}><Icon name="flag" /> P{task.priority ?? 4}</span>
+          {task.projectId && taskBadgeKind(project) === "points"
+            ? <StoryPointsChip points={task.storyPoints} />
+            : <span className={`task-priority priority-${task.priority ?? 4}`}><Icon name="flag" /> P{task.priority ?? 4}</span>}
           {task.projectId && project?.name ? <span className="task-project-meta" title={project.name}><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /><span className="task-project-name">{project.name}</span></span> : null}
           {task.dueDate && <span className="task-due-date"><Icon name="calendar-check" /> {formatDueDate(task.dueDate, lang)}{task.dueTime ? ` · ${task.dueTime}` : ""}</span>}
           <RecurrenceChip task={task} />

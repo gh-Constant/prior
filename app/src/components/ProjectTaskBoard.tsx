@@ -69,7 +69,7 @@ export function projectStatusGroups(projectType: ProjectType | undefined, tasks:
 
 /** Status board of one project, rendered by the shared KanbanBoard. */
 export function ProjectTaskBoard({ project, tasks, onChange, onDelete, onEdit, people = [], onAddTask }: {
-  readonly project: Pick<Project, "name" | "icon" | "projectType">;
+  readonly project: Pick<Project, "name" | "icon" | "projectType" | "methodology">;
   readonly tasks: Task[];
   readonly onChange: (task: Task) => Promise<void>;
   readonly onDelete: (task: Task) => Promise<void>;
@@ -119,6 +119,6 @@ export function ProjectTaskBoard({ project, tasks, onChange, onDelete, onEdit, p
     onAdd={(status) => onAddTask?.(status as TaskStatus)}
     menuItems={menuItems}
     itemClassName={(task) => task.completed ? "is-done" : ""}
-    renderCard={(task) => <KanbanTaskCard task={task} today={today} people={people} blocked={isTaskBlocked(task, byId)} onOpen={onEdit} onChange={onChange} />}
+    renderCard={(task) => <KanbanTaskCard task={task} today={today} people={people} sizeProject={project} blocked={isTaskBlocked(task, byId)} onOpen={onEdit} onChange={onChange} />}
   />;
 }

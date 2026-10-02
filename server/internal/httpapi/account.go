@@ -559,7 +559,7 @@ func recurrenceText(rule *tasks.TaskRecurrence) string {
 
 func writeTasksCSV(out io.Writer, list []tasks.Task) error {
 	writer := csv.NewWriter(out)
-	header := []string{"id", "title", "description", "status", "completed", "important", "urgent", "priority", "dueDate", "dueTime", "scheduledDate", "scheduledTime", "reminderAt", "recurrence", "checklist", "projectId", "areaId", "estimatedMinutes", "createdAt", "updatedAt"}
+	header := []string{"id", "title", "description", "status", "completed", "important", "urgent", "priority", "dueDate", "dueTime", "scheduledDate", "scheduledTime", "reminderAt", "recurrence", "checklist", "projectId", "areaId", "estimatedMinutes", "storyPoints", "createdAt", "updatedAt"}
 	if err := writer.Write(header); err != nil {
 		return err
 	}
@@ -568,12 +568,16 @@ func writeTasksCSV(out io.Writer, list []tasks.Task) error {
 		if task.EstimatedMinutes != nil {
 			estimate = strconv.Itoa(*task.EstimatedMinutes)
 		}
+		points := ""
+		if task.StoryPoints != nil {
+			points = strconv.FormatFloat(*task.StoryPoints, 'f', -1, 64)
+		}
 		row := []string{
 			task.ID, csvCell(task.Title), csvCell(task.Description), task.Status, strconv.FormatBool(task.Completed),
 			strconv.FormatBool(task.Important), strconv.FormatBool(task.Urgent), strconv.Itoa(task.Priority),
 			optional(task.DueDate), optional(task.DueTime), optional(task.ScheduledDate), optional(task.ScheduledTime),
 			optional(task.ReminderAt), recurrenceText(task.Recurrence), csvCell(checklistText(task.Checklist)),
-			optional(task.ProjectID), optional(task.AreaID), estimate,
+			optional(task.ProjectID), optional(task.AreaID), estimate, points,
 			task.CreatedAt.UTC().Format(time.RFC3339), task.UpdatedAt.UTC().Format(time.RFC3339),
 		}
 		if err := writer.Write(row); err != nil {

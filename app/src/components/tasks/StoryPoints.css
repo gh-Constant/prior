@@ -1,0 +1,39 @@
+/* Story points (specs/SCRUM.md): the chip shown in place of the priority glyph and the card picker. */
+
+/* The chip borrows the geometry of the surrounding chips (task-chip, project-chip, collab-chip);
+   only the figure is tuned: tabular, slightly heavier, so a column of sizes lines up. */
+.story-points-chip { justify-content: center; min-width: 30px; font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: -.005em; color: var(--ink); }
+.story-points-chip.is-empty { border-style: dashed; background: transparent; color: var(--faint); font-weight: 500; }
+
+/* ── Picker: a row of small cards ── */
+.story-points-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+/* Cards and Clear flow together, so Clear sits after the last card when there is room. */
+.story-points-cards { display: contents; }
+.story-points-card { display: inline-grid; place-items: center; min-width: 32px; height: 32px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--panel); box-shadow: var(--shadow-control); color: var(--ink-2); font: inherit; font-size: var(--fs-md); font-variant-numeric: tabular-nums; font-weight: 600; cursor: pointer; transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease); }
+.story-points-card:hover:not(:disabled) { border-color: var(--line-hover); background: var(--hover); color: var(--ink); }
+.story-points-card:active:not(:disabled) { transform: translateY(1px); }
+.story-points-card:focus-visible, .story-points-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.story-points-card.is-selected { border-color: var(--accent-line); background: var(--accent-soft); box-shadow: none; color: var(--accent-dark); }
+.story-points-card.is-selected:hover:not(:disabled) { background: var(--accent-soft-2); }
+.story-points-card:disabled { opacity: .55; cursor: not-allowed; }
+.story-points-clear { min-height: 32px; margin-left: 4px; padding: 0 8px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--muted); font: inherit; font-size: var(--fs-sm); font-weight: 500; cursor: pointer; }
+.story-points-clear:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+.story-points-clear:disabled { opacity: 0; pointer-events: none; }
+.story-points-picker.is-compact .story-points-card { min-width: 28px; height: 28px; border-radius: var(--r-sm); font-size: var(--fs-sm); }
+.story-points-picker.is-compact .story-points-clear { min-height: 28px; }
+
+@media (max-width: 760px) {
+  /* Touch targets of 44px: five cards per line. */
+  .story-points-picker { align-items: stretch; flex-direction: column; gap: 6px; width: 100%; }
+  .story-points-clear { margin-left: 0; }
+  .story-points-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .story-points-card, .story-points-picker.is-compact .story-points-card { min-width: 0; height: 44px; border-radius: 12px; font-size: 16px; }
+  .story-points-clear, .story-points-picker.is-compact .story-points-clear { align-self: flex-start; min-height: 44px; padding: 0 12px; font-size: 14px; }
+  .story-points-clear:disabled { display: none; }
+  .story-points-chip { min-width: 34px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-points-card { transition: none; }
+  .story-points-card:active:not(:disabled) { transform: none; }
+}

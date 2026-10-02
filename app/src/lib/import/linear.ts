@@ -3,6 +3,7 @@ import { parseLooseDate } from "./dates";
 import { collectProjects, emptyBatch, makeTask, MAX_DESCRIPTION_LENGTH, MAX_IMPORT_TASKS, type ImportBatch, type ImportedState, type ImportedTask } from "./types";
 import type { ParseOptions } from "./todoist";
 import type { TaskPriority, TaskStatus } from "../../types";
+import { normalizeStoryPoints } from "../storyPoints";
 
 /** True when the headers look like a Linear export (ID, Title, Status…). */
 export function isLinearTable(table: CsvTable): boolean {
@@ -59,6 +60,7 @@ export function parseLinear(table: CsvTable, options: ParseOptions = {}): Import
   const startedColumn = column("started");
   const completedColumn = column("completed");
   const canceledColumn = column("canceled", "cancelled");
+  const estimateColumn = column("estimate");
 
   const byIdentifier = new Map<string, ImportedTask>();
   const parents = new Map<ImportedTask, string>();
@@ -93,6 +95,8 @@ export function parseLinear(table: CsvTable, options: ParseOptions = {}): Import
       state,
       projectName: project,
       areaName: team || null,
+      // A numeric Estimate is kept as story points; t-shirt sizes and other text are not.
+      storyPoints: normalizeStoryPoints(cell(row, estimateColumn)),
     });
     batch.tasks.push(task);
     if (identifier) byIdentifier.set(identifier, task);

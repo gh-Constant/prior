@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Project, Task, TaskPriority, TaskStatus } from "../types";
+import { taskBadgeKind } from "../lib/agile";
 import { useI18n } from "../lib/i18n";
 import { quadrantFor } from "../lib/priority";
 import { localDateKey } from "../lib/recurrence";
@@ -15,10 +16,11 @@ import { ChecklistEditor } from "./tasks/ChecklistEditor";
 import { RecurrencePicker } from "./tasks/RecurrencePicker";
 import { ReminderPicker } from "./tasks/ReminderPicker";
 import { SharedTaskComments } from "./collaboration/TaskComments";
+import { StoryPointsPicker } from "./tasks/StoryPoints";
 
 type Props = {
   readonly task: Task;
-  readonly project: Pick<Project, "name" | "icon"> | null;
+  readonly project: (Pick<Project, "name" | "icon"> & Partial<Pick<Project, "projectType" | "methodology">>) | null;
   readonly onChange: (task: Task) => Promise<void>;
   readonly onEdit: (task: Task) => void;
   readonly onClose: () => void;
@@ -120,6 +122,12 @@ export function TaskDetailPanel({ task, project, onChange, onEdit, onClose }: Pr
             />
           </dd>
         </div>
+        {taskBadgeKind(project) === "points" && <div className="task-detail-property task-detail-points">
+          <dt>{t("scrum.picker.label")}</dt>
+          <dd>
+            <StoryPointsPicker compact value={task.storyPoints ?? null} onChange={(storyPoints) => void onChange({ ...task, storyPoints })} />
+          </dd>
+        </div>}
         <div className="task-detail-property">
           <dt>{t("tasks.detail.priority")}</dt>
           <dd>

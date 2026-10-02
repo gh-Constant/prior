@@ -5,6 +5,7 @@ import { PersonAvatar } from "./PersonAvatar";
 import { useI18n } from "../../lib/i18n";
 import { CustomSelect } from "../CustomSelect";
 import { TaskStatusBadge } from "../TaskStatusBadge";
+import { StoryPointsChip } from "../tasks/StoryPoints";
 import { taskStatusTone } from "../../lib/taskStatusAppearance";
 import type { Person, PlanningKey, ProjectIssue, TaskPlanningProps, WorkflowState } from "./types";
 import "./Collaboration.css";
@@ -23,13 +24,14 @@ export function PeopleChips({ people }: { people: readonly Person[] }) {
   </div>;
 }
 
-export function AgilePropertyChips({ properties = [], priority, state }: Pick<ProjectIssue, "properties" | "priority"> & { state?: WorkflowState }) {
+/** `storyPoints` (a number, or null for not estimated) replaces the priority chip: Scrum and Scrumban projects size issues in points. */
+export function AgilePropertyChips({ properties = [], priority, storyPoints, state }: Pick<ProjectIssue, "properties" | "priority"> & { state?: WorkflowState; storyPoints?: number | null }) {
   const { t } = useI18n();
   return <div className="collab-chips" aria-label={t("collab.issue.properties")}>
     {properties.map((property, index) => property.key === "state" ? <TaskStatusBadge key={`${property.key}-${index}`} status={state?.id} category={state?.category} label={property.label} /> : <span className="collab-chip" key={`${property.key}-${index}`}>
       <Icon name={propertyIcons[property.key]} aria-hidden="true" /><span>{property.label}</span>
     </span>)}
-    {priority !== undefined && <span className="collab-chip"><Icon name="flag" aria-hidden="true" />{t("collab.issue.priority", { priority })}</span>}
+    {storyPoints !== undefined ? <StoryPointsChip points={storyPoints} variant="collab" /> : priority !== undefined && <span className="collab-chip"><Icon name="flag" aria-hidden="true" />{t("collab.issue.priority", { priority })}</span>}
   </div>;
 }
 

@@ -3,6 +3,8 @@ import type { Area, Project, ProjectStatus, Task } from "../types";
 import { useI18n } from "../lib/i18n";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { Icon } from "./Icon";
+import { projectKindOf } from "../lib/agile";
+import { projectKindBadge } from "./ProjectKindSelect";
 import { DEFAULT_AREA_ICON, WorkspaceIcon } from "./WorkspaceIcon";
 import type { Person } from "./collaboration/types";
 import {
@@ -101,7 +103,7 @@ export function ProjectsOverview({ areas, projects, tasks = NO_TASKS, membersByP
           <span className="projects-card-title">
             <span className="projects-card-name">{project.name}</span>
             <span className="projects-card-type">
-              <span>{t(project.projectType === "software" ? "common.workhub.badgeSoftware" : "common.workhub.badgeStandard")}</span>
+              <span>{projectKindBadge(projectKindOf(project), t)}</span>
               {cycle && <span>{` · ${cycle.name}`}</span>}
             </span>
           </span>

@@ -11,14 +11,16 @@ import { AgilePropertyChips, PeopleChips } from "./TaskPlanning";
 import { AssigneeSelect } from "./AssigneeSelect";
 import { ProjectActivity } from "./ProjectActivity";
 import { useI18n } from "../../lib/i18n";
-import { AvatarStack, PROJECT_STATUS_LABELS, PriorityGlyph, ProjectStatusChip, UsersGlyph, glyphStatus, projectTintStyle } from "../ProjectVisuals";
+import { agileFeatures, filterBySprint, sprintStats, velocity, type SprintFilter } from "../../lib/agile";
+import { StoryPointsChip } from "../tasks/StoryPoints";
+import { AvatarStack, PROJECT_STATUS_LABELS, PriorityGlyph, ProjectStatusChip, UsersGlyph, glyphStatus, localDateKey, projectTintStyle } from "../ProjectVisuals";
 import { StatusGlyph } from "../TaskGlyphs";
 import { ProjectDetailHeader, ProjectPhoneGroups, ProjectPhoneHeader, ProjectPhoneSummary, ProjectStatsStrip, ProjectTabs, ProjectTypeChip, type ProjectTabItem } from "../ProjectDetailParts";
 import { useIsPhone } from "../../lib/useMediaQuery";
 import type { Person, ProjectCollaborationProps, ProjectIssue, WorkflowState } from "./types";
 import "./Collaboration.css";
 
-const tabs = ["Board", "Issues", "Overview", "Cycles", "Activity"] as const;
+const tabs = ["Board", "Issues", "Overview", "Cycles", "Poker", "Activity"] as const;
 type Tab = typeof tabs[number];
 
 /** Who issues are shown for: everyone, me, nobody (unassigned) or one person. */
@@ -49,8 +51,8 @@ function IssueAssignee({ issue, assign, busy }: { issue: ProjectIssue; assign?: 
 }
 
 /** Row used by the Issues list: full property chips and people. */
-function IssueCard({ issue, stateName, state, onOpen, onDelete, assign }: {
-  issue: ProjectIssue; stateName: string; state?: WorkflowState; onOpen?: (id: string) => void; onDelete?: (id: string) => void; assign?: Assign;
+function IssueCard({ issue, stateName, state, onOpen, onDelete, assign, points }: {
+  issue: ProjectIssue; stateName: string; state?: WorkflowState; onOpen?: (id: string) => void; onDelete?: (id: string) => void; assign?: Assign; points?: boolean;
 }) {
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
   const { t } = useI18n();
@@ -63,7 +65,7 @@ function IssueCard({ issue, stateName, state, onOpen, onDelete, assign }: {
       {onOpen ? <button type="button" onClick={() => onOpen(issue.id)}>{issue.title}</button> : <strong>{issue.title}</strong>}
     </div>
     <div className="collab-issue-row-meta">
-      <AgilePropertyChips state={state} priority={issue.priority} properties={[{ key: "state", label: stateName }, ...(issue.properties ?? []).filter((property) => property.key !== "state")]} />
+      <AgilePropertyChips state={state} priority={issue.priority} storyPoints={points ? issue.storyPoints ?? null : undefined} properties={[{ key: "state", label: stateName }, ...(issue.properties ?? []).filter((property) => property.key !== "state")]} />
       {issue.blocked && <span className="collab-chip is-blocked"><Icon name="lock" aria-hidden="true" />{t("collab.issue.blocked")}</span>}
       {issue.subtasks && <span className="collab-chip"><Icon name="list-todo" aria-hidden="true" />{issue.subtasks.done}/{issue.subtasks.total}</span>}
       <IssueAssignee issue={issue} assign={assign} />
@@ -74,8 +76,8 @@ function IssueCard({ issue, stateName, state, onOpen, onDelete, assign }: {
 }
 
 /** Phone row of the Issues list: priority, title, a few facts and the assignee. */
-function PhoneIssueRow({ issue, done, onOpen, onDelete, assign }: {
-  issue: ProjectIssue; done: boolean; onOpen?: (id: string) => void; onDelete?: (id: string) => void; assign?: Assign;
+function PhoneIssueRow({ issue, done, onOpen, onDelete, assign, points }: {
+  issue: ProjectIssue; done: boolean; onOpen?: (id: string) => void; onDelete?: (id: string) => void; assign?: Assign; points?: boolean;
 }) {
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
   const { t } = useI18n();
@@ -84,6 +86,7 @@ function PhoneIssueRow({ issue, done, onOpen, onDelete, assign }: {
   const body = <>
     <span className="phone-issue-title">{issue.title}</span>
     <span className="phone-issue-meta">
+      {points && <StoryPointsChip points={issue.storyPoints} variant="project" />}
       {issue.identifier && <small>{issue.identifier}</small>}
       {issue.blocked && <span className="project-chip is-blocked"><Icon name="lock" />{t("collab.issue.blocked")}</span>}
       {issue.subtasks && <span className="project-chip" title={t("collab.issue.subtasks")}><Icon name="list-todo" />{issue.subtasks.done}/{issue.subtasks.total}</span>}
@@ -94,7 +97,7 @@ function PhoneIssueRow({ issue, done, onOpen, onDelete, assign }: {
     onContextMenu={menuItems.length ? (event) => openMenu(event, menuItems) : undefined}
     {...(menuItems.length ? longPress(() => menuItems) : {})}
   >
-    {issue.priority !== undefined ? <PriorityGlyph priority={issue.priority} /> : <span className="phone-issue-glyph-spacer" aria-hidden="true" />}
+    {!points && (issue.priority !== undefined ? <PriorityGlyph priority={issue.priority} /> : <span className="phone-issue-glyph-spacer" aria-hidden="true" />)}
     {onOpen ? <button type="button" className="phone-issue-open" onClick={() => onOpen(issue.id)}>{body}</button> : <div className="phone-issue-open">{body}</div>}
     <IssueAssignee issue={issue} assign={assign} />
     {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
@@ -102,7 +105,7 @@ function PhoneIssueRow({ issue, done, onOpen, onDelete, assign }: {
 }
 
 /** Content of a board card: title, priority, cycle/labels and the lead person. */
-function BoardIssueContent({ issue, onOpen, busy, assign }: { issue: ProjectIssue; onOpen?: (id: string) => void; busy: boolean; assign?: Assign }) {
+function BoardIssueContent({ issue, onOpen, busy, assign, points }: { issue: ProjectIssue; onOpen?: (id: string) => void; busy: boolean; assign?: Assign; points?: boolean }) {
   const { t } = useI18n();
   // Without assignment data (local projects), show the lead person as before.
   const lead = assign ? undefined : issue.people.find((person) => person.role === "owner") ?? issue.people[0];
@@ -110,7 +113,7 @@ function BoardIssueContent({ issue, onOpen, busy, assign }: { issue: ProjectIssu
   const body = <>
     <span className="board-card-title">{issue.identifier && <small>{issue.identifier}</small>}{issue.title}</span>
     <span className="board-card-meta">
-      {issue.priority !== undefined && <PriorityGlyph priority={issue.priority} />}
+      {points ? <StoryPointsChip points={issue.storyPoints} variant="project" /> : issue.priority !== undefined && <PriorityGlyph priority={issue.priority} />}
       {issue.blocked && <span className="project-chip is-blocked" title={t("collab.issue.blocked")}><Icon name="lock" />{t("collab.issue.blocked")}</span>}
       {issue.subtasks && <span className="project-chip" title={t("collab.issue.subtasks")}><Icon name="list-todo" />{issue.subtasks.done}/{issue.subtasks.total}</span>}
       {chips.map((property, index) => <span className="project-chip" key={`${property.key}-${index}`} title={property.key === "parent" ? t("collab.issue.parentOf", { title: property.label }) : undefined}><Icon name={property.key === "cycle" ? "refresh" : property.key === "milestone" ? "flag" : property.key === "parent" ? "arrow" : "tag"} /><span className="project-chip-label">{property.label}</span></span>)}
@@ -121,6 +124,27 @@ function BoardIssueContent({ issue, onOpen, busy, assign }: { issue: ProjectIssu
     {onOpen ? <button type="button" className="board-card-open" onClick={() => onOpen(issue.id)}>{body}</button> : <div className="board-card-open">{body}</div>}
     {assign && <span className="board-card-assignee" data-kanban-nodrag><IssueAssignee issue={issue} assign={assign} busy={busy} /></span>}
   </>;
+}
+
+/** Committed vs done points of a sprint: a bar and one line of figures. */
+function SprintPoints({ stats, name }: { stats: ReturnType<typeof sprintStats>; name: string }) {
+  const { t, tp } = useI18n();
+  return <div className="collab-sprint-points">
+    <progress className="collab-progress" aria-label={t("collab.cycle.completionFor", { name })} value={stats.done} max={stats.committed || 1} />
+    <p className="collab-sprint-points-line"><strong>{t("scrum.sprint.pointsDone", { done: stats.done, total: stats.committed })}</strong>{stats.unestimated > 0 && <span className="collab-muted">{tp("scrum.sprint.unestimated", stats.unestimated)}</span>}</p>
+  </div>;
+}
+
+/** Average done points of the last finished sprints. */
+function VelocitySummary({ value }: { value: number | null }) {
+  const { t } = useI18n();
+  return <section className="collab-velocity" aria-label={t("scrum.sprint.velocity")}>
+    <Icon name="bar-chart" aria-hidden="true" />
+    <div className="collab-velocity-copy">
+      <strong>{t("scrum.sprint.velocity")}{value !== null && <span>{t("scrum.sprint.velocityValue", { value })}</span>}</strong>
+      <small>{value !== null ? t("scrum.sprint.velocityHint") : t("scrum.sprint.velocityNone")}</small>
+    </div>
+  </section>;
 }
 
 function Overview({ project, issues, states, sharing, overview = {}, onOpenNotes, readOnly, onCreateMilestone, onEditMilestone }: ProjectCollaborationProps) {
@@ -156,22 +180,28 @@ function Overview({ project, issues, states, sharing, overview = {}, onOpenNotes
 }
 
 export function ProjectCollaboration(props: ProjectCollaborationProps) {
-  const { project, issues, states, cycles, sharing, overview, loading = false, readOnly = true, offline = false, onCreateIssue, onOpenIssue, onDeleteIssue, onEditProject, onMoveIssue, onCreateCycle, onEditCycle, onTabChange, assignablePeople, currentUserId, onAssignIssue, loadActivity, areaName, onBack } = props;
+  const { project, issues, states, cycles, sharing, overview, loading = false, readOnly = true, offline = false, renderPoker, onCreateIssue, onOpenIssue, onDeleteIssue, onEditProject, onMoveIssue, onCreateCycle, onEditCycle, onTabChange, assignablePeople, currentUserId, onAssignIssue, loadActivity, areaName, onBack } = props;
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
   const phone = useIsPhone();
   // Phones open on the issues grouped by state: the whole project at a glance.
   const defaultTab: Tab = phone ? "Issues" : "Board";
+  const features = agileFeatures(project);
+  // Planning Poker is a tab of Scrum and Scrumban projects, once the app hands over its content.
+  const pokerTab = features.poker && Boolean(renderPoker);
   const [localTab, setLocalTab] = useState<Tab | null>(null);
-  const controlledTab = tabs.find((candidate) => candidate.toLowerCase() === props.tab);
-  const tab: Tab = onTabChange ? controlledTab ?? defaultTab : localTab ?? defaultTab;
+  const available = (candidate: Tab | undefined): Tab | undefined => candidate === "Poker" && !pokerTab ? undefined : candidate;
+  const controlledTab = available(tabs.find((candidate) => candidate.toLowerCase() === props.tab));
+  const tab: Tab = onTabChange ? controlledTab ?? defaultTab : available(localTab ?? undefined) ?? defaultTab;
   const setTab = (next: Tab) => { setLocalTab(next); onTabChange?.(next.toLowerCase()); };
   const { t, tp } = useI18n();
+  const cycleLabel = features.sprints ? t("scrum.tabs.sprints") : t("collab.tabs.cycles");
   const boardTab: ProjectTabItem<Tab> = { id: "Board", label: t("collab.tabs.board"), icon: "columns" };
   const issuesTab: ProjectTabItem<Tab> = { id: "Issues", label: t("collab.tabs.issues"), icon: "list" };
   const tabItems: ProjectTabItem<Tab>[] = [
     ...(phone ? [issuesTab, boardTab] : [boardTab, issuesTab]),
     { id: "Overview", label: t("collab.tabs.overview"), icon: "eye" },
-    { id: "Cycles", label: t("collab.tabs.cycles"), icon: "refresh" },
+    { id: "Cycles", label: cycleLabel, icon: "refresh" },
+    ...(pokerTab ? [{ id: "Poker" as const, label: t("scrum.tabs.poker"), icon: "layers" as const }] : []),
     { id: "Activity", label: t("collab.tabs.activity"), icon: "activity" },
   ];
   const [shareOpen, setShareOpen] = useState(false);
@@ -186,7 +216,13 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
     : assigneeFilter === "mine" ? Boolean(currentUserId) && issue.assigneeId === currentUserId
     : assigneeFilter === "unassigned" ? !issue.assigneeId
     : issue.assigneeId === assigneeFilter.personId;
-  const visibleIssues = issues.filter((issue) => matchesAssignee(issue) && `${issue.identifier ?? ""} ${issue.title}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const activeCycle = cycles.find((cycle) => cycle.phase === "current") ?? null;
+  // Scrum: the lists show the running sprint by default (specs/SCRUM.md).
+  const [sprintChoice, setSprintChoice] = useState<SprintFilter | null>(null);
+  const showSprintFilter = features.sprints && cycles.length > 0;
+  const sprintFilter: SprintFilter = showSprintFilter ? sprintChoice ?? (activeCycle ? "active" : "all") : "all";
+  const sprintIssues = showSprintFilter ? filterBySprint(issues, cycles, sprintFilter, activeCycle) : issues;
+  const visibleIssues = sprintIssues.filter((issue) => matchesAssignee(issue) && `${issue.identifier ?? ""} ${issue.title}`.toLowerCase().includes(query.trim().toLowerCase()));
   const stateName = (issue: ProjectIssue) => states.find((state) => state.id === issue.stateId)?.name ?? t("collab.issue.unassigned");
   const isCompleted = (issue: ProjectIssue) => states.some((state) => state.id === issue.stateId && state.category === "completed");
   const unassigned = visibleIssues.filter((issue) => !states.some((state) => state.id === issue.stateId));
@@ -203,7 +239,13 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
   const canMove = !readOnly && !loading && Boolean(onMoveIssue);
   const completedCount = issues.filter(isCompleted).length;
   const progress = { completed: completedCount, total: issues.length, percent: issues.length ? Math.round((completedCount / issues.length) * 100) : 0 };
-  const activeCycle = cycles.find((cycle) => cycle.phase === "current") ?? null;
+  // Why the issue list is empty: a sprint scope with nothing in it says so instead of "no issues yet".
+  const emptyIssuesState = showSprintFilter && !query && sprintIssues.length === 0 && issues.length > 0 && ((sprintFilter === "active" && !activeCycle) || sprintFilter === "backlog")
+    ? sprintFilter === "backlog" ? { title: t("scrum.sprint.backlogEmptyTitle"), description: t("scrum.sprint.backlogEmptyHint") } : { title: t("scrum.sprint.noActiveTitle"), description: t("scrum.sprint.noActiveHint") }
+    : { title: query ? t("collab.issue.noMatchTitle") : t("collab.issue.emptyTitle"), description: query ? t("collab.issue.noMatchHint") : t("collab.issue.emptyHint") };
+  const today = localDateKey();
+  const sprintIssueRows = issues.map((issue) => ({ id: issue.id, storyPoints: issue.storyPoints, done: isCompleted(issue) }));
+  const sprintVelocity = features.sprints ? velocity(cycles, sprintIssueRows, today) : null;
 
   async function moveIssue(issueId: string, stateId: string) {
     const issue = issues.find((item) => item.id === issueId);
@@ -223,7 +265,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
     ...(!readOnly && onEditProject ? [{ icon: "pencil" as const, label: t("collab.header.editProjectFor", { name: project.name }), run: onEditProject }] : []),
     { icon: "user" as const, label: t("collab.header.shareManage"), run: () => setShareOpen(true) },
     ...(!readOnly && onCreateIssue ? [{ icon: "plus" as const, label: t("collab.header.newIssue"), run: () => onCreateIssue() }] : []),
-    ...(!readOnly && onCreateCycle ? [{ icon: "refresh" as const, label: t("collab.header.newCycle"), run: onCreateCycle }] : []),
+    ...(!readOnly && onCreateCycle ? [{ icon: "refresh" as const, label: features.sprints ? t("scrum.sprint.new") : t("collab.header.newCycle"), run: onCreateCycle }] : []),
     ...(props.onOpenNotes ? [{ icon: "file-text" as const, label: t("collab.header.openNotes"), run: props.onOpenNotes }] : []),
   ];
 
@@ -232,7 +274,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
       icon={projectIcon}
       title={project.name}
       areaName={areaName}
-      chips={<><ProjectStatusChip status={project.status} /><ProjectTypeChip software cycleName={activeCycle?.name} /></>}
+      chips={<><ProjectStatusChip status={project.status} /><ProjectTypeChip software methodology={project.methodology} cycleName={activeCycle?.name} /></>}
       description={project.description}
       members={sharing.members.length > 0 ? <button type="button" className="project-phone-members" aria-label={t("collab.header.shareManage")} onClick={() => setShareOpen(true)}><AvatarStack people={sharing.members} max={3} size="md" label={t("collab.header.people")} /></button> : undefined}
       menuItems={headerMenuItems}
@@ -242,14 +284,14 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
     </ProjectPhoneHeader> : <ProjectDetailHeader
       icon={projectIcon}
       title={project.name}
-      chips={<><ProjectStatusChip status={project.status} /><ProjectTypeChip software cycleName={activeCycle?.name} /></>}
+      chips={<><ProjectStatusChip status={project.status} /><ProjectTypeChip software methodology={project.methodology} cycleName={activeCycle?.name} /></>}
       description={project.description}
       aside={<AvatarStack people={sharing.members} max={5} size="md" label={t("collab.header.people")} />}
       actions={<>
         <button type="button" className="secondary-button" onClick={() => setShareOpen(true)}><UsersGlyph />{t("collab.header.share")}</button>
         {!readOnly && onEditProject && <button type="button" className="secondary-button project-edit-button" disabled={loading} aria-label={t("collab.header.editProject")} title={t("collab.header.editProject")} onClick={onEditProject}><Icon name="pencil" /><span>{t("collab.header.editProject")}</span></button>}
         {!readOnly && tab !== "Cycles" && onCreateIssue && <button type="button" className="primary-button" disabled={loading} onClick={() => onCreateIssue()}><Icon name="plus" /><span>{t("collab.header.newIssue")}</span></button>}
-        {!readOnly && tab === "Cycles" && onCreateCycle && <button type="button" className="primary-button" disabled={loading} onClick={onCreateCycle}><Icon name="plus" /><span>{t("collab.header.newCycle")}</span></button>}
+        {!readOnly && tab === "Cycles" && onCreateCycle && <button type="button" className="primary-button" disabled={loading} onClick={onCreateCycle}><Icon name="plus" /><span>{features.sprints ? t("scrum.sprint.new") : t("collab.header.newCycle")}</span></button>}
       </>}
       headerProps={{ onContextMenu: (event) => openMenu(event, headerMenuItems), ...longPress(() => headerMenuItems) }}
       moreItems={headerMenuItems}
@@ -263,6 +305,9 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
         {tab === "Overview" && <Overview {...props} />}
         {(tab === "Issues" || tab === "Board") && <>
           <div className="collab-issue-toolbar"><label className="collab-search"><Icon name="search" aria-hidden="true" /><input type="search" aria-label={t("collab.issue.search")} placeholder={t("collab.issue.search")} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+            {showSprintFilter && <div className="scope-switch collab-sprint-filter" role="group" aria-label={t("scrum.sprint.filterLabel")}>
+              {(["active", "all", "backlog"] as const).map((choice) => <button type="button" key={choice} aria-pressed={sprintFilter === choice} onClick={() => setSprintChoice(choice)}>{t(choice === "active" ? "scrum.sprint.filterActive" : choice === "all" ? "scrum.sprint.filterAll" : "scrum.sprint.filterBacklog")}</button>)}
+            </div>}
             {assign && <div className="collab-assignee-filter" role="group" aria-label={t("collab.assign.filter")}>
               <button type="button" className={`collab-chip-btn ${assigneeFilter === "all" ? "selected" : ""}`} aria-pressed={assigneeFilter === "all"} onClick={() => setAssigneeFilter("all")}>{t("collab.assign.filterAll")}</button>
               {currentUserId && <button type="button" className={`collab-chip-btn ${assigneeFilter === "mine" ? "selected" : ""}`} aria-pressed={assigneeFilter === "mine"} onClick={() => setAssigneeFilter("mine")}><Icon name="user" />{t("collab.assign.filterMine")}</button>}
@@ -274,12 +319,12 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
             </div>}
             <span className="collab-muted">{tp("collab.issue.count", visibleIssues.length)}</span></div>
           {tab === "Issues" ? <>
-            {!visibleIssues.length && <CollaborationState title={query ? t("collab.issue.noMatchTitle") : t("collab.issue.emptyTitle")} description={query ? t("collab.issue.noMatchHint") : t("collab.issue.emptyHint")} />}
+            {!visibleIssues.length && <CollaborationState {...emptyIssuesState} />}
             {phone ? <ProjectPhoneGroups
               label={t("collab.tabs.issues")}
               groups={columns.map((column) => ({ id: column.id, label: column.name, glyph: <StatusGlyph status={glyphStatus(column.state?.id, column.state?.category)} />, items: column.issues, folded: column.state?.category === "completed" || column.state?.category === "canceled" }))}
-              renderItem={(issue) => <PhoneIssueRow issue={issue} done={isDone(issue)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} assign={assign} />}
-            /> : <div className="collab-issue-list">{visibleIssues.map((issue) => <IssueCard key={issue.id} issue={issue} stateName={stateName(issue)} state={states.find((state) => state.id === issue.stateId)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} assign={assign} />)}</div>}
+              renderItem={(issue) => <PhoneIssueRow issue={issue} done={isDone(issue)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} assign={assign} points={features.points} />}
+            /> : <div className="collab-issue-list">{visibleIssues.map((issue) => <IssueCard key={issue.id} issue={issue} stateName={stateName(issue)} state={states.find((state) => state.id === issue.stateId)} onOpen={onOpenIssue} onDelete={!readOnly ? onDeleteIssue : undefined} assign={assign} points={features.points} />)}</div>}
           </> : <KanbanBoard<ProjectIssue>
             className="collab-board"
             label={t("collab.tabs.board")}
@@ -291,26 +336,29 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
             onAdd={!readOnly && onCreateIssue ? (stateId) => { if (!loading) onCreateIssue(stateId); } : undefined}
             menuItems={(issue) => issueMenuItems(issue, t, onOpenIssue, !readOnly ? onDeleteIssue : undefined, assign)}
             itemClassName={(issue) => `collab-issue-card${isDone(issue) ? " is-done" : ""}`}
-            renderCard={(issue) => <BoardIssueContent issue={issue} onOpen={onOpenIssue} busy={moving} assign={assign} />}
+            renderCard={(issue) => <BoardIssueContent issue={issue} onOpen={onOpenIssue} busy={moving} assign={assign} points={features.points} />}
           />}
         </>}
         {tab === "Activity" && <ProjectActivity loadActivity={loadActivity} people={assignablePeople?.length ? assignablePeople : sharing.members} currentUserId={currentUserId} />}
-        {tab === "Cycles" && (cycles.length ? <div className="collab-cycle-list">{cycles.map((cycle) => {
+        {tab === "Poker" && pokerTab && renderPoker?.()}
+        {tab === "Cycles" && (cycles.length ? <>
+          {features.sprints && <VelocitySummary value={sprintVelocity} />}
+          <div className="collab-cycle-list">{cycles.map((cycle) => {
           const assigned = issues.filter((issue) => cycle.issueIds?.includes(issue.id));
           const count = cycle.issueIds ? assigned.length : cycle.issueCount;
           const completed = cycle.issueIds ? assigned.filter(isCompleted).length : cycle.completedCount;
           const dates = cycle.startsOn || cycle.endsOn ? `${cycle.startsOn || t("collab.cycle.noStart")} – ${cycle.endsOn || t("collab.cycle.noEnd")}` : cycle.dateLabel;
+          const stats = features.sprints ? sprintStats(cycle, sprintIssueRows) : null;
+          const editMenu = !readOnly && onEditCycle ? [{ icon: "pencil" as const, label: features.sprints ? t("scrum.sprint.editFor", { name: cycle.name }) : t("collab.cycle.editFor", { name: cycle.name }), run: () => onEditCycle(cycle.id) }] : null;
           return <article
-            className={`collab-panel collab-cycle is-${cycle.phase}`}
+            className={`collab-panel collab-cycle is-${cycle.phase}${stats ? " is-sprint" : ""}`}
             key={cycle.id}
-            onContextMenu={!readOnly && onEditCycle ? (event) => openMenu(event, [
-              { icon: "pencil", label: t("collab.cycle.editFor", { name: cycle.name }), run: () => onEditCycle(cycle.id) },
-            ]) : undefined}
-            {...(!readOnly && onEditCycle ? longPress(() => [
-              { icon: "pencil", label: t("collab.cycle.editFor", { name: cycle.name }), run: () => onEditCycle(cycle.id) },
-            ]) : {})}
-          ><div className="collab-cycle-heading"><h3>{cycle.name}</h3><span className="collab-chip">{cycle.phase}</span></div><p className="collab-muted">{dates}</p><p>{tp("collab.cycle.progress", completed, { completed, total: count })}{cycle.capacity !== undefined && t("collab.cycle.capacity", { capacity: cycle.capacity })}</p><progress className="collab-progress" aria-label={t("collab.cycle.completionFor", { name: cycle.name })} value={completed} max={count || 1} />{!readOnly && onEditCycle && <button type="button" className="secondary-button collab-cycle-edit" onClick={() => onEditCycle(cycle.id)} aria-label={t("collab.cycle.editFor", { name: cycle.name })}>{t("collab.cycle.edit")}</button>}</article>;
-        })}</div> : <CollaborationState title={t("collab.cycle.emptyTitle")} description={t("collab.cycle.emptyHint")} />)}
+            onContextMenu={editMenu ? (event) => openMenu(event, editMenu) : undefined}
+            {...(editMenu ? longPress(() => editMenu) : {})}
+          ><div className="collab-cycle-heading"><h3>{cycle.name}</h3><span className="collab-chip">{stats ? t(`scrum.sprint.phase.${cycle.phase}`) : cycle.phase}</span></div><p className="collab-muted">{dates}</p><p>{tp("collab.cycle.progress", completed, { completed, total: count })}{cycle.capacity !== undefined && t("collab.cycle.capacity", { capacity: cycle.capacity })}</p>
+            {stats && stats.committed > 0 ? <SprintPoints stats={stats} name={cycle.name} /> : <progress className="collab-progress" aria-label={t("collab.cycle.completionFor", { name: cycle.name })} value={completed} max={count || 1} />}
+            {!readOnly && onEditCycle && <button type="button" className="secondary-button collab-cycle-edit" onClick={() => onEditCycle(cycle.id)} aria-label={features.sprints ? t("scrum.sprint.editFor", { name: cycle.name }) : t("collab.cycle.editFor", { name: cycle.name })}>{features.sprints ? t("scrum.sprint.edit") : t("collab.cycle.edit")}</button>}</article>;
+        })}</div></> : <CollaborationState title={features.sprints ? t("scrum.sprint.emptyTitle") : t("collab.cycle.emptyTitle")} description={features.sprints ? t("scrum.sprint.emptyHint") : t("collab.cycle.emptyHint")} />)}
       </>}
     </div>
     {shareOpen && <ProjectShareDialog {...sharing} loading={loading || sharing.loading} canManage={!readOnly && sharing.canManage} projectName={project.name} onClose={() => setShareOpen(false)} />}

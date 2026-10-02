@@ -152,6 +152,7 @@ export function TasksKanban({ tasks, visibleTasks, filters, projects, groupBy, o
           task={task}
           today={today}
           project={groupBy !== "project" && task.projectId ? projectById.get(task.projectId) ?? null : null}
+          sizeProject={task.projectId ? projectById.get(task.projectId) ?? null : null}
           blocked={isTaskBlocked(task, byId)}
           onOpen={onEdit}
           onChange={onChange}
