@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { notesStore } from "./notes";
+import { notesStore, SEED_WELCOME_NOTE_ID } from "./notes";
 import { workspaceStore } from "./workspaceStore";
 import { isValidUuid } from "./uuid";
 
@@ -28,8 +28,10 @@ export const workspaceSync = {
       folders: notes.folders.filter((folder) => isValidUuid(folder.id)
         && (!folder.parentId || isValidUuid(folder.parentId))
         && (!folder.workspaceId || isValidUuid(folder.workspaceId))),
+      // The development welcome note has the same id on every account; the
+      // server's global primary key would reject the whole snapshot.
       notes: notes.notes
-        .filter((note) => isValidUuid(note.id))
+        .filter((note) => isValidUuid(note.id) && note.id !== SEED_WELCOME_NOTE_ID)
         .map((n) => ({
           ...n,
           folderId: isValidUuid(n.folderId) ? n.folderId : null,
