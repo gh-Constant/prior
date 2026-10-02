@@ -39,10 +39,12 @@ describe("Scrum project", () => {
     expect(screen.getByRole("tab", { name: "Sprints" })).toBeVisible();
     expect(screen.queryByRole("tab", { name: "Cycles" })).not.toBeInTheDocument();
     expect(screen.getByText("Scrum · Sprint 2")).toBeVisible();
+    expect(screen.getByText("Current sprint")).toBeVisible();
     unmount();
     render(<ProjectCollaboration {...base} project={{ ...project, methodology: "kanban" }} />);
     expect(screen.getByRole("tab", { name: "Cycles" })).toBeVisible();
     expect(screen.queryByRole("tab", { name: "Sprints" })).not.toBeInTheDocument();
+    expect(screen.getByText("Current cycle")).toBeVisible();
   });
 
   it("shows story points instead of the priority on issues and board cards", () => {

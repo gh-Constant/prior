@@ -232,6 +232,7 @@
   .poker-queue li > button, .poker-queue li > div { min-height: 44px; padding: 6px 12px 6px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
   .poker-queue li[data-current] > * { border-color: var(--accent-line); }
   .poker-queue-title { max-width: 34vw; }
+  .poker-head { scroll-margin-top: 112px; }
   .poker-head h2 { font-size: 18px; }
   .poker-felt { padding: 18px 8px 14px; border-radius: 28px; }
   .poker-felt::before { inset: 9px; border-radius: 21px; }
@@ -242,16 +243,18 @@
   .poker-stats dd { font-size: 16px; }
   .poker-bars li { grid-template-columns: 30px minmax(0, 1fr) 20px; }
 
-  .poker-dock { position: sticky; bottom: var(--mobile-tabbar-h, 0px); z-index: 15; margin-inline: -16px; padding: 10px 16px 10px; border-top: 1px solid var(--line); background: color-mix(in oklab, var(--canvas) 90%, transparent); -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); gap: 8px; }
+  .poker-dock { position: sticky; bottom: var(--mobile-tabbar-h, 0px); z-index: 15; margin-inline: -16px; padding: 10px 16px 10px; border-top: 1px solid var(--line); background: color-mix(in oklab, var(--canvas) 97%, transparent); -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); gap: 8px; }
   .poker-controls { padding: 8px; border-radius: var(--r-lg); box-shadow: none; }
-  .poker-controls-main { flex: 1 1 100%; }
+  /* One flow for both groups keeps the dock short: estimate + accept on the first line, re-vote / skip / end on the second. */
+  .poker-controls-main, .poker-controls-side { display: contents; }
   .poker-controls-main .primary-button { flex: 1 1 auto; }
-  .poker-controls-main .secondary-button { flex: 1 1 100%; }
-  .poker-controls-side { flex: 1 1 100%; justify-content: space-between; }
+  .poker-controls-main .poker-reveal { flex-basis: 100%; }
+  .poker-controls-main .secondary-button { flex: 1 1 auto; }
+  .poker-controls-side { justify-content: space-between; }
   .poker-ghost, .poker-stepper { min-height: 44px; height: 44px; }
   .poker-stepper-button { width: 44px; }
   .poker-end-confirm .danger-button { min-height: 44px; }
-  .poker-hand-cards { flex-wrap: nowrap; justify-content: flex-start; margin-inline: -16px; padding: 16px 16px 6px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .poker-hand-cards { flex-wrap: nowrap; justify-content: flex-start; margin-inline: -16px; padding: 14px 16px 4px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .poker-hand-cards::-webkit-scrollbar { display: none; }
   .poker-hand-card { font-size: 22px; }
   .poker-hand-card:hover:not(:disabled) { transform: none; box-shadow: var(--shadow-card); }
@@ -268,7 +271,7 @@
   .poker-task-list label { min-height: 48px; }
   .poker-preset { min-height: 40px; padding: 0 14px; }
   .poker-search { min-height: 44px; font-size: 16px; }
-  .poker-start-bar { position: sticky; bottom: var(--mobile-tabbar-h, 0px); z-index: 15; margin-inline: -16px; padding: 10px 16px; border-top: 1px solid var(--line); background: color-mix(in oklab, var(--canvas) 90%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+  .poker-start-bar { position: sticky; bottom: var(--mobile-tabbar-h, 0px); z-index: 15; margin-inline: -16px; padding: 10px 16px; border-top: 1px solid var(--line); background: color-mix(in oklab, var(--canvas) 97%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
   .poker-start-bar p { flex-basis: 100%; }
   .poker-start-bar .primary-button { width: 100%; }
   .poker-banner .secondary-button { width: 100%; min-height: 44px; }

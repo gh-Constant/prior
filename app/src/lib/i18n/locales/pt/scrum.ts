@@ -52,6 +52,8 @@ export const scrum: AppDictionary["scrum"] = {
     velocityValue: "{value} pts por sprint",
     velocityHint: "Média dos últimos sprints concluídos",
     velocityNone: "Conclua um sprint para ver sua velocidade",
+    statCurrent: "Sprint atual",
+    statShort: "Sprint",
     committed: "Comprometidos",
     completed: "Concluídos",
     editFor: "Editar {name}",

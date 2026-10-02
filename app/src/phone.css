@@ -154,7 +154,8 @@
   .phone-issue-meta small { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
   .phone-issue-meta .project-chip { min-height: 22px; font-size: 12px; }
   .phone-issue-row.is-done .phone-issue-title { color: var(--faint); text-decoration: line-through; }
-  .phone-issue-row .collab-assignee-select, .phone-issue-row .collab-avatar { flex: 0 0 auto; }
+  .phone-issue-row .collab-assignee-select, .phone-issue-row .collab-avatar, .phone-issue-row .assignee-select { flex: 0 0 auto; }
+  .phone-issue-row .assignee-select { width: auto; }
 
   /* Issue search and assignee filter: one search row, then a scrollable chip row. */
   .project-page .collab-issue-toolbar { flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }

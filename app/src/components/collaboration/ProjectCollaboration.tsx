@@ -259,7 +259,7 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
     finally { pendingMove.current = false; setMoving(false); }
   }
 
-  const summary = { progress, targetDate: project.targetDate ?? overview?.targetDate, cycle: activeCycle?.endsOn ? { name: activeCycle.name, endsOn: activeCycle.endsOn } : null, health: project.health ?? overview?.health, completed: project.status === "completed" };
+  const summary = { progress, targetDate: project.targetDate ?? overview?.targetDate, cycle: activeCycle?.endsOn ? { name: activeCycle.name, endsOn: activeCycle.endsOn } : null, health: project.health ?? overview?.health, completed: project.status === "completed", sprints: features.sprints };
   const projectIcon = <span className="project-tile-host" style={projectTintStyle(project.id)}><EditableIcon icon={project.icon} fallback={project.projectType === "software" ? "code" : DEFAULT_PROJECT_ICON} canEdit={!readOnly && Boolean(onEditProject)} readOnly={readOnly} onOpen={onEditProject} label={t("collab.header.editIconFor", { name: project.name })} className="project-tile size-lg" /></span>;
   const headerMenuItems: ContextMenuItem[] = [
     ...(!readOnly && onEditProject ? [{ icon: "pencil" as const, label: t("collab.header.editProjectFor", { name: project.name }), run: onEditProject }] : []),

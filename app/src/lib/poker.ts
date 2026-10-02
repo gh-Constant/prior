@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PokerDeckId, PokerSession } from "./api";
 import { useI18n } from "./i18n";
-import { normalizeStoryPoints } from "./storyPoints";
+import { formatStoryPointsValue, normalizeStoryPoints } from "./storyPoints";
 
 export type { PokerDeckId, PokerSession } from "./api";
 
@@ -38,7 +38,7 @@ export function cardPoints(value: string, deck: PokerDeckId): number | null {
 
 /** What a card shows: "½" for 0.5, the text otherwise ("coffee" is drawn as an icon by the UI). */
 export function cardFace(value: string): string {
-  return value === "0.5" ? "½" : value;
+  return value === "0.5" ? formatStoryPointsValue(0.5) : value;
 }
 
 /** Distinct numeric points of a deck in ascending order (the values "Accept" can step through). */

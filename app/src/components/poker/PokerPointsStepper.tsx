@@ -3,10 +3,13 @@ import { useI18n } from "../../lib/i18n";
 import { formatStoryPointsValue } from "../../lib/storyPoints";
 
 /**
- * Picks the estimate to accept by stepping through the deck's values. This is
- * a poker-local stand-in: the app-wide picker is `StoryPointsPicker` in
- * components/tasks/StoryPoints.tsx, and this can be replaced by it once that
- * lands (same `value` / `onChange` contract, plus the `options` of the deck).
+ * Picks the estimate to accept by stepping through the values of the session's
+ * deck (`deckPoints`: Fibonacci, modified Fibonacci with 20/40/100, or the
+ * T-shirt points). It stays next to the controls instead of reusing
+ * `StoryPointsPicker` (components/tasks/StoryPoints.tsx) on purpose: that picker
+ * is the fixed task scale of nine cards plus Clear, too wide for the controller
+ * bar and unaware of the poker decks. The figure is formatted with the shared
+ * `formatStoryPointsValue`, so "½" is written in one place.
  */
 export function PokerPointsStepper({ value, options, onChange, disabled }: {
   readonly value: number | null;

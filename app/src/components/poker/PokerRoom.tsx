@@ -64,6 +64,19 @@ export function PokerRoom({ controller, meId, solo, canPlay, offline, tasks, cyc
     void controller.setCurrent(next === null ? (session.currentIndex + 1) % session.items.length : next);
   }
 
+  // On a phone the controls and the hand are docked over the lower half of the screen: bring the table into view when a task starts or the cards turn.
+  const mainRef = useRef<HTMLDivElement>(null);
+  const sessionId = session?.id;
+  const revealed = session?.revealed;
+  const taskIndex = session?.currentIndex;
+  useEffect(() => {
+    if (!sessionId || typeof window === "undefined" || !window.matchMedia?.("(max-width: 760px)").matches) return;
+    const head = mainRef.current?.querySelector<HTMLElement>(".poker-head");
+    if (!head?.scrollIntoView) return;
+    const top = head.getBoundingClientRect().top;
+    if (top < 0 || top > window.innerHeight * 0.45) head.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }, [sessionId, taskIndex, revealed]);
+
   const pendingKeys = usePokerKeys({
     enabled: Boolean(session) && keysEnabled && !(allDecided && !reopened),
     deck: session?.deck ?? "fibonacci",
@@ -125,7 +138,7 @@ export function PokerRoom({ controller, meId, solo, canPlay, offline, tasks, cyc
     <div className="poker-room" data-solo={solo ? "true" : undefined}>
       {banner}
       <div className="poker-layout">
-        <div className="poker-main">
+        <div className="poker-main" ref={mainRef}>
           {done ? (
             <section className="poker-done" aria-live="polite">
               <span className="poker-done-icon" aria-hidden="true"><Icon name="award" /></span>

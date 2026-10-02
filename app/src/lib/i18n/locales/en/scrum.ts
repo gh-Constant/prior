@@ -51,6 +51,8 @@ export const scrum = {
     velocityValue: "{value} pts per sprint",
     velocityHint: "Average of the last finished sprints",
     velocityNone: "Finish a sprint to see your velocity",
+    statCurrent: "Current sprint",
+    statShort: "Sprint",
     committed: "Committed",
     completed: "Done",
     editFor: "Edit {name}",

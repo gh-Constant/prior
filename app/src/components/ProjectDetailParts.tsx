@@ -70,10 +70,12 @@ type ProjectFactsInput = {
   cycle?: { name: string; endsOn: string } | null;
   health?: ProjectHealth | null;
   completed?: boolean;
+  /** Scrum projects call their cycles sprints. */
+  sprints?: boolean;
 };
 
 /** Due date, current cycle and health of a project, as label/value pairs. */
-function useProjectFacts({ targetDate, cycle, health, completed }: ProjectFactsInput): ProjectStat[] {
+function useProjectFacts({ targetDate, cycle, health, completed, sprints }: ProjectFactsInput): ProjectStat[] {
   const { t, tp, lang } = useI18n();
   const today = localDateKey();
   const stats: ProjectStat[] = [];
@@ -90,7 +92,7 @@ function useProjectFacts({ targetDate, cycle, health, completed }: ProjectFactsI
   }
   if (cycle) {
     const left = Math.max(0, daysBetween(today, cycle.endsOn.slice(0, 10)));
-    stats.push({ key: "cycle", label: t("common.projectHub.statCycle"), shortLabel: t("common.projectHub.statCycleShort"), icon: "refresh", value: cycle.name, sub: tp("common.projectHub.daysLeft", left) });
+    stats.push({ key: "cycle", label: t(sprints ? "scrum.sprint.statCurrent" : "common.projectHub.statCycle"), shortLabel: t(sprints ? "scrum.sprint.statShort" : "common.projectHub.statCycleShort"), icon: "refresh", value: cycle.name, sub: tp("common.projectHub.daysLeft", left) });
   }
   if (health) {
     const key = health === "On track" ? "healthOnTrack" : health === "At risk" ? "healthAtRisk" : "healthOffTrack";
