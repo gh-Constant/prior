@@ -44,6 +44,11 @@ type Props = {
   readonly onTaskDelete: (task: Task) => Promise<void>;
   readonly onTaskEdit: (task: Task) => void;
   readonly onWorkspaceChange: () => void;
+  /**
+   * Saves an edited existing project. Shared projects go to the server (the
+   * copy every member sees); without it the edit stays in the local workspace.
+   */
+  readonly onSaveProject?: (project: Project) => Promise<void>;
   /** Opt-in presentation data; absent projects keep the existing personal UI. */
   readonly collaborationByProject?: Readonly<Record<string, Omit<ProjectCollaborationProps, "project">>>;
   /** Current user id used to keep assigned project issues in All/Today. */
@@ -154,7 +159,7 @@ function ConfirmProjectDeleteModal({ project, onClose, onConfirm }: { project: P
 type ProjectDetailTab = "board" | "list" | "notes" | "leaderboard";
 const PROJECT_DETAIL_TABS: readonly ProjectDetailTab[] = ["board", "list", "notes", "leaderboard"];
 
-function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLocked = false, tab: requestedTab, onTabChange, onBack, onOpenNotes, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, onEditProject, onDeleteProject }: { project: Project; area?: Area; tasks: Task[]; members?: readonly Person[]; sharing?: ProjectSharingProps; sharingLocked?: boolean; tab?: string | null; onTabChange?: (tab: string) => void; onBack: () => void; onOpenNotes: (id: string) => void; onNewTask: (context: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void; onWorkspaceChange: () => void; onEditProject: (project: Project) => void; onDeleteProject: (project: Project) => void }) {
+function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLocked = false, tab: requestedTab, onTabChange, onBack, onOpenNotes, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, onSaveProject, onEditProject, onDeleteProject }: { project: Project; area?: Area; tasks: Task[]; members?: readonly Person[]; sharing?: ProjectSharingProps; sharingLocked?: boolean; tab?: string | null; onTabChange?: (tab: string) => void; onBack: () => void; onOpenNotes: (id: string) => void; onNewTask: (context: Pick<TaskDraft, "areaId" | "projectId" | "status">) => void; onTaskChange: (task: Task) => Promise<void>; onTaskDelete: (task: Task) => Promise<void>; onTaskEdit: (task: Task) => void; onWorkspaceChange: () => void; onSaveProject?: (project: Project) => Promise<void>; onEditProject: (project: Project) => void; onDeleteProject: (project: Project) => void }) {
   const { t } = useI18n();
   const { menu, openMenu, closeMenu, longPress } = useContextMenu();
   const { enabled: gameEnabled } = useGame();
@@ -178,6 +183,10 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
     onOpenNotes(project.id);
   };
   function changeStatus(status: ProjectStatus): void {
+    if (onSaveProject) {
+      void onSaveProject({ ...project, status });
+      return;
+    }
     workspaceStore.updateProject({ ...project, status });
     onWorkspaceChange();
   }
@@ -244,7 +253,7 @@ function ProjectDetail({ project, area, tasks, members = [], sharing, sharingLoc
   </section>;
 }
 
-export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, collaborationByProject, currentUserId = null, habits, onHabitComplete, onQuickAddTask, onOpenAgent, onOpenCalendar, onOpenFocus, onOpenHabits, projectTab, onProjectTabChange }: Props) {
+export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, onTaskChange, onTaskDelete, onTaskEdit, onWorkspaceChange, onSaveProject, collaborationByProject, currentUserId = null, habits, onHabitComplete, onQuickAddTask, onOpenAgent, onOpenCalendar, onOpenFocus, onOpenHabits, projectTab, onProjectTabChange }: Props) {
   const { t } = useI18n();
   const phone = useIsPhone();
   const [projectQuery, setProjectQuery] = useState("");
@@ -277,7 +286,9 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
       if (modal.project) {
         const edited = { ...modal.project, name, areaId, icon };
         // Only touch the type and methodology when the choice changed.
-        workspaceStore.updateProject(kind === projectKindOf(modal.project) ? edited : applyProjectKind(edited, kind));
+        const next = kind === projectKindOf(modal.project) ? edited : applyProjectKind(edited, kind);
+        if (onSaveProject) void onSaveProject(next);
+        else workspaceStore.updateProject(next);
       } else {
         workspaceStore.createProject(name, areaId, "", icon, kind === "standard" ? "standard" : "software", kind === "standard" ? undefined : kind);
       }
@@ -300,7 +311,7 @@ export function WorkHubView({ view, tasks, areas, projects, selectedProjectId, o
   }
 
   if (view === "projects") return <><ProjectsOverview areas={areas} projects={projects} tasks={mergedTasks} membersByProject={membersByProject} query={projectQuery} onQueryChange={setProjectQuery} onOpenProject={onOpenProject} onNewProject={(areaId) => setModal({ kind: "project", areaId: areaId ?? null })} onNewArea={() => setModal({ kind: "area" })} onEditArea={(area) => setModal({ kind: "area", area })} onDeleteArea={(area) => setModal({ kind: "confirm-area-delete", area })} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</>;
-  if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} members={collaboration?.sharing.members} sharing={collaboration?.sharing} sharingLocked={collaboration?.readOnly} tab={projectTab} onTabChange={onProjectTabChange} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>{t("common.workhub.notFound")}</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>{t("common.workhub.backToProjects")}</button></div>;
+  if (view === "project") return selectedProject ? <><ProjectDetail project={selectedProject} area={areaForProject(selectedProject)} tasks={projectTasks} members={collaboration?.sharing.members} sharing={collaboration?.sharing} sharingLocked={collaboration?.readOnly} tab={projectTab} onTabChange={onProjectTabChange} onBack={() => onOpenProject("")} onOpenNotes={onOpenNotes} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onSaveProject={onSaveProject} onEditProject={(project) => setModal({ kind: "project", areaId: project.areaId, project })} onDeleteProject={(project) => setModal({ kind: "confirm-project-delete", project })} />{modal && deleteModal(modal)}</> : <div className="workhub-empty-state"><Icon name="folder" /><h3>{t("common.workhub.notFound")}</h3><button type="button" className="secondary-button" onClick={() => onOpenProject("")}>{t("common.workhub.backToProjects")}</button></div>;
   if (view === "waiting") return <WaitingView tasks={waitingTasks} projects={projects} onAdd={() => onNewTask({ status: "waiting" })} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
   // Today is about my next actions: shared tasks someone else owns stay out.
   return <TodayView tasks={mergedTasks.filter((task) => !isAssignedToSomeoneElse(task, currentUserId))} waitingTasks={waitingTasks} projects={projects} areas={areas} habits={habits} onHabitComplete={onHabitComplete} onNewTask={onNewTask} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={onOpenCalendar} onOpenFocus={onOpenFocus} onOpenHabits={onOpenHabits} onOpenWaiting={onOpenWaiting} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} />;

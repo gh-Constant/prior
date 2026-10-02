@@ -290,6 +290,7 @@ export const common = {
   },
   errors: {
     projectGone: "Projeto já não disponível.",
+    projectSaveFailed: "Não foi possível guardar este projeto.",
     chooseDates: "Escolhe uma data de início e uma de fim.",
     moveFailed: "Não é possível mover esta tarefa.",
     googleFailed: "Não é possível abrir o início de sessão com a Google. Tenta de novo.",

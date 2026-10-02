@@ -161,6 +161,20 @@ export type CollaborativeProjectUpdate = Pick<Project, "health" | "startDate" | 
   health?: ProjectHealth | null;
   cycles?: ProjectCycle[];
 };
+/** A partial PATCH of a shared project: only the keys present are changed. */
+export type CollaborativeProjectPatch = {
+  name?: string;
+  description?: string;
+  status?: Project["status"];
+  icon?: string | null;
+  projectType?: NonNullable<Project["projectType"]>;
+  methodology?: NonNullable<Project["methodology"]> | null;
+  health?: ProjectHealth | null;
+  startDate?: string | null;
+  targetDate?: string | null;
+  cycles?: ProjectCycle[];
+  milestones?: NonNullable<Project["milestones"]>;
+};
 /** What the share dialog needs to confirm an invitation. */
 /** A reusable invitation link of a project (the secret itself is shown once, at creation). */
 export type ShareLink = { id: string; projectId: string; role: "editor" | "viewer"; createdAt: string; expiresAt?: string; useCount: number; maxUses?: number };
@@ -446,6 +460,14 @@ export const api = {
       ...(project.milestones !== undefined ? { milestones: project.milestones } : {}),
     };
     return request<CollaborationProject>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}`, { method: "PATCH", body: JSON.stringify(planning) }, token);
+  },
+  /**
+   * Sends exactly the fields in `patch` (omitted fields keep the server value,
+   * null clears one). Shared projects save through this so a field nobody
+   * touched, such as the project type, is never rewritten from a local copy.
+   */
+  patchCollaborativeProject(projectId: string, patch: CollaborativeProjectPatch, token: string): Promise<CollaborationProject> {
+    return request<CollaborationProject>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}`, { method: "PATCH", body: JSON.stringify(patch) }, token);
   },
   listProjectMembers(projectId: string, token: string): Promise<{ members: CollaborationMember[]; pendingInvites: CollaborationInvite[]; role: CollaborationProject["role"] }> {
     return request<{ members: CollaborationMember[]; pendingInvites: CollaborationInvite[]; role: CollaborationProject["role"] }>(`/v1/collaboration/projects/${encodeURIComponent(projectId)}/members`, {}, token);

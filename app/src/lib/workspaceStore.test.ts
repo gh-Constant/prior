@@ -119,4 +119,17 @@ describe("workspaceStore", () => {
     workspaceStore.mergeRemote({ areas: [], projects: [{ ...project, methodology: "bogus" as never, updatedAt: evenLater }] });
     expect(workspaceStore.listProjects().find((item) => item.id === project.id)).not.toHaveProperty("methodology");
   });
+
+  it("replaces the personal copy of a shared project with the server's, keeping its own area", () => {
+    const area = workspaceStore.createArea("Work");
+    const project = workspaceStore.createProject("Team", area.id);
+    const server = { ...project, areaId: null, projectType: "software" as const, methodology: "scrum" as const, updatedAt: "2026-10-02T08:00:00.123456Z" };
+    workspaceStore.applyServerProject(server);
+    expect(workspaceStore.listProjects()[0]).toMatchObject({ projectType: "software", methodology: "scrum", areaId: area.id, updatedAt: server.updatedAt });
+    workspaceStore.applyServerProject({ ...server, name: "Team 2" }, null);
+    expect(workspaceStore.listProjects()[0]).toMatchObject({ name: "Team 2", areaId: null });
+    // A project that is not in the personal workspace is not copied into it.
+    workspaceStore.applyServerProject({ ...server, id: "someone-elses" });
+    expect(workspaceStore.listProjects()).toHaveLength(1);
+  });
 });

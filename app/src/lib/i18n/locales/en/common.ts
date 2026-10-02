@@ -329,6 +329,7 @@ export const common = {
   },
   errors: {
     projectGone: "Project no longer available.",
+    projectSaveFailed: "Unable to save this project.",
     chooseDates: "Choose a start and end date.",
     moveFailed: "Unable to move this task.",
     googleFailed: "Unable to open Google sign-in. Please try again.",

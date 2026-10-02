@@ -39,6 +39,20 @@ only JSON or treated as complete in this change.
   project metadata and syncs like the planning fields, so the owner and every
   member see the same page. A client that omits the field keeps the stored
   value. Milestones (`milestones`) are stored the same way.
+  **A shared project's server copy is authoritative** (type, methodology and
+  the other details). The client shows it instead of the owner's personal
+  copy (`lib/sharedProject.ts` `visibleProjects`; the owner's area stays
+  personal), and the owner saves a shared project like an editor does: a
+  PATCH of only the fields that changed (`sharedProjectPatch`,
+  `api.patchCollaborativeProject`), never a whole local copy, and the personal
+  copy then takes the server's version (`workspaceStore.applyServerProject`).
+  The project edit modal and the status menu go through the same save
+  (`WorkHubView` `onSaveProject`). Sharing first sends the owner's local
+  details to the server if they are newer (`ensureProjectOnServer`), so a
+  workspace sync that was refused never shows people who join a different
+  project. On the server, a workspace sync that is not newer than the stored
+  row cannot change a shared project's metadata (a stale resend); it can only
+  fill a type or methodology the row never received.
 - **Invitations**: one click invites one or several emails. The owner gets
   the outcome inline (sent, emailed or not) and the link to copy
   (`/invite/<token>`, a web page that survives sign-up). Invitees receive an

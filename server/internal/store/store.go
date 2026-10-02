@@ -457,7 +457,14 @@ func syncProjects(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []w
 		}
 		var existingOwner uuid.UUID
 		var storedMetadata []byte
-		err := tx.QueryRow(ctx, `SELECT user_id, metadata FROM projects WHERE id = $1`, project.ID).Scan(&existingOwner, &storedMetadata)
+		var storedUpdatedAt *time.Time
+		var shared bool
+		err := tx.QueryRow(ctx, `
+			SELECT p.user_id, p.metadata, p.updated_at, EXISTS (
+				SELECT 1 FROM project_members pm
+				WHERE pm.project_id = p.id AND pm.user_id <> p.user_id AND pm.status = 'active'
+			)
+			FROM projects p WHERE p.id = $1`, project.ID).Scan(&existingOwner, &storedMetadata, &storedUpdatedAt, &shared)
 		if err == nil && existingOwner != userID {
 			continue
 		}
@@ -472,7 +479,11 @@ func syncProjects(ctx context.Context, tx pgx.Tx, userID uuid.UUID, incoming []w
 		if err != nil {
 			return err
 		}
-		metadata, err := syncedProjectMetadata(storedMetadata, project)
+		// A shared project lives on the server: a resend of the same version
+		// (equal updatedAt, e.g. a device holding a stale copy) must not
+		// rewrite what the members see. Only a newer edit changes it.
+		storedWins := shared && storedUpdatedAt != nil && !project.UpdatedAt.After(*storedUpdatedAt)
+		metadata, err := syncedProjectMetadata(storedMetadata, project, storedWins)
 		if err != nil {
 			return err
 		}

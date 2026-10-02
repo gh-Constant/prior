@@ -112,6 +112,19 @@ export const workspaceStore = {
     ensureProjectNotes(saved);
     return saved;
   },
+  /**
+   * Replaces the personal copy of a shared project with the server's, keeping
+   * its updatedAt so the next workspace sync resends the same version instead
+   * of a newer local one. `areaId` stays personal (it organizes the sidebar).
+   */
+  applyServerProject(server: Project, areaId?: string | null): void {
+    const items = read<Project[]>(PROJECTS_KEY, []);
+    const current = items.find((item) => item.id === server.id);
+    if (!current) return;
+    const saved = normalizeProject({ ...server, areaId: areaId === undefined ? current.areaId ?? null : areaId, deletedAt: current.deletedAt ?? null });
+    write(PROJECTS_KEY, items.map((item) => item.id === server.id ? saved : item));
+    ensureProjectNotes(saved);
+  },
   removeProject(project: Project): void {
     const timestamp = now();
     write(PROJECTS_KEY, read<Project[]>(PROJECTS_KEY, []).map((item) => item.id === project.id ? { ...item, deletedAt: timestamp, updatedAt: timestamp } : item));

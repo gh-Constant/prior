@@ -281,6 +281,18 @@ describe("WorkHubView opt-in integration", () => {
     expect(props.onOpenProject).toHaveBeenCalledWith("");
   });
 
+  it("saves an edited project through onSaveProject, so a shared one reaches the server", () => {
+    const onSaveProject = vi.fn().mockResolvedValue(undefined);
+    const shared = { ...project, projectType: "standard" as const };
+    render(<WorkHubView {...props} projects={[shared]} onSaveProject={onSaveProject} collaborationByProject={{ [project.id]: base }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit project" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /Standard/ }));
+    fireEvent.click(screen.getAllByRole("option", { name: /Agile · Scrum/ })[0]!);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    expect(onSaveProject).toHaveBeenCalledWith(expect.objectContaining({ id: project.id, projectType: "software", methodology: "scrum" }));
+  });
+
   it("offers Share on non-software projects too", () => {
     const onInvite = vi.fn();
     const personal = { ...project, projectType: "standard" as const };

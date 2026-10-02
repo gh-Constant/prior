@@ -62,10 +62,24 @@ func metadataForProject(project workspace.Project) ([]byte, error) {
 // syncedProjectMetadata merges an incoming workspace project into the stored
 // metadata: planning fields, the project type and the methodology are only replaced when the
 // client sent them, so an older client cannot wipe what a newer one saved.
-func syncedProjectMetadata(stored []byte, incoming workspace.Project) ([]byte, error) {
+//
+// storedWins is set for a shared project when the incoming copy is not newer
+// than the stored one: the server copy is what every member sees, so a stale
+// resend keeps it. It may still fill a type or methodology the server never
+// received (rows written before those fields were synced).
+func syncedProjectMetadata(stored []byte, incoming workspace.Project, storedWins bool) ([]byte, error) {
 	var current workspace.Project
 	if err := applyProjectMetadata(&current, stored); err != nil {
 		current = workspace.Project{}
+	}
+	if storedWins {
+		if current.ProjectType == nil && incoming.ProjectTypePresent() {
+			current.ProjectType = incoming.ProjectType
+		}
+		if current.Methodology == nil && incoming.MethodologyPresent() {
+			current.Methodology = incoming.Methodology
+		}
+		return metadataForProject(current)
 	}
 	if incoming.PlanningFieldsPresent() {
 		current.Health, current.StartDate, current.TargetDate, current.Cycles = incoming.Health, incoming.StartDate, incoming.TargetDate, incoming.Cycles

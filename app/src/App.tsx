@@ -74,6 +74,7 @@ import { loadLegacyCalendarState } from "./lib/calendar";
 import { syncNoteAttachments } from "./lib/noteAttachments";
 import { syncAgentOutbox } from "./lib/agentOutbox";
 import { workspaceStore } from "./lib/workspaceStore";
+import { sharedProjectPatch, visibleProjects } from "./lib/sharedProject";
 import { collaborationStore } from "./lib/collaborationStore";
 import { isOnline, useOnline } from "./lib/connectivity";
 import { presenceFromApi } from "./lib/presence";
@@ -231,6 +232,7 @@ type WorkspaceContentProps = {
   readonly onNewTask: (context?: TaskComposerContext) => void;
   readonly taskFilters: TaskFilterState;
   readonly onWorkspaceChange: () => void;
+  readonly onSaveProject: (project: Project) => Promise<void>;
   readonly collaborationByProject: Readonly<Record<string, Omit<ProjectCollaborationProps, "project">>>;
   readonly onMailCreateTask: (draft: TaskDraft) => Promise<void>;
   readonly onMailCreateTaskAI: (message: MailMessage) => Promise<void>;
@@ -255,7 +257,7 @@ function PlannedCalendar({ habits, tasks, collaborationByProject, currentUserId,
   return <CalendarView habits={habits} tasks={mine} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
 }
 
-function WorkspaceContent({ activeView, user, onUserUpdated, layout, groupBy, onGroupByChange, grouped, tasks, visibleTasks, myTasks, myVisibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onSettingsTabChange, onOpenGameSettings, onImportTasks, projectTab, onProjectTabChange }: WorkspaceContentProps) {
+function WorkspaceContent({ activeView, user, onUserUpdated, layout, groupBy, onGroupByChange, grouped, tasks, visibleTasks, myTasks, myVisibleTasks, habits, onHabitAdd, onHabitComplete, onHabitChange, onHabitDelete, onHabitEdit, onTaskChange, onTaskDelete, onTaskEdit, areas, projects, selectedProjectId, notesProjectId, onOpenProject, onOpenNotes, onOpenWaiting, onNewTask, taskFilters, onWorkspaceChange, onSaveProject, collaborationByProject, onMailCreateTask, onMailCreateTaskAI, onQuickAddTask, onOpenAgent, onViewChange, billing, settingsTab, settingsKey, onSettingsTabChange, onOpenGameSettings, onImportTasks, projectTab, onProjectTabChange }: WorkspaceContentProps) {
   const showFocus = isViewShown("focus", useHiddenViews());
   if (activeView === "plans") return <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={billing.checkoutReturn} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
   if (activeView === "admin") return billing.billing?.isAdmin ? <AdminView /> : <PricingView billing={billing.billing} signedIn={user !== null} checkoutReturn={null} onDismissCheckoutReturn={billing.dismissCheckoutReturn} />;
@@ -264,7 +266,7 @@ function WorkspaceContent({ activeView, user, onUserUpdated, layout, groupBy, on
   if (activeView === "notes") return <NotesWorkspace projectId={notesProjectId ?? undefined} />;
   if (activeView === "inbox") return <MailView user={user} onCreateTask={onMailCreateTask} onCreateTaskAI={onMailCreateTaskAI} />;
   if (activeView === "calendar") return <PlannedCalendar habits={habits} tasks={tasks} collaborationByProject={collaborationByProject} currentUserId={user?.id ?? null} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
-  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} collaborationByProject={collaborationByProject} habits={habits} onHabitComplete={onHabitComplete} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={() => onViewChange("calendar")} onOpenFocus={showFocus ? () => onViewChange("focus") : undefined} onOpenHabits={() => onViewChange("habits")} projectTab={projectTab} onProjectTabChange={onProjectTabChange} currentUserId={user?.id ?? null} />;
+  if (["today", "projects", "project", "waiting"].includes(activeView)) return <WorkHubView view={activeView as WorkHubViewKind} tasks={tasks} areas={areas} projects={projects} selectedProjectId={selectedProjectId} onOpenProject={onOpenProject} onOpenNotes={onOpenNotes} onOpenWaiting={onOpenWaiting} onNewTask={onNewTask} onTaskChange={onTaskChange} onTaskDelete={onTaskDelete} onTaskEdit={onTaskEdit} onWorkspaceChange={onWorkspaceChange} onSaveProject={onSaveProject} collaborationByProject={collaborationByProject} habits={habits} onHabitComplete={onHabitComplete} onQuickAddTask={onQuickAddTask} onOpenAgent={onOpenAgent} onOpenCalendar={() => onViewChange("calendar")} onOpenFocus={showFocus ? () => onViewChange("focus") : undefined} onOpenHabits={() => onViewChange("habits")} projectTab={projectTab} onProjectTabChange={onProjectTabChange} currentUserId={user?.id ?? null} />;
   if (activeView === "focus") return <FocusView tasks={tasks} projects={projects} onTaskChange={onTaskChange} onTaskEdit={onTaskEdit} />;
   if (activeView === "habits") {
     return <HabitView habits={habits} onAdd={onHabitAdd} onComplete={onHabitComplete} onChange={onHabitChange} onDelete={onHabitDelete} onEdit={onHabitEdit} />;
@@ -405,9 +407,8 @@ export function App() {
   const refreshWorkspace = useCallback(() => {
     workspaceStore.syncNoteCategories();
     setAreas(workspaceStore.listAreas());
-    const personalProjects = workspaceStore.listProjects();
-    const personalIds = new Set(personalProjects.map((project) => project.id));
-    setProjects([...personalProjects, ...collaborationStore.listProjects().filter((project) => !personalIds.has(project.id))]);
+    // A shared project shows the server copy, the one every member sees.
+    setProjects(visibleProjects(workspaceStore.listProjects(), collaborationStore.listProjects(), (projectId) => collaborationStore.isShared(projectId)));
     bumpCollaboration();
   }, []);
 
@@ -1686,19 +1687,33 @@ export function App() {
     if (collaborationStore.isShared(projectId) && !isOnline()) throw new Error(t("common.access.sharedOffline"));
   }
 
+  /* A shared project lives on the server: owner and editors save it through
+     the shared project PATCH (only the fields that changed), so the members
+     see the change at once and a stale local copy cannot rewrite the type.
+     A project nobody else can see stays local-first. */
   async function saveProjectDetails(project: Project): Promise<void> {
     const entry = collaborationStore.get(project.id);
     assertProjectWritable(project.id);
-    if (entry && entry.role !== "owner") {
+    if (entry && (entry.role !== "owner" || collaborationStore.isShared(project.id))) {
       const token = await getToken();
       if (!token) throw new Error(t("common.access.signInToUpdate"));
-      await api.updateCollaborativeProject(project.id, project, token);
-      await collaborationStore.sync(token);
+      const patch = sharedProjectPatch(entry.project, project);
+      const saved = Object.keys(patch).length ? await api.patchCollaborativeProject(project.id, patch, token) : entry;
+      collaborationStore.update(project.id, (current) => ({ ...current, ...saved }));
+      // The owner's personal copy follows the server (its area stays personal).
+      if (entry.role === "owner") workspaceStore.applyServerProject(saved.project, project.areaId);
     } else {
       workspaceStore.updateProject(project);
     }
     refreshWorkspace();
     void syncNow();
+  }
+
+  /** Project edits from the project pages; failures become a toast. */
+  function saveProjectFromView(project: Project): Promise<void> {
+    return saveProjectDetails(project).catch((error: unknown) => {
+      setToast(error instanceof Error ? error.message : t("common.errors.projectSaveFailed"));
+    });
   }
 
   /** The web address of a page, also from native builds (for sharing). */
@@ -1716,9 +1731,21 @@ export function App() {
 
   /** A project must exist on the server before it can be shared. */
   async function ensureProjectOnServer(projectId: string, token: string): Promise<void> {
-    if (collaborationStore.get(projectId)) return;
-    await workspaceSync.sync(token);
-    await collaborationStore.sync(token);
+    if (!collaborationStore.get(projectId)) {
+      await workspaceSync.sync(token);
+      await collaborationStore.sync(token);
+    }
+    // Before anyone else sees it, the server copy must say what the owner
+    // sees (type, methodology...): a refused workspace sync would otherwise
+    // show a different project to the people who join.
+    const entry = collaborationStore.get(projectId);
+    const local = workspaceStore.listProjects().find((project) => project.id === projectId);
+    if (!entry || entry.role !== "owner" || !local || Date.parse(local.updatedAt) < Date.parse(entry.project.updatedAt)) return;
+    const patch = sharedProjectPatch(entry.project, local);
+    if (!Object.keys(patch).length) return;
+    const saved = await api.patchCollaborativeProject(projectId, patch, token);
+    collaborationStore.update(projectId, (current) => ({ ...current, ...saved }));
+    workspaceStore.applyServerProject(saved.project, local.areaId);
   }
 
   function planLimitMessage(error: PlanLimitError): string {
@@ -2432,6 +2459,7 @@ export function App() {
             onNewTask={openNewTask}
             taskFilters={taskFilters}
             onWorkspaceChange={refreshWorkspace}
+            onSaveProject={saveProjectFromView}
             collaborationByProject={collaborationByProject}
             onMailCreateTask={(draft) => { openMailTask(draft); return Promise.resolve(); }}
             onMailCreateTaskAI={createMailTaskAI}
