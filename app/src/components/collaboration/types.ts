@@ -40,8 +40,10 @@ export type ProjectIssue = {
   /** Size of the issue in story points; null or absent when not estimated. */
   storyPoints?: number | null;
   people: readonly TaskPerson[];
-  /** The one person responsible (Linear's assignee). */
+  /** The first person responsible (Linear's assignee); `assigneeIds` lists everybody. */
   assigneeId?: string | null;
+  /** Everyone responsible, in order (lib/assignees.ts). Absent on older data: assigneeId then. */
+  assigneeIds?: readonly string[];
   /** Waits on a task that is not done yet. */
   blocked?: boolean;
   /** Progress of its sub-tasks, when it has some. */
@@ -150,8 +152,8 @@ export type ProjectCollaborationProps = {
   /** Members a task can be assigned to, and the signed-in account. */
   assignablePeople?: readonly Person[];
   currentUserId?: string | null;
-  /** Assigns (or unassigns with null) an issue; omitted when read-only. */
-  onAssignIssue?: (issueId: string, personId: string | null) => Promise<void>;
+  /** Sets the people an issue is assigned to (an empty list unassigns); omitted when read-only. */
+  onAssignIssue?: (issueId: string, personIds: string[]) => Promise<void>;
   /** Loads the activity grid (tasks completed per day and person). */
   loadActivity?: () => Promise<ProjectActivityEntry[]>;
   /** Content of the Planning Poker tab (Scrum and Scrumban projects); without it the tab is not shown. */
@@ -164,6 +166,8 @@ export type TaskPlanningProps = {
   /** Shared projects: who the task can be assigned to, and its assignee. */
   assignablePeople?: readonly Person[];
   assigneeId?: string | null;
+  /** Everyone the task is assigned to; wins over `assigneeId`. */
+  assigneeIds?: readonly string[];
   currentUserId?: string | null;
   fields: readonly PlanningField[];
   readOnly?: boolean;

@@ -38,7 +38,8 @@ import { generateUuid } from "./uuid";
 import { dateKey } from "./habits";
 import { normalizeRecurrence } from "./recurrence";
 import { getUser } from "./auth";
-import { describeProjectPeople, describeTaskPeople, projectPeople, recentlyCompleted, resolveMilestone, resolvePerson, upcomingEventsForPrompt } from "./aiContext";
+import { describeProjectPeople, describeTaskPeople, projectPeople, recentlyCompleted, resolveMilestone, resolvePeople, upcomingEventsForPrompt } from "./aiContext";
+import { taskAssigneeIds } from "./assignees";
 
 export const DEFAULT_MODEL = "openrouter/free";
 
@@ -348,8 +349,8 @@ PRIOR CAPABILITIES (use these exact names when the user asks what tools you have
 - list_projects: inspect the projects already provided in this prompt.
 - create_area: prepare one or more high-level Areas (e.g. Work, Personal, Health, Finance) with optional icon (e.g. "briefcase", "heart", "home", "dollar-sign", "user") and color. The app shows them as an approval card; they are saved when the user clicks Add.
 - create_project: prepare one or more outcome-oriented Projects optionally tied to an Area, with optional status ("planned", "active", "paused", "completed"), optional targetDate (YYYY-MM-DD), and optional icon (e.g. "folder", "rocket", "target", "star", "check-circle"). The app shows them as an approval card; they are saved when the user clicks Add.
-- create_task: prepare one or more one-off tasks with optional area, project, status, scheduled date, assignee, follow-up date, a checklist of subtasks, and a reminder time (reminderAt, ISO 8601 with the user's UTC offset), and a repeat rule (recurrence, see the JSON format). The app shows them as an approval card; they are saved when the user clicks Add.
-- update_task: prepare changes to one or more EXISTING tasks from the active task list (rename, reword the description, reschedule, change priority, importance or urgency, change status, delegate, assign to a project member, move under a parent task, set a milestone, mark it blocked by other tasks, set or clear a reminder, make it repeat or stop it repeating (recurrence), edit or check checklist items, or mark done). A checklist change replaces the whole checklist: send every item as {"title", "done"} in order. Reference each task by its exact [id: ...] from the list below and include only the fields that change. The app shows the changes as a review card; they are applied when the user clicks Apply.
+- create_task: prepare one or more one-off tasks with optional area, project, status, scheduled date, assignee (a project member, or several as an array "assignees"), follow-up date, a checklist of subtasks, and a reminder time (reminderAt, ISO 8601 with the user's UTC offset), and a repeat rule (recurrence, see the JSON format). The app shows them as an approval card; they are saved when the user clicks Add.
+- update_task: prepare changes to one or more EXISTING tasks from the active task list (rename, reword the description, reschedule, change priority, importance or urgency, change status, delegate, assign to one or several project members (assignees replaces the whole list), move under a parent task, set a milestone, mark it blocked by other tasks, set or clear a reminder, make it repeat or stop it repeating (recurrence), edit or check checklist items, or mark done). A checklist change replaces the whole checklist: send every item as {"title", "done"} in order. Reference each task by its exact [id: ...] from the list below and include only the fields that change. The app shows the changes as a review card; they are applied when the user clicks Apply.
 - update_project: prepare changes to an EXISTING project (rename, description, status, health "On track"/"At risk"/"Off track", start and target dates, type "standard" or "software" for the agile board, icon) or add milestones to it. Reference it by its [id: ...].
 - update_habit: prepare changes to an EXISTING habit (title, schedule, end date, importance, urgency) or check it in for today ("checkInToday": true; false undoes today's check-in). Reference it by its [id: ...].
 - update_note: prepare changes to an EXISTING note: rename it, replace its Markdown body, or append Markdown at the end ("appendMarkdown", preferred for adding to meeting notes). Reference it by its [id: ...].
@@ -1046,10 +1047,11 @@ function stringIds(value: unknown): string[] {
 function proposedTaskIssueFields(item: Record<string, unknown>, projectName: string | null, lookup: AgentLookup): Partial<ProposedTask> {
   const project = projectName ? lookup.projects?.find((candidate) => candidate.name.trim().toLowerCase() === projectName.toLowerCase()) : undefined;
   const fields: Partial<ProposedTask> = {};
-  const person = resolvePerson(item.assignee ?? item.assigneeId, projectPeople(project?.id), getUser()?.id);
-  if (person) {
-    fields.assigneeId = person.id;
-    fields.assigneeLabel = person.name;
+  const assignees = resolvePeople(item.assignees ?? item.assignee ?? item.assigneeIds ?? item.assigneeId, projectPeople(project?.id), getUser()?.id);
+  if (assignees.length) {
+    fields.assigneeId = assignees[0].id;
+    fields.assigneeIds = assignees.map((person) => person.id);
+    fields.assigneeLabel = assignees.map((person) => person.name).join(", ");
   }
   const milestone = resolveMilestone(item.milestone ?? item.milestoneName ?? item.milestoneId, project);
   if (milestone) {
@@ -1173,13 +1175,16 @@ export function buildProposedTaskUpdate(item: Record<string, unknown>, tasksById
   }
   // Shared-project fields are checked against the task's own project.
   const project = lookup.projects?.find((candidate) => candidate.id === task.projectId);
-  if ("assignee" in raw || "assigneeId" in raw) {
-    const input = "assignee" in raw ? raw.assignee : raw.assigneeId;
-    if (input === null || input === "") {
-      if (task.assigneeId) changes.assigneeId = null;
+  const assigneeKey = (["assignees", "assignee", "assigneeIds", "assigneeId"] as const).find((key) => key in raw);
+  if (assigneeKey) {
+    const input = raw[assigneeKey];
+    const current = taskAssigneeIds(task);
+    if (input === null || input === "" || (Array.isArray(input) && input.length === 0)) {
+      if (current.length) changes.assigneeIds = [];
     } else {
-      const person = resolvePerson(input, projectPeople(task.projectId), getUser()?.id);
-      if (person && person.id !== task.assigneeId) changes.assigneeId = person.id;
+      // The proposal replaces the whole list; names that do not resolve are ignored.
+      const ids = resolvePeople(input, projectPeople(task.projectId), getUser()?.id).map((person) => person.id);
+      if (ids.length && JSON.stringify(ids) !== JSON.stringify(current)) changes.assigneeIds = ids;
     }
   }
   if ("milestone" in raw || "milestoneId" in raw) {

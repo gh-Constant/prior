@@ -8,7 +8,8 @@ import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
 import { ProjectShareDialog } from "./ProjectShareDialog";
 import { PersonAvatar } from "./PersonAvatar";
 import { AgilePropertyChips, PeopleChips } from "./TaskPlanning";
-import { AssigneeSelect } from "./AssigneeSelect";
+import { AssigneeSelect, AssigneeStack } from "./AssigneeSelect";
+import { isAssignedTo, taskAssigneeIds, toggleAssignee } from "../../lib/assignees";
 import { ProjectActivity } from "./ProjectActivity";
 import { useI18n } from "../../lib/i18n";
 import { agileFeatures, filterBySprint, sprintStats, velocity, type SprintFilter } from "../../lib/agile";
@@ -26,14 +27,16 @@ type Tab = typeof tabs[number];
 /** Who issues are shown for: everyone, me, nobody (unassigned) or one person. */
 type AssigneeFilter = "all" | "mine" | "unassigned" | { personId: string };
 
-type Assign = { people: readonly Person[]; currentUserId?: string | null; onAssign?: (issueId: string, personId: string | null) => Promise<void> };
+type Assign = { people: readonly Person[]; currentUserId?: string | null; onAssign?: (issueId: string, personIds: string[]) => Promise<void> };
 
 function issueMenuItems(issue: ProjectIssue, t: (key: string, vars?: Record<string, string | number>) => string, onOpen?: (id: string) => void, onDelete?: (id: string) => void, assign?: Assign): ContextMenuItem[] {
   const me = assign?.currentUserId;
+  const assignees = taskAssigneeIds(issue);
   return [
     ...(onOpen ? [{ icon: "file" as const, label: t("collab.issue.openFor", { title: issue.title }), run: () => onOpen(issue.id) }] : []),
-    ...(assign?.onAssign && me && issue.assigneeId !== me ? [{ icon: "user" as const, label: t("collab.assign.toMe"), run: () => void assign.onAssign?.(issue.id, me) }] : []),
-    ...(assign?.onAssign && issue.assigneeId ? [{ icon: "close" as const, label: t("collab.assign.unassign"), run: () => void assign.onAssign?.(issue.id, null) }] : []),
+    ...(assign?.onAssign && me && !assignees.includes(me) ? [{ icon: "user" as const, label: t("collab.assign.toMe"), run: () => void assign.onAssign?.(issue.id, toggleAssignee(assignees, me)) }] : []),
+    ...(assign?.onAssign && me && assignees.includes(me) ? [{ icon: "user" as const, label: t("collab.assign.removeMe"), run: () => void assign.onAssign?.(issue.id, toggleAssignee(assignees, me)) }] : []),
+    ...(assign?.onAssign && assignees.length > 0 ? [{ icon: "close" as const, label: t("collab.assign.unassign"), run: () => void assign.onAssign?.(issue.id, []) }] : []),
     ...(onDelete ? [{ icon: "trash" as const, label: t("collab.issue.deleteFor", { title: issue.title }), danger: true, run: () => onDelete(issue.id) }] : []),
   ];
 }
@@ -42,11 +45,11 @@ function issueMenuItems(issue: ProjectIssue, t: (key: string, vars?: Record<stri
 function IssueAssignee({ issue, assign, busy }: { issue: ProjectIssue; assign?: Assign; busy?: boolean }) {
   const [saving, setSaving] = useState(false);
   if (!assign) return null;
-  const person = assign.people.find((candidate) => candidate.id === issue.assigneeId);
-  if (!assign.onAssign) return person ? <PersonAvatar person={person} className="collab-avatar collab-avatar-sm" showPresence={false} /> : null;
-  return <AssigneeSelect compact taskTitle={issue.title} people={assign.people} currentUserId={assign.currentUserId} value={issue.assigneeId ?? null} disabled={busy || saving} onChange={(personId) => {
+  const assignees = taskAssigneeIds(issue);
+  if (!assign.onAssign) return <AssigneeStack people={assign.people} ids={assignees} />;
+  return <AssigneeSelect compact taskTitle={issue.title} people={assign.people} currentUserId={assign.currentUserId} value={assignees} disabled={busy || saving} onChange={(personIds) => {
     setSaving(true);
-    void assign.onAssign?.(issue.id, personId).finally(() => setSaving(false));
+    void assign.onAssign?.(issue.id, personIds).finally(() => setSaving(false));
   }} />;
 }
 
@@ -213,9 +216,9 @@ export function ProjectCollaboration(props: ProjectCollaborationProps) {
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const assign: Assign | undefined = assignablePeople?.length ? { people: assignablePeople, currentUserId, onAssign: readOnly || loading ? undefined : onAssignIssue } : undefined;
   const matchesAssignee = (issue: ProjectIssue) => assigneeFilter === "all" ? true
-    : assigneeFilter === "mine" ? Boolean(currentUserId) && issue.assigneeId === currentUserId
-    : assigneeFilter === "unassigned" ? !issue.assigneeId
-    : issue.assigneeId === assigneeFilter.personId;
+    : assigneeFilter === "mine" ? isAssignedTo(issue, currentUserId)
+    : assigneeFilter === "unassigned" ? taskAssigneeIds(issue).length === 0
+    : taskAssigneeIds(issue).includes(assigneeFilter.personId);
   const activeCycle = cycles.find((cycle) => cycle.phase === "current") ?? null;
   // Scrum: the lists show the running sprint by default (specs/SCRUM.md).
   const [sprintChoice, setSprintChoice] = useState<SprintFilter | null>(null);

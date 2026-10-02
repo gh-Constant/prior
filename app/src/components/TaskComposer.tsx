@@ -22,6 +22,7 @@ import { DateTimePicker } from "./DateTimePicker";
 import { TaskTitleInput } from "./TaskTitleInput";
 import { TaskPeoplePicker } from "./collaboration/TaskPlanning";
 import { AssigneeSelect } from "./collaboration/AssigneeSelect";
+import { assigneeFields, taskAssigneeIds } from "../lib/assignees";
 import { IssueLinksEditor } from "./tasks/IssueLinksEditor";
 import { PersonAvatar } from "./collaboration/PersonAvatar";
 import type { TaskPlanningProps } from "./collaboration/types";
@@ -118,7 +119,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
   const [recurrence, setRecurrence] = useState<TaskRecurrence | null>(() => normalizeRecurrence(task?.recurrence));
   const [checklist, setChecklist] = useState<ChecklistItem[]>(task?.checklist ?? []);
   const [planningPeople, setPlanningPeople] = useState(planning?.people ?? []);
-  const [assigneeId, setAssigneeId] = useState<string | null>(task?.assigneeId ?? planning?.assigneeId ?? null);
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(() => taskAssigneeIds(task ?? planning ?? {}));
   const [parentId, setParentId] = useState<string | null>(task?.parentId ?? null);
   const [milestoneId, setMilestoneId] = useState<string | null>(task?.milestoneId ?? null);
   const [blockedBy, setBlockedBy] = useState<string[]>(() => (task?.relations ?? []).filter((relation) => relation.type === "blocked_by").map((relation) => relation.taskId));
@@ -238,7 +239,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
     if (planningDisabled || submitting.current) return;
     if (id !== projectId) {
       setPlanningPeople([]);
-      setAssigneeId(null);
+      setAssigneeIds([]);
       setParentId(null);
       setMilestoneId(null);
       setBlockedBy([]);
@@ -279,7 +280,7 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
       const sameProject = (task?.projectId ?? null) === (projectId ?? null);
       const otherRelations = (task?.relations ?? []).filter((relation) => relation.type !== "blocked_by");
       const issueFields: Partial<TaskDraft> = {
-        assigneeId: assignablePeople ? assigneeId : sameProject ? task?.assigneeId ?? null : null,
+        ...assigneeFields(assignablePeople ? assigneeIds : sameProject ? taskAssigneeIds(task ?? {}) : []),
         parentId: allTasks ? parentId : sameProject ? task?.parentId ?? null : null,
         milestoneId: allTasks ? milestoneId : sameProject ? task?.milestoneId ?? null : null,
         relations: allTasks ? [...otherRelations, ...blockedBy.map((taskId) => ({ type: "blocked_by" as const, taskId }))] : sameProject ? task?.relations ?? [] : [],
@@ -477,13 +478,17 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
               </button>
               {assignablePeople ? <AssigneeSelect
                 people={assignablePeople}
-                value={assigneeId}
+                value={assigneeIds}
                 currentUserId={planning?.currentUserId}
                 disabled={flagDisabled}
-                onChange={(personId) => {
-                  setAssigneeId(personId);
-                  const person = assignablePeople.find((candidate) => candidate.id === personId);
-                  if (person && !planningPeople.some((item) => item.id === person.id)) setPlanningPeople([...planningPeople, { ...person, role: "collaborator" }]);
+                onChange={(personIds) => {
+                  setAssigneeIds(personIds);
+                  // Everyone assigned also follows the task.
+                  const joining = personIds
+                    .filter((id) => !planningPeople.some((item) => item.id === id))
+                    .map((id) => assignablePeople.find((candidate) => candidate.id === id))
+                    .filter((person): person is NonNullable<typeof person> => Boolean(person));
+                  if (joining.length) setPlanningPeople([...planningPeople, ...joining.map((person) => ({ ...person, role: "collaborator" as const }))]);
                 }}
               /> : <label className={`task-composer-assignee-pill ${assigneeName.trim() ? "has-value" : ""}`}>
                 <Icon name="user" aria-hidden="true" />
@@ -561,7 +566,8 @@ export function TaskComposer({ task, areas = [], projects = [], initialContext, 
                     </p>
                     <TaskPeoplePicker
                       {...planning}
-                      assigneeId={assigneeId}
+                      assigneeId={assigneeIds[0] ?? null}
+                      assigneeIds={assigneeIds}
                       people={planningPeople}
                       availablePeople={awaitingProjectPeople.current ? [] : planning.availablePeople}
                       loading={planning.loading || awaitingProjectPeople.current}

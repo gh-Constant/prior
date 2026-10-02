@@ -115,6 +115,26 @@ func decodeRecurrence(task *tasks.Task, raw []byte) error {
 	return nil
 }
 
+// decodeAssignees fills AssigneeIDs from the assignee_ids column and makes it
+// consistent with the legacy assignee_id (see Task.SyncStoredAssignees).
+func decodeAssignees(task *tasks.Task, raw []byte) error {
+	task.AssigneeIDs = []string{}
+	if len(raw) > 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &task.AssigneeIDs); err != nil {
+			return err
+		}
+	}
+	task.SyncStoredAssignees()
+	return nil
+}
+
+func assigneesJSON(ids []string) ([]byte, error) {
+	if ids == nil {
+		ids = []string{}
+	}
+	return json.Marshal(ids)
+}
+
 func decodeRelations(task *tasks.Task, raw []byte) error {
 	task.Relations = []tasks.TaskRelation{}
 	if len(raw) == 0 || string(raw) == "null" {
@@ -123,21 +143,28 @@ func decodeRelations(task *tasks.Task, raw []byte) error {
 	return json.Unmarshal(raw, &task.Relations)
 }
 
-// resolveIssueFieldsTx keeps the stored assignee, parent, milestone and
+// resolveIssueFieldsTx keeps the stored assignees (see tasks.Task.ResolveAssignees), parent, milestone and
 // relations, recurrence and story points when an older client omits them, then validates the result:
 // the assignee must be able to see the task, a parent must be another task
 // of the same project (without cycles), relations must be well formed.
 func resolveIssueFieldsTx(ctx context.Context, tx pgx.Tx, taskID, ownerID uuid.UUID, task *tasks.Task) error {
 	var storedAssignee, storedParent, storedMilestone *string
-	var storedRelations, storedRecurrence []byte
+	var storedAssignees, storedRelations, storedRecurrence []byte
 	var storedStoryPoints *float64
-	err := tx.QueryRow(ctx, `SELECT assignee_id::text, parent_id::text, milestone_id, relations, recurrence, story_points FROM tasks WHERE id = $1`, taskID).Scan(&storedAssignee, &storedParent, &storedMilestone, &storedRelations, &storedRecurrence, &storedStoryPoints)
+	err := tx.QueryRow(ctx, `SELECT assignee_id::text, assignee_ids, parent_id::text, milestone_id, relations, recurrence, story_points FROM tasks WHERE id = $1`, taskID).Scan(&storedAssignee, &storedAssignees, &storedParent, &storedMilestone, &storedRelations, &storedRecurrence, &storedStoryPoints)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	if !task.FieldPresent("assigneeId") {
-		task.AssigneeID = storedAssignee
+	stored := tasks.Task{AssigneeID: storedAssignee}
+	if err := decodeAssignees(&stored, storedAssignees); err != nil {
+		return err
 	}
+	assignees, err := task.ResolveAssignees(stored.AssigneeIDs)
+	if err != nil {
+		return err
+	}
+	task.AssigneeIDs = assignees
+	task.AssigneeID = tasks.FirstAssignee(assignees)
 	if !task.FieldPresent("parentId") {
 		task.ParentID = storedParent
 	}
@@ -169,16 +196,11 @@ func resolveIssueFieldsTx(ctx context.Context, tx pgx.Tx, taskID, ownerID uuid.U
 		}
 		projectID = &parsed
 	}
-	if task.AssigneeID != nil && *task.AssigneeID == "" {
-		task.AssigneeID = nil
-	}
-	if task.AssigneeID != nil {
-		assignee, err := uuid.Parse(*task.AssigneeID)
+	for _, id := range task.AssigneeIDs {
+		assignee, err := uuid.Parse(id)
 		if err != nil {
 			return errors.New("task contains an invalid assignee")
 		}
-		normalized := assignee.String()
-		task.AssigneeID = &normalized
 		if projectID != nil {
 			var exists bool
 			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id = $1)`, *projectID).Scan(&exists); err != nil {

@@ -305,6 +305,12 @@ pub fn run() {
             sql: include_str!("../migrations/014_task_story_points.sql"),
             kind: tauri_plugin_sql::MigrationKind::Up,
         },
+        tauri_plugin_sql::Migration {
+            version: 15,
+            description: "task assignees",
+            sql: include_str!("../migrations/015_task_assignees.sql"),
+            kind: tauri_plugin_sql::MigrationKind::Up,
+        },
     ];
 
     let builder = tauri::Builder::default();

@@ -156,6 +156,8 @@
   .phone-issue-row.is-done .phone-issue-title { color: var(--faint); text-decoration: line-through; }
   .phone-issue-row .collab-assignee-select, .phone-issue-row .collab-avatar, .phone-issue-row .assignee-select { flex: 0 0 auto; }
   .phone-issue-row .assignee-select { width: auto; }
+  .phone-issue-row .assignee-select .custom-select-trigger { min-height: 44px; min-width: 44px; justify-content: center; padding: 3px; }
+  .assignee-menu { max-width: calc(100vw - 16px); }
 
   /* Issue search and assignee filter: one search row, then a scrollable chip row. */
   .project-page .collab-issue-toolbar { flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }

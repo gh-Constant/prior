@@ -4,7 +4,7 @@ La connexion au même compte Prior active la synchronisation navigateur/native. 
 
 | Données | Persistance et synchronisation |
 | --- | --- |
-| Tâches et habitudes | SQLite natif/localStorage navigateur, outbox existante, historique paginé PostgreSQL (y compris `reminderAt`, la checklist, la règle de répétition `recurrence` et les points d'effort `storyPoints` des tâches) |
+| Tâches et habitudes | SQLite natif/localStorage navigateur, outbox existante, historique paginé PostgreSQL (y compris `reminderAt`, la checklist, la règle de répétition `recurrence`, les points d'effort `storyPoints` et les assignés `assigneeIds` des tâches, où `assigneeId` reste le premier assigné pour les anciens clients : un ancien client qui renvoie seulement `assigneeId` ne remplace la liste que si le premier assigné change) |
 | Réglages de notifications | Propres à l’appareil (`prior.notifications.v1`), comme les permissions système |
 | Espaces, projets, dossiers, notes | Stockage local et snapshots PostgreSQL avec dates de modification. La méthodologie d'un projet agile (`methodology`) voyage dans les métadonnées du projet ; une clé absente signifie Kanban et n'est jamais écrite à `null` par le client (un appareil qui ne connaît pas le champ ne doit pas effacer la valeur) |
 | Calendriers personnels et événements | Documents par calendrier/événement, patches de champs, outbox persistante |

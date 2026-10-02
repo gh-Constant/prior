@@ -318,6 +318,11 @@ func taskFieldProperties(nullable bool) map[string]any {
 		"area_id":        optional("Area ID from list_projects."),
 		"reminder_at":    optional("When to remind the user, an RFC 3339 date-time with offset (e.g. 2026-10-01T09:00:00+02:00)."),
 		"story_points":   propStoryPoints(nullable),
+		"assignee_ids": map[string]any{
+			"type": []string{"array", "null"}, "maxItems": tasks.MaxAssignees, "items": map[string]any{"type": "string"},
+			"description": "User ids of the people assigned to the task, in order (the first is the main assignee). Every id must be a member of the task's project; private tasks can only be assigned to their owner. Replaces the whole list; pass [] or null to unassign everyone.",
+		},
+		"assignee_id": propNullable("Alias of assignee_ids with one person (kept for compatibility); ignored when assignee_ids is given. Re-sending the current first assignee keeps the others. Pass null to unassign everyone."),
 		"recurrence": map[string]any{
 			"type":        []string{"object", "null"},
 			"description": "Repeat rule. Completing the task then creates the next occurrence (the completed one stops repeating). Without a due date the first one is today. Pass null to stop repeating.",
@@ -354,7 +359,7 @@ var mcpTools = func() []map[string]any {
 	return []map[string]any{
 		{
 			"name":        "list_tasks",
-			"description": "List the user's tasks (own and shared projects). Open tasks by default, sorted by due date then priority. Each task carries storyPoints (null when not estimated).",
+			"description": "List the user's tasks (own and shared projects). Open tasks by default, sorted by due date then priority. Each task carries storyPoints (null when not estimated) and assigneeIds (user ids, the first is the main assignee).",
 			"inputSchema": schema(map[string]any{
 				"filter":     map[string]any{"type": "string", "enum": []string{"open", "completed", "all"}, "description": "Default open."},
 				"query":      propString("Case-insensitive text to match in title or description."),
@@ -671,6 +676,18 @@ func applyTaskFields(task *tasks.Task, fields map[string]json.RawMessage) error 
 				}
 				task.StoryPoints = points
 			}
+		case "assignee_ids":
+			var ids []string
+			if err = json.Unmarshal(raw, &ids); err == nil {
+				normalized, normalizeErr := tasks.NormalizeAssigneeIDs(ids)
+				if normalizeErr != nil {
+					return normalizeErr
+				}
+				task.AssigneeIDs = normalized
+				task.AssigneeID = tasks.FirstAssignee(normalized)
+			}
+		case "assignee_id":
+			// Applied after the loop, so that assignee_ids wins when both are given.
 		case "recurrence":
 			rule, parseErr := parseMCPRecurrence(raw)
 			if parseErr != nil {
@@ -720,6 +737,21 @@ func applyTaskFields(task *tasks.Task, fields map[string]json.RawMessage) error 
 		}
 		if err != nil {
 			return fmt.Errorf("invalid %s", key)
+		}
+	}
+	if raw, ok := fields["assignee_id"]; ok {
+		if _, both := fields["assignee_ids"]; !both {
+			var id *string
+			if err := json.Unmarshal(raw, &id); err != nil {
+				return errors.New("invalid assignee_id")
+			}
+			legacy := tasks.Task{AssigneeID: id}
+			resolved, err := legacy.ResolveAssignees(task.AssigneeIDs)
+			if err != nil {
+				return err
+			}
+			task.AssigneeIDs = resolved
+			task.AssigneeID = tasks.FirstAssignee(resolved)
 		}
 	}
 	return nil

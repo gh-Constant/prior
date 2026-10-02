@@ -24,7 +24,7 @@ type MCPProject struct {
 }
 
 // currentTaskColumns is the column list shared by CurrentTasks and CurrentTask.
-const currentTaskColumns = `id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date::text, scheduled_time, assignee_name, follow_up_date::text, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision, reminder_at, checklist, assignee_id::text, parent_id::text, milestone_id, relations, recurrence, story_points`
+const currentTaskColumns = `id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date::text, scheduled_time, assignee_name, follow_up_date::text, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision, reminder_at, checklist, assignee_id::text, parent_id::text, milestone_id, relations, recurrence, story_points, assignee_ids`
 
 // currentTaskVisible limits a tasks row (alias t) to live tasks the user ($1)
 // owns or can see through an active project membership.
@@ -71,8 +71,8 @@ func (s *Store) CurrentTask(ctx context.Context, userID, taskID uuid.UUID) (task
 
 func scanCurrentTask(rows pgx.Rows) (tasks.Task, error) {
 	var task tasks.Task
-	var peopleJSON, checklist, relations, recurrence []byte
-	if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.DueTime, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.ScheduledTime, &task.AssigneeName, &task.FollowUpDate, &task.FollowUpTime, &task.EstimatedMinutes, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision, &task.ReminderAt, &checklist, &task.AssigneeID, &task.ParentID, &task.MilestoneID, &relations, &recurrence, &task.StoryPoints); err != nil {
+	var peopleJSON, checklist, relations, recurrence, assignees []byte
+	if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.DueTime, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.ScheduledTime, &task.AssigneeName, &task.FollowUpDate, &task.FollowUpTime, &task.EstimatedMinutes, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision, &task.ReminderAt, &checklist, &task.AssigneeID, &task.ParentID, &task.MilestoneID, &relations, &recurrence, &task.StoryPoints, &assignees); err != nil {
 		return task, err
 	}
 	if err := decodeTaskJSON(&task, peopleJSON, checklist); err != nil {
@@ -82,6 +82,9 @@ func scanCurrentTask(rows pgx.Rows) (tasks.Task, error) {
 		return task, err
 	}
 	if err := decodeRecurrence(&task, recurrence); err != nil {
+		return task, err
+	}
+	if err := decodeAssignees(&task, assignees); err != nil {
 		return task, err
 	}
 	return task, nil

@@ -1,24 +1,35 @@
 import type { Task } from "../types";
 import type { ProjectActivityEntry } from "../components/collaboration/types";
+import { addedAssignees, assigneeFields, isAssignedTo, taskAssigneeIds } from "./assignees";
+
+type Assigned = Pick<Task, "assigneeId" | "assigneeIds">;
 
 /**
- * Assigns a task (null unassigns). The assignee also joins the task's
- * people, so it stays in their lists and they can see its comments.
+ * Assigns a task to these people, in order (an empty list unassigns). Every
+ * assignee also joins the task's people, so it stays in their lists and they
+ * can see its comments. `assigneeId` stays the first one (older clients).
  */
-export function withAssignee(task: Task, personId: string | null): Task {
+export function withAssignees(task: Task, personIds: readonly string[]): Task {
+  const fields = assigneeFields(personIds);
   const people = task.peopleIds ?? [];
-  return { ...task, assigneeId: personId, peopleIds: personId && !people.includes(personId) ? [...people, personId] : people };
+  return { ...task, ...fields, peopleIds: [...people, ...fields.assigneeIds.filter((id) => !people.includes(id))] };
 }
 
-/** A shared task someone else is responsible for (not mine to do). */
-export function isAssignedToSomeoneElse(task: Pick<Task, "assigneeId">, userId: string | null | undefined): boolean {
-  return Boolean(userId && task.assigneeId && task.assigneeId !== userId);
+/** Assigns a task to one person (null unassigns everybody). */
+export function withAssignee(task: Task, personId: string | null): Task {
+  return withAssignees(task, personId ? [personId] : []);
 }
 
-/** "My tasks": everything assigned to the user, across projects. */
+/** A shared task assigned to others only: someone else is responsible (not mine to do). */
+export function isAssignedToSomeoneElse(task: Assigned, userId: string | null | undefined): boolean {
+  const assignees = taskAssigneeIds(task);
+  return Boolean(userId && assignees.length > 0 && !assignees.includes(userId));
+}
+
+/** "My tasks": everything the user is one of the assignees of, across projects. */
 export function tasksAssignedTo(tasks: readonly Task[], userId: string | null | undefined): Task[] {
   if (!userId) return [];
-  return tasks.filter((task) => !task.deletedAt && task.assigneeId === userId);
+  return tasks.filter((task) => !task.deletedAt && isAssignedTo(task, userId));
 }
 
 function localDay(iso: string): string | null {
@@ -49,12 +60,15 @@ export function localProjectActivity(tasks: readonly Task[], userId: string | nu
 }
 
 /**
- * Tasks a sync just assigned to the user (they were not theirs before),
- * edited recently enough to be news rather than old history.
+ * Tasks a sync just assigned to the user (they were not among the assignees
+ * before: people who already were are not notified again), edited recently
+ * enough to be news rather than old history.
  */
-export function newlyAssignedToMe(before: ReadonlyMap<string, Pick<Task, "assigneeId">>, after: readonly Task[], userId: string | null | undefined, now = Date.now(), windowMs = 15 * 60_000): Task[] {
+export function newlyAssignedToMe(before: ReadonlyMap<string, Assigned>, after: readonly Task[], userId: string | null | undefined, now = Date.now(), windowMs = 15 * 60_000): Task[] {
   if (!userId) return [];
-  return after.filter((task) => !task.deletedAt && !task.completed && task.assigneeId === userId
-    && before.get(task.id)?.assigneeId !== userId
-    && now - Date.parse(task.updatedAt) < windowMs);
+  return after.filter((task) => {
+    if (task.deletedAt || task.completed || now - Date.parse(task.updatedAt) >= windowMs) return false;
+    const previous = before.get(task.id);
+    return addedAssignees(previous ? taskAssigneeIds(previous) : [], taskAssigneeIds(task)).includes(userId);
+  });
 }

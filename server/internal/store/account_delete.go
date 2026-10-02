@@ -132,6 +132,13 @@ func (s *Store) DeleteAccount(ctx context.Context, userID uuid.UUID) (DeletedAcc
 	if _, err := tx.Exec(ctx, `UPDATE task_changes SET people_ids = people_ids - $1::text WHERE people_ids ? $1::text`, userID.String()); err != nil {
 		return result, err
 	}
+	// The user leaves every assignee list; the legacy assignee_id follows the
+	// new first assignee (it would otherwise be nulled by its foreign key).
+	for _, table := range []string{"tasks", "task_changes"} {
+		if _, err := tx.Exec(ctx, `UPDATE `+table+` SET assignee_ids = assignee_ids - $1::text, assignee_id = ((assignee_ids - $1::text)->>0)::uuid WHERE assignee_ids ? $1::text`, userID.String()); err != nil {
+			return result, err
+		}
+	}
 	if err := anonymizeCommentsTx(ctx, tx, userID); err != nil {
 		return result, err
 	}

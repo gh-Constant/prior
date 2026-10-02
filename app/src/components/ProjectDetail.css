@@ -90,9 +90,10 @@ button.board-card-open:focus-visible { outline: 2px solid var(--accent); outline
 .board-card-title small { margin-right: 6px; color: var(--faint); font-size: var(--fs-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
 .board-card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-height: 20px; }
 .board-card-meta .board-card-avatar { margin-left: auto; box-shadow: none; }
+.board-card-meta .board-card-assignees { margin-left: auto; }
 .board-card.is-done { background: color-mix(in oklab, var(--panel) 70%, transparent); box-shadow: none; }
 .board-card.is-done .board-card-title { color: var(--faint); text-decoration: line-through; text-decoration-color: color-mix(in oklab, var(--faint) 70%, transparent); }
-.board-card.is-done .priority-glyph, .board-card.is-done .board-card-avatar { opacity: .6; }
+.board-card.is-done .priority-glyph, .board-card.is-done .board-card-avatar, .board-card.is-done .assignee-stack { opacity: .6; }
 
 /* Notes and list panels */
 .project-page .project-task-list { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-card); }

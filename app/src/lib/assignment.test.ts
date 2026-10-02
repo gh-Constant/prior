@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAssignedToSomeoneElse, localProjectActivity, newlyAssignedToMe, tasksAssignedTo, withAssignee } from "./assignment";
+import { isAssignedToSomeoneElse, localProjectActivity, newlyAssignedToMe, tasksAssignedTo, withAssignee, withAssignees } from "./assignment";
 import { activityLevel, activityWeeks, currentStreak } from "../components/collaboration/ProjectActivity";
 import type { Task } from "../types";
 
@@ -11,6 +11,35 @@ describe("task assignment", () => {
     expect(assigned).toMatchObject({ assigneeId: "bob", peopleIds: ["me", "bob"] });
     expect(withAssignee(assigned, "bob").peopleIds).toEqual(["me", "bob"]);
     expect(withAssignee(assigned, null)).toMatchObject({ assigneeId: null, peopleIds: ["me", "bob"] });
+  });
+
+  it("assigns several people in order, keeping assigneeId as the first and adding each to the people", () => {
+    const assigned = withAssignees(base, ["bob", "me", "cleo", "bob"]);
+    expect(assigned).toMatchObject({ assigneeId: "bob", assigneeIds: ["bob", "me", "cleo"], peopleIds: ["me", "bob", "cleo"] });
+    expect(withAssignees(assigned, ["cleo"])).toMatchObject({ assigneeId: "cleo", assigneeIds: ["cleo"] });
+    expect(withAssignees(assigned, [])).toMatchObject({ assigneeId: null, assigneeIds: [] });
+  });
+
+  it("lists a task under every assignee in My tasks, and only hides it from people who are not one", () => {
+    const shared = { ...base, id: "s", assigneeId: "bob", assigneeIds: ["bob", "me"] };
+    const bobOnly = { ...base, id: "b", assigneeId: "bob", assigneeIds: ["bob"] };
+    const legacy = { ...base, id: "l", assigneeId: "me" };
+    const all = [shared, bobOnly, legacy];
+    expect(tasksAssignedTo(all, "me").map((task) => task.id)).toEqual(["s", "l"]);
+    expect(tasksAssignedTo(all, "bob").map((task) => task.id)).toEqual(["s", "b"]);
+    expect(all.filter((task) => !isAssignedToSomeoneElse(task, "me")).map((task) => task.id)).toEqual(["s", "l"]);
+  });
+
+  it("notifies each newly added assignee once, never the ones who were already assigned", () => {
+    const now = Date.parse("2026-09-30T12:00:00Z");
+    const task = { ...base, id: "a", assigneeId: "bob", assigneeIds: ["bob", "me"], updatedAt: "2026-09-30T11:58:00Z" };
+    const before = new Map([["a", { assigneeId: "bob", assigneeIds: ["bob"] }]]);
+    expect(newlyAssignedToMe(before, [task], "me", now)).toHaveLength(1);
+    expect(newlyAssignedToMe(before, [task], "bob", now)).toHaveLength(0);
+    expect(newlyAssignedToMe(new Map([["a", { assigneeId: "bob", assigneeIds: ["bob", "me"] }]]), [task], "me", now)).toHaveLength(0);
+    // An older server only sends assigneeId: it counts as a one-person list.
+    expect(newlyAssignedToMe(new Map([["a", { assigneeId: "bob" }]]), [{ ...task, assigneeIds: undefined }], "me", now)).toHaveLength(0);
+    expect(newlyAssignedToMe(new Map(), [task], "me", now)).toHaveLength(1);
   });
 
   it("finds my tasks and hides tasks someone else owns from my day", () => {

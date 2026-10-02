@@ -16,10 +16,11 @@ import type { Note } from "../../lib/notes";
 import { collaborationStore } from "../../lib/collaborationStore";
 import { habitScheduleLabel } from "../../lib/habits";
 import { quadrantFor } from "../../lib/priority";
+import { taskAssigneeIds } from "../../lib/assignees";
 
 /** What the review cards know about the user's current data, to show "before" values. */
 export type ProposalContext = {
-  readonly tasks: readonly Pick<Task, "id" | "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt" | "assigneeId" | "milestoneId" | "parentId" | "relations" | "recurrence">[];
+  readonly tasks: readonly Pick<Task, "id" | "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt" | "assigneeId" | "assigneeIds" | "milestoneId" | "parentId" | "relations" | "recurrence">[];
   readonly projects: readonly Pick<Project, "id" | "name" | "description" | "status" | "health" | "startDate" | "targetDate" | "projectType" | "milestones">[];
   readonly areas: readonly Pick<Area, "id" | "name">[];
   readonly habits: readonly Pick<Habit, "id" | "title" | "important" | "urgent" | "interval" | "unit" | "daysOfWeek" | "endDate">[];
@@ -116,8 +117,10 @@ export function taskDiffRows(update: Pick<ProposedTaskUpdate, "taskId" | "change
   if (changes.important !== undefined) push("important", "important", task ? { kind: "flag", flag: "important", on: task.important } : null, { kind: "flag", flag: "important", on: changes.important });
   if (changes.urgent !== undefined) push("urgent", "urgent", task ? { kind: "flag", flag: "urgent", on: task.urgent } : null, { kind: "flag", flag: "urgent", on: changes.urgent });
   if (changes.assigneeName !== undefined) push("assignee", "waitingOn", task ? text(task.assigneeName) : null, text(changes.assigneeName));
-  if (changes.assigneeId !== undefined) {
-    push("assigneeId", "assignee", task ? (task.assigneeId ? { kind: "person", name: personName(task.assigneeId) } : NONE) : null, changes.assigneeId ? { kind: "person", name: personName(changes.assigneeId) } : NONE);
+  if (changes.assigneeIds !== undefined || changes.assigneeId !== undefined) {
+    const people = (ids: readonly string[]): DiffValue => (ids.length ? { kind: "person", name: ids.map(personName).join(", ") } : NONE);
+    const after = changes.assigneeIds !== undefined ? changes.assigneeIds : changes.assigneeId ? [changes.assigneeId] : [];
+    push("assigneeId", "assignee", task ? people(taskAssigneeIds(task)) : null, people(after));
   }
   if (changes.milestoneId !== undefined) {
     const before = milestoneName(task?.milestoneId, ctx);

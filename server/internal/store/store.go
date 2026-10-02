@@ -1808,16 +1808,20 @@ func insertTaskRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, create
 	if err != nil {
 		return err
 	}
+	assigneesJSON, err := assigneesJSON(task.AssigneeIDs)
+	if err != nil {
+		return err
+	}
 	result, err := mc.tx.Exec(mc.ctx, `
-			INSERT INTO tasks (id, user_id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, follow_up_date, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision, reminder_at, checklist, assignee_id, parent_id, milestone_id, relations, recurrence, story_points)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
+			INSERT INTO tasks (id, user_id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, follow_up_date, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision, reminder_at, checklist, assignee_id, parent_id, milestone_id, relations, recurrence, story_points, assignee_ids)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
 			ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, due_date = EXCLUDED.due_date, due_time = EXCLUDED.due_time,
 			 priority = EXCLUDED.priority, area_id = EXCLUDED.area_id, project_id = EXCLUDED.project_id, status = EXCLUDED.status,
 			 scheduled_date = EXCLUDED.scheduled_date, scheduled_time = EXCLUDED.scheduled_time, assignee_name = EXCLUDED.assignee_name, follow_up_date = EXCLUDED.follow_up_date, follow_up_time = EXCLUDED.follow_up_time, estimated_minutes = EXCLUDED.estimated_minutes, people_ids = EXCLUDED.people_ids,
 			 reminder_at = EXCLUDED.reminder_at, checklist = EXCLUDED.checklist,
-			 assignee_id = EXCLUDED.assignee_id, parent_id = EXCLUDED.parent_id, milestone_id = EXCLUDED.milestone_id, relations = EXCLUDED.relations, recurrence = EXCLUDED.recurrence, story_points = EXCLUDED.story_points,
+			 assignee_id = EXCLUDED.assignee_id, parent_id = EXCLUDED.parent_id, milestone_id = EXCLUDED.milestone_id, relations = EXCLUDED.relations, recurrence = EXCLUDED.recurrence, story_points = EXCLUDED.story_points, assignee_ids = EXCLUDED.assignee_ids,
 			 completed = EXCLUDED.completed, important = EXCLUDED.important, urgent = EXCLUDED.urgent,
-			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision`, taskID, mc.ownerID, task.Title, task.Description, task.DueDate, task.DueTime, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.ScheduledTime, task.AssigneeName, task.FollowUpDate, task.FollowUpTime, task.EstimatedMinutes, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision, task.ReminderAt, checklistJSON, task.AssigneeID, task.ParentID, task.MilestoneID, relationsJSON, recurrence, task.StoryPoints)
+			 updated_at = EXCLUDED.updated_at, deleted_at = EXCLUDED.deleted_at, revision = EXCLUDED.revision`, taskID, mc.ownerID, task.Title, task.Description, task.DueDate, task.DueTime, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.ScheduledTime, task.AssigneeName, task.FollowUpDate, task.FollowUpTime, task.EstimatedMinutes, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, mc.revision, task.ReminderAt, checklistJSON, task.AssigneeID, task.ParentID, task.MilestoneID, relationsJSON, recurrence, task.StoryPoints, assigneesJSON)
 	if err != nil {
 		return err
 	}
@@ -1844,7 +1848,11 @@ func insertTaskChangeRow(mc mutationContext, task tasks.Task, taskID uuid.UUID, 
 	if err != nil {
 		return err
 	}
-	_, err = mc.tx.Exec(mc.ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, follow_up_date, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, reminder_at, checklist, assignee_id, parent_id, milestone_id, relations, recurrence, story_points) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)`, mc.revision, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.DueTime, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.ScheduledTime, task.AssigneeName, task.FollowUpDate, task.FollowUpTime, task.EstimatedMinutes, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, task.ReminderAt, checklistJSON, task.AssigneeID, task.ParentID, task.MilestoneID, relationsJSON, recurrence, task.StoryPoints)
+	assigneesJSON, err := assigneesJSON(task.AssigneeIDs)
+	if err != nil {
+		return err
+	}
+	_, err = mc.tx.Exec(mc.ctx, `INSERT INTO task_changes (revision, task_id, user_id, title, description, due_date, due_time, priority, area_id, project_id, status, scheduled_date, scheduled_time, assignee_name, follow_up_date, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, reminder_at, checklist, assignee_id, parent_id, milestone_id, relations, recurrence, story_points, assignee_ids) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)`, mc.revision, taskID, mc.userID, task.Title, task.Description, task.DueDate, task.DueTime, task.Priority, task.AreaID, task.ProjectID, task.Status, task.ScheduledDate, task.ScheduledTime, task.AssigneeName, task.FollowUpDate, task.FollowUpTime, task.EstimatedMinutes, peopleJSON, task.Completed, task.Important, task.Urgent, createdAt, updatedAt, task.DeletedAt, task.ReminderAt, checklistJSON, task.AssigneeID, task.ParentID, task.MilestoneID, relationsJSON, recurrence, task.StoryPoints, assigneesJSON)
 	return err
 }
 
@@ -1992,7 +2000,7 @@ func pullChangelogTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUI
 		return result, nil
 	}
 	rows, err := pool.Query(ctx, `
-		SELECT task_id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date::text, scheduled_time, assignee_name, follow_up_date::text, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision, reminder_at, checklist, assignee_id::text, parent_id::text, milestone_id, relations, recurrence, story_points
+		SELECT task_id::text, title, description, due_date, due_time, priority, area_id::text, project_id::text, status, scheduled_date::text, scheduled_time, assignee_name, follow_up_date::text, follow_up_time, estimated_minutes, people_ids, completed, important, urgent, created_at, updated_at, deleted_at, revision, reminder_at, checklist, assignee_id::text, parent_id::text, milestone_id, relations, recurrence, story_points, assignee_ids
 		FROM task_changes c WHERE revision = ANY($2) AND (c.user_id = $1 OR EXISTS (
 			SELECT 1 FROM project_members pm
 			WHERE pm.project_id = c.project_id AND pm.user_id = $1 AND pm.status = 'active'
@@ -2003,8 +2011,8 @@ func pullChangelogTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUI
 	defer rows.Close()
 	for rows.Next() {
 		var task tasks.Task
-		var peopleJSON, checklist, relations, recurrence []byte
-		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.DueTime, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.ScheduledTime, &task.AssigneeName, &task.FollowUpDate, &task.FollowUpTime, &task.EstimatedMinutes, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision, &task.ReminderAt, &checklist, &task.AssigneeID, &task.ParentID, &task.MilestoneID, &relations, &recurrence, &task.StoryPoints); err != nil {
+		var peopleJSON, checklist, relations, recurrence, assignees []byte
+		if err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.DueTime, &task.Priority, &task.AreaID, &task.ProjectID, &task.Status, &task.ScheduledDate, &task.ScheduledTime, &task.AssigneeName, &task.FollowUpDate, &task.FollowUpTime, &task.EstimatedMinutes, &peopleJSON, &task.Completed, &task.Important, &task.Urgent, &task.CreatedAt, &task.UpdatedAt, &task.DeletedAt, &task.ServerRevision, &task.ReminderAt, &checklist, &task.AssigneeID, &task.ParentID, &task.MilestoneID, &relations, &recurrence, &task.StoryPoints, &assignees); err != nil {
 			return nil, err
 		}
 		if err := decodeTaskJSON(&task, peopleJSON, checklist); err != nil {
@@ -2014,6 +2022,9 @@ func pullChangelogTasks(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUI
 			return nil, err
 		}
 		if err := decodeRecurrence(&task, recurrence); err != nil {
+			return nil, err
+		}
+		if err := decodeAssignees(&task, assignees); err != nil {
 			return nil, err
 		}
 		result = append(result, task)

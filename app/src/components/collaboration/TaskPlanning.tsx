@@ -3,6 +3,7 @@ import { Icon, type IconName } from "../Icon";
 import { CollaborationState, ReadOnlyNotice } from "./CollaborationState";
 import { PersonAvatar } from "./PersonAvatar";
 import { useI18n } from "../../lib/i18n";
+import { taskAssigneeIds } from "../../lib/assignees";
 import { CustomSelect } from "../CustomSelect";
 import { TaskStatusBadge } from "../TaskStatusBadge";
 import { StoryPointsChip } from "../tasks/StoryPoints";
@@ -39,11 +40,12 @@ export function AgilePropertyChips({ properties = [], priority, storyPoints, sta
  * The people who follow a task (they see it in their lists and in comment
  * mentions). Who is responsible is the assignee, chosen separately.
  */
-export function TaskPeoplePicker({ people, availablePeople, readOnly = false, loading = false, onPeopleChange, assigneeId }: Omit<TaskPlanningProps, "fields" | "onFieldChange">) {
+export function TaskPeoplePicker({ people, availablePeople, readOnly = false, loading = false, onPeopleChange, assigneeId, assigneeIds }: Omit<TaskPlanningProps, "fields" | "onFieldChange">) {
   const [query, setQuery] = useState("");
   const { t } = useI18n();
   const editable = !readOnly && !loading && Boolean(onPeopleChange);
   const selectedIds = new Set(people.map((person) => person.id));
+  const assignees = taskAssigneeIds({ assigneeId, assigneeIds });
   const candidates = availablePeople.filter((person) => !selectedIds.has(person.id) && `${person.name} ${person.email ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()));
 
   return <section className="collab-people-picker" aria-label={t("collab.taskPeople.group")}>
@@ -54,7 +56,7 @@ export function TaskPeoplePicker({ people, availablePeople, readOnly = false, lo
         const last = people.length === 1;
         return <li key={person.id}>
           <PersonAvatar person={person} />
-          <div className="collab-person-copy"><strong>{person.name}</strong>{person.id === assigneeId ? <small>{t("collab.assign.assignee")}</small> : last && <small>{t("collab.taskPeople.lastPerson")}</small>}</div>
+          <div className="collab-person-copy"><strong>{person.name}</strong>{assignees.includes(person.id) ? <small>{t("collab.assign.assignee")}</small> : last && <small>{t("collab.taskPeople.lastPerson")}</small>}</div>
           <button type="button" className="icon-button" aria-label={t("collab.taskPeople.removeFor", { name: person.name })} disabled={!editable || last} onClick={() => { if (editable && !last) onPeopleChange?.(people.filter((item) => item.id !== person.id)); }}><Icon name="close" /></button>
         </li>;
       })}</ul>}

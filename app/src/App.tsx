@@ -100,7 +100,8 @@ import { logger } from "./lib/logger";
 import { resetLastSyncedAt } from "./lib/syncStatus";
 import { purgeProductionDemoData } from "./lib/productionData";
 import { DEFAULT_ROUTE, parseRoute, routeToPath, samePage, type AppRoute } from "./lib/router";
-import { isAssignedToSomeoneElse, localProjectActivity, newlyAssignedToMe, tasksAssignedTo, withAssignee } from "./lib/assignment";
+import { isAssignedToSomeoneElse, localProjectActivity, newlyAssignedToMe, tasksAssignedTo, withAssignees } from "./lib/assignment";
+import { resolveAssigneeIds, taskAssigneeIds } from "./lib/assignees";
 import { mergeAssignedProjectTasks } from "./lib/projectTasks";
 import type { MailMessage } from "./types";
 
@@ -1440,7 +1441,7 @@ export function App() {
         areaId,
         projectId,
         parentId,
-        peopleIds: draft.assigneeId && !people.includes(draft.assigneeId) ? [...people, draft.assigneeId] : people,
+        peopleIds: [...people, ...taskAssigneeIds(draft).filter((id) => !people.includes(id))],
       });
       createdByTitle.set(saved.title.trim().toLowerCase(), saved);
       if (key) createdByKey.set(key, saved);
@@ -1563,8 +1564,11 @@ export function App() {
       const { changes } = item;
       const completed = changes.completed ?? (changes.status ? changes.status === "done" : task.completed);
       const status = changes.status ?? (changes.completed === true ? "done" : changes.completed === false && task.status === "done" ? "next" : task.status);
-      const people = task.peopleIds ?? [];
-      await updateTaskAndRepeat({ ...task, ...changes, completed, status, ...(changes.assigneeId && !people.includes(changes.assigneeId) ? { peopleIds: [...people, changes.assigneeId] } : {}) }, task);
+      // The assistant may name one person (assigneeId) or the whole list (assigneeIds).
+      const assignees = changes.assigneeIds !== undefined || changes.assigneeId !== undefined ? resolveAssigneeIds(changes, task) : null;
+      const { assigneeId: _legacyAssignee, assigneeIds: _assignees, ...otherChanges } = changes;
+      const next = { ...task, ...otherChanges, completed, status };
+      await updateTaskAndRepeat(assignees ? withAssignees(next, assignees) : next, task);
     }
     await refresh();
     void syncNow("tasks");
@@ -1787,6 +1791,7 @@ export function App() {
         priority: task.priority,
         storyPoints: task.storyPoints ?? null,
         assigneeId: task.assigneeId ?? null,
+        assigneeIds: taskAssigneeIds(task),
         ...issueLinks(task),
         people: (task.peopleIds ?? []).map((personId): TaskPerson | null => {
           const person = memberById.get(personId);
@@ -1827,10 +1832,10 @@ export function App() {
         },
         assignablePeople,
         currentUserId: user?.id ?? null,
-        onAssignIssue: readOnly || !assignablePeople ? undefined : async (id, personId) => {
+        onAssignIssue: readOnly || !assignablePeople ? undefined : async (id, personIds) => {
           const task = tasks.find((item) => item.id === id && item.projectId === project.id);
           if (!task) return;
-          await changeTask(withAssignee(task, personId));
+          await changeTask(withAssignees(task, personIds));
         },
         loadActivity: async () => {
           const local = localProjectActivity(projectTasks, user?.id ?? null);
@@ -1983,7 +1988,8 @@ export function App() {
       people,
       availablePeople,
       assignablePeople,
-      assigneeId: editingTask && editingTask.projectId === projectId ? editingTask.assigneeId ?? null : null,
+      assigneeId: editingTask && editingTask.projectId === projectId ? taskAssigneeIds(editingTask)[0] ?? null : null,
+      assigneeIds: editingTask && editingTask.projectId === projectId ? taskAssigneeIds(editingTask) : [],
       currentUserId: user?.id ?? null,
       readOnly: entry?.role === "viewer" || Boolean(editingTask?.projectId && collaborationStore.role(editingTask.projectId) === "viewer"),
       fields: [

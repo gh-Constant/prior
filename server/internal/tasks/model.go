@@ -26,8 +26,13 @@ type Task struct {
 	ReminderAt *string `json:"reminderAt,omitempty"`
 	// Checklist is the ordered list of subtasks (at most MaxChecklistItems).
 	Checklist []ChecklistItem `json:"checklist,omitempty"`
-	// AssigneeID is the one project member responsible for the task.
+	// AssigneeID is the first assignee, kept for older clients that know a
+	// single assignee. AssigneeIDs is the source of truth (see assignees.go).
 	AssigneeID *string `json:"assigneeId"`
+	// AssigneeIDs are the project members responsible for the task, ordered
+	// and unique (at most MaxAssignees). nil means "not sent": the server
+	// keeps the stored list; an empty non-nil list clears it.
+	AssigneeIDs []string `json:"assigneeIds"`
 	// ParentID makes the task a sub-issue of another task of its project.
 	ParentID *string `json:"parentId"`
 	// MilestoneID names a milestone of the task's project.
@@ -65,7 +70,7 @@ const (
 
 // optionalTaskFields are the fields older clients do not send. When a
 // mutation omits one, the server keeps the stored value instead of clearing it.
-var optionalTaskFields = []string{"assigneeId", "parentId", "milestoneId", "relations", "recurrence", "storyPoints"}
+var optionalTaskFields = []string{"assigneeId", "assigneeIds", "parentId", "milestoneId", "relations", "recurrence", "storyPoints"}
 
 // UnmarshalJSON records which optional fields the payload carried.
 func (task *Task) UnmarshalJSON(data []byte) error {
@@ -79,6 +84,10 @@ func (task *Task) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*task = Task(decoded)
+	if raw, ok := fields["assigneeIds"]; ok && string(raw) == "null" {
+		// An explicit null clears the list; an absent key (nil) keeps it.
+		task.AssigneeIDs = []string{}
+	}
 	task.present = make(map[string]bool, len(optionalTaskFields))
 	for _, name := range optionalTaskFields {
 		_, task.present[name] = fields[name]

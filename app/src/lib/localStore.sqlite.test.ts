@@ -89,6 +89,36 @@ describe("localStore SQLite statements validation", () => {
     expect(select?.query).toContain("story_points as storyPoints");
   });
 
+  it("stores the assignees as a JSON list next to the first assignee, and reads them back", async () => {
+    const { localStore } = await import("./localStore");
+    await localStore.saveTask({ title: "Team", important: false, urgent: false, assigneeIds: ["bob", "cleo"] });
+    const insert = executedStatements.find((stmt) => /INSERT INTO tasks/.test(stmt.query));
+    expect(insert).toBeDefined();
+    const columns = /INSERT INTO tasks \(([^)]+)\)/.exec(insert!.query)![1].split(",").map((name) => name.trim());
+    expect(insert!.query).toContain("assignee_ids=excluded.assignee_ids");
+    expect(insert!.bindValues![columns.indexOf("assignee_ids")]).toBe('["bob","cleo"]');
+    expect(insert!.bindValues![columns.indexOf("assignee_id")]).toBe("bob");
+    await localStore.saveTask({ title: "Alone", important: false, urgent: false, assigneeId: "bob" });
+    const single = executedStatements.filter((stmt) => /INSERT INTO tasks/.test(stmt.query)).at(-1)!;
+    expect(single.bindValues![columns.indexOf("assignee_ids")]).toBe('["bob"]');
+    await localStore.saveTask({ title: "Nobody", important: false, urgent: false });
+    const none = executedStatements.filter((stmt) => /INSERT INTO tasks/.test(stmt.query)).at(-1)!;
+    expect(none.bindValues![columns.indexOf("assignee_ids")]).toBe("[]");
+    expect(none.bindValues![columns.indexOf("assignee_id")]).toBeNull();
+
+    await localStore.applyRemoteTasks([
+      { id: "remote-team", title: "Remote", description: "", dueDate: null, priority: 4, assigneeId: "cleo", assigneeIds: ["cleo", "bob"], completed: false, important: false, urgent: false, createdAt: "2026-01-01", updatedAt: "2026-01-01", deletedAt: null },
+      { id: "remote-old", title: "From an older server", description: "", dueDate: null, priority: 4, assigneeId: "bob", completed: false, important: false, urgent: false, createdAt: "2026-01-01", updatedAt: "2026-01-01", deletedAt: null },
+    ]);
+    const remote = executedStatements.filter((stmt) => /INSERT INTO tasks/.test(stmt.query)).slice(-2);
+    expect(remote[0].bindValues![columns.indexOf("assignee_ids")]).toBe('["cleo","bob"]');
+    expect(remote[1].bindValues![columns.indexOf("assignee_ids")]).toBe('["bob"]');
+
+    await localStore.listTasks();
+    const select = executedStatements.find((stmt) => /^SELECT id, title.*FROM tasks/.test(stmt.query));
+    expect(select?.query).toContain("assignee_ids as assigneeIds");
+  });
+
   it("validates SQL placeholder and column count on saveHabit", async () => {
     const { localStore } = await import("./localStore");
     await localStore.saveHabit({ title: "Test habit", important: false, urgent: true, interval: 1, unit: "day" });

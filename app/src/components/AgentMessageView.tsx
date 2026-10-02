@@ -20,6 +20,7 @@ import { useI18n } from "../lib/i18n";
 import { AgentIdentity } from "./AgentIdentity";
 import { ReviewPanel } from "./agent/ReviewPanel";
 import { generateUuid } from "../lib/uuid";
+import { assigneeFields } from "../lib/assignees";
 import "katex/dist/katex.min.css";
 
 export { getQuadrantBadge } from "./agent/reviewModel";
@@ -186,7 +187,7 @@ export function taskDraftOf(task: ProposedTask): TaskDraft & { areaName?: string
     scheduledDate: task.scheduledDate,
     assigneeName: task.assigneeName,
     followUpDate: task.followUpDate,
-    ...(task.assigneeId ? { assigneeId: task.assigneeId } : {}),
+    ...(task.assigneeIds?.length ? assigneeFields(task.assigneeIds) : task.assigneeId ? { assigneeId: task.assigneeId, assigneeIds: [task.assigneeId] } : {}),
     ...(task.milestoneId ? { milestoneId: task.milestoneId } : {}),
     ...(task.parentId ? { parentId: task.parentId } : {}),
     ...(task.parentTitle ? { parentTitle: task.parentTitle } : {}),

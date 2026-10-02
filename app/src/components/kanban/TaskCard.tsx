@@ -1,7 +1,9 @@
 import { useState } from "react";
 import type { Project, Task } from "../../types";
 import { useI18n } from "../../lib/i18n";
+import { AssigneeStack } from "../collaboration/AssigneeSelect";
 import { PersonAvatar } from "../collaboration/PersonAvatar";
+import { taskAssigneeIds } from "../../lib/assignees";
 import type { Person } from "../collaboration/types";
 import { Icon } from "../Icon";
 import { PriorityGlyph, daysBetween, formatShortDate } from "../ProjectVisuals";
@@ -11,10 +13,10 @@ import { checklistProgress } from "../tasks/ChecklistEditor";
 import { RecurrenceChip } from "../tasks/RecurrenceChip";
 import { TaskSizeBadge } from "../tasks/StoryPoints";
 
-/** Resolves the person shown on a card: the assignee, else the free-text
+/** The first person a card shows: the assignee, else the free-text
  *  assignee (someone the task is waiting on). */
 export function taskAssignee(task: Task, people: readonly Person[]): Person | null {
-  const member = task.assigneeId ? people.find((person) => person.id === task.assigneeId) : undefined;
+  const member = taskAssigneeIds(task).map((id) => people.find((person) => person.id === id)).find(Boolean);
   if (member) return member;
   const name = task.assigneeName?.trim();
   return name ? { id: `assignee:${name}`, name } : null;
@@ -53,7 +55,8 @@ type Props = {
 export function KanbanTaskCard({ task, today, people = [], project = null, sizeProject = null, blocked = false, onOpen, onChange }: Props) {
   const { t } = useI18n();
   const [pending, setPending] = useState(false);
-  const assignee = taskAssignee(task, people);
+  const assigneeIds = taskAssigneeIds(task).filter((id, _index, ids) => people.some((person) => person.id === id) || ids.length > 1);
+  const assignee = assigneeIds.length ? null : taskAssignee(task, people);
   const progress = checklistProgress(task.checklist);
   const completeLabel = task.completed ? t("tasks.row.markTitleIncomplete", { title: task.title }) : t("tasks.row.markTitleComplete", { title: task.title });
 
@@ -80,6 +83,7 @@ export function KanbanTaskCard({ task, today, people = [], project = null, sizeP
         {project && <span className="project-chip kanban-project-chip" title={project.name}><WorkspaceIcon icon={project.icon} fallback={DEFAULT_PROJECT_ICON} /><span className="project-chip-label">{project.name}</span></span>}
         {progress && <span className="project-chip" title={t("checklist.progress", { done: progress.done, total: progress.total })}><Icon name="check-circle" />{progress.done}/{progress.total}</span>}
         {blocked && <span className="project-chip is-blocked" title={t("collab.issue.blocked")}><Icon name="lock" />{t("collab.issue.blocked")}</span>}
+        {assigneeIds.length > 0 && <AssigneeStack people={people} ids={assigneeIds} className="board-card-assignees" />}
         {assignee && <PersonAvatar person={assignee} className="project-avatar board-card-avatar" showPresence={false} />}
       </span>
     </button>

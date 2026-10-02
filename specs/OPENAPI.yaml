@@ -333,6 +333,12 @@ paths:
   # and recurrence ({interval 1-365, unit day|week|month|year, daysOfWeek?
   # (0 = Sunday, weekly only), basis? "completion", until? YYYY-MM-DD} or null).
   # Like assigneeId and relations, an omitted recurrence keeps the stored rule.
+  # Tasks also carry assigneeIds (ordered project member ids, at most 10) and
+  # assigneeId, always its first element (null when empty). Sending assigneeIds
+  # replaces the list (null or [] clears); an older client that sends only
+  # assigneeId sets the list to [assigneeId] unless it is already the first
+  # stored assignee (the others are kept); omitting both keeps the stored list.
+  # Every id must be a member of the task's project.
   /v1/sync/push:
     post:
       summary: Push up to 100 task/habit mutations (unknown fields ignored)

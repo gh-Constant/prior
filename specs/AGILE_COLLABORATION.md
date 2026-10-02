@@ -46,11 +46,11 @@ only JSON or treated as complete in this change.
   notification; they still accept. Pending invites can be resent (the link is
   rotated: only hashes are stored), copied or revoked. Members can leave.
   Role changes are optimistic and confirmed inline.
-- **Issue fields** on tasks (migration `031`, SQLite `012`): `assigneeId` (a
-  project member, validated on the server), `parentId` (same project, no
+- **Issue fields** on tasks (migration `031`, SQLite `012`): `assigneeId` (the
+  first assignee, see "Several assignees"), `parentId` (same project, no
   cycles), `milestoneId` and `relations` (`blocked_by`, `related`). Older
   clients that omit them keep the stored values. The people picker lists who
-  follows a task; the assignee is the one responsible ("My tasks", filters,
+  follows a task; the assignees are the ones responsible ("My tasks", filters,
   quick assign on cards, a local notification when someone assigns you).
 - **Activity** tab on agile projects: a GitHub-style grid of tasks completed
   (or created) per day, per person, from the task changelog
@@ -384,3 +384,50 @@ Before editing UI, add the contracts and tests first:
 Use `git diff --check`, the focused Vitest suite, Go formatting/vet/tests, and
 the client typecheck before considering the slice complete. Do not test through
 Roblox Studio; this is a React/Go/Tauri application.
+
+## Several assignees
+
+A task can be assigned to several project members, not just one.
+
+- **Data**: `Task.assigneeIds: string[]` is the source of truth (ordered, unique,
+  at most 10, `MAX_ASSIGNEES` in `app/src/lib/assignees.ts` and
+  `tasks.MaxAssignees` in Go). `assigneeId` stays the FIRST assignee (or null)
+  so older clients and servers, which only know one, keep working; both fields
+  are always written together. PostgreSQL migration `037` adds
+  `assignee_ids JSONB NOT NULL DEFAULT '[]'` to `tasks` and `task_changes`
+  (the `assignee_id` column and its foreign key stay) and backfills
+  `assignee_ids = [assignee_id]`; SQLite migration `015` does the same with a
+  JSON text column. Local data that only has `assigneeId` is normalized to
+  `[assigneeId]` (`normalizeTask`).
+- **Validation**: every id must be an active member of the task's project (same
+  rule as the single assignee before; a private task only accepts its owner),
+  otherwise the whole mutation is refused. More than 10, or an invalid UUID, is
+  refused too. Duplicates collapse (first occurrence wins).
+- **Compatibility on push** (`tasks.Task.ResolveAssignees`):
+  `assigneeIds` sent: it wins (`[]` or `null` clears). Only `assigneeId` sent
+  (an older client): the list becomes `[assigneeId]`, unless that id already is
+  the stored first assignee, in which case the stored list is kept (an old
+  client re-sending the same first assignee must not wipe the others); a null
+  `assigneeId` clears the list. Neither sent: the stored list is kept. The
+  client applies the same rule to a draft that only carries `assigneeId`
+  (`resolveAssigneeIds`). Rows written by an older server instance (a legacy
+  `assignee_id` that disagrees with the list) are read as `[assignee_id]`.
+- **Deleting an account** removes the user from every list and moves
+  `assignee_id` to the new first assignee.
+- **Meaning**: "My tasks", the project "Mine" filter and "Unassigned" use the
+  list (`isAssignedTo`, `taskAssigneeIds`); a task assigned to others but not to
+  me stays out of my Today (`isAssignedToSomeoneElse`). The assignment
+  notification fires on a device when the signed-in user was not among the
+  assignees before the sync and is now (`newlyAssignedToMe`): the people who were
+  already assigned are not notified again. There is no board grouping by
+  assignee (columns are workflow states), so nothing to duplicate.
+- **UI**: the assignee picker (task sheet, composer, quick assign on cards) is a
+  multi-select menu (`AssigneeSelect`): toggling a member keeps the menu open,
+  the people already assigned come first, the order of selection is the order of
+  the list, "Unassign everyone" clears it. Cards and rows show stacked avatars
+  (`AssigneeStack`): at most three, then "+N". On phones the menu rows are 44px
+  tall. The assistant accepts `assignee` (one name) or `assignees` (several) and
+  a change replaces the whole list; the review card shows the names.
+- **Not covered**: the free-text `assigneeName` ("waiting on") is unrelated and
+  unchanged. The Linear and Notion importers keep the assignee as a note
+  (they cannot match names to members).

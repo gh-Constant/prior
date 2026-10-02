@@ -69,7 +69,26 @@ describe("assistant changes to existing items", () => {
     expect(result.tasks[1]).toMatchObject({ assigneeName: "Bob" });
     expect(result.tasks[1].assigneeId).toBeUndefined();
     // A parent from another project is refused; the rest applies.
-    expect(result.taskUpdates[0].changes).toEqual({ assigneeId: "u-lea", relations: [{ type: "blocked_by", taskId: "t-parent" }] });
+    expect(result.taskUpdates[0].changes).toEqual({ assigneeIds: ["u-lea"], relations: [{ type: "blocked_by", taskId: "t-parent" }] });
+  });
+
+  it("assigns several members at once and replaces the whole list on update", () => {
+    const raw = JSON.stringify({
+      reply: "ok",
+      tasks: [{ title: "Pair on beta", projectName: "Launch", assignees: ["léa", "me", "Bob", "lea@example.com"] }],
+      taskUpdates: [
+        { taskId: "t-child", changes: { assignees: ["Me", "Léa"] } },
+        { taskId: "t-parent", changes: { assignee: null } },
+      ],
+    });
+    const assigned: Task = { ...parent, assigneeId: "u-lea", assigneeIds: ["u-lea", "u-me"] };
+    const result = parseAiResponse(raw, [assigned, child], { projects: [project] });
+    // Unknown names are skipped and duplicates collapsed; the first stays assigneeId.
+    expect(result.tasks[0]).toMatchObject({ assigneeId: "u-lea", assigneeIds: ["u-lea", "u-me"], assigneeLabel: "Léa Martin, Me" });
+    expect(result.taskUpdates[0].changes).toEqual({ assigneeIds: ["u-me", "u-lea"] });
+    expect(result.taskUpdates[1].changes).toEqual({ assigneeIds: [] });
+    const prompt = buildSystemPrompt([assigned], [], false, [], [], [], [project]);
+    expect(prompt).toContain('assignees: "Léa Martin", "Me"');
   });
 
   it("proposes and changes repeat rules, dropping invalid ones", () => {

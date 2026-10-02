@@ -1,6 +1,7 @@
 import type { Project, Task } from "../types";
 import { collaborationStore } from "./collaborationStore";
 import { eventsInRange, loadCalendarState } from "./calendar";
+import { MAX_ASSIGNEES, taskAssigneeIds } from "./assignees";
 
 /** A person a shared-project task can be assigned to. */
 export type AgentPerson = { id: string; name: string; email: string };
@@ -31,6 +32,21 @@ export function resolvePerson(value: unknown, people: readonly AgentPerson[], se
   return partial.length === 1 ? partial[0] : undefined;
 }
 
+/**
+ * Several people at once: a name or an array of names/ids/emails ("assignee" or "assignees").
+ * Names that do not resolve (unknown or ambiguous) are skipped; the result is unique and
+ * capped at MAX_ASSIGNEES.
+ */
+export function resolvePeople(value: unknown, people: readonly AgentPerson[], selfId?: string | null): AgentPerson[] {
+  const inputs = Array.isArray(value) ? value : [value];
+  const result: AgentPerson[] = [];
+  for (const input of inputs) {
+    const person = resolvePerson(input, people, selfId);
+    if (person && !result.some((item) => item.id === person.id)) result.push(person);
+  }
+  return result.slice(0, MAX_ASSIGNEES);
+}
+
 /** A milestone of the project from its id or (case-insensitive) name. */
 export function resolveMilestone(value: unknown, project: Project | undefined): { id: string; name: string } | undefined {
   if (typeof value !== "string" || !value.trim() || !project?.milestones?.length) return undefined;
@@ -42,9 +58,10 @@ export function resolveMilestone(value: unknown, project: Project | undefined): 
 export function describeTaskPeople(task: Task, projects: readonly Project[]): string {
   const parts: string[] = [];
   const people = projectPeople(task.projectId);
-  if (task.assigneeId) {
-    const person = people.find((candidate) => candidate.id === task.assigneeId);
-    parts.push(`assignee: ${person ? `"${person.name}"` : "a former member"}`);
+  const assignees = taskAssigneeIds(task);
+  if (assignees.length) {
+    const names = assignees.map((id) => people.find((candidate) => candidate.id === id)).map((person) => (person ? `"${person.name}"` : "a former member"));
+    parts.push(`${assignees.length > 1 ? "assignees" : "assignee"}: ${names.join(", ")}`);
   }
   if (task.parentId) parts.push(`sub-task of [id: ${task.parentId}]`);
   const project = projects.find((item) => item.id === task.projectId);

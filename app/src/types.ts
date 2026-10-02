@@ -78,8 +78,10 @@ export type Task = {
   reminderAt?: string | null;
   /** Ordered subtasks, at most 100. Checking one never earns XP. */
   checklist?: ChecklistItem[];
-  /** The one project member responsible for the task (a user id). */
+  /** The first assignee (a user id), kept for older clients that know one assignee: always `assigneeIds[0]`. */
   assigneeId?: string | null;
+  /** The project members responsible for the task, ordered, unique, at most 10 (lib/assignees.ts). */
+  assigneeIds?: string[];
   /** Parent task: this task is a sub-issue of it (same project). */
   parentId?: string | null;
   /** A milestone of the task's project (Project.milestones). */
@@ -125,7 +127,7 @@ export type TaskRecurrence = {
   until?: string | null;
 };
 
-export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes" | "reminderAt" | "checklist" | "assigneeId" | "parentId" | "milestoneId" | "relations" | "recurrence" | "storyPoints">>;
+export type TaskDraft = Pick<Task, "title" | "important" | "urgent"> & Partial<Pick<Task, "description" | "dueDate" | "dueTime" | "priority" | "areaId" | "projectId" | "status" | "scheduledDate" | "scheduledTime" | "assigneeName" | "peopleIds" | "followUpDate" | "followUpTime" | "estimatedMinutes" | "reminderAt" | "checklist" | "assigneeId" | "assigneeIds" | "parentId" | "milestoneId" | "relations" | "recurrence" | "storyPoints">>;
 
 export type HabitUnit = "day" | "week" | "month" | "year";
 
@@ -220,8 +222,10 @@ export type ProposedTask = {
   reminderAt?: string | null;
   /** Repeat rule: completing the task creates the next occurrence. */
   recurrence?: TaskRecurrence | null;
-  /** A member of a shared project, resolved from the name the model used. */
+  /** A member of a shared project, resolved from the name the model used (the first of assigneeIds). */
   assigneeId?: string | null;
+  /** Every member the model named, resolved. */
+  assigneeIds?: string[];
   /** Display name of that member, for the review card. */
   assigneeLabel?: string;
   /** A milestone of the project (resolved from its name). */
@@ -238,7 +242,7 @@ export type ProposedTask = {
 };
 
 /** Fields the assistant may change on an existing task (update_task). */
-export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt" | "assigneeId" | "milestoneId" | "parentId" | "relations" | "recurrence" | "storyPoints">>;
+export type TaskUpdateFields = Partial<Pick<Task, "title" | "description" | "dueDate" | "priority" | "important" | "urgent" | "status" | "scheduledDate" | "assigneeName" | "followUpDate" | "completed" | "checklist" | "reminderAt" | "assigneeId" | "assigneeIds" | "milestoneId" | "parentId" | "relations" | "recurrence" | "storyPoints">>;
 
 /** Kinds of existing items the assistant can change besides tasks. */
 export type EntityUpdateKind = "project" | "habit" | "note" | "area";
