@@ -1,5 +1,0 @@
-numpy
-requests
-sounddevice
-pynput
-pyperclip
